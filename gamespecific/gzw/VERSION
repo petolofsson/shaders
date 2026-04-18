@@ -1,0 +1,95 @@
+GZW vkBasalt Shader Stack
+Version: 0.10
+Date: 2026-04-17
+
+Chain: olofssonian_zone_contrast → color_grade → halation → foliage_light → promist → veil → sharpen → ca → vignette
+
+Session changes (v0.10):
+
+olofssonian_zone_contrast:
+- 128-sample upgrade: kHalton[256] table, 128 samples/frame, FRAME_COUNT%128 window slide
+- LERP_SPEED 0.04→0.08 (stable due to denser sampling)
+- CURVE_STRENGTH 0.28→0.25 (fixed indoor dark/light zone breakup)
+- TOE_RANGE 0.30→0.35 (smoother, wider indigo gradient fade-in)
+- TOE_TINT_R -0.022→-0.028, G -0.010→-0.014, B +0.034→+0.040 (richer chromatic indigo spread)
+
+color_grade:
+- SAT_SKY 1.20→1.30
+- WHITE_B 0.90→0.93 (less blue pull on highlights, reduces yellow cast)
+
+veil:
+- VEIL_TINT_G 1.06→1.00, VEIL_TINT_B 0.94→0.97
+- Sky exclusion gate: blue-dominant pixels skip veil lerp entirely
+
+halation:
+- sat_gate smoothstep(0.04,0.16)→(0.08,0.20): white buildings excluded
+
+housekeeping:
+- Renamed gzw_zone_contrast.fx → gzw_olofssonian_zone_contrast.fx throughout
+- Removed: gzw_depth_apply.fx, gzw_depth_gather.fx, gzw_foliage_light.fx.bak
+- Added: gzw_grain.fx (shelved), INSTALL.md (Linux/vkBasalt + Windows/ReShade)
+- Technique name: OlofssonianZoneContrast
+
+---
+
+Session changes (v0.9):
+
+color_grade:
+- SAT_SKY 1.20→1.30 — deeper sky blue, stronger contrast against treeline
+- WHITE_B 0.90→0.93 — less aggressive blue pull on highlights/sky, reduces overall yellow cast
+
+veil:
+- VEIL_TINT_G 1.06→1.00 — removed green component from veil tint (was causing teal sky)
+- VEIL_TINT_B 0.94→0.97 — eased blue suppression, less yellow bias overall
+- Sky exclusion gate added: blue-dominant pixels (sky) skip veil lerp entirely
+  `float sky_dom = saturate((col.b - max(col.r, col.g)) * 8.0); float not_sky = 1.0 - sky_dom;`
+
+halation:
+- sat_gate smoothstep(0.04, 0.16)→(0.08, 0.20) — sunlit white buildings were triggering halation
+  Warm-white concrete post-color-grade had just enough saturation to bleed through at 0.04.
+  Tightened to 0.08 — white/near-neutral surfaces excluded, genuine chromatic sources unaffected.
+
+housekeeping:
+- Removed: gzw_depth_apply.fx, gzw_depth_gather.fx (unused), gzw_foliage_light.fx.bak
+- Added: gzw_grain.fx (shelved — Vision3-style luma-weighted grain, FRAME_COUNT animated)
+- Added: INSTALL.md (Linux/vkBasalt + Windows/ReShade installation guide)
+
+Session changes (v0.8):
+
+olofssonian_zone_contrast:
+- TOE_STRENGTH 0.40→0.37→0.40 — tested lower, reverted; blue stem tint compensates visually
+- TOE_TINT_B 0.028→0.034 — more blue in dark shadow tint
+- SHADOW_TINT_B 0.038→0.050 — more blue on dark chromatic surfaces (bark/earth at night)
+- GRADE_R 0.985→0.996 — less red pull, fixes blue cast on neutral surfaces (concrete, road)
+- Saturation gate floor tightened: smoothstep(0.08→0.12, 0.22) on TOE_TINT and SHADOW_TINT
+- Three-way median blend: median pivot now active (was stored but unused)
+  Dark pixels blend dark→mid, bright pixels blend mid→bright, quadratic outer weight preserves shadow depth
+- Frame-jittered Halton: VanDerCorput replaced with pre-baked 128-point table (kHalton[])
+  Array lookup replaces per-sample runtime math. Window slides by FRAME_COUNT % 128.
+  Effective coverage ≈1600 unique positions over smoothing window. Output identical.
+
+color_grade:
+- LEAF_WARM 0.30→0.36 — warmer, less blue on bright foliage
+- LEAF_COOL 0.38→0.32 — less blue on dark foliage
+- SAT_GREEN 1.28→1.30 — slight green saturation bump
+- SAT_SKY 1.30→1.20 — sky was over-saturated
+- SAT_MAX 0.80→0.85 — restored from user change during previous session
+- Film matrix +20% tested and reverted — added visible warm tint across all chromatic surfaces.
+  Values restored to original: FILM_RG 0.044, FILM_RB 0.010, FILM_GR 0.024, FILM_GB 0.033, FILM_BR 0.010, FILM_BG 0.052
+
+promist:
+- DIFFUSE_LUMA_LO 0.45→0.50 — diffuse activates later, reduces bloom on concrete walls
+
+sharpen:
+- SHARPEN_STRENGTH restored to 0.28 (was changed to 0.20 in previous session)
+- SHARPEN_LUMA_LO restored to 0.18 (was changed to 0.25 in previous session)
+- CONTRAST_LO/HI unchanged at 0.05/0.15
+
+foliage_light (efficiency):
+- Silver rim: 8 neighbor samples → 4 cardinal only. Visual output unchanged.
+
+halation (efficiency):
+- Vertical blur moved to half-res (new BlurV pass + HalationBlurVTex).
+  Was: vertical blur ran at full resolution (expensive).
+  Now: all blur contained at half-res, Apply pass is single sample + math.
+  ~75% reduction in vertical blur cost. Visual output unchanged.
