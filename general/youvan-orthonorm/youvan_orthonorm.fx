@@ -231,7 +231,7 @@ float4 ComputeMatrixPS(float4 pos : SV_Position,
 float4 ApplyOrthoPS(float4 pos : SV_Position,
                     float2 uv  : TEXCOORD0) : SV_Target
 {
-    if (pos.x > 2459 && pos.x < 2471 && pos.y > 15 && pos.y < 27)
+    if (pos.x > 2458 && pos.x < 2470 && pos.y > 15 && pos.y < 27)
         return float4(0.0, 0.85, 0.3, 1.0);
 
     float4 col = tex2D(BackBuffer, uv);

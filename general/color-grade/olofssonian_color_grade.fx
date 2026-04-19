@@ -205,7 +205,7 @@ float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
 float4 ColorGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    if (pos.x > 2534 && pos.x < 2546 && pos.y > 15 && pos.y < 27)
+    if (pos.x > 2503 && pos.x < 2515 && pos.y > 15 && pos.y < 27)
         return float4(0.2, 0.2, 0.9, 1.0);
 
     float4 col    = tex2D(BackBuffer, uv);

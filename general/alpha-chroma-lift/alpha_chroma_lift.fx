@@ -167,7 +167,7 @@ float4 ComputeSatGatePS(float4 pos : SV_Position,
 float4 ApplyChromaLiftPS(float4 pos : SV_Position,
                          float2 uv  : TEXCOORD0) : SV_Target
 {
-    if (pos.x > 2504 && pos.x < 2516 && pos.y > 15 && pos.y < 27)
+    if (pos.x > 2488 && pos.x < 2500 && pos.y > 15 && pos.y < 27)
         return float4(0.9, 0.3, 0.1, 1.0);
 
     float4 col = tex2D(BackBuffer, uv);

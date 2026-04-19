@@ -35,7 +35,7 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 float4 PrimaryCorrectionPS(float4 pos : SV_Position,
                            float2 uv  : TEXCOORD0) : SV_Target
 {
-    if (pos.x > 2474 && pos.x < 2486 && pos.y > 15 && pos.y < 27)
+    if (pos.x > 2428 && pos.x < 2440 && pos.y > 15 && pos.y < 27)
         return float4(1.0, 1.0, 1.0, 1.0);
 
     float4 col = tex2D(BackBuffer, uv);

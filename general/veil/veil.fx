@@ -1,25 +1,49 @@
-// veil.fx — Veiling glare: atmospheric contrast reduction
+// veil.fx — Veiling glare: global luminance lift
 //
-// NOT bloom — the opposite: compresses local contrast by blending a blurred
-// copy of the scene onto itself.
-//   - Darks lift (bright neighbours bleed in)
-//   - Brights pull down (dark neighbours pull the average down)
-//   - Result: reduced local contrast, sense of air and haze
+// True veiling glare is a global effect — stray light inside the lens
+// adds a roughly uniform offset to the entire sensor, proportional to
+// scene average luminance. Bright scene = lifted shadows everywhere.
 //
-// Three passes:
-//   Pass 1: Kawase downsample BackBuffer → VeilDownTex (half res)
-//   Pass 2: Kawase upsample VeilDownTex → VeilUpTex (half res)
-//   Pass 3: Lerp veil onto scene with luma + sky gates
+// This is physically correct and has no edge bleeding because there is
+// no blur. Shadows lift, local contrast compresses, image gains depth.
+//
+// Two passes:
+//   Pass 1: Walk LumHistTex (from frame_analysis) to compute scene
+//           average luminance → AvgLumTex (1×1)
+//   Pass 2: Add warm-tinted constant lift to every pixel
 
 // ─── Tuning ────────────────────────────────────────────────────────────────
 
-#define VEIL_STRENGTH  0.10    // 0–1; lerp toward blurred scene (0.20 = heavy haze)
-#define VEIL_WARMTH    0.5     // 0 = neutral, 1 = warm tint on veil layer
+#define VEIL_STRENGTH  0.10    // 0–1; lift intensity (0.05–0.15 is subtle)
+#define VEIL_WARMTH    0.5     // 0 = neutral tint, 1 = warm tint on lift
 
 // ─── Internal constants ────────────────────────────────────────────────────
 
-#define VEIL_RADIUS    (BUFFER_WIDTH * 0.001465)
-#define VEIL_LUMA_CAP  0.82
+#define HIST_BINS  64
+
+// ─── Shared histogram texture — must match frame_analysis.fx exactly ───────
+
+texture2D LumHistTex { Width = HIST_BINS; Height = 1; Format = R32F; MipLevels = 1; };
+sampler2D LumHist
+{
+    Texture   = LumHistTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
+// ─── Average luminance result — 1×1 ───────────────────────────────────────
+
+texture2D AvgLumTex { Width = 1; Height = 1; Format = R32F; MipLevels = 1; };
+sampler2D AvgLum
+{
+    Texture   = AvgLumTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
@@ -27,36 +51,6 @@ texture2D BackBufferTex : COLOR;
 sampler2D BackBuffer
 {
     Texture   = BackBufferTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = LINEAR;
-    MagFilter = LINEAR;
-};
-
-texture2D VeilDownTex
-{
-    Width  = BUFFER_WIDTH  / 2;
-    Height = BUFFER_HEIGHT / 2;
-    Format = RGBA16F;
-};
-sampler2D VeilDown
-{
-    Texture   = VeilDownTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = LINEAR;
-    MagFilter = LINEAR;
-};
-
-texture2D VeilUpTex
-{
-    Width  = BUFFER_WIDTH  / 2;
-    Height = BUFFER_HEIGHT / 2;
-    Format = RGBA16F;
-};
-sampler2D VeilUp
-{
-    Texture   = VeilUpTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = LINEAR;
@@ -74,77 +68,45 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
     pos  = float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
 }
 
-// ─── Kawase helpers ────────────────────────────────────────────────────────
+// ─── Pass 1 — Compute scene average luminance ──────────────────────────────
 
-float3 KawaseDown(sampler2D tex, float2 uv, float2 px)
+float4 ComputeAvgLumPS(float4 pos : SV_Position,
+                       float2 uv  : TEXCOORD0) : SV_Target
 {
-    float3 c = 0;
-    c += tex2D(tex, uv + float2(-px.x,  px.y) * 0.5).rgb;
-    c += tex2D(tex, uv + float2( px.x,  px.y) * 0.5).rgb;
-    c += tex2D(tex, uv + float2(-px.x, -px.y) * 0.5).rgb;
-    c += tex2D(tex, uv + float2( px.x, -px.y) * 0.5).rgb;
-    return c * 0.25;
+    float weighted = 0.0;
+    float total    = 0.0;
+
+    [loop]
+    for (int i = 0; i < HIST_BINS; i++)
+    {
+        float luma  = (i + 0.5) / float(HIST_BINS);
+        float count = tex2Dlod(LumHist, float4((i + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
+        weighted   += luma * count;
+        total      += count;
+    }
+
+    float avg = (total > 0.001) ? weighted / total : 0.0;
+    return float4(avg, 0, 0, 1);
 }
 
-float3 KawaseUp(sampler2D tex, float2 uv, float2 px)
+// ─── Pass 2 — Apply global lift ────────────────────────────────────────────
+
+float4 ApplyPS(float4 pos : SV_Position,
+               float2 uv  : TEXCOORD0) : SV_Target
 {
-    float3 c = 0;
-    c += tex2D(tex, uv + float2(-px.x * 2.0,  0.0      )).rgb * 1.0;
-    c += tex2D(tex, uv + float2(-px.x,         px.y     )).rgb * 2.0;
-    c += tex2D(tex, uv + float2( 0.0,          px.y*2.0 )).rgb * 1.0;
-    c += tex2D(tex, uv + float2( px.x,         px.y     )).rgb * 2.0;
-    c += tex2D(tex, uv + float2( px.x * 2.0,  0.0      )).rgb * 1.0;
-    c += tex2D(tex, uv + float2( px.x,        -px.y     )).rgb * 2.0;
-    c += tex2D(tex, uv + float2( 0.0,         -px.y*2.0 )).rgb * 1.0;
-    c += tex2D(tex, uv + float2(-px.x,        -px.y     )).rgb * 2.0;
-    return c / 12.0;
-}
-
-// ─── Pass 1 — Downsample ───────────────────────────────────────────────────
-
-float4 DownPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
-{
-    float2 px = float2(VEIL_RADIUS / BUFFER_WIDTH, VEIL_RADIUS / BUFFER_HEIGHT);
-    return float4(KawaseDown(BackBuffer, uv, px), 1.0);
-}
-
-// ─── Pass 2 — Upsample ─────────────────────────────────────────────────────
-
-float4 UpPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
-{
-    float2 px = float2(VEIL_RADIUS * 2.0 / BUFFER_WIDTH, VEIL_RADIUS * 2.0 / BUFFER_HEIGHT);
-    return float4(KawaseUp(VeilDown, uv, px), 1.0);
-}
-
-// ─── Pass 3 — Composite ────────────────────────────────────────────────────
-
-float4 ApplyPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
-{
-    if (pos.x > 2414 && pos.x < 2426 && pos.y > 15 && pos.y < 27)
+    if (pos.x > 2533 && pos.x < 2545 && pos.y > 15 && pos.y < 27)
         return float4(0.4, 0.6, 1.0, 1.0);
 
-    float4 col  = tex2D(BackBuffer, uv);
-    float3 veil = tex2D(VeilUp, uv).rgb;
+    float4 col     = tex2D(BackBuffer, uv);
+    float  avg_lum = tex2D(AvgLum, float2(0.5, 0.5)).r;
 
-    // Optional warm tint — luma-preserving so brightness stays flat
-    float3 warm_tint = lerp(float3(1.0, 1.0, 1.0), float3(1.02, 1.00, 0.97), VEIL_WARMTH);
-    float  lum_pre   = dot(veil, float3(0.2126, 0.7152, 0.0722));
-    veil            *= warm_tint;
-    float  lum_post  = dot(veil, float3(0.2126, 0.7152, 0.0722));
-    veil            *= min(lum_pre / max(lum_post, 1e-5), 1.0);
+    // Warm tint on the lift — slightly amber, like real lens scatter
+    float3 tint = lerp(float3(1.0, 1.0, 1.0), float3(1.04, 1.00, 0.88), VEIL_WARMTH);
+    float3 lift = avg_lum * VEIL_STRENGTH * tint;
 
-    // Soft ceiling — prevents overcast sky from washing the veil layer
-    veil = min(veil, float3(0.92, 0.92, 0.92));
+    // Additive lift — shadows rise, highlights barely affected (already bright)
+    float3 result = col.rgb + lift;
 
-    // White gate — prevents glow on very bright surfaces
-    float veil_luma  = dot(col.rgb, float3(0.2126, 0.7152, 0.0722));
-    float white_gate = 1.0 - smoothstep(VEIL_LUMA_CAP, 0.97, veil_luma);
-
-    // Sky gate — blue-dominant pixels skip veil to prevent teal tint
-    float sky_dom = saturate((col.b - max(col.r, col.g)) * 8.0);
-    float not_sky = 1.0 - sky_dom;
-
-    float3 result = lerp(col.rgb, veil, VEIL_STRENGTH * white_gate * not_sky);
     return float4(saturate(result), col.a);
 }
 
@@ -152,17 +114,11 @@ float4 ApplyPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
 technique Veil
 {
-    pass Down
+    pass ComputeAvgLum
     {
         VertexShader = PostProcessVS;
-        PixelShader  = DownPS;
-        RenderTarget = VeilDownTex;
-    }
-    pass Up
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = UpPS;
-        RenderTarget = VeilUpTex;
+        PixelShader  = ComputeAvgLumPS;
+        RenderTarget = AvgLumTex;
     }
     pass Apply
     {

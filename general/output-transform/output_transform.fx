@@ -58,7 +58,7 @@ float3 OpenDRT(float3 x)
 float4 OutputTransformPS(float4 pos : SV_Position,
                          float2 uv  : TEXCOORD0) : SV_Target
 {
-    if (pos.x > 2549 && pos.x < 2561 && pos.y > 15 && pos.y < 27)
+    if (pos.x > 2548 && pos.x < 2560 && pos.y > 15 && pos.y < 27)
         return float4(0.45, 0.0, 0.0, 1.0);
 
     float4 col    = tex2D(BackBuffer, uv);

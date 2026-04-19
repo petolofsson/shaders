@@ -96,7 +96,7 @@ float4 BuildCDFPS(float4 pos : SV_Position,
 float4 ApplyContrastPS(float4 pos : SV_Position,
                        float2 uv  : TEXCOORD0) : SV_Target
 {
-    if (pos.x > 2519 && pos.x < 2531 && pos.y > 15 && pos.y < 27)
+    if (pos.x > 2473 && pos.x < 2485 && pos.y > 15 && pos.y < 27)
         return float4(0.0, 0.7, 0.7, 1.0);
 
     float4 col    = tex2D(BackBuffer, uv);
