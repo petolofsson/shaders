@@ -128,7 +128,7 @@ float4 BuildSatCDFPS(float4 pos : SV_Position,
 
     float prev     = tex2Dlod(SatCDF, float4(uv, 0, 0)).r;
     float prev_max = tex2Dlod(SatCDF, float4((HIST_BINS - 0.5) / float(HIST_BINS), row_v, 0, 0)).r;
-    float speed    = (prev_max < 0.5) ? 1.0 : LERP_SPEED;
+    float speed    = (prev_max < 0.5) ? 1.0 : clamp(LERP_SPEED, 0.001, 1.0);
 
     return float4(lerp(prev, cdf, speed), 0, 0, 1);
 }

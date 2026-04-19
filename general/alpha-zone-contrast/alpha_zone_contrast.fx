@@ -84,7 +84,7 @@ float4 BuildCDFPS(float4 pos : SV_Position,
 
     float prev     = tex2Dlod(LumCDF, float4(uv, 0, 0)).r;
     float prev_max = tex2Dlod(LumCDF, float4((HIST_BINS - 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
-    float speed    = (prev_max < 0.5) ? 1.0 : (LERP_SPEED / 100.0);
+    float speed    = (prev_max < 0.5) ? 1.0 : clamp(LERP_SPEED / 100.0, 0.001, 1.0);
 
     return float4(lerp(prev, cdf, speed), 0, 0, 1);
 }
