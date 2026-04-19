@@ -20,7 +20,33 @@
 
 // ─── Preset values ─────────────────────────────────────────────────────────
 
-#if PRESET == 1  // Kodak Vision3 500T
+#if PRESET == 0  // Passthrough — no grade applied
+#define WHITE_R          1.0
+#define WHITE_G          1.0
+#define WHITE_B          1.0
+#define FILM_RG          0.0
+#define FILM_RB          0.0
+#define FILM_GR          0.0
+#define FILM_GB          0.0
+#define FILM_BR          0.0
+#define FILM_BG          0.0
+#define TOE_TINT_R       0.0
+#define TOE_TINT_G       0.0
+#define TOE_TINT_B       0.0
+#define BLACK_LIFT_R     0.0
+#define BLACK_LIFT_G     0.0
+#define BLACK_LIFT_B     0.0
+#define SHADOW_TINT_R    0.0
+#define SHADOW_TINT_G    0.0
+#define SHADOW_TINT_B    0.0
+#define HIGHLIGHT_TINT_R 0.0
+#define HIGHLIGHT_TINT_G 0.0
+#define HIGHLIGHT_TINT_B 0.0
+#define GRADE_R          1.0
+#define GRADE_G          1.0
+#define GRADE_B          1.0
+
+#elif PRESET == 1  // Kodak Vision3 500T
 #define WHITE_R          0.97
 #define WHITE_G          0.95
 #define WHITE_B          0.93
