@@ -40,8 +40,7 @@ float4 PrimaryCorrectionPS(float4 pos : SV_Position,
 
     float4 col = tex2D(BackBuffer, uv);
 
-    float3 linear = pow(max(col.rgb, 0.0), 2.2);
-    float3 c = linear * float3(WB_R / 100.0, WB_G / 100.0, WB_B / 100.0) * pow(2.0, EXPOSURE / 100.0);
+    float3 c = col.rgb * float3(WB_R / 100.0, WB_G / 100.0, WB_B / 100.0) * pow(2.0, EXPOSURE / 100.0);
 
     return float4(c, col.a);
 }
