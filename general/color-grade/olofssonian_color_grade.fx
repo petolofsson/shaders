@@ -11,7 +11,7 @@
 //   5 = Kodak 5219         — punchy, pushed, deep warm blacks
 
 #define PRESET         5
-#define GRADE_STRENGTH 60    // 0–100; 0 = bypass, 100 = full preset
+#define GRADE_STRENGTH 100    // 0–100; 0 = bypass, 100 = full preset
 
 // ─── Tinting ranges ────────────────────────────────────────────────────────
 #define TOE_RANGE       30      // 0–100; luma range for toe tint
