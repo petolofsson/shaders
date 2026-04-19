@@ -18,10 +18,10 @@
 
 // ─── Tuning ────────────────────────────────────────────────────────────────
 
-#define ORTHO_STRENGTH   0.60   // 0.0 = bypass, 1.0 = full correction
-#define LERP_SPEED       0.05   // adaptation speed — slow keeps matrix stable
-#define ZONE_DARK_MAX    0.25   // luma threshold: dark zone upper bound
-#define ZONE_BRIGHT_MIN  0.75   // luma threshold: bright zone lower bound
+#define ORTHO_STRENGTH   0      // -100 to 100; 0 = bypass, positive = correct toward neutral, negative = exaggerate cast
+#define LERP_SPEED       5      // 0–100; adaptation speed — slow keeps matrix stable
+#define ZONE_DARK_MAX    25     // 0–100; luma threshold: dark zone upper bound
+#define ZONE_BRIGHT_MIN  75     // 0–100; luma threshold: bright zone lower bound
 
 uniform int FRAME_COUNT < source = "framecount"; >;
 
@@ -166,22 +166,22 @@ float4 ZoneStatsPS(float4 pos : SV_Position,
         float  luma = Luma(rgb);
 
         float in_zone = 0.0;
-        if (zone == 0) in_zone = step(luma,             ZONE_DARK_MAX);
-        if (zone == 1) in_zone = step(ZONE_DARK_MAX,    luma) * step(luma, ZONE_BRIGHT_MIN);
-        if (zone == 2) in_zone = step(ZONE_BRIGHT_MIN,  luma);
+        if (zone == 0) in_zone = step(luma,                    ZONE_DARK_MAX   / 100.0);
+        if (zone == 1) in_zone = step(ZONE_DARK_MAX  / 100.0, luma) * step(luma, ZONE_BRIGHT_MIN / 100.0);
+        if (zone == 2) in_zone = step(ZONE_BRIGHT_MIN / 100.0, luma);
 
         sum += rgb * in_zone;
         w   += in_zone;
     }
 
     // Fallback: neutral gray at zone centre luma if no samples landed here
-    float fallback = (zone == 0) ? ZONE_DARK_MAX * 0.5
+    float fallback = (zone == 0) ? (ZONE_DARK_MAX   / 100.0) * 0.5
                    : (zone == 1) ? 0.50
-                   :               (1.0 + ZONE_BRIGHT_MIN) * 0.5;
+                   :               (1.0 + ZONE_BRIGHT_MIN / 100.0) * 0.5;
     float3 mean = (w > 0.5) ? (sum / w) : float3(fallback, fallback, fallback);
 
     float4 prev  = tex2Dlod(ZoneSampler, float4((zone + 0.5) / 3.0, 0.5, 0, 0));
-    float  speed = (prev.a < 0.001) ? 1.0 : LERP_SPEED;
+    float  speed = (prev.a < 0.001) ? 1.0 : (LERP_SPEED / 100.0);
 
     return float4(lerp(prev.rgb, mean, speed), lerp(prev.a, 1.0, speed));
 }
@@ -245,7 +245,7 @@ float4 ApplyOrthoPS(float4 pos : SV_Position,
     corrected.g = dot(B1, col.rgb);
     corrected.b = dot(B2, col.rgb);
 
-    float3 result = lerp(col.rgb, corrected, ORTHO_STRENGTH);
+    float3 result = lerp(col.rgb, corrected, ORTHO_STRENGTH / 100.0);
     return float4(saturate(result), col.a);
 }
 

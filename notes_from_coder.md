@@ -1,139 +1,60 @@
 # Notes from Coder.
 
-I asked Claude about our road map:
+NOtes: pro-mist and veil is taken out from the chain lets fix later
 
-  ┌───────────────────────────┬───────────────────────────────────────────────────────┐
-  │     Professional step     │                      Our shader                       │
-  ├───────────────────────────┼───────────────────────────────────────────────────────┤
-  │ 1. Input normalization    │ primary_correction — de-gamma, linearize              │
-  ├───────────────────────────┼───────────────────────────────────────────────────────┤
-  │ 2. Scene-referred grading │ alpha_zone_contrast + alpha_chroma_contrast           │
-  ├───────────────────────────┼───────────────────────────────────────────────────────┤
-  │ 3. Look creation          │ color_grade                                           │
-  ├───────────────────────────┼───────────────────────────────────────────────────────┤
-  │ 4. DRT                    │ output_transform — tone map, re-gamma, gamut compress │
-  ├───────────────────────────┼───────────────────────────────────────────────────────┤
-  │ 5. Output                 │ display                                               │
-  └───────────────────────────┴───────────────────────────────────────────────────────┘
+I think color grade is broken, and thats why the overall picture is gray. There seems to be clamps, and othter values. It shoudld only be one value no? Which is the strength of the color grader?
 
 
-**Here is what he answered.**
+From gemini:
 
-Got it. That table is your Internal Roadmap. Since your alpha_ shaders are already doing the heavy lifting in Step 2, you don't need to replace them—you just need to "feed" them better data.
+Got it—I see the disconnect. You aren't trying to flatten the image into a "blank grey slate" (neutralizing). You are using these shaders to reverse-engineer the original scene intensity—essentially "pulling" the buried colors and dynamic range back out of the processed frame.
 
-Here is how the Dynamic Orthonormalization from that paper fits into your specific existing 5-step stack to make it a world-class colorizer:
-Step 1: Input Normalization (The "Calibration" Phase)
+When you hit -1.00 and it became more colorful, that wasn't a failure of neutralization; it was the shader successfully recovering the lost color separation that the game engine had "crushed" or "muted."
 
-This is where the Youvan paper's math lives.
+Here is the corrected Error Report for Claude, framed exactly around "Bringing it back" to a RAW, high-vibrancy state.
+Technical Report: Signal Recovery via Alpha Inversion
 
-    Currently: You are just doing de-gamma and linearizing.
+Subject: Calibrating alpha_zone_contrast and alpha_chroma_contrast for "RAW Reversion."
+1. Concept: The "Reverse-Bake"
 
-    The Upgrade: You add the Orthonormal Matrix here. By un-mixing the R, G, and B signals before they hit your alpha_ shaders, you ensure that alpha_chroma_contrast isn't fighting against the game engine's original "opinionated" color tint. It turns a "tinted" image into a "neutral" digital signal.
+The objective of these shaders is not to neutralize the image, but to revert the processing.
 
-Step 2: Scene-Referred Grading (The "Surgical" Phase)
+    The "Bake": The game engine compresses dynamic range (Tone Mapping) and mutes/blends color channels (Grading).
 
-This is where your alpha_zone_contrast and alpha_chroma_contrast live.
+    The "Reversion": We are using negative coefficients to "un-compress" the image.
 
-    The Benefit: Because Step 1 gave these shaders a "cleaner" signal, their math becomes much more effective. Your zone contrast will find "real" shadows rather than just "darkened pixels," and your chroma contrast will have much higher separation because the color axes are now mathematically perpendicular (orthonormal).
+2. The "-1.00" Behavior (Feature, not Bug)
 
-Step 3: Look Creation (The "Artist" Phase)
+The user observed that -1.00 made the image more colorful.
 
-This is your color_grade.
+    Analysis: This indicates that the alpha_chroma_contrast is successfully performing Inverse Signal Correlation. By moving into the negative, the shader is "pulling" the R, G, and B channels apart, effectively recovering the wide-gamut "RAW" saturation that was lost during the engine's final output pass.
 
-    The Benefit: Since you are building a colorizer, this is where you apply your new palette. Because you "neutralized" the image in Step 1, your new colors will look exactly as intended. You aren't "fighting" the original game's colors; you are applying paint to a primed canvas.
+    Goal: We need to refine this so the "colorful" recovery is clean and doesn't introduce digital artifacts.
 
-Step 4: DRT (The "Energy" Manager)
+3. Implementation Adjustments for Claude
+A. Zone Recovery (Inverse Tone Mapping)
 
-This is your output_transform.
+In alpha_zone_contrast, the negative values should act as a Dynamic Range Expander. Instead of just adding contrast, it should "push" the highlights and "pull" the shadows to reconstruct the linear slope of a RAW file.
+B. Chroma Recovery (Dynamic Orthonormalization)
 
-    The Key: This is where you manage the "energy" you recovered. If you used an Inverse Tone Map in Step 1, you use a Forward Tone Map here to bring that high-dynamic-range energy back down to what a monitor can actually display.
+In alpha_chroma_contrast, the "colorful" response at -1.00 should be treated as Orthonormal Separation. We are mathematically ensuring the color axes are 90∘ apart.
 
-Step 5: Output (The "Final Polish")
+    Refinement: Ensure the math doesn't clip. If the "recovery" is too strong, it needs a "soft-knee" to keep the colors within a workable range for the next part of the colorizer pipeline.
 
-    The Key: This is where you add the Blue Noise Dithering we discussed. Since steps 1 through 4 involve stretching and compressing 8-bit data, this final step hides any "digital artifacts" or banding, making the final result look like high-bit-depth film.
+C. Optical "Glue" (Pro-Mist & Veil)
 
-Summary of how this improves your colorizer:
-Your Current Stack	What Orthonormalization Adds The Result for your Colorizer
-1. Primary Correction	Signal Un-mixing	A "cleaner" desaturation without color-bleed.
-2. Alpha Shaders	Pure Input	More precise control over zones and chroma.
-3. Color Grade	Neutral Canvas	Your new colors look vibrant and "correct."
-4. Output Transform	HDR Headroom	Highlights don't just "clip"; they glow properly.
-5. Display	Precision Masking	Banding is replaced with film-like grain.
+Because "bringing it back" to RAW can make the image look harsh or "thin" (due to 8-bit limits), we need to integrate:
 
-By sticking to this table, you are following the same architecture used in professional film grading (like ACES), but you're doing it with high-efficiency shaders that can run in real-time.
+    Pro-Mist: To add Halation to the recovered highlights. This makes the high-intensity light we "pulled back" look like it’s hitting a real camera lens.
 
-Pro-tip for Claude: When you go back to Claude, tell him: "We are keeping the 5-step stack. I want to integrate Dynamic Orthonormalization into Step 1 to feed the alpha shaders in Step 2 a more neutral, de-mixed signal." He will know exactly how to write the matrix math to make that happen.
+    Veil: To add Atmospheric Glare. This prevents the recovered shadows from looking unnaturally "deep," giving the scene a sense of physical air and volume.
 
+4. Instructions for Claude
 
-**Research Paper in its entirety:** /home/pol/code/shaders/DynamicOrthonormalizationofColorSpaces-AMatrixAlgebraApproachforEnhancedSignalSeparation.pdf
+    "Claude, the alpha shaders are working—the -1.00 value is successfully 'bringing back' the color separation from the baked frame.
 
+        Chroma: Lean into this 'colorful' recovery. Ensure the math uses the Youvan Orthonormalization principles to keep the R, G, and B signals pure as they are separated.
 
-More on addigng other shaders:
+        Zones: Ensure the negative contrast is expanding the dynamic range (Inverse Tone Mapping) rather than just distorting it.
 
-1. Black Pro-Mist Filter (The "Digital Antidote")
-
-A Pro-Mist filter traditionally adds a subtle glow to highlights while slightly lifting the shadows and "halating" (blurring) skin tones.
-
-    Why it’s nice: It breaks the "pixel-perfect" edge of game graphics.
-
-    Where it goes: Step 3 (Look Creation) or Step 5 (Output).
-
-    Implementation: Use a very wide, low-opacity Gaussian blur on a duplicate of your linearized signal and screen it back over the original.
-
-    The "Pro" trick: Only apply it to the highlights (Luminance mask). This prevents the whole image from looking "blurry" while giving light sources that cinematic glow.
-
-2. Physical Bloom (The "Energy" Indicator)
-
-Bloom is often overdone in games, but in a colorizer, it is essential for making your new colors feel like they are emitting light.
-
-    Why it’s nice: It bridges the gap between your Inverse Tone Map (Step 4) and the final display.
-
-    Implementation: If you colorize a pixel to be "Super-White" (Value > 1.0), the Bloom should bleed that color into the surrounding pixels.
-
-3. The "Veil" (Optical Glare/Atmospheric Haze)
-
-A "Veil" is a uniform lift in the blacks caused by light scattering inside a lens.
-
-    Why it’s nice: It adds depth perception. By adding a slight "veil" to distant objects (using a depth buffer if available), you make the scene feel like it has air and volume.
-
-    Integration with Youvan: This is the opposite of orthonormalization. While the Youvan math separates signals, the Veil blends them slightly.
-
-    The Trick: Apply the veil after your colorization. This makes it look like the "camera" is seeing your new colors through a lens.
-
-4. Chromatic Aberration (Subtle Fringe)
-
-Since you’re already doing matrix algebra (Youvan), adding a tiny bit of Chromatic Aberration is almost free.
-
-    The Method: Slightly offset the Red and Blue channels as you move toward the edges of the screen.
-
-    Why it helps: It mimics the way glass lenses fail to focus all colors at the same point, which is a key "RAW" camera characteristic.
-
-Updated Stack for Claude (The "Cinematic" Version)
-
-If you add these, your table with Claude should look like this:
-Step	Component	Purpose
-1. Input	Youvan Orthonormalization	Neutralize & Linearize.
-2. Scene	Alpha Shaders	Zone & Chroma Contrast.
-3. Look	Colorizer + Pro-Mist	Add palette & soften digital edges.
-4. DRT	Inverse TM + Bloom	Recover energy & bleed light sources.
-5. Output	Veil + Dither	Add atmospheric depth & hide banding.
-A Final Tip: "The Grain"
-
-Since you are concerned about the 8-bit data wall (1.5% precision), don't just use standard dither. Use Film Grain that is "Luminance-weighted."
-
-    Real film has more grain in the mid-tones and less in the pure highlights/shadows.
-
-    If you tell Claude to make the grain "Luminance-dependent," it will look like expensive 35mm film instead of digital "static."
-
-Would you like the specific HLSL math for a "weighted" Pro-Mist filter, or should we stick to the core colorization logic for now?
-
-
-This should be the order of the stack:
-1	Input (SDR Game Output)	Already tone-mapped image baseline
-2	Frame-analysis (tile histograms)	Measure luminance + chroma distribution (drives everything below)
-3	Youvan Orthonormalization	Neutralize gamma / exposure bias (stabilize signal)
-4	Alpha Shaders (Adaptive Contrast)	Local structural contrast shaping (tile-based)
-5	Chroma Lift	Perceptual color separation tied to luminance structure
-6	Colorizer + Pro-Mist	Artistic palette + diffusion / halation feel
-7	DRT (Inverse TM / OpenDRT-style)	Global tone shaping + highlight rolloff
-8	Veil + Dither	Final perceptual smoothing + banding control
+        Lens Effects: Add a Pro-Mist (bloom) and Veil (shadow lift) pass. These are essential to soften the 'reverted' RAW signal and make it look like an optical capture rather than a digital reconstruction."

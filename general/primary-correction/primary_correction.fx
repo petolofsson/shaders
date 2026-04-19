@@ -9,10 +9,10 @@
 //
 // Everything after this shader runs in linear light until output_transform.
 
-#define WB_R     1.00   // R multiplier — >1.0 warmer, <1.0 cooler
-#define WB_G     1.00
-#define WB_B     1.00
-#define EXPOSURE 0.00   // Stops — 0 = no change, +1 = one stop brighter
+#define WB_R     100    // 0–100+; 100 = neutral, >100 warmer, <100 cooler
+#define WB_G     100
+#define WB_B     100
+#define EXPOSURE 0      // -100 to 100; stops × 100 — 0 = no change, 100 = +1 stop, -100 = -1 stop
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
@@ -42,7 +42,7 @@ float4 PrimaryCorrectionPS(float4 pos : SV_Position,
 
     // De-gamma bypassed — intermediate shaders not yet tuned for linear space
     // TODO: re-enable pow(2.2) when full chain is linear-space aware
-    float3 c = col.rgb * float3(WB_R, WB_G, WB_B) * pow(2.0, EXPOSURE);
+    float3 c = col.rgb * float3(WB_R / 100.0, WB_G / 100.0, WB_B / 100.0) * pow(2.0, EXPOSURE / 100.0);
 
     return float4(c, col.a);
 }

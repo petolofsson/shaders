@@ -11,7 +11,7 @@
 //   5 = Kodak 5219         — punchy, pushed, deep warm blacks
 
 #define PRESET         1
-#define GRADE_STRENGTH 1.0   // 0.0 = bypass, 1.0 = full preset, >1.0 = overdrive
+#define GRADE_STRENGTH 0.4   // 0.0 = bypass, 1.0 = full preset, >1.0 = overdrive
 
 // ─── Tinting ranges ────────────────────────────────────────────────────────
 #define TOE_RANGE       0.30

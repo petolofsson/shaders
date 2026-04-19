@@ -18,8 +18,8 @@
 #define DS_W          32
 #define DS_H          18
 #define HIST_BINS     64
-#define LERP_SPEED    0.08
-#define SAT_THRESHOLD 0.12
+#define LERP_SPEED    8         // 0–100; temporal smoothing rate for histograms
+#define SAT_THRESHOLD 4         // 0–100; minimum saturation to include in histogram
 #define BAND_WIDTH    0.15
 
 #define BAND_RED     (0.0   / 360.0)
@@ -190,7 +190,7 @@ float4 SatHistGatherPS(float4 pos : SV_Position,
             float2 s_uv   = float2((x + 0.5) / float(DS_W), (y + 0.5) / float(DS_H));
             float3 linear = pow(max(tex2D(Downsample, s_uv).rgb, 0.0), 2.2);
             float3 hsv    = RGBtoHSV(linear);
-            float  w      = HueBandWeight(hsv.x, center) * step(SAT_THRESHOLD, hsv.y);
+            float  w      = HueBandWeight(hsv.x, center) * step(SAT_THRESHOLD / 100.0, hsv.y);
             float  in_b   = (hsv.y >= bucket_lo && hsv.y < bucket_hi) ? 1.0 : 0.0;
             count   += in_b * w;
             total_w += w;
@@ -219,7 +219,7 @@ float4 LumHistSmoothPS(float4 pos : SV_Position,
 {
     float raw  = tex2D(LumHistRaw, uv).r;
     float prev = tex2D(LumHist,    uv).r;
-    return float4(lerp(prev, raw, LERP_SPEED), 0.0, 0.0, 1.0);
+    return float4(lerp(prev, raw, LERP_SPEED / 100.0), 0.0, 0.0, 1.0);
 }
 
 // ─── Pass 7 — Smooth saturation histogram ──────────────────────────────────
@@ -229,7 +229,7 @@ float4 SatHistSmoothPS(float4 pos : SV_Position,
 {
     float raw  = tex2D(SatHistRaw, uv).r;
     float prev = tex2D(SatHist,    uv).r;
-    return float4(lerp(prev, raw, LERP_SPEED), 0.0, 0.0, 1.0);
+    return float4(lerp(prev, raw, LERP_SPEED / 100.0), 0.0, 0.0, 1.0);
 }
 
 // ─── Technique ─────────────────────────────────────────────────────────────

@@ -15,8 +15,8 @@
 //
 // Requires frame_analysis.fx to run before this in the chain.
 
-#define CURVE_STRENGTH  0.30
-#define LERP_SPEED      0.08
+#define CURVE_STRENGTH  5       // -100 to 100; positive = inverse equalization (expands), negative = forward equalization (compresses)
+#define LERP_SPEED      10      // 0–100; temporal smoothing rate for CDF
 #define HIST_BINS       64
 
 // ─── Shared histogram texture — must match frame_analysis.fx exactly ───────
@@ -84,7 +84,7 @@ float4 BuildCDFPS(float4 pos : SV_Position,
 
     float prev     = tex2Dlod(LumCDF, float4(uv, 0, 0)).r;
     float prev_max = tex2Dlod(LumCDF, float4((HIST_BINS - 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
-    float speed    = (prev_max < 0.5) ? 1.0 : LERP_SPEED;
+    float speed    = (prev_max < 0.5) ? 1.0 : (LERP_SPEED / 100.0);
 
     return float4(lerp(prev, cdf, speed), 0, 0, 1);
 }
@@ -105,7 +105,7 @@ float4 ApplyContrastPS(float4 pos : SV_Position,
     if (luma < 0.005) return col;
 
     float equalized = tex2D(LumCDF, float2(luma, 0.5)).r;
-    float new_luma  = lerp(luma, equalized, CURVE_STRENGTH);
+    float new_luma  = lerp(luma, equalized, -(CURVE_STRENGTH / 100.0));
     float scale     = clamp(new_luma / luma, 0.0, 3.0);
     float3 result   = col.rgb * scale;
 

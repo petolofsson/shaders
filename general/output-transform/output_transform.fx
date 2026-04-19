@@ -10,10 +10,10 @@
 // Receives linear-light RGB from color_grade.
 // Outputs gamma-encoded sRGB for display.
 
-#define BLACK_POINT  0.035
-#define WHITE_POINT  0.97
-#define SAT_MAX      0.85
-#define SAT_BLEND    0.15
+#define BLACK_POINT  3.5    // 0–100; black floor lift
+#define WHITE_POINT  97     // 0–100; white ceiling
+#define SAT_MAX      85     // 0–100; gamut compression threshold
+#define SAT_BLEND    15     // 0–100; gamut compression strength
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
@@ -45,7 +45,7 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     float3 result = col.rgb;
 
     // ── Tonal range ───────────────────────────────────────────────────────────
-    result = result * (WHITE_POINT - BLACK_POINT) + BLACK_POINT;
+    result = result * (WHITE_POINT / 100.0 - BLACK_POINT / 100.0) + BLACK_POINT / 100.0;
 
     // ── Gamut compression ─────────────────────────────────────────────────────
     float luma_gc = Luma(result);
@@ -55,8 +55,8 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     float gc_max  = max(result.r, max(result.g, result.b));
     float gc_min  = min(result.r, min(result.g, result.b));
     float sat_gc  = (gc_max > 0.001) ? (gc_max - gc_min) / gc_max : 0.0;
-    float excess  = max(0.0, sat_gc - SAT_MAX) / (1.0 - SAT_MAX);
-    float gc_amt  = excess * excess * SAT_BLEND;
+    float excess  = max(0.0, sat_gc - SAT_MAX / 100.0) / (1.0 - SAT_MAX / 100.0);
+    float gc_amt  = excess * excess * (SAT_BLEND / 100.0);
     result        = result + (gc_max - result) * gc_amt;
 
     // ── Re-gamma encode — bypassed, input is already gamma-encoded ────────────

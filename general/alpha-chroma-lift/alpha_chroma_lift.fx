@@ -1,36 +1,32 @@
-// alpha_chroma_contrast.fx — Histogram-driven adaptive chroma contrast
+// alpha_chroma_lift.fx — Histogram-driven adaptive chroma contrast
 //
 // Per-hue-band saturation equalization via CDF LUT:
-//   output_sat = lerp(input_sat, CDF_band(input_sat), CURVE_STRENGTH)
+//   output_sat = lerp(input_sat, CDF_band(input_sat), -(CURVE_STRENGTH/100))
 //
-// Each of 6 hue bands (Red/Yellow/Green/Cyan/Blue/Magenta) gets its own
-// CDF built from SatHistTex (6×64 from frame_analysis). Bands overlap with
-// smooth weights so transitions are seamless.
+// Positive CURVE_STRENGTH = inverse equalization = expands compressed saturation.
+// Negative = forward equalization = compresses saturation.
 //
-// Two passes:
-//   Pass 1 — BuildSatCDF: walk each row of SatHistTex, compute per-band
-//             cumulative sum, lerp into SatCDFTex (64×6).
-//   Pass 2 — ApplyChroma: per-pixel, blend band CDFs by hue weight, apply
-//             equalized saturation. Preserves green hue cool-shift.
+// The grey gate (SAT_THRESHOLD equivalent) is computed automatically each frame
+// from the scene's own saturation CDF — no manual tuning needed.
+//
+// Three passes:
+//   Pass 1 — BuildSatCDF: cumulative histogram per hue band into SatCDFTex.
+//   Pass 2 — ComputeSatGate: walks SatCDFTex to find scene 10th-percentile
+//             saturation, stores in SatGateTex (1×1).
+//   Pass 3 — ApplyChromaLift: smoothstep gate from SatGateTex, apply curve.
 //
 // Requires frame_analysis.fx to run before this in the chain.
 
-#define CURVE_STRENGTH  0.45
-#define LERP_SPEED      0.08
-#define BAND_WIDTH      0.15
-#define SAT_THRESHOLD   0.05
-#define GREEN_HUE_COOL  (4.0 / 360.0)
-#define HIST_BINS       64
+#define CURVE_STRENGTH  15      // -100 to 100; positive = expands, negative = compresses
 
-#define BAND_RED     (0.0   / 360.0)
-#define BAND_YELLOW  (60.0  / 360.0)
-#define BAND_GREEN   (120.0 / 360.0)
-#define BAND_CYAN    (180.0 / 360.0)
-#define BAND_BLUE    (240.0 / 360.0)
-#define BAND_MAGENTA (300.0 / 360.0)
+// ─── Internal constants ────────────────────────────────────────────────────
+#define LERP_SPEED      0.10
+#define BAND_WIDTH      0.15
+#define HIST_BINS       64
+#define GATE_PERCENTILE 0.10    // bottom 10% of scene saturation = grey floor
 
 static const float kBandCenters[6] = {
-    BAND_RED, BAND_YELLOW, BAND_GREEN, BAND_CYAN, BAND_BLUE, BAND_MAGENTA
+    0.0/360.0, 60.0/360.0, 120.0/360.0, 180.0/360.0, 240.0/360.0, 300.0/360.0
 };
 
 // ─── Shared histogram texture — must match frame_analysis.fx exactly ───────
@@ -44,7 +40,7 @@ sampler2D SatHist
     MagFilter = POINT;
 };
 
-// ─── Per-band saturation CDF LUT — 64×6 RGBA16F ────────────────────────────
+// ─── Per-band saturation CDF LUT — 64×6 R32F ──────────────────────────────
 texture2D SatCDFTex { Width = HIST_BINS; Height = 6; Format = R32F; MipLevels = 1; };
 sampler2D SatCDF
 {
@@ -53,6 +49,17 @@ sampler2D SatCDF
     AddressV  = CLAMP;
     MinFilter = LINEAR;
     MagFilter = LINEAR;
+};
+
+// ─── Adaptive grey gate — 1×1, updated each frame ─────────────────────────
+texture2D SatGateTex { Width = 1; Height = 1; Format = R32F; MipLevels = 1; };
+sampler2D SatGate
+{
+    Texture   = SatGateTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
 };
 
 // ─── Textures ──────────────────────────────────────────────────────────────
@@ -102,9 +109,6 @@ float HueBandWeight(float hue, float center)
 }
 
 // ─── Pass 1 — Build per-band saturation CDF ────────────────────────────────
-// Each output pixel at (b, band) stores cumulative sum satHist[0..b] for that band.
-// Temporally lerped for stability.
-
 float4 BuildSatCDFPS(float4 pos : SV_Position,
                      float2 uv  : TEXCOORD0) : SV_Target
 {
@@ -129,10 +133,39 @@ float4 BuildSatCDFPS(float4 pos : SV_Position,
     return float4(lerp(prev, cdf, speed), 0, 0, 1);
 }
 
-// ─── Pass 2 — Apply per-band CDF saturation curve ──────────────────────────
+// ─── Pass 2 — Compute adaptive grey gate ───────────────────────────────────
+// Walks the average CDF across all 6 bands to find the saturation value at
+// GATE_PERCENTILE. Pixels below this level are the scene's grey floor.
+// Runs on a 1×1 target — negligible cost.
 
-float4 ApplyChromaPS(float4 pos : SV_Position,
-                     float2 uv  : TEXCOORD0) : SV_Target
+float4 ComputeSatGatePS(float4 pos : SV_Position,
+                        float2 uv  : TEXCOORD0) : SV_Target
+{
+    [loop]
+    for (int i = 1; i < HIST_BINS; i++)
+    {
+        float sat_val = (i + 0.5) / float(HIST_BINS);
+        float avg_cdf = 0.0;
+
+        [loop]
+        for (int band = 0; band < 6; band++)
+        {
+            float row_v = (band + 0.5) / 6.0;
+            avg_cdf += tex2Dlod(SatCDF, float4(sat_val, row_v, 0, 0)).r;
+        }
+        avg_cdf /= 6.0;
+
+        if (avg_cdf >= GATE_PERCENTILE)
+            return float4(sat_val, 0, 0, 1);
+    }
+
+    return float4(1.0 / float(HIST_BINS), 0, 0, 1);
+}
+
+// ─── Pass 3 — Apply per-band CDF saturation curve ──────────────────────────
+
+float4 ApplyChromaLiftPS(float4 pos : SV_Position,
+                         float2 uv  : TEXCOORD0) : SV_Target
 {
     if (pos.x > 2504 && pos.x < 2516 && pos.y > 15 && pos.y < 27)
         return float4(0.9, 0.3, 0.1, 1.0);
@@ -140,35 +173,33 @@ float4 ApplyChromaPS(float4 pos : SV_Position,
     float4 col = tex2D(BackBuffer, uv);
     float3 hsv = RGBtoHSV(col.rgb);
 
-    if (hsv.y < SAT_THRESHOLD) return col;
+    float gate_sat = tex2D(SatGate, float2(0.5, 0.5)).r;
+    float gate     = smoothstep(gate_sat * 0.5, gate_sat * 1.5, hsv.y);
+
+    if (gate < 0.001) return col;
 
     float new_sat = 0.0;
     float total_w = 0.0;
-    float green_w = 0.0;
 
     for (int b = 0; b < 6; b++)
     {
-        float w      = HueBandWeight(hsv.x, kBandCenters[b]);
-        float row_v  = (b + 0.5) / 6.0;
+        float w         = HueBandWeight(hsv.x, kBandCenters[b]);
+        float row_v     = (b + 0.5) / 6.0;
         float equalized = tex2D(SatCDF, float2(hsv.y, row_v)).r;
-        float band_sat  = lerp(hsv.y, equalized, CURVE_STRENGTH);
+        float band_sat  = lerp(hsv.y, equalized, -(CURVE_STRENGTH / 100.0));
 
         new_sat += band_sat * w;
         total_w += w;
-
-        if (b == 2) green_w = w;
     }
 
     float final_sat = (total_w > 0.001) ? new_sat / total_w : hsv.y;
-    float final_hue = hsv.x - GREEN_HUE_COOL * green_w * final_sat;
-
-    float3 result = HSVtoRGB(float3(final_hue, final_sat, hsv.z));
-    return float4(result, col.a);
+    float3 processed = HSVtoRGB(float3(hsv.x, final_sat, hsv.z));
+    return float4(lerp(col.rgb, processed, gate), col.a);
 }
 
 // ─── Technique ─────────────────────────────────────────────────────────────
 
-technique AlphaChromaContrast
+technique AlphaChromaLift
 {
     pass BuildSatCDF
     {
@@ -176,9 +207,15 @@ technique AlphaChromaContrast
         PixelShader  = BuildSatCDFPS;
         RenderTarget = SatCDFTex;
     }
-    pass ApplyChroma
+    pass ComputeSatGate
     {
         VertexShader = PostProcessVS;
-        PixelShader  = ApplyChromaPS;
+        PixelShader  = ComputeSatGatePS;
+        RenderTarget = SatGateTex;
+    }
+    pass ApplyChromaLift
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = ApplyChromaLiftPS;
     }
 }
