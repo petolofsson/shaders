@@ -10,8 +10,8 @@
 //   4 = Fuji Eterna 500    — cool, flat, green-leaning mids
 //   5 = Kodak 5219         — punchy, pushed, deep warm blacks
 
-#define PRESET         1
-#define GRADE_STRENGTH 40    // 0–100; 0 = bypass, 100 = full preset
+#define PRESET         2
+#define GRADE_STRENGTH 25    // 0–100; 0 = bypass, 100 = full preset
 
 // ─── Tinting ranges ────────────────────────────────────────────────────────
 #define TOE_RANGE       30      // 0–100; luma range for toe tint
