@@ -12,7 +12,7 @@
 #define WB_R     100    // 0–100+; 100 = neutral, >100 warmer, <100 cooler
 #define WB_G     100
 #define WB_B     100
-#define EXPOSURE -30      // -100 to 100; 0 = no change, 100 = +3 stops, -100 = -3 stops
+#define EXPOSURE -1       // stops; 0 = no change, +1 = one stop brighter, -1 = one stop darker. Typical range -3 to +3.
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
@@ -40,7 +40,7 @@ float4 PrimaryCorrectionPS(float4 pos : SV_Position,
 
     float4 col = tex2D(BackBuffer, uv);
 
-    float3 c = col.rgb * float3(WB_R / 100.0, WB_G / 100.0, WB_B / 100.0) * pow(2.0, EXPOSURE / 33.0);
+    float3 c = col.rgb * float3(WB_R / 100.0, WB_G / 100.0, WB_B / 100.0) * pow(2.0, EXPOSURE);
 
     return float4(c, col.a);
 }
