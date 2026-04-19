@@ -12,7 +12,7 @@
 #define WB_R     100    // 0–100+; 100 = neutral, >100 warmer, <100 cooler
 #define WB_G     100
 #define WB_B     100
-#define EXPOSURE 0      // -100 to 100; stops × 100 — 0 = no change, 100 = +1 stop, -100 = -1 stop
+#define EXPOSURE -15      // -100 to 100; stops × 100 — 0 = no change, 100 = +1 stop, -100 = -1 stop
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
