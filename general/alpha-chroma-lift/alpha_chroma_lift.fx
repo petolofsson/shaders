@@ -20,7 +20,7 @@
 #define CURVE_STRENGTH  14     // -100 to 100; positive = expands, negative = compresses. Scale feels logarithmic — small values (5–25) have strong effect, use fine steps.
 
 // ─── Internal constants ────────────────────────────────────────────────────
-#define LERP_SPEED      0.005
+#define LERP_SPEED      0.5     // 0–100; temporal smoothing rate for CDF
 #define BAND_WIDTH      0.15
 #define HIST_BINS       64
 #define GATE_PERCENTILE 0.10    // bottom 10% of scene saturation = grey floor
@@ -128,7 +128,7 @@ float4 BuildSatCDFPS(float4 pos : SV_Position,
 
     float prev     = tex2Dlod(SatCDF, float4(uv, 0, 0)).r;
     float prev_max = tex2Dlod(SatCDF, float4((HIST_BINS - 0.5) / float(HIST_BINS), row_v, 0, 0)).r;
-    float speed    = (prev_max < 0.5) ? 1.0 : clamp(LERP_SPEED, 0.001, 1.0);
+    float speed    = (prev_max < 0.5) ? 1.0 : clamp(LERP_SPEED / 100.0, 0.001, 1.0);
 
     return float4(lerp(prev, cdf, speed), 0, 0, 1);
 }
