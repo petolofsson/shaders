@@ -245,7 +245,7 @@ float4 ApplyOrthoPS(float4 pos : SV_Position,
     corrected.g = dot(B1, col.rgb);
     corrected.b = dot(B2, col.rgb);
 
-    // Preserve original saturation — ortho corrects hue only, not vividness
+    // Preserve original saturation and brightness — ortho corrects hue only
     float orig_max = max(col.r, max(col.g, col.b));
     float orig_min = min(col.r, min(col.g, col.b));
     float orig_sat = (orig_max > 0.001) ? (orig_max - orig_min) / orig_max : 0.0;
@@ -254,9 +254,10 @@ float4 ApplyOrthoPS(float4 pos : SV_Position,
     float corr_min = min(corrected.r, min(corrected.g, corrected.b));
     float corr_sat = (corr_max > 0.001) ? (corr_max - corr_min) / corr_max : 0.0;
 
-    float sat_scale = (corr_sat > 0.001) ? orig_sat / corr_sat : 1.0;
+    float sat_scale        = (corr_sat > 0.001) ? orig_sat / corr_sat : 1.0;
+    float brightness_scale = (corr_max > 0.001) ? orig_max / corr_max : 1.0;
     float3 hue_only = corr_max > 0.001
-                    ? lerp(corr_max, corrected, sat_scale)
+                    ? lerp(corr_max, corrected, sat_scale) * brightness_scale
                     : corrected;
 
     float3 result = lerp(col.rgb, hue_only, ORTHO_STRENGTH / 100.0);
