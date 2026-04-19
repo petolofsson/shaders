@@ -12,7 +12,7 @@
 #define WB_R     100    // 0–100+; 100 = neutral, >100 warmer, <100 cooler
 #define WB_G     100
 #define WB_B     100
-#define EXPOSURE -0.5       // stops; 0 = no change, +1 = one stop brighter, -1 = one stop darker. Typical range -3 to +3.
+#define EXPOSURE -1.5       // stops; 0 = no change, +1 = one stop brighter, -1 = one stop darker. Typical range -3 to +3.
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
