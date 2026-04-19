@@ -56,10 +56,7 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     float gc_amt  = excess * excess * (SAT_BLEND / 100.0);
     result        = result + (gc_max - result) * gc_amt;
 
-    // ── Re-gamma encode ───────────────────────────────────────────────────────
-    result = pow(max(result, 0.0), 1.0 / 2.2);
-
-    // ── Tonal range (gamma/display space — perceptual black/white point) ──────
+    // ── Tonal range ───────────────────────────────────────────────────────────
     result = result * (WHITE_POINT / 100.0 - BLACK_POINT / 100.0) + BLACK_POINT / 100.0;
 
     return saturate(float4(result, col.a));
