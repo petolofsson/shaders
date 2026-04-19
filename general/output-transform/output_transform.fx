@@ -1,19 +1,23 @@
-// output_transform.fx — Display Rendering Transform (linear → display)
+// output_transform.fx — Display Rendering Transform
 //
-// SKELETON — Step 4 of the professional pipeline.
+// Per-channel OpenDRT-style tone curve:
+//   f(x) = A * x^c / (x^c + K)
+//   A and K derived from two constraints:
+//     - f(0.18) = 0.18  (scene grey maps to display grey)
+//     - f(1.0)  = 1.0   (scene white maps to display white)
+//   Result: smooth toe, slight midtone lift, soft highlight shoulder.
+//   Per-channel processing means saturated highlights naturally shift
+//   toward pastel/white — no hard clip.
 //
-// Current: tonal range + gamut compression + re-gamma encode.
-// TODO: Replace simple re-gamma with a proper DRT (OpenDRT or ACES RRT+ODT)
-//       for better highlight rolloff and more natural tone mapping.
-// TODO: Add display target selection (Rec.709 SDR / HDR10).
-//
-// Receives linear-light RGB from color_grade.
-// Outputs gamma-encoded sRGB for display.
+// Also applies gamut compression for out-of-gamut negatives.
 
-#define BLACK_POINT  3.5    // 0–100; black floor lift
-#define WHITE_POINT  97     // 0–100; white ceiling
-#define SAT_MAX      85     // 0–100; gamut compression threshold
-#define SAT_BLEND    15     // 0–100; gamut compression strength
+// ─── Tuning ────────────────────────────────────────────────────────────────
+
+#define CONTRAST         1.35   // curve contrast — affects toe and shoulder steepness
+#define CHROMA_COMPRESS  0.40   // 0–1; highlight desaturation strength (0 = none)
+#define BLACK_POINT      3.5    // 0–100; black floor lift
+#define SAT_MAX          85     // 0–100; gamut compression threshold
+#define SAT_BLEND        15     // 0–100; gamut compression strength
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
@@ -33,6 +37,22 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 
 float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
+// ─── OpenDRT tone curve ─────────────────────────────────────────────────────
+// Applied per-channel. Constants K and A solved analytically:
+//   grey = 0.18, gc = grey^CONTRAST
+//   K = gc*(1-grey)/(grey-gc),  A = 1+K
+
+float3 OpenDRT(float3 x)
+{
+    const float grey = 0.18;
+    float gc = pow(grey, CONTRAST);
+    float K  = gc * (1.0 - grey) / (grey - gc);
+    float A  = 1.0 + K;
+
+    float3 xc = pow(max(x, 0.0), CONTRAST);
+    return A * xc / (xc + K);
+}
+
 // ─── Pixel shader ──────────────────────────────────────────────────────────
 
 float4 OutputTransformPS(float4 pos : SV_Position,
@@ -44,7 +64,7 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     float4 col    = tex2D(BackBuffer, uv);
     float3 result = col.rgb;
 
-    // ── Gamut compression (linear space) ─────────────────────────────────────
+    // ── Gamut compression (linear space, before tone curve) ──────────────────
     float luma_gc = Luma(result);
     float under   = saturate(-min(result.r, min(result.g, result.b)) * 10.0);
     result        = lerp(result, float3(luma_gc, luma_gc, luma_gc), under);
@@ -56,8 +76,18 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     float gc_amt  = excess * excess * (SAT_BLEND / 100.0);
     result        = result + (gc_max - result) * gc_amt;
 
-    // ── Tonal range ───────────────────────────────────────────────────────────
-    result = result * (WHITE_POINT / 100.0 - BLACK_POINT / 100.0) + BLACK_POINT / 100.0;
+    // ── Black lift ────────────────────────────────────────────────────────────
+    result = result * (1.0 - BLACK_POINT / 100.0) + BLACK_POINT / 100.0;
+
+    // ── OpenDRT per-channel tone curve ────────────────────────────────────────
+    result = OpenDRT(result);
+
+    // ── Highlight chroma compression ──────────────────────────────────────────
+    // Bright saturated colours shift toward white — matches film behaviour
+    float luma_post = Luma(result);
+    float hl_gate   = smoothstep(0.65, 1.0, luma_post);
+    result          = lerp(result, float3(luma_post, luma_post, luma_post),
+                           hl_gate * CHROMA_COMPRESS);
 
     return saturate(float4(result, col.a));
 }

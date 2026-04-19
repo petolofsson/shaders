@@ -1,26 +1,24 @@
 // pro_mist.fx — Black Pro-Mist diffusion filter
 //
-// Mimics the Black Pro-Mist optical filter: highlights bloom softly into
-// surrounding areas, breaking the pixel-perfect edge of game graphics.
-//
-// Technique: separable 13-tap Gaussian blur screened over original,
-// gated by a luminance mask so only highlights glow.
-// Shadows are lifted slightly by the additive blend (filmic veil effect).
+// Simulates the optical softness of a Black Pro-Mist glass filter:
+// removes the clinical digital edge without adding bloom or glow.
+// Highlights stay bright but lose the pixel-perfect hardness.
 //
 // Two passes:
-//   Pass 1 — HBlur: horizontal Gaussian → BlurTex
-//   Pass 2 — VBlur + Composite: vertical Gaussian on BlurTex,
-//             then additive screen over BackBuffer weighted by highlight mask.
-//
-// Notes from coder: from notes_from_coder.md Step 3 (Look Creation).
+//   Pass 1: Horizontal Gaussian → DiffuseTex
+//   Pass 2: Vertical Gaussian on DiffuseTex + blend onto scene
 
 // ─── Tuning ────────────────────────────────────────────────────────────────
 
-#define MIST_STRENGTH    18     // 0–100; glow intensity — 0 = bypass, 30 = heavy
-#define HIGHLIGHT_START  55     // 0–100; luma below this gets no glow
-#define HIGHLIGHT_PEAK   85     // 0–100; luma above this gets full glow weight
-#define BLUR_STEP_U      (8.0 / 2560.0)  // horizontal tap spacing in UV
-#define BLUR_STEP_V      (8.0 / 1440.0)  // vertical tap spacing in UV
+#define DIFFUSE_STRENGTH  0.14   // 0–1; softness intensity
+#define DIFFUSE_RADIUS    0.020  // physical blur width
+
+// ─── Internal constants ────────────────────────────────────────────────────
+
+#define DIFFUSE_LUMA_LO    0.62
+#define DIFFUSE_LUMA_HI    0.65
+#define DIFFUSE_LUMA_CAP   0.88
+#define DIFFUSE_LUMA_GREEN 0.10
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
@@ -34,10 +32,16 @@ sampler2D BackBuffer
     MagFilter = LINEAR;
 };
 
-texture2D BlurTex { Width = 2560; Height = 1440; Format = RGBA16F; MipLevels = 1; };
-sampler2D BlurSampler
+texture2D DiffuseTex
 {
-    Texture   = BlurTex;
+    Width     = BUFFER_WIDTH;
+    Height    = BUFFER_HEIGHT;
+    Format    = RGBA16F;
+    MipLevels = 1;
+};
+sampler2D DiffuseSamp
+{
+    Texture   = DiffuseTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = LINEAR;
@@ -57,73 +61,71 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 
 float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
-// 13-tap Gaussian weights (sigma=2.5 tap-widths), centre-out
-// w[0]=centre, w[1..6]=progressively smaller
-static const float kGauss[7] = {
-    0.2261, 0.1932, 0.1192, 0.0535, 0.0174, 0.0041, 0.0007
-};
+// 9-tap Gaussian weights (sigma ≈ 1.5, normalised)
+static const float GW[5] = { 0.2270, 0.1945, 0.1216, 0.0540, 0.0162 };
 
-// ─── Pass 1 — Horizontal Gaussian blur ─────────────────────────────────────
+// ─── Pass 1 — Horizontal Gaussian ──────────────────────────────────────────
 
-float4 HBlurPS(float4 pos : SV_Position,
-               float2 uv  : TEXCOORD0) : SV_Target
+float4 DiffuseHPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    float3 col = tex2Dlod(BackBuffer, float4(uv, 0, 0)).rgb * kGauss[0];
-
-    [loop]
-    for (int i = 1; i <= 6; i++)
-    {
-        float du = float(i) * BLUR_STEP_U;
-        col += tex2Dlod(BackBuffer, float4(uv + float2( du, 0), 0, 0)).rgb * kGauss[i];
-        col += tex2Dlod(BackBuffer, float4(uv - float2( du, 0), 0, 0)).rgb * kGauss[i];
-    }
-
-    return float4(col, 1.0);
+    float2 st = float2(DIFFUSE_RADIUS / 4.0, 0.0);
+    float3 r  = tex2D(BackBuffer, uv).rgb         * GW[0];
+    r += tex2D(BackBuffer, uv + st * 1.0).rgb     * GW[1];
+    r += tex2D(BackBuffer, uv - st * 1.0).rgb     * GW[1];
+    r += tex2D(BackBuffer, uv + st * 2.0).rgb     * GW[2];
+    r += tex2D(BackBuffer, uv - st * 2.0).rgb     * GW[2];
+    r += tex2D(BackBuffer, uv + st * 3.0).rgb     * GW[3];
+    r += tex2D(BackBuffer, uv - st * 3.0).rgb     * GW[3];
+    r += tex2D(BackBuffer, uv + st * 4.0).rgb     * GW[4];
+    r += tex2D(BackBuffer, uv - st * 4.0).rgb     * GW[4];
+    return float4(r, 1.0);
 }
 
-// ─── Pass 2 — Vertical blur + composite ────────────────────────────────────
+// ─── Pass 2 — Vertical Gaussian + composite ────────────────────────────────
 
-float4 VBlurCompositePS(float4 pos : SV_Position,
-                        float2 uv  : TEXCOORD0) : SV_Target
+float4 DiffuseVPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    if (pos.x > 2444 && pos.x < 2456 && pos.y > 15 && pos.y < 27)
-        return float4(0.1, 0.1, 0.6, 1.0);
+    if (pos.x > 2399 && pos.x < 2411 && pos.y > 15 && pos.y < 27)
+        return float4(0.9, 0.1, 0.9, 1.0);
 
-    float4 orig  = tex2D(BackBuffer, uv);
+    float4 base = tex2D(BackBuffer, uv);
 
-    // Vertical pass on BlurTex (already H-blurred)
-    float3 blur = tex2D(BlurSampler, uv).rgb * kGauss[0];
-    for (int i = 1; i <= 6; i++)
-    {
-        float dv = float(i) * BLUR_STEP_V;
-        blur += tex2D(BlurSampler, uv + float2(0,  dv)).rgb * kGauss[i];
-        blur += tex2D(BlurSampler, uv - float2(0,  dv)).rgb * kGauss[i];
-    }
+    float2 ds = float2(0.0, DIFFUSE_RADIUS / 4.0);
+    float3 diffused  = tex2D(DiffuseSamp, uv).rgb           * GW[0];
+    diffused += tex2D(DiffuseSamp, uv + ds * 1.0).rgb       * GW[1];
+    diffused += tex2D(DiffuseSamp, uv - ds * 1.0).rgb       * GW[1];
+    diffused += tex2D(DiffuseSamp, uv + ds * 2.0).rgb       * GW[2];
+    diffused += tex2D(DiffuseSamp, uv - ds * 2.0).rgb       * GW[2];
+    diffused += tex2D(DiffuseSamp, uv + ds * 3.0).rgb       * GW[3];
+    diffused += tex2D(DiffuseSamp, uv - ds * 3.0).rgb       * GW[3];
+    diffused += tex2D(DiffuseSamp, uv + ds * 4.0).rgb       * GW[4];
+    diffused += tex2D(DiffuseSamp, uv - ds * 4.0).rgb       * GW[4];
 
-    // Highlight luminance mask — only bright pixels emit glow
-    float orig_luma = Luma(orig.rgb);
-    float mask      = smoothstep(HIGHLIGHT_START / 100.0, HIGHLIGHT_PEAK / 100.0, orig_luma);
+    // Luma gate — softening strongest on highlights, fades in shadows and near-whites
+    // Green extension: dark green-dominant pixels get lower gate start
+    float g_dom   = saturate((base.g - max(base.r, base.b)) * 3.0);
+    float diff_lo = lerp(DIFFUSE_LUMA_LO, DIFFUSE_LUMA_GREEN, g_dom);
+    float luma_b  = Luma(base.rgb);
+    float diff_luma = smoothstep(diff_lo, DIFFUSE_LUMA_HI, luma_b)
+                    * (1.0 - smoothstep(DIFFUSE_LUMA_CAP, 1.0, luma_b));
 
-    // Additive screen blend: glow adds to highlights, lifts shadows very slightly
-    float3 glow   = blur * mask * (MIST_STRENGTH / 100.0);
-    float3 result = orig.rgb + glow - orig.rgb * glow;   // screen blend formula
-
-    return float4(saturate(result), orig.a);
+    float3 result = lerp(base.rgb, diffused, DIFFUSE_STRENGTH * diff_luma * luma_b);
+    return float4(saturate(result), base.a);
 }
 
 // ─── Technique ─────────────────────────────────────────────────────────────
 
 technique ProMist
 {
-    pass HBlur
+    pass DiffuseH
     {
         VertexShader = PostProcessVS;
-        PixelShader  = HBlurPS;
-        RenderTarget = BlurTex;
+        PixelShader  = DiffuseHPS;
+        RenderTarget = DiffuseTex;
     }
-    pass VBlurComposite
+    pass DiffuseV
     {
         VertexShader = PostProcessVS;
-        PixelShader  = VBlurCompositePS;
+        PixelShader  = DiffuseVPS;
     }
 }

@@ -4,13 +4,13 @@
 // then back to linear before blending. All preset values are in gamma space.
 //
 // Set PRESET to select film stock:
-//   1 = Kodak Vision3 500T — warm, filmic, golden highlights
-//   2 = ARRI ALEXA         — clean, neutral, wide latitude
+//   1 = ARRI ALEXA         — clean, neutral, wide latitude
+//   2 = Kodak Vision3 500T — warm, filmic, golden highlights
 //   3 = Sony Venice        — warm neutral, slight character, protected mids
 //   4 = Fuji Eterna 500    — cool, flat, green-leaning mids
 //   5 = Kodak 5219         — punchy, pushed, deep warm blacks
 
-#define PRESET         2
+#define PRESET         1
 #define GRADE_STRENGTH 100    // 0–100; 0 = bypass, 100 = full preset
 
 // ─── Tinting ranges ────────────────────────────────────────────────────────
@@ -46,7 +46,7 @@
 #define GRADE_G          1.0
 #define GRADE_B          1.0
 
-#elif PRESET == 1  // Kodak Vision3 500T
+#elif PRESET == 2  // Kodak Vision3 500T
 #define WHITE_R          0.97
 #define WHITE_G          0.95
 #define WHITE_B          0.93
@@ -72,7 +72,7 @@
 #define GRADE_G          1.015
 #define GRADE_B          1.00
 
-#elif PRESET == 2  // ARRI ALEXA
+#elif PRESET == 1  // ARRI ALEXA
 #define WHITE_R          0.99
 #define WHITE_G          0.98
 #define WHITE_B          0.98

@@ -10,8 +10,8 @@ Set `#define PRESET` at the top of the shader:
 
 | Preset | Stock | Character |
 |--------|-------|-----------|
-| 1 *(default)* | Kodak Vision3 500T | Warm shadows, golden highlights, slightly desaturated mids |
-| 2 | ARRI ALEXA | Clean, neutral, wide latitude |
+| 1 *(default)* | ARRI ALEXA | Clean, neutral, wide latitude |
+| 2 | Kodak Vision3 500T | Warm shadows, golden highlights, slightly desaturated mids |
 | 3 | Sony Venice | Warm neutral, slight character, protected mids |
 | 4 | Fuji Eterna 500 | Cool, flat, green-leaning mids |
 | 5 | Kodak 5219 | Punchy, pushed, deep warm blacks |
