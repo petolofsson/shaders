@@ -20,7 +20,7 @@
 #define CURVE_STRENGTH  12     // -100 to 100; positive = expands, negative = compresses. Scale feels logarithmic — small values (5–25) have strong effect, use fine steps.
 
 // ─── Internal constants ────────────────────────────────────────────────────
-#define LERP_SPEED      0.06
+#define LERP_SPEED      0.005
 #define BAND_WIDTH      0.15
 #define HIST_BINS       64
 #define GATE_PERCENTILE 0.10    // bottom 10% of scene saturation = grey floor

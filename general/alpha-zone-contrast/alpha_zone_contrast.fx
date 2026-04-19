@@ -16,7 +16,7 @@
 // Requires frame_analysis.fx to run before this in the chain.
 
 #define CURVE_STRENGTH  -3      // -100 to 100; positive = expands, negative = compresses. Scale feels logarithmic — small values (5–30) have strong effect, use fine steps.
-#define LERP_SPEED      6       // 0–100; temporal smoothing rate for CDF
+#define LERP_SPEED      0.5     // 0–100; temporal smoothing rate for CDF
 #define HIST_BINS       64
 
 // ─── Shared histogram texture — must match frame_analysis.fx exactly ───────
