@@ -1,7 +1,7 @@
 // olofssonian_color_grade.fx — Camera/film color grade (creative)
 //
-// Operates on linear input. Luma thresholds are perceptual (gamma space)
-// — internally converts linear luma to gamma for all zone comparisons.
+// Operates on linear input. Internally converts to gamma for grading,
+// then back to linear before blending. All preset values are in gamma space.
 //
 // Set PRESET to select film stock:
 //   1 = Kodak Vision3 500T — warm, filmic, golden highlights
@@ -183,13 +183,12 @@ float4 ColorGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
         return float4(0.2, 0.2, 0.9, 1.0);
 
     float4 col    = tex2D(BackBuffer, uv);
-    float3 result = col.rgb;
+    float3 result = pow(max(col.rgb, 0.0), 1.0 / 2.2);  // linear → gamma for grading
 
     float result_luma = Luma(result);
-    float gamma_luma  = pow(max(result_luma, 0.0), 1.0 / 2.2);
 
     // Indigo toe tint — bell curve peaks mid-shadow, saturation-gated
-    float tint_base = 1.0 - smoothstep(0.0, TOE_RANGE / 100.0, gamma_luma);
+    float tint_base = 1.0 - smoothstep(0.0, TOE_RANGE / 100.0, result_luma);
     float toe_bell  = tint_base * (1.0 - tint_base) * 4.0;
     float tt_max    = max(result.r, max(result.g, result.b));
     float tt_min    = min(result.r, min(result.g, result.b));
@@ -200,7 +199,7 @@ float4 ColorGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     result.b += TOE_TINT_B * toe_bell * tt_gate;
 
     // Black lift
-    float black_w = 1.0 - smoothstep(0.0, 0.10, gamma_luma);
+    float black_w = 1.0 - smoothstep(0.0, 0.10, result_luma);
     result.r += BLACK_LIFT_R * black_w;
     result.g += BLACK_LIFT_G * black_w;
     result.b += BLACK_LIFT_B * black_w;
@@ -210,12 +209,12 @@ float4 ColorGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float st_min  = min(result.r, min(result.g, result.b));
     float st_sat  = (st_max > 0.001) ? (st_max - st_min) / st_max : 0.0;
     float st_gate = smoothstep(0.08, 0.22, st_sat);
-    float shadow_w = gamma_luma * smoothstep(SHADOW_RANGE / 100.0, 0.0, gamma_luma) * st_gate;
+    float shadow_w = result_luma * smoothstep(SHADOW_RANGE / 100.0, 0.0, result_luma) * st_gate;
     result += float3(SHADOW_TINT_R, SHADOW_TINT_G, SHADOW_TINT_B) * shadow_w;
 
     // Highlight lift
-    float hl_t        = smoothstep(HIGHLIGHT_START / 100.0, 1.0, gamma_luma);
-    float highlight_w = hl_t * hl_t * (1.0 - gamma_luma) / (1.0 - HIGHLIGHT_START / 100.0);
+    float hl_t        = smoothstep(HIGHLIGHT_START / 100.0, 1.0, result_luma);
+    float highlight_w = hl_t * hl_t * (1.0 - result_luma) / (1.0 - HIGHLIGHT_START / 100.0);
     result.r += HIGHLIGHT_TINT_R * highlight_w;
     result.g += HIGHLIGHT_TINT_G * highlight_w;
     result.b += HIGHLIGHT_TINT_B * highlight_w;
@@ -232,7 +231,7 @@ float4 ColorGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     result += (white - 1.0) * result * result;
 
     // Film print matrix
-    float film_luma   = pow(max(Luma(result), 0.0), 1.0 / 2.2);
+    float film_luma   = Luma(result);
     float fm_max      = max(result.r, max(result.g, result.b));
     float fm_min      = min(result.r, min(result.g, result.b));
     float film_chroma = (fm_max - fm_min) / max(fm_max, 0.001);
@@ -244,6 +243,8 @@ float4 ColorGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     film.g = result.r * FILM_GR + result.g * (1.0 - FILM_GR - FILM_GB) + result.b * FILM_GB;
     film.b = result.r * FILM_BR + result.g * FILM_BG + result.b * (1.0 - FILM_BR - FILM_BG);
     result = lerp(result, film, film_gate);
+
+    result = pow(max(result, 0.0), 2.2);  // gamma → linear before blend
 
     // Blend toward original by GRADE_STRENGTH
     result = lerp(col.rgb, result, GRADE_STRENGTH / 100.0);
