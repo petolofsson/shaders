@@ -260,13 +260,7 @@ float4 ApplyOrthoPS(float4 pos : SV_Position,
                     ? lerp(corr_max, corrected, sat_scale) * brightness_scale
                     : corrected;
 
-    // Scale strength by cast magnitude — near-identity matrix = near-zero correction
-    float cast = length(B0 - float3(1,0,0))
-               + length(B1 - float3(0,1,0))
-               + length(B2 - float3(0,0,1));
-    float adaptive_strength = (ORTHO_STRENGTH / 100.0) * saturate(cast / 0.20);
-
-    float3 result = lerp(col.rgb, hue_only, adaptive_strength);
+    float3 result = lerp(col.rgb, hue_only, ORTHO_STRENGTH / 100.0);
     return float4(saturate(result), col.a);
 }
 

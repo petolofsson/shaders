@@ -14,7 +14,7 @@
 // ─── Tuning ────────────────────────────────────────────────────────────────
 
 #define CONTRAST         1.35   // curve contrast — affects toe and shoulder steepness
-#define CHROMA_COMPRESS  0.25   // 0–1; highlight desaturation strength (0 = none)
+#define CHROMA_COMPRESS  0.40   // 0–1; highlight desaturation strength (0 = none)
 #define BLACK_POINT      3.5    // 0–100; black floor lift
 #define SAT_MAX          85     // 0–100; gamut compression threshold
 #define SAT_BLEND        15     // 0–100; gamut compression strength
@@ -83,6 +83,7 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     result = OpenDRT(result);
 
     // ── Highlight chroma compression ──────────────────────────────────────────
+    // Bright saturated colours shift toward white — matches film behaviour
     float luma_post = Luma(result);
     float hl_gate   = smoothstep(0.65, 1.0, luma_post);
     result          = lerp(result, float3(luma_post, luma_post, luma_post),
