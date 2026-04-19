@@ -12,7 +12,7 @@
 #define WB_R     100    // 0–100+; 100 = neutral, >100 warmer, <100 cooler
 #define WB_G     100
 #define WB_B     100
-#define EXPOSURE -25           // -100 to 100; 0 = baseline (Arc Raiders -0.13 stop), ±100 = ±1 stop around baseline
+#define EXPOSURE -25           // -100 to 100; 0 = scene baseline (-0.13 stop baked in), ±100 = ±1 stop
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
