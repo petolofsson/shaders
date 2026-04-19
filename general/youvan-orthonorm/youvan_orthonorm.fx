@@ -18,7 +18,7 @@
 
 // ─── Tuning ────────────────────────────────────────────────────────────────
 
-#define ORTHO_STRENGTH   80     // -100 to 100; 0 = bypass, positive = correct toward neutral, negative = exaggerate cast
+#define ORTHO_STRENGTH   10     // -100 to 100; 0 = bypass, positive = correct toward neutral, negative = exaggerate cast
 #define LERP_SPEED       5      // 0–100; adaptation speed — slow keeps matrix stable
 #define ZONE_DARK_MAX    25     // 0–100; luma threshold: dark zone upper bound
 #define ZONE_BRIGHT_MIN  75     // 0–100; luma threshold: bright zone lower bound
