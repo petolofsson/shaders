@@ -17,7 +17,7 @@
 //
 // Requires frame_analysis.fx to run before this in the chain.
 
-#define CURVE_STRENGTH  15      // -100 to 100; positive = expands, negative = compresses
+#define CURVE_STRENGTH  15     // -100 to 100; positive = expands, negative = compresses
 
 // ─── Internal constants ────────────────────────────────────────────────────
 #define LERP_SPEED      0.10
