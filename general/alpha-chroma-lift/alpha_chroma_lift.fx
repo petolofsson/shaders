@@ -17,10 +17,10 @@
 //
 // Requires frame_analysis.fx to run before this in the chain.
 
-#define CURVE_STRENGTH  15     // -100 to 100; positive = expands, negative = compresses
+#define CURVE_STRENGTH  18     // -100 to 100; positive = expands, negative = compresses
 
 // ─── Internal constants ────────────────────────────────────────────────────
-#define LERP_SPEED      0.10
+#define LERP_SPEED      0.06
 #define BAND_WIDTH      0.15
 #define HIST_BINS       64
 #define GATE_PERCENTILE 0.10    // bottom 10% of scene saturation = grey floor

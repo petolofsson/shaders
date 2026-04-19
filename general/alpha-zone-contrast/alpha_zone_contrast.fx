@@ -15,8 +15,8 @@
 //
 // Requires frame_analysis.fx to run before this in the chain.
 
-#define CURVE_STRENGTH  5       // -100 to 100; positive = inverse equalization (expands), negative = forward equalization (compresses)
-#define LERP_SPEED      10      // 0–100; temporal smoothing rate for CDF
+#define CURVE_STRENGTH  25      // -100 to 100; positive = inverse equalization (expands), negative = forward equalization (compresses)
+#define LERP_SPEED      6       // 0–100; temporal smoothing rate for CDF
 #define HIST_BINS       64
 
 // ─── Shared histogram texture — must match frame_analysis.fx exactly ───────
