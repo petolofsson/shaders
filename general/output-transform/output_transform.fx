@@ -44,10 +44,7 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     float4 col    = tex2D(BackBuffer, uv);
     float3 result = col.rgb;
 
-    // ── Tonal range ───────────────────────────────────────────────────────────
-    result = result * (WHITE_POINT / 100.0 - BLACK_POINT / 100.0) + BLACK_POINT / 100.0;
-
-    // ── Gamut compression ─────────────────────────────────────────────────────
+    // ── Gamut compression (linear space) ─────────────────────────────────────
     float luma_gc = Luma(result);
     float under   = saturate(-min(result.r, min(result.g, result.b)) * 10.0);
     result        = lerp(result, float3(luma_gc, luma_gc, luma_gc), under);
@@ -59,7 +56,11 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     float gc_amt  = excess * excess * (SAT_BLEND / 100.0);
     result        = result + (gc_max - result) * gc_amt;
 
+    // ── Re-gamma encode ───────────────────────────────────────────────────────
     result = pow(max(result, 0.0), 1.0 / 2.2);
+
+    // ── Tonal range (gamma/display space — perceptual black/white point) ──────
+    result = result * (WHITE_POINT / 100.0 - BLACK_POINT / 100.0) + BLACK_POINT / 100.0;
 
     return saturate(float4(result, col.a));
 }
