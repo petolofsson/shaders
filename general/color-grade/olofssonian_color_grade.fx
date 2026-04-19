@@ -10,7 +10,7 @@
 //   4 = Fuji Eterna 500    — cool, flat, green-leaning mids
 //   5 = Kodak 5219         — punchy, pushed, deep warm blacks
 
-#define PRESET         5
+#define PRESET         2
 #define GRADE_STRENGTH 100    // 0–100; 0 = bypass, 100 = full preset
 
 // ─── Tinting ranges ────────────────────────────────────────────────────────
