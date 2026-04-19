@@ -11,12 +11,12 @@
 //   5 = Kodak 5219         — punchy, pushed, deep warm blacks
 
 #define PRESET         1
-#define GRADE_STRENGTH 0.4   // 0.0 = bypass, 1.0 = full preset, >1.0 = overdrive
+#define GRADE_STRENGTH 40    // 0–100; 0 = bypass, 100 = full preset
 
 // ─── Tinting ranges ────────────────────────────────────────────────────────
-#define TOE_RANGE       0.30
-#define SHADOW_RANGE    0.18
-#define HIGHLIGHT_START 0.65
+#define TOE_RANGE       30      // 0–100; luma range for toe tint
+#define SHADOW_RANGE    18      // 0–100; luma range for shadow tint
+#define HIGHLIGHT_START 65      // 0–100; luma above this gets highlight tint
 
 // ─── Preset values ─────────────────────────────────────────────────────────
 
@@ -188,7 +188,7 @@ float4 ColorGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float result_luma = Luma(result);
 
     // Indigo toe tint — bell curve peaks mid-shadow, saturation-gated
-    float tint_base = 1.0 - smoothstep(0.0, TOE_RANGE, result_luma);
+    float tint_base = 1.0 - smoothstep(0.0, TOE_RANGE / 100.0, result_luma);
     float toe_bell  = tint_base * (1.0 - tint_base) * 4.0;
     float tt_max    = max(result.r, max(result.g, result.b));
     float tt_min    = min(result.r, min(result.g, result.b));
@@ -209,12 +209,12 @@ float4 ColorGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float st_min  = min(result.r, min(result.g, result.b));
     float st_sat  = (st_max > 0.001) ? (st_max - st_min) / st_max : 0.0;
     float st_gate = smoothstep(0.08, 0.22, st_sat);
-    float shadow_w = result_luma * smoothstep(SHADOW_RANGE, 0.0, result_luma) * st_gate;
+    float shadow_w = result_luma * smoothstep(SHADOW_RANGE / 100.0, 0.0, result_luma) * st_gate;
     result += float3(SHADOW_TINT_R, SHADOW_TINT_G, SHADOW_TINT_B) * shadow_w;
 
     // Highlight lift
-    float hl_t        = smoothstep(HIGHLIGHT_START, 1.0, result_luma);
-    float highlight_w = hl_t * hl_t * (1.0 - result_luma) / (1.0 - HIGHLIGHT_START);
+    float hl_t        = smoothstep(HIGHLIGHT_START / 100.0, 1.0, result_luma);
+    float highlight_w = hl_t * hl_t * (1.0 - result_luma) / (1.0 - HIGHLIGHT_START / 100.0);
     result.r += HIGHLIGHT_TINT_R * highlight_w;
     result.g += HIGHLIGHT_TINT_G * highlight_w;
     result.b += HIGHLIGHT_TINT_B * highlight_w;
@@ -245,7 +245,7 @@ float4 ColorGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     result = lerp(result, film, film_gate);
 
     // Blend toward original by GRADE_STRENGTH
-    result = lerp(col.rgb, result, GRADE_STRENGTH);
+    result = lerp(col.rgb, result, GRADE_STRENGTH / 100.0);
 
     return float4(saturate(result), col.a);
 }

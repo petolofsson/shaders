@@ -16,9 +16,9 @@
 
 // ─── Tuning ────────────────────────────────────────────────────────────────
 
-#define MIST_STRENGTH    0.18   // glow intensity — 0.0 = bypass, 0.3 = heavy
-#define HIGHLIGHT_START  0.55   // luma below this gets no glow
-#define HIGHLIGHT_PEAK   0.85   // luma above this gets full glow weight
+#define MIST_STRENGTH    18     // 0–100; glow intensity — 0 = bypass, 30 = heavy
+#define HIGHLIGHT_START  55     // 0–100; luma below this gets no glow
+#define HIGHLIGHT_PEAK   85     // 0–100; luma above this gets full glow weight
 #define BLUR_STEP_U      (8.0 / 2560.0)  // horizontal tap spacing in UV
 #define BLUR_STEP_V      (8.0 / 1440.0)  // vertical tap spacing in UV
 
@@ -102,10 +102,10 @@ float4 VBlurCompositePS(float4 pos : SV_Position,
 
     // Highlight luminance mask — only bright pixels emit glow
     float orig_luma = Luma(orig.rgb);
-    float mask      = smoothstep(HIGHLIGHT_START, HIGHLIGHT_PEAK, orig_luma);
+    float mask      = smoothstep(HIGHLIGHT_START / 100.0, HIGHLIGHT_PEAK / 100.0, orig_luma);
 
     // Additive screen blend: glow adds to highlights, lifts shadows very slightly
-    float3 glow   = blur * mask * MIST_STRENGTH;
+    float3 glow   = blur * mask * (MIST_STRENGTH / 100.0);
     float3 result = orig.rgb + glow - orig.rgb * glow;   // screen blend formula
 
     return float4(saturate(result), orig.a);

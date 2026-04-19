@@ -17,8 +17,8 @@
 // Stack color_grade after this for black/white point and tonal tinting.
 
 // ─── Tuning ────────────────────────────────────────────────────────────────
-#define CURVE_STRENGTH  0.30   // S-curve bend strength
-#define LERP_SPEED      0.08   // Adaptation speed: 0.05=slow ~30 frames, 0.15=fast ~10 frames
+#define CURVE_STRENGTH  30     // -100 to 100; S-curve bend strength
+#define LERP_SPEED      8      // 0–100; adaptation speed
 
 
 uniform int FRAME_COUNT < source = "framecount"; >;
@@ -258,7 +258,7 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
     int    frame_offset = int(FRAME_COUNT) % 128;
     float3 p            = SamplePercentiles(frame_offset);
 
-    float speed = (prev.b < 0.001) ? 1.0 : LERP_SPEED;
+    float speed = (prev.b < 0.001) ? 1.0 : (LERP_SPEED / 100.0);
 
     return float4(
         0.0,
@@ -279,7 +279,7 @@ float4 ApplyContrastPS(float4 pos : SV_Position,
     float4 history = tex2D(History, float2(0.5, 0.5));
 
     float  median = history.b;
-    float3 result = PivotedSCurve(col.rgb, median, CURVE_STRENGTH);
+    float3 result = PivotedSCurve(col.rgb, median, CURVE_STRENGTH / 100.0);
 
     return saturate(float4(result, col.a));
 }

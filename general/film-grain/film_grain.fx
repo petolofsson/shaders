@@ -13,8 +13,8 @@
 
 // ─── Tuning ────────────────────────────────────────────────────────────────
 
-#define GRAIN_STRENGTH   0.035  // peak noise amplitude — subtle: 0.02–0.04
-#define GRAIN_SIZE       1.0    // 1.0 = per-pixel, 2.0 = 2×2 clumps, etc.
+#define GRAIN_STRENGTH   3.5    // 0–100; peak noise amplitude — subtle: 2–4
+#define GRAIN_SIZE       1.0    // pixel clump size; 1 = per-pixel, 2 = 2×2
 
 uniform int FRAME_COUNT < source = "framecount"; >;
 
@@ -62,7 +62,7 @@ float4 FilmGrainPS(float4 pos : SV_Position,
     float luma   = Luma(col.rgb);
     float weight = 4.0 * luma * (1.0 - luma);
 
-    float3 result = col.rgb + noise * weight * GRAIN_STRENGTH;
+    float3 result = col.rgb + noise * weight * (GRAIN_STRENGTH / 100.0);
     return float4(saturate(result), col.a);
 }
 

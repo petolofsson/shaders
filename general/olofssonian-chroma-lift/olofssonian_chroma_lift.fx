@@ -12,11 +12,11 @@
 //         p25 = mean - 0.674*stddev, p50 = mean, p75 = mean + 0.674*stddev.
 
 // ─── Tuning ────────────────────────────────────────────────────────────────
-#define CURVE_STRENGTH  0.40
-#define LERP_SPEED      0.08
-#define BAND_WIDTH      0.15
+#define CURVE_STRENGTH  40     // -100 to 100; S-curve bend strength
+#define LERP_SPEED      8      // 0–100; adaptation speed
+#define BAND_WIDTH      15     // 0–100; hue band overlap width
 #define MIN_WEIGHT      1.0
-#define SAT_THRESHOLD   0.05
+#define SAT_THRESHOLD   5      // 0–100; minimum saturation to process
 #define GREEN_HUE_COOL  (4.0 / 360.0)
 
 #define BAND_RED     (0.0   / 360.0)
@@ -357,7 +357,7 @@ float HueBandWeight(float hue, float center)
 {
     float d = abs(hue - center);
     d = min(d, 1.0 - d);
-    return saturate(1.0 - d / BAND_WIDTH);
+    return saturate(1.0 - d / (BAND_WIDTH / 100.0));
 }
 
 float PivotedSCurve(float x, float m, float strength)
@@ -398,9 +398,9 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
     float stddev = sqrt(var);
 
     float4 prev      = tex2D(ChromaHistory, float2((band_idx + 0.5) / 8.0, 0.5 / 4.0));
-    float  new_mean  = lerp(prev.r, mean,   LERP_SPEED);
-    float  new_std   = lerp(prev.g, stddev, LERP_SPEED);
-    float  new_wsum  = lerp(prev.b, sum_w,  LERP_SPEED);
+    float  new_mean  = lerp(prev.r, mean,   LERP_SPEED / 100.0);
+    float  new_std   = lerp(prev.g, stddev, LERP_SPEED / 100.0);
+    float  new_wsum  = lerp(prev.b, sum_w,  LERP_SPEED / 100.0);
 
     return float4(new_mean, new_std, new_wsum, 1.0);
 }
@@ -417,7 +417,7 @@ float4 ApplyChromaPS(float4 pos : SV_Position,
     float4 col = tex2D(BackBuffer, uv);
     float3 hsv = RGBtoHSV(col.rgb);
 
-    if (hsv.y < SAT_THRESHOLD) return col;
+    if (hsv.y < SAT_THRESHOLD / 100.0) return col;
 
     float new_sat = 0.0;
     float total_w = 0.0;
@@ -435,7 +435,7 @@ float4 ApplyChromaPS(float4 pos : SV_Position,
         float p50    = mean;
         float p75    = min(mean + 0.674 * stddev, 1.0);
 
-        float band_s = PivotedSCurve(hsv.y, p50, CURVE_STRENGTH);
+        float band_s = PivotedSCurve(hsv.y, p50, CURVE_STRENGTH / 100.0);
 
         new_sat += band_s * w;
         total_w += w;
