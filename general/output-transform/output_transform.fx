@@ -14,10 +14,36 @@
 // ─── Tuning ────────────────────────────────────────────────────────────────
 
 #define CONTRAST         1.35   // curve contrast — affects toe and shoulder steepness
-#define CHROMA_COMPRESS  0.40   // 0–1; highlight desaturation strength (0 = none)
+#define CHROMA_COMPRESS  0.25   // 0–1; highlight desaturation strength (0 = none)
 #define BLACK_POINT      3.5    // 0–100; black floor lift
 #define SAT_MAX          85     // 0–100; gamut compression threshold
 #define SAT_BLEND        15     // 0–100; gamut compression strength
+
+// ─── Shared saturation histogram — from frame_analysis ────────────────────
+
+#define HIST_BINS 64
+
+texture2D SatHistTex { Width = HIST_BINS; Height = 6; Format = R32F; MipLevels = 1; };
+sampler2D SatHist
+{
+    Texture   = SatHistTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
+// ─── Scene average saturation — 1×1 ──────────────────────────────────────
+
+texture2D SceneSatTex { Width = 1; Height = 1; Format = R32F; MipLevels = 1; };
+sampler2D SceneSatSamp
+{
+    Texture   = SceneSatTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
@@ -53,7 +79,30 @@ float3 OpenDRT(float3 x)
     return A * xc / (xc + K);
 }
 
-// ─── Pixel shader ──────────────────────────────────────────────────────────
+// ─── Pass 1 — Compute scene average saturation ────────────────────────────
+// Mean saturation per hue band = Σ(bin_centre × bin_value) — averages across 6 bands.
+// Low sat (fog/storm) → less compress; high sat → more compress.
+
+float4 ComputeSceneSatPS(float4 pos : SV_Position,
+                         float2 uv  : TEXCOORD0) : SV_Target
+{
+    float total = 0.0;
+    [loop]
+    for (int band = 0; band < 6; band++)
+    {
+        float v = (band + 0.5) / 6.0;
+        [loop]
+        for (int b = 0; b < HIST_BINS; b++)
+        {
+            float u      = (b + 0.5) / float(HIST_BINS);
+            float centre = u;
+            total += tex2Dlod(SatHist, float4(u, v, 0, 0)).r * centre;
+        }
+    }
+    return float4(total / 6.0, 0, 0, 1);
+}
+
+// ─── Pass 2 — Pixel shader ─────────────────────────────────────────────────
 
 float4 OutputTransformPS(float4 pos : SV_Position,
                          float2 uv  : TEXCOORD0) : SV_Target
@@ -83,11 +132,13 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     result = OpenDRT(result);
 
     // ── Highlight chroma compression ──────────────────────────────────────────
-    // Bright saturated colours shift toward white — matches film behaviour
-    float luma_post = Luma(result);
-    float hl_gate   = smoothstep(0.65, 1.0, luma_post);
-    result          = lerp(result, float3(luma_post, luma_post, luma_post),
-                           hl_gate * CHROMA_COMPRESS);
+    // Scales with scene saturation: vivid scenes need more compress, flat less.
+    float avg_sat        = tex2D(SceneSatSamp, float2(0.5, 0.5)).r;
+    float adaptive_comp  = CHROMA_COMPRESS * lerp(0.5, 1.5, saturate(avg_sat * 5.0));
+    float luma_post      = Luma(result);
+    float hl_gate        = smoothstep(0.65, 1.0, luma_post);
+    result               = lerp(result, float3(luma_post, luma_post, luma_post),
+                                hl_gate * adaptive_comp);
 
     return saturate(float4(result, col.a));
 }
@@ -96,7 +147,13 @@ float4 OutputTransformPS(float4 pos : SV_Position,
 
 technique OutputTransform
 {
-    pass
+    pass ComputeSceneSat
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = ComputeSceneSatPS;
+        RenderTarget = SceneSatTex;
+    }
+    pass Apply
     {
         VertexShader = PostProcessVS;
         PixelShader  = OutputTransformPS;

@@ -8,22 +8,51 @@
 // AND luma similarity to the center pixel. Prevents bright regions (fog,
 // sky lights) from bleeding into dark surroundings — no halo artifacts.
 //
-// Two passes:
-//   Pass 1: Bilateral horizontal Gaussian → DiffuseTex
-//   Pass 2: Bilateral vertical Gaussian on DiffuseTex + blend onto scene
+// Diffuse strength adapts to scene contrast (p90–p10 from LumHistTex):
+// high-contrast scenes get slightly more softening, flat scenes less.
+//
+// Three passes:
+//   Pass 1: Compute scene contrast → ContrastTex (1×1)
+//   Pass 2: Bilateral horizontal Gaussian → DiffuseTex
+//   Pass 3: Bilateral vertical Gaussian on DiffuseTex + blend onto scene
 
 // ─── Tuning ────────────────────────────────────────────────────────────────
 
-#define DIFFUSE_STRENGTH  0.14   // 0–1; softness intensity
+#define DIFFUSE_STRENGTH  0.14   // 0–1; softness intensity (base value)
 #define DIFFUSE_RADIUS    0.020  // physical blur width
 
 // ─── Internal constants ────────────────────────────────────────────────────
 
-#define BILATERAL_K        20.0  // luma similarity strictness — higher = tighter edge preservation
-#define DIFFUSE_LUMA_LO    0.62
+#define HIST_BINS          64
+#define BILATERAL_K        32.0
+#define DIFFUSE_LUMA_LO    0.50
 #define DIFFUSE_LUMA_HI    0.65
 #define DIFFUSE_LUMA_CAP   0.88
 #define DIFFUSE_LUMA_GREEN 0.10
+
+// ─── Shared histogram texture — previous frame, from frame_analysis ────────
+
+texture2D LumHistTex { Width = HIST_BINS; Height = 1; Format = R32F; MipLevels = 1; };
+sampler2D LumHist
+{
+    Texture   = LumHistTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
+// ─── Scene contrast (p90–p10) — 1×1 ──────────────────────────────────────
+
+texture2D ContrastTex { Width = 1; Height = 1; Format = R32F; MipLevels = 1; };
+sampler2D ContrastSamp
+{
+    Texture   = ContrastTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
@@ -75,7 +104,34 @@ float BilateralW(float luma_c, float luma_tap, float gw)
     return gw * exp(-d * d * BILATERAL_K);
 }
 
-// ─── Pass 1 — Bilateral horizontal Gaussian ────────────────────────────────
+// ─── Pass 1 — Compute scene contrast (p90–p10) ─────────────────────────────
+
+float4 ComputeContrastPS(float4 pos : SV_Position,
+                         float2 uv  : TEXCOORD0) : SV_Target
+{
+    float total = 0.0;
+    [loop]
+    for (int i = 0; i < HIST_BINS; i++)
+        total += tex2Dlod(LumHist, float4((i + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
+
+    if (total < 0.001) return float4(0.5, 0, 0, 1);
+
+    float cumulative = 0.0;
+    float p10 = 0.0, p90 = 1.0;
+    bool found_p10 = false;
+
+    [loop]
+    for (int j = 0; j < HIST_BINS; j++)
+    {
+        cumulative += tex2Dlod(LumHist, float4((j + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r / total;
+        if (!found_p10 && cumulative >= 0.10) { p10 = (j + 0.5) / float(HIST_BINS); found_p10 = true; }
+        if (cumulative >= 0.90) { p90 = (j + 0.5) / float(HIST_BINS); break; }
+    }
+
+    return float4(p90 - p10, 0, 0, 1);
+}
+
+// ─── Pass 2 — Bilateral horizontal Gaussian ────────────────────────────────
 
 float4 DiffuseHPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
@@ -100,7 +156,7 @@ float4 DiffuseHPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     return float4(r / w, 1.0);
 }
 
-// ─── Pass 2 — Bilateral vertical Gaussian + composite ──────────────────────
+// ─── Pass 3 — Bilateral vertical Gaussian + composite ──────────────────────
 
 float4 DiffuseVPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
@@ -126,15 +182,18 @@ float4 DiffuseVPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     }
     diffused /= w;
 
+    // Adaptive strength: high-contrast scene → slightly more softening
+    float contrast       = tex2D(ContrastSamp, float2(0.5, 0.5)).r;
+    float adaptive_str   = DIFFUSE_STRENGTH * lerp(0.7, 1.3, saturate(contrast / 0.5));
+
     // Luma gate — softening strongest on highlights, fades in shadows and near-whites
     // Green extension: dark green-dominant pixels get lower gate start
     float g_dom   = saturate((base.g - max(base.r, base.b)) * 3.0);
     float diff_lo = lerp(DIFFUSE_LUMA_LO, DIFFUSE_LUMA_GREEN, g_dom);
-    float luma_b  = lc;
-    float diff_luma = smoothstep(diff_lo, DIFFUSE_LUMA_HI, luma_b)
-                    * (1.0 - smoothstep(DIFFUSE_LUMA_CAP, 1.0, luma_b));
+    float diff_luma = smoothstep(diff_lo, DIFFUSE_LUMA_HI, lc)
+                    * (1.0 - smoothstep(DIFFUSE_LUMA_CAP, 1.0, lc));
 
-    float3 result = lerp(base.rgb, diffused, DIFFUSE_STRENGTH * diff_luma * luma_b);
+    float3 result = lerp(base.rgb, diffused, adaptive_str * diff_luma * lc);
     return float4(saturate(result), base.a);
 }
 
@@ -142,6 +201,12 @@ float4 DiffuseVPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
 technique ProMist
 {
+    pass ComputeContrast
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = ComputeContrastPS;
+        RenderTarget = ContrastTex;
+    }
     pass DiffuseH
     {
         VertexShader = PostProcessVS;
