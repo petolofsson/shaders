@@ -145,6 +145,8 @@ float4 ApplyContrastPS(float4 pos : SV_Position,
         return float4(0.0, 0.7, 0.7, 1.0);
 
     float4 col       = tex2D(BackBuffer, uv);
+
+    if (pos.y < 1.0) return col;
     float  luma_full = Luma(col.rgb);
     if (luma_full < 0.005) return col;
 

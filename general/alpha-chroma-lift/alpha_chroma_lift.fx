@@ -116,6 +116,8 @@ float4 ApplyChromaLiftPS(float4 pos : SV_Position,
         return float4(0.9, 0.3, 0.1, 1.0);
 
     float4 col = tex2D(BackBuffer, uv);
+
+    if (pos.y < 1.0) return col;
     float3 hsv = RGBtoHSV(col.rgb);
 
     float2 stats    = tex2D(SatStatsSamp, float2(0.5, 0.5)).rg;

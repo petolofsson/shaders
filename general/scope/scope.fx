@@ -2,7 +2,8 @@
 //
 // Two panels (each 80px tall, 4px divider):
 //   Top   (white) — post-correction — current BackBuffer
-//   Bottom (red)  — pre-correction  — ScopeCaptureTex from scope_pre.fx
+//   Bottom (red)  — pre-correction  — read from BackBuffer row y=0
+//                   (encoded by scope_pre.fx, preserved by corrective shaders)
 //
 // Compare: if the corrective chain is expanding range, the white panel
 // will spread wider than the red panel.
@@ -20,17 +21,6 @@
 #define SCOPE_AMP  1.5
 #define SCOPE_S    16
 #define SCOPE_BINS 128
-
-// ─── Pre-correction histogram — written by scope_pre.fx ───────────────────
-texture2D ScopeCaptureTex { Width = 128; Height = 1; Format = R32F; MipLevels = 1; };
-sampler2D ScopeCapture
-{
-    Texture   = ScopeCaptureTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
 
 texture2D BackBufferTex : COLOR;
 sampler2D BackBuffer
@@ -58,6 +48,13 @@ float4 ScopePS(float4 pos : SV_Position,
 {
     float4 col = tex2D(BackBuffer, uv);
 
+    // Restore row y=0 (data highway) — copy from y=1
+    if (pos.y < 1.0)
+    {
+        float2 restore_uv = float2(uv.x, 1.0 / float(BUFFER_HEIGHT));
+        return tex2D(BackBuffer, restore_uv);
+    }
+
     float x0 = SCOPE_X;
     float y0 = BUFFER_HEIGHT - SCOPE_Y - SCOPE_H;
     float x1 = x0 + SCOPE_W;
@@ -70,12 +67,11 @@ float4 ScopePS(float4 pos : SV_Position,
     if (pos.x < x0 + 1 || pos.x >= x1 - 1 || pos.y < y0 + 1 || pos.y >= y1 - 1)
         return float4(0.3, 0.3, 0.3, 1.0);
 
-    int   bin       = int((pos.x - x0) / float(SCOPE_W) * float(SCOPE_BINS));
-    float rel_y     = pos.y - y0;
+    int   bin   = int((pos.x - x0) / float(SCOPE_W) * float(SCOPE_BINS));
+    float rel_y = pos.y - y0;
 
     bool in_top = rel_y < SCOPE_PH;
     bool in_div = rel_y >= SCOPE_PH && rel_y < (SCOPE_PH + SCOPE_DIV);
-    bool in_bot = rel_y >= (SCOPE_PH + SCOPE_DIV);
 
     if (in_div)
         return float4(0.18, 0.18, 0.18, 1.0);
@@ -111,9 +107,11 @@ float4 ScopePS(float4 pos : SV_Position,
     }
     else
     {
-        float pix     = 1.0 - (rel_y - float(SCOPE_PH + SCOPE_DIV)) / float(SCOPE_PH);
-        float hist_u  = (float(bin) + 0.5) / float(SCOPE_BINS);
-        float raw_val = tex2Dlod(ScopeCapture, float4(hist_u, 0.5, 0, 0)).r;
+        // Read pre-correction histogram from BackBuffer row y=0
+        float pix    = 1.0 - (rel_y - float(SCOPE_PH + SCOPE_DIV)) / float(SCOPE_PH);
+        float data_u = (float(bin) + 0.5) / float(BUFFER_WIDTH);
+        float data_v = 0.5 / float(BUFFER_HEIGHT);
+        float raw_val = tex2Dlod(BackBuffer, float4(data_u, data_v, 0, 0)).r;
         float bar     = saturate(raw_val * float(SCOPE_BINS) * SCOPE_AMP);
 
         float3 scope;

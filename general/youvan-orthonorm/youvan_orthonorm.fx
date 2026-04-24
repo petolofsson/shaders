@@ -235,6 +235,8 @@ float4 ApplyOrthoPS(float4 pos : SV_Position,
 
     float4 col = tex2D(BackBuffer, uv);
 
+    if (pos.y < 1.0) return col;
+
     float3 B0 = tex2D(MatrixSampler, float2(0.5 / 3.0, 0.5)).rgb;
     float3 B1 = tex2D(MatrixSampler, float2(1.5 / 3.0, 0.5)).rgb;
     float3 B2 = tex2D(MatrixSampler, float2(2.5 / 3.0, 0.5)).rgb;

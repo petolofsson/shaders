@@ -105,6 +105,8 @@ float4 PrimaryCorrectionPS(float4 pos : SV_Position,
 
     float4 col = tex2D(BackBuffer, uv);
 
+    if (pos.y < 1.0) return col; // scope_pre data highway — do not modify row 0
+
     float2 stats = tex2D(ITMSamp, float2(0.5, 0.5)).rg;
     float  p95   = stats.r;
     float  p5    = stats.g;
