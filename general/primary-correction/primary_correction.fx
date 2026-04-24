@@ -1,26 +1,28 @@
-// primary_correction.fx — Signal range normalization
+// primary_correction.fx — Signal range normalization with shadow-preserving toe
 //
 // Responsibility: expand the game's output to a full linear range so all
 // downstream corrective stages receive a consistent, full-range signal.
 //
-// Method: p95 normalization. The 95th-percentile luma is mapped to 0.90
-// via a single linear scale factor — the entire signal shifts proportionally.
-// Clamped to ±1.5 stops to prevent overdriving extreme scenes.
+// Method: p95 normalization with soft toe. The 95th-percentile luma maps to
+// TARGET_P95 (0.90) via a per-pixel gain that tapers to 1.0 near the scene's
+// black point (p5). Highlights get the full expansion; shadows are left
+// progressively more intact, preserving atmospheric depth and dark-scene mood.
 //
 // Tonal shaping is NOT done here — that is alpha_zone's job.
 // Saturation recovery is NOT done here — that is alpha_chroma's job.
 //
 // White balance (WB_R/G/B): neutral by default. Adjust only for games
-// with a known persistent color cast — not scene-adaptive.
+// with a known persistent color cast.
 //
 // Two passes:
-//   Pass 1 — ComputeStats: walk LumHistTex → p95 → ITMTex (1×1 R16F)
-//   Pass 2 — Apply: WB + linear scale to TARGET_P95
+//   Pass 1 — ComputeStats: walk LumHistTex → p5 + p95 → ITMTex (1×1 RG16F)
+//   Pass 2 — Apply: WB + soft-toe p95 normalization
 
 #define WB_R       100    // 0–200; 100 = neutral
 #define WB_G       100
 #define WB_B       100
 #define TARGET_P95 0.90   // p95 maps here; leaves headroom for output_transform
+#define TOE_RANGE  4.0    // gain toe transitions over TOE_RANGE × p5
 
 #define HIST_BINS  64
 
@@ -36,9 +38,9 @@ sampler2D LumHist
     MagFilter = POINT;
 };
 
-// ─── Scene p95 — 1×1 R16F ─────────────────────────────────────────────────
+// ─── Scene stats — 1×1 RG16F: .r = p95, .g = p5 ──────────────────────────
 
-texture2D ITMTex { Width = 1; Height = 1; Format = R16F; MipLevels = 1; };
+texture2D ITMTex { Width = 1; Height = 1; Format = RG16F; MipLevels = 1; };
 sampler2D ITMSamp
 {
     Texture   = ITMTex;
@@ -64,7 +66,9 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
     pos  = float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
 }
 
-// ─── Pass 1 — Compute scene p95 ────────────────────────────────────────────
+float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
+
+// ─── Pass 1 — Compute scene p5 and p95 ────────────────────────────────────
 
 float4 ComputeStatsPS(float4 pos : SV_Position,
                       float2 uv  : TEXCOORD0) : SV_Target
@@ -74,21 +78,25 @@ float4 ComputeStatsPS(float4 pos : SV_Position,
     for (int i = 0; i < HIST_BINS; i++)
         total += tex2Dlod(LumHist, float4((i + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
 
-    if (total < 0.001) return float4(TARGET_P95, 0, 0, 1);
+    if (total < 0.001) return float4(TARGET_P95, 0.0, 0, 1);
 
-    float cumulative = 0.0;
-    float p95        = TARGET_P95;
+    float cum      = 0.0;
+    float p5       = 0.0;
+    float p95      = TARGET_P95;
+    bool  found_p5 = false;
+
     [loop]
     for (int j = 0; j < HIST_BINS; j++)
     {
-        cumulative += tex2Dlod(LumHist, float4((j + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r / total;
-        if (cumulative >= 0.95) { p95 = (j + 0.5) / float(HIST_BINS); break; }
+        cum += tex2Dlod(LumHist, float4((j + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r / total;
+        if (!found_p5 && cum >= 0.05) { p5  = (j + 0.5) / float(HIST_BINS); found_p5 = true; }
+        if (cum >= 0.95)              { p95 = (j + 0.5) / float(HIST_BINS); break; }
     }
 
-    return float4(p95, 0, 0, 1);
+    return float4(p95, p5, 0, 1);
 }
 
-// ─── Pass 2 — Apply WB and p95 normalization ───────────────────────────────
+// ─── Pass 2 — Apply WB and soft-toe p95 normalization ─────────────────────
 
 float4 PrimaryCorrectionPS(float4 pos : SV_Position,
                            float2 uv  : TEXCOORD0) : SV_Target
@@ -98,12 +106,21 @@ float4 PrimaryCorrectionPS(float4 pos : SV_Position,
 
     float4 col = tex2D(BackBuffer, uv);
 
-    float p95 = tex2D(ITMSamp, float2(0.5, 0.5)).r;
-    float ae  = clamp(TARGET_P95 / max(p95, 0.01), 0.35, 2.83);
+    float2 stats = tex2D(ITMSamp, float2(0.5, 0.5)).rg;
+    float  p95   = stats.r;
+    float  p5    = stats.g;
 
-    float3 c = col.rgb * float3(WB_R / 100.0, WB_G / 100.0, WB_B / 100.0) * ae;
+    float ae = clamp(TARGET_P95 / max(p95, 0.01), 0.35, 2.83);
 
-    return float4(saturate(c), col.a);
+    float3 c    = col.rgb * float3(WB_R / 100.0, WB_G / 100.0, WB_B / 100.0);
+    float  luma = Luma(c);
+
+    // Soft toe: full gain at highlights, tapers to 1.0 at the shadow floor.
+    // Preserves atmospheric haze and dark-scene depth without lifting blacks.
+    float toe_gate     = smoothstep(0.0, max(p5 * TOE_RANGE, 0.02), luma);
+    float effective_ae = lerp(1.0, ae, toe_gate);
+
+    return float4(saturate(c * effective_ae), col.a);
 }
 
 // ─── Technique ─────────────────────────────────────────────────────────────
