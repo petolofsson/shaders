@@ -30,6 +30,12 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 
 float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
+float4 PassthroughPS(float4 pos : SV_Position,
+                     float2 uv  : TEXCOORD0) : SV_Target
+{
+    return tex2D(BackBuffer, uv);
+}
+
 float4 ScopeCapturePS(float4 pos : SV_Position,
                       float2 uv  : TEXCOORD0) : SV_Target
 {
@@ -53,10 +59,15 @@ float4 ScopeCapturePS(float4 pos : SV_Position,
 
 technique ScopeCapture
 {
-    pass
+    pass Capture
     {
         VertexShader = PostProcessVS;
         PixelShader  = ScopeCapturePS;
         RenderTarget = ScopeCaptureTex;
+    }
+    pass Passthrough
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = PassthroughPS;
     }
 }
