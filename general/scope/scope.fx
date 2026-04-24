@@ -90,7 +90,7 @@ float4 ScopePS(float4 pos : SV_Position,
 
     // ── Composite ─────────────────────────────────────────────────────────────
     float3 bg      = float3(0.04, 0.04, 0.04);
-    float3 orange  = float3(0.90, 0.45, 0.10);
+    float3 orange  = float3(1.0, 0.0, 0.0);
     float3 white_c = float3(0.85, 0.85, 0.85);
 
     float3 scope = bg;
