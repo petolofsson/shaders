@@ -22,7 +22,6 @@
 #define WB_G       100
 #define WB_B       100
 #define TARGET_P95 0.90   // p95 maps here; leaves headroom for output_transform
-#define TOE_RANGE  4.0    // gain toe transitions over TOE_RANGE × p5
 
 #define HIST_BINS  64
 
@@ -116,8 +115,8 @@ float4 PrimaryCorrectionPS(float4 pos : SV_Position,
     float  luma = Luma(c);
 
     // Soft toe: full gain at highlights, tapers to 1.0 at the shadow floor.
-    // Preserves atmospheric haze and dark-scene depth without lifting blacks.
-    float toe_gate     = smoothstep(0.0, max(p5 * TOE_RANGE, 0.02), luma);
+    // Transition anchored to scene p5 — no exposed tuning constants.
+    float toe_gate     = smoothstep(p5 * 0.5, max(p5 * 2.0, 0.02), luma);
     float effective_ae = lerp(1.0, ae, toe_gate);
 
     return float4(saturate(c * effective_ae), col.a);
