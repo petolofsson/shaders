@@ -2,7 +2,7 @@
 //
 // Two panels (each 80px tall, 4px divider):
 //   Top   (white) — post-correction — current BackBuffer
-//   Bottom (red)  — pre-correction  — LumHistTex from frame_analysis
+//   Bottom (red)  — pre-correction  — ScopeCaptureTex from scope_pre.fx
 //
 // Compare: if the corrective chain is expanding range, the white panel
 // will spread wider than the red panel.
@@ -10,25 +10,22 @@
 // Reference lines:
 //   Yellow = 0.18 (18% grey — photographic middle grey)
 //   Grey   = 0.90 (p95 target — where highlights should land)
-//
-// 16×16 = 256 samples per frame for post-correction panel.
-// Pre-correction panel reads frame_analysis LumHistTex (normalized, R32F).
 
 #define SCOPE_X    10
 #define SCOPE_Y    10
-#define SCOPE_W    256
+#define SCOPE_W    512
 #define SCOPE_PH   80
 #define SCOPE_DIV  4
 #define SCOPE_H    164
 #define SCOPE_AMP  1.5
 #define SCOPE_S    16
-#define SCOPE_BINS 64
+#define SCOPE_BINS 128
 
-// ─── Pre-correction histogram — written by frame_analysis ──────────────────
-texture2D LumHistTex { Width = SCOPE_BINS; Height = 1; Format = R32F; MipLevels = 1; };
-sampler2D LumHist
+// ─── Pre-correction histogram — written by scope_pre.fx ───────────────────
+texture2D ScopeCaptureTex { Width = 128; Height = 1; Format = R32F; MipLevels = 1; };
+sampler2D ScopeCapture
 {
-    Texture   = LumHistTex;
+    Texture   = ScopeCaptureTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = POINT;
@@ -83,7 +80,6 @@ float4 ScopePS(float4 pos : SV_Position,
     if (in_div)
         return float4(0.18, 0.18, 0.18, 1.0);
 
-    // Reference line columns
     bool ref_18 = (bin == int(0.18 * float(SCOPE_BINS)));
     bool ref_90 = (bin == int(0.90 * float(SCOPE_BINS)));
 
@@ -91,8 +87,7 @@ float4 ScopePS(float4 pos : SV_Position,
 
     if (in_top)
     {
-        // White — post-correction (live BackBuffer sample)
-        float pix = 1.0 - rel_y / float(SCOPE_PH);
+        float pix       = 1.0 - rel_y / float(SCOPE_PH);
         float bucket_lo = float(bin)     / float(SCOPE_BINS);
         float bucket_hi = float(bin + 1) / float(SCOPE_BINS);
         float count = 0.0;
@@ -116,10 +111,9 @@ float4 ScopePS(float4 pos : SV_Position,
     }
     else
     {
-        // Red — pre-correction (LumHistTex from frame_analysis)
         float pix     = 1.0 - (rel_y - float(SCOPE_PH + SCOPE_DIV)) / float(SCOPE_PH);
         float hist_u  = (float(bin) + 0.5) / float(SCOPE_BINS);
-        float raw_val = tex2Dlod(LumHist, float4(hist_u, 0.5, 0, 0)).r;
+        float raw_val = tex2Dlod(ScopeCapture, float4(hist_u, 0.5, 0, 0)).r;
         float bar     = saturate(raw_val * float(SCOPE_BINS) * SCOPE_AMP);
 
         float3 scope;
