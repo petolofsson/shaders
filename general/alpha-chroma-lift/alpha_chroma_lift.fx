@@ -143,9 +143,10 @@ float4 ApplyChromaLiftPS(float4 pos : SV_Position,
     float gate = smoothstep(gate_sat * 0.5, gate_sat * 2.0, hsv.y);
     if (gate < 0.001) return col;
 
-    // Adaptive boost: stronger when scene is desaturated (mean < 0.25)
-    float deficit  = saturate(1.0 - mean_sat / 0.25);
-    float boost    = 1.0 + (CURVE_STRENGTH / 100.0) * (0.5 + 0.5 * deficit);
+    // Only boost when scene saturation is genuinely compressed (mean below HEALTHY_SAT).
+    // Passthrough on healthy scenes — this is correction, not grading.
+    float deficit  = max(0.0, 0.22 - mean_sat);
+    float boost    = 1.0 + (CURVE_STRENGTH / 100.0) * (deficit / 0.22);
     float new_sat  = min(hsv.y * boost, 1.0);
 
     float3 result = HSVtoRGB(float3(hsv.x, lerp(hsv.y, new_sat, gate), hsv.z));
