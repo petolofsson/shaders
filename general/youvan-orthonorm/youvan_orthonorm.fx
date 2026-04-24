@@ -259,15 +259,16 @@ float4 ApplyOrthoPS(float4 pos : SV_Position,
                     ? lerp(corr_max, corrected, sat_scale) * brightness_scale
                     : corrected;
 
-    // Cast magnitude: L1 norm of (B − I). Near-neutral → near 0. Strong cast → up to 1.
-    // Avoids length() intrinsic — uses abs() only. No manual strength value.
-    float3 d0 = B0 - float3(1, 0, 0);
-    float3 d1 = B1 - float3(0, 1, 0);
-    float3 d2 = B2 - float3(0, 0, 1);
-    float cast_l1 = abs(d0.r) + abs(d0.g) + abs(d0.b)
-                  + abs(d1.r) + abs(d1.g) + abs(d1.b)
-                  + abs(d2.r) + abs(d2.g) + abs(d2.b);
-    float strength = saturate(cast_l1);
+    // Strength = max chromaticity deviation of zone means from neutral grey.
+    // Bounded by [0, ~0.3] — no scale constant needed. Near-neutral scene → ~0.
+    float3 v_d = tex2D(ZoneSampler, float2(0.5 / 3.0, 0.5)).rgb;
+    float3 v_m = tex2D(ZoneSampler, float2(1.5 / 3.0, 0.5)).rgb;
+    float3 v_b = tex2D(ZoneSampler, float2(2.5 / 3.0, 0.5)).rgb;
+    float L_d = Luma(v_d), L_m = Luma(v_m), L_b = Luma(v_b);
+    float dev_d = max(abs(v_d.r-L_d), max(abs(v_d.g-L_d), abs(v_d.b-L_d)));
+    float dev_m = max(abs(v_m.r-L_m), max(abs(v_m.g-L_m), abs(v_m.b-L_m)));
+    float dev_b = max(abs(v_b.r-L_b), max(abs(v_b.g-L_b), abs(v_b.b-L_b)));
+    float strength = saturate(max(dev_d, max(dev_m, dev_b)));
 
     float3 result = lerp(col.rgb, hue_only, strength);
     return float4(saturate(result), col.a);
