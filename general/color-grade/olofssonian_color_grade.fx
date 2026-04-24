@@ -235,7 +235,7 @@ float4 ColorGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float st_min  = min(result.r, min(result.g, result.b));
     float st_sat  = (st_max > 0.001) ? (st_max - st_min) / st_max : 0.0;
     float st_gate = smoothstep(0.08, 0.22, st_sat);
-    float shadow_w = result_luma * smoothstep(SHADOW_RANGE / 100.0, 0.0, result_luma) * st_gate;
+    float shadow_w = result_luma * (1.0 - smoothstep(0.0, SHADOW_RANGE / 100.0, result_luma)) * st_gate;
     result += float3(SHADOW_TINT_R, SHADOW_TINT_G, SHADOW_TINT_B) * shadow_w;
 
     // Highlight lift
