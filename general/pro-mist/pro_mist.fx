@@ -8,13 +8,18 @@
 // AND luma similarity to the center pixel. Prevents bright regions (fog,
 // sky lights) from bleeding into dark surroundings — no halo artifacts.
 //
+// Bilateral sigma_r adapts per-pixel from local luma variance (SVGF principle):
+// high-variance areas (edges, detail) → tight range kernel (preserves sharpness);
+// smooth areas → wide range kernel (more averaging, softer result).
+//
 // Diffuse strength adapts to scene contrast (p90–p10 from LumHistTex):
 // high-contrast scenes get slightly more softening, flat scenes less.
 //
-// Three passes:
+// Four passes:
 //   Pass 1: Compute scene contrast → ContrastTex (1×1)
-//   Pass 2: Bilateral horizontal Gaussian → DiffuseTex
-//   Pass 3: Bilateral vertical Gaussian on DiffuseTex + blend onto scene
+//   Pass 2: Compute local luma variance → VarianceTex (full res)
+//   Pass 3: Bilateral horizontal Gaussian → DiffuseTex
+//   Pass 4: Bilateral vertical Gaussian on DiffuseTex + blend onto scene
 
 // ─── Tuning ────────────────────────────────────────────────────────────────
 
@@ -24,7 +29,9 @@
 // ─── Internal constants ────────────────────────────────────────────────────
 
 #define HIST_BINS          64
-#define BILATERAL_K        20.0
+#define BILATERAL_K_LO     5.0   // smooth area — wide range kernel
+#define BILATERAL_K_HI     50.0  // edge area — tight range kernel
+#define VAR_THRESH         0.02  // variance at which K saturates to HI
 #define DIFFUSE_LUMA_LO    0.62
 #define DIFFUSE_LUMA_HI    0.65
 #define DIFFUSE_LUMA_CAP   0.88
@@ -52,6 +59,18 @@ sampler2D ContrastSamp
     AddressV  = CLAMP;
     MinFilter = POINT;
     MagFilter = POINT;
+};
+
+// ─── Per-pixel luma variance — full res R16F ───────────────────────────────
+
+texture2D VarianceTex { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = R16F; MipLevels = 1; };
+sampler2D VarianceSamp
+{
+    Texture   = VarianceTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
 };
 
 // ─── Textures ──────────────────────────────────────────────────────────────
@@ -98,10 +117,10 @@ float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 // 9-tap Gaussian weights (sigma ≈ 1.5, normalised)
 static const float GW[5] = { 0.2270, 0.1945, 0.1216, 0.0540, 0.0162 };
 
-float BilateralW(float luma_c, float luma_tap, float gw)
+float BilateralW(float luma_c, float luma_tap, float gw, float k)
 {
     float d = luma_c - luma_tap;
-    return gw * exp(-d * d * BILATERAL_K);
+    return gw * exp(-d * d * k);
 }
 
 // ─── Pass 1 — Compute scene contrast (p90–p10) ─────────────────────────────
@@ -131,13 +150,35 @@ float4 ComputeContrastPS(float4 pos : SV_Position,
     return float4(p90 - p10, 0, 0, 1);
 }
 
-// ─── Pass 2 — Bilateral horizontal Gaussian ────────────────────────────────
+// ─── Pass 2 — Compute per-pixel local luma variance ───────────────────────
+// 5-tap cross neighborhood. Drives bilateral range kernel width in H/V passes:
+// low variance (smooth) → soft bilateral; high variance (edges) → tight bilateral.
+
+float4 ComputeVariancePS(float4 pos : SV_Position,
+                         float2 uv  : TEXCOORD0) : SV_Target
+{
+    float2 px = float2(1.0 / BUFFER_WIDTH, 1.0 / BUFFER_HEIGHT);
+    float l0 = Luma(tex2Dlod(BackBuffer, float4(uv,                        0, 0)).rgb);
+    float l1 = Luma(tex2Dlod(BackBuffer, float4(uv + float2( 1,  0) * px, 0, 0)).rgb);
+    float l2 = Luma(tex2Dlod(BackBuffer, float4(uv + float2(-1,  0) * px, 0, 0)).rgb);
+    float l3 = Luma(tex2Dlod(BackBuffer, float4(uv + float2( 0,  1) * px, 0, 0)).rgb);
+    float l4 = Luma(tex2Dlod(BackBuffer, float4(uv + float2( 0, -1) * px, 0, 0)).rgb);
+    float mean = (l0 + l1 + l2 + l3 + l4) * 0.2;
+    float d0 = l0 - mean, d1 = l1 - mean, d2 = l2 - mean, d3 = l3 - mean, d4 = l4 - mean;
+    float var = (d0*d0 + d1*d1 + d2*d2 + d3*d3 + d4*d4) * 0.2;
+    return float4(var, 0, 0, 1);
+}
+
+// ─── Pass 3 — Bilateral horizontal Gaussian ────────────────────────────────
 
 float4 DiffuseHPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float3 center = tex2D(BackBuffer, uv).rgb;
     float  lc     = Luma(center);
     float2 st     = float2(DIFFUSE_RADIUS / 4.0, 0.0);
+
+    float var = tex2D(VarianceSamp, uv).r;
+    float k   = lerp(BILATERAL_K_LO, BILATERAL_K_HI, saturate(var / VAR_THRESH));
 
     float3 r = center * GW[0];
     float  w = GW[0];
@@ -147,8 +188,8 @@ float4 DiffuseHPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     {
         float3 tp = tex2D(BackBuffer, uv + st * i).rgb;
         float3 tn = tex2D(BackBuffer, uv - st * i).rgb;
-        float  wp = BilateralW(lc, Luma(tp), GW[i]);
-        float  wn = BilateralW(lc, Luma(tn), GW[i]);
+        float  wp = BilateralW(lc, Luma(tp), GW[i], k);
+        float  wn = BilateralW(lc, Luma(tn), GW[i], k);
         r += tp * wp + tn * wn;
         w += wp + wn;
     }
@@ -156,7 +197,7 @@ float4 DiffuseHPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     return float4(r / w, 1.0);
 }
 
-// ─── Pass 2 — Bilateral vertical Gaussian + composite ──────────────────────
+// ─── Pass 4 — Bilateral vertical Gaussian + composite ──────────────────────
 
 float4 DiffuseVPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
@@ -167,6 +208,9 @@ float4 DiffuseVPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float  lc   = Luma(base.rgb);
     float2 ds   = float2(0.0, DIFFUSE_RADIUS / 4.0);
 
+    float var = tex2D(VarianceSamp, uv).r;
+    float k   = lerp(BILATERAL_K_LO, BILATERAL_K_HI, saturate(var / VAR_THRESH));
+
     float3 diffused = tex2D(DiffuseSamp, uv).rgb * GW[0];
     float  w        = GW[0];
 
@@ -175,8 +219,8 @@ float4 DiffuseVPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     {
         float3 tp = tex2D(DiffuseSamp, uv + ds * i).rgb;
         float3 tn = tex2D(DiffuseSamp, uv - ds * i).rgb;
-        float  wp = BilateralW(lc, Luma(tp), GW[i]);
-        float  wn = BilateralW(lc, Luma(tn), GW[i]);
+        float  wp = BilateralW(lc, Luma(tp), GW[i], k);
+        float  wn = BilateralW(lc, Luma(tn), GW[i], k);
         diffused += tp * wp + tn * wn;
         w        += wp + wn;
     }
@@ -206,6 +250,12 @@ technique ProMist
         VertexShader = PostProcessVS;
         PixelShader  = ComputeContrastPS;
         RenderTarget = ContrastTex;
+    }
+    pass ComputeVariance
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = ComputeVariancePS;
+        RenderTarget = VarianceTex;
     }
     pass DiffuseH
     {

@@ -1,17 +1,22 @@
-// alpha_zone_contrast.fx — Histogram-driven adaptive luma contrast
+// alpha_zone_contrast.fx — Multi-scale histogram-driven luma contrast
 //
-// Uses the scene's luminance CDF as the tone curve:
-//   output_luma = lerp(input_luma, CDF(input_luma), CURVE_STRENGTH)
+// Uses the scene's luminance CDF as the tone curve, applied to the
+// large-scale (low-frequency) luma component only:
+//   luma_low  = spatially smoothed luma (1/8 res, bilinear upsample on read)
+//   luma_high = luma_full - luma_low  (local detail — edges, texture)
+//   output_luma = CDF_equalize(luma_low) + luma_high
 //
 // Dense tonal regions get expanded (more contrast where content lives).
 // Sparse regions get compressed (no wasted contrast in empty ranges).
-// Full 0–1 range graded — no fixed pivots or parameterized S-shape.
+// Fine detail is unaffected — only large-scale tonal structure is equalized.
 //
-// Two passes:
+// Three passes:
 //   Pass 1 — BuildCDF: walk LumHistTex (64 bins from frame_analysis),
 //             compute cumulative sum per bin, lerp into LumCDFTex.
-//   Pass 2 — ApplyContrast: sample LumCDFTex at pixel luma, scale RGB
-//             to new luma (hue+sat preserved).
+//   Pass 2 — ComputeLowFreq: downsample BackBuffer luma to 1/8 res —
+//             captures large-scale tonal structure (structures > 8px).
+//   Pass 3 — ApplyContrast: equalize low-freq luma via CDF, add back
+//             high-freq detail, scale RGB (hue+sat preserved).
 //
 // Requires frame_analysis.fx to run before this in the chain.
 
@@ -35,6 +40,17 @@ texture2D LumCDFTex { Width = HIST_BINS; Height = 1; Format = R32F; MipLevels = 
 sampler2D LumCDF
 {
     Texture   = LumCDFTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+};
+
+// ─── Low-frequency luma — 1/8 resolution, bilinear upsampled on read ───────
+texture2D LowFreqTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = R16F; MipLevels = 1; };
+sampler2D LowFreqSamp
+{
+    Texture   = LowFreqTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = LINEAR;
@@ -65,8 +81,6 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
 // ─── Pass 1 — Build smoothed CDF ───────────────────────────────────────────
-// Each output pixel b stores the cumulative sum hist[0..b] (i.e. CDF at bin b).
-// Temporally lerped for stability.
 
 float4 BuildCDFPS(float4 pos : SV_Position,
                   float2 uv  : TEXCOORD0) : SV_Target
@@ -89,9 +103,23 @@ float4 BuildCDFPS(float4 pos : SV_Position,
     return float4(lerp(prev, cdf, speed), 0, 0, 1);
 }
 
-// ─── Pass 2 — Apply CDF tone curve ─────────────────────────────────────────
-// Samples CDF at pixel luma, blends toward equalized value, scales RGB.
-// Hue and saturation are preserved — only luma changes.
+// ─── Pass 2 — Downsample to low-frequency luma ─────────────────────────────
+// 4-tap box at offset ±1.5px in full-res space. At 1/8 output resolution the
+// hardware bilinear adds another level of smoothing — captures structures > 8px.
+
+float4 ComputeLowFreqPS(float4 pos : SV_Position,
+                        float2 uv  : TEXCOORD0) : SV_Target
+{
+    float2 px = float2(1.0 / BUFFER_WIDTH, 1.0 / BUFFER_HEIGHT);
+    float luma = 0.0;
+    luma += Luma(tex2Dlod(BackBuffer, float4(uv + float2(-1.5, -1.5) * px, 0, 0)).rgb);
+    luma += Luma(tex2Dlod(BackBuffer, float4(uv + float2( 1.5, -1.5) * px, 0, 0)).rgb);
+    luma += Luma(tex2Dlod(BackBuffer, float4(uv + float2(-1.5,  1.5) * px, 0, 0)).rgb);
+    luma += Luma(tex2Dlod(BackBuffer, float4(uv + float2( 1.5,  1.5) * px, 0, 0)).rgb);
+    return float4(luma * 0.25, 0, 0, 1);
+}
+
+// ─── Pass 3 — Apply multi-scale CDF tone curve ─────────────────────────────
 
 float4 ApplyContrastPS(float4 pos : SV_Position,
                        float2 uv  : TEXCOORD0) : SV_Target
@@ -99,17 +127,21 @@ float4 ApplyContrastPS(float4 pos : SV_Position,
     if (pos.x > 2473 && pos.x < 2485 && pos.y > 15 && pos.y < 27)
         return float4(0.0, 0.7, 0.7, 1.0);
 
-    float4 col    = tex2D(BackBuffer, uv);
-    float  luma   = Luma(col.rgb);
+    float4 col       = tex2D(BackBuffer, uv);
+    float  luma_full = Luma(col.rgb);
 
-    if (luma < 0.005) return col;
+    if (luma_full < 0.005) return col;
 
-    float equalized = tex2D(LumCDF, float2(luma, 0.5)).r;
-    float new_luma  = lerp(luma, equalized, -(CURVE_STRENGTH / 100.0));
-    float scale     = clamp(new_luma / luma, 0.0, 3.0);
-    float3 result   = col.rgb * scale;
+    float luma_low  = tex2D(LowFreqSamp, uv).r;
+    float luma_high = luma_full - luma_low;
 
-    return float4(saturate(result), col.a);
+    float equalized_low = tex2D(LumCDF, float2(luma_low, 0.5)).r;
+    float new_luma_low  = lerp(luma_low, equalized_low, -(CURVE_STRENGTH / 100.0));
+
+    float new_luma = max(0.001, new_luma_low + luma_high);
+    float scale    = clamp(new_luma / luma_full, 0.0, 3.0);
+
+    return float4(saturate(col.rgb * scale), col.a);
 }
 
 // ─── Technique ─────────────────────────────────────────────────────────────
@@ -121,6 +153,12 @@ technique AlphaZoneContrast
         VertexShader = PostProcessVS;
         PixelShader  = BuildCDFPS;
         RenderTarget = LumCDFTex;
+    }
+    pass ComputeLowFreq
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = ComputeLowFreqPS;
+        RenderTarget = LowFreqTex;
     }
     pass ApplyContrast
     {
