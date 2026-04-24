@@ -17,7 +17,7 @@
 //
 // Requires frame_analysis.fx to run before this in the chain.
 
-#define CURVE_STRENGTH  40     // -100 to 100; positive = expands, negative = compresses. Scale feels logarithmic — small values (5–25) have strong effect, use fine steps.
+#define CURVE_STRENGTH  15     // -100 to 100; positive = expands, negative = compresses. Scale feels logarithmic — small values (5–25) have strong effect, use fine steps. 15 = technical baseline (recover game compression only).
 
 // ─── Internal constants ────────────────────────────────────────────────────
 #define LERP_SPEED      0.5     // 0–100; temporal smoothing rate for CDF
