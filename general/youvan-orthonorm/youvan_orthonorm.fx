@@ -264,10 +264,10 @@ float4 ApplyOrthoPS(float4 pos : SV_Position,
     float3 d0 = B0 - float3(1, 0, 0);
     float3 d1 = B1 - float3(0, 1, 0);
     float3 d2 = B2 - float3(0, 0, 1);
-    float cast = abs(d0.r) + abs(d0.g) + abs(d0.b)
-               + abs(d1.r) + abs(d1.g) + abs(d1.b)
-               + abs(d2.r) + abs(d2.g) + abs(d2.b);
-    float strength = saturate(cast);
+    float cast_l1 = abs(d0.r) + abs(d0.g) + abs(d0.b)
+                  + abs(d1.r) + abs(d1.g) + abs(d1.b)
+                  + abs(d2.r) + abs(d2.g) + abs(d2.b);
+    float strength = saturate(cast_l1);
 
     float3 result = lerp(col.rgb, hue_only, strength);
     return float4(saturate(result), col.a);
