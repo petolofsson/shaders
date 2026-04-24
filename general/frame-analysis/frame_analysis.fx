@@ -156,7 +156,7 @@ float4 LumHistGatherPS(float4 pos : SV_Position,
         for (int x = 0; x < DS_W; x++)
         {
             float2 s_uv = float2((x + 0.5) / float(DS_W), (y + 0.5) / float(DS_H));
-            float3 c    = pow(max(tex2D(Downsample, s_uv).rgb, 0.0), 2.2);
+            float3 c    = tex2D(Downsample, s_uv).rgb;  // already linear — vkBasalt linearizes on read
             float  luma = Luma(c);
             count += (luma >= bucket_lo && luma < bucket_hi) ? 1.0 : 0.0;
         }
@@ -188,7 +188,7 @@ float4 SatHistGatherPS(float4 pos : SV_Position,
         for (int x = 0; x < DS_W; x++)
         {
             float2 s_uv   = float2((x + 0.5) / float(DS_W), (y + 0.5) / float(DS_H));
-            float3 linear = pow(max(tex2D(Downsample, s_uv).rgb, 0.0), 2.2);
+            float3 linear = tex2D(Downsample, s_uv).rgb;  // already linear — vkBasalt linearizes on read
             float3 hsv    = RGBtoHSV(linear);
             float  w      = HueBandWeight(hsv.x, center) * step(SAT_THRESHOLD / 100.0, hsv.y);
             float  in_b   = (hsv.y >= bucket_lo && hsv.y < bucket_hi) ? 1.0 : 0.0;

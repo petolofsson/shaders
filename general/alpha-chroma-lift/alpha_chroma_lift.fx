@@ -137,7 +137,7 @@ float4 ApplyChromaLiftPS(float4 pos : SV_Position,
 
     float2 stats    = tex2D(SatStatsSamp, float2(0.5, 0.5)).rg;
     float mean_sat  = stats.r;
-    float gate_sat  = stats.g;
+    float gate_sat  = max(stats.g, 0.005);  // prevent degenerate smoothstep when scene has no saturation
 
     // Grey gate — don't touch pixels near the scene's saturation floor
     float gate = smoothstep(gate_sat * 0.5, gate_sat * 2.0, hsv.y);
@@ -150,7 +150,7 @@ float4 ApplyChromaLiftPS(float4 pos : SV_Position,
     float new_sat  = min(hsv.y * boost, 1.0);
 
     float3 result = HSVtoRGB(float3(hsv.x, lerp(hsv.y, new_sat, gate), hsv.z));
-    return float4(result, col.a);
+    return float4(saturate(result), col.a);
 }
 
 // ─── Technique ─────────────────────────────────────────────────────────────

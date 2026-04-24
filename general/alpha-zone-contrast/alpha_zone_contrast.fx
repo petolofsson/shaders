@@ -142,11 +142,16 @@ float4 ApplyContrastPS(float4 pos : SV_Position,
     float lo = levels.r;
     float hi = levels.g;
 
-    // Smoothstep S-curve: maps [lo,hi] → [0,1]; tails scale proportionally
-    float t = saturate((luma_low - lo) / max(hi - lo, 0.01));
+    // Smoothstep S-curve: maps [lo,hi] → [0,1]; tails scale proportionally.
+    // Only engages when tonal range is compressed (spread < 0.7). Passthrough on healthy scenes.
+    float spread    = hi - lo;
+    float compress  = saturate(1.0 - spread / 0.7);
+    float strength  = (CURVE_STRENGTH / 100.0) * compress;
+
+    float t = saturate((luma_low - lo) / max(spread, 0.01));
     float s = t * t * (3.0 - 2.0 * t);
 
-    float new_luma_low = lerp(luma_low, s, CURVE_STRENGTH / 100.0);
+    float new_luma_low = lerp(luma_low, s, strength);
     float new_luma     = max(0.001, new_luma_low + luma_high);
     float scale        = clamp(new_luma / luma_full, 0.0, 3.0);
 
