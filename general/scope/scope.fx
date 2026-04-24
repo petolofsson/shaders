@@ -13,7 +13,8 @@
 #define SCOPE_Y   10
 #define SCOPE_W   256     // wider = more readable bins
 #define SCOPE_H   120     // split: top 56 = post-correction, bottom 56 = raw, 8 = divider
-#define SCOPE_AMP 4.0     // amplify bar heights so sparse bins are visible
+#define SCOPE_AMP 8.0     // amplify bar heights so sparse bins are visible
+#define SCOPE_S   16      // samples per axis (16×16 = 256 total)
 #define HIST_BINS 64
 
 // ─── Shared histogram — written by frame_analysis (raw pre-correction) ──────
@@ -80,20 +81,21 @@ float4 ScopePS(float4 pos : SV_Position,
     // ── Raw histogram (red) — LumHistTex pre-correction ───────────────────────
     float hist_u  = (bin + 0.5) / float(SCOPE_W);
     float raw_val = tex2Dlod(LumHist, float4(hist_u, 0.5, 0, 0)).r;
-    float bar_raw = saturate(raw_val * float(HIST_BINS) * SCOPE_AMP);
+    float bar_raw = saturate(raw_val * float(HIST_BINS) * SCOPE_AMP * 0.5);
 
     // ── Post-correction histogram (white) — current BackBuffer ────────────────
     float count = 0.0;
     [loop]
-    for (int sy = 0; sy < 8; sy++)
+    for (int sy = 0; sy < SCOPE_S; sy++)
     [loop]
-    for (int sx = 0; sx < 8; sx++)
+    for (int sx = 0; sx < SCOPE_S; sx++)
     {
-        float2 suv  = float2((sx + 0.5) / 8.0, (sy + 0.5) / 8.0);
+        float2 suv  = float2((sx + 0.5) / float(SCOPE_S), (sy + 0.5) / float(SCOPE_S));
         float  luma = Luma(tex2Dlod(BackBuffer, float4(suv, 0, 0)).rgb);
         count += (luma >= bucket_lo && luma < bucket_hi) ? 1.0 : 0.0;
     }
-    float bar_post = saturate(count / 64.0 * float(SCOPE_W) * SCOPE_AMP);
+    float total_s  = float(SCOPE_S * SCOPE_S);
+    float bar_post = saturate(count / total_s * float(SCOPE_W) * SCOPE_AMP);
 
     // ── Reference lines ───────────────────────────────────────────────────────
     bool ref_18 = abs(bucket_lo - 0.18) < (0.5 / float(SCOPE_W));
