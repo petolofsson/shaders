@@ -1,27 +1,24 @@
-// alpha_zone_contrast.fx — Multi-scale histogram-driven luma contrast
+// alpha_zone_contrast.fx — Levels + S-curve luma contrast
 //
-// Uses the scene's luminance CDF as the tone curve, applied to the
-// large-scale (low-frequency) luma component only:
-//   luma_low  = spatially smoothed luma (1/8 res, bilinear upsample on read)
-//   luma_high = luma_full - luma_low  (local detail — edges, texture)
-//   output_luma = CDF_equalize(luma_low) + luma_high
+// Expands tonal range by anchoring a smoothstep S-curve at the scene's
+// own p10/p90. Shadows below p10 push darker; highlights above p90 push
+// brighter; midtones between are gently stretched. No redistribution —
+// the relative tonal relationships are preserved, not flattened.
 //
-// Dense tonal regions get expanded (more contrast where content lives).
-// Sparse regions get compressed (no wasted contrast in empty ranges).
-// Fine detail is unaffected — only large-scale tonal structure is equalized.
+// Applied multi-scale: curve runs on low-frequency luma (1/8 res) only.
+// High-frequency detail (edges, texture) is added back unchanged.
 //
 // Three passes:
-//   Pass 1 — BuildCDF: walk LumHistTex (64 bins from frame_analysis),
-//             compute cumulative sum per bin, lerp into LumCDFTex.
-//   Pass 2 — ComputeLowFreq: downsample BackBuffer luma to 1/8 res —
-//             captures large-scale tonal structure (structures > 8px).
-//   Pass 3 — ApplyContrast: equalize low-freq luma via CDF, add back
+//   Pass 1 — BuildLevels: find p10/p90 from LumHistTex, lerp into
+//             LevelsTex (1×1) for temporal stability.
+//   Pass 2 — ComputeLowFreq: downsample BackBuffer luma to 1/8 res.
+//   Pass 3 — ApplyContrast: S-curve on low-freq, reconstruct with
 //             high-freq detail, scale RGB (hue+sat preserved).
 //
 // Requires frame_analysis.fx to run before this in the chain.
 
-#define CURVE_STRENGTH  20      // -100 to 100; positive = expands, negative = compresses. Scale feels logarithmic — small values (5–30) have strong effect, use fine steps. 20 = technical baseline (recover game compression only).
-#define LERP_SPEED      0.5     // 0–100; temporal smoothing rate for CDF
+#define CURVE_STRENGTH  20      // 0–100; blend toward S-curve. 20 = technical baseline.
+#define LERP_SPEED      10      // % per frame temporal smoothing for levels
 #define HIST_BINS       64
 
 // ─── Shared histogram texture — must match frame_analysis.fx exactly ───────
@@ -35,15 +32,16 @@ sampler2D LumHist
     MagFilter = POINT;
 };
 
-// ─── CDF LUT — smoothed across frames ─────────────────────────────────────
-texture2D LumCDFTex { Width = HIST_BINS; Height = 1; Format = R32F; MipLevels = 1; };
-sampler2D LumCDF
+// ─── Scene levels (p10, p90) — 1×1, temporally smoothed ──────────────────
+// .r = lo (p10), .g = hi (p90), .b = initialised flag
+texture2D LevelsTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+sampler2D LevelsSamp
 {
-    Texture   = LumCDFTex;
+    Texture   = LevelsTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
-    MinFilter = LINEAR;
-    MagFilter = LINEAR;
+    MinFilter = POINT;
+    MagFilter = POINT;
 };
 
 // ─── Low-frequency luma — 1/8 resolution, bilinear upsampled on read ───────
@@ -80,32 +78,36 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 
 float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
-// ─── Pass 1 — Build smoothed CDF ───────────────────────────────────────────
+// ─── Pass 1 — Build scene levels (p10, p90) ────────────────────────────────
 
-float4 BuildCDFPS(float4 pos : SV_Position,
-                  float2 uv  : TEXCOORD0) : SV_Target
+float4 BuildLevelsPS(float4 pos : SV_Position,
+                     float2 uv  : TEXCOORD0) : SV_Target
 {
-    int b = int(pos.x);
-    if (b >= HIST_BINS) return float4(0, 0, 0, 1);
-
-    float cdf = 0.0;
+    float total = 0.0;
     [loop]
-    for (int i = 0; i <= b; i++)
+    for (int i = 0; i < HIST_BINS; i++)
+        total += tex2Dlod(LumHist, float4((i + 0.5) / HIST_BINS, 0.5, 0, 0)).r;
+
+    float4 prev = tex2Dlod(LevelsSamp, float4(0.5, 0.5, 0, 0));
+    if (total < 0.001) return float4(prev.r, prev.g, 1, 1);
+
+    float cum = 0.0;
+    float lo = 0.10, hi = 0.90;
+    bool  found_lo = false;
+
+    [loop]
+    for (int j = 0; j < HIST_BINS; j++)
     {
-        float2 h_uv = float2((i + 0.5) / float(HIST_BINS), 0.5);
-        cdf += tex2Dlod(LumHist, float4(h_uv, 0, 0)).r;
+        cum += tex2Dlod(LumHist, float4((j + 0.5) / HIST_BINS, 0.5, 0, 0)).r / total;
+        if (!found_lo && cum >= 0.10) { lo = (j + 0.5) / HIST_BINS; found_lo = true; }
+        if (cum >= 0.90) { hi = (j + 0.5) / HIST_BINS; break; }
     }
 
-    float prev     = tex2Dlod(LumCDF, float4(uv, 0, 0)).r;
-    float prev_max = tex2Dlod(LumCDF, float4((HIST_BINS - 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
-    float speed    = (prev_max < 0.5) ? 1.0 : clamp(LERP_SPEED / 100.0, 0.001, 1.0);
-
-    return float4(lerp(prev, cdf, speed), 0, 0, 1);
+    float speed = (prev.b < 0.5) ? 1.0 : LERP_SPEED / 100.0;
+    return float4(lerp(prev.r, lo, speed), lerp(prev.g, hi, speed), 1.0, 1.0);
 }
 
 // ─── Pass 2 — Downsample to low-frequency luma ─────────────────────────────
-// 4-tap box at offset ±1.5px in full-res space. At 1/8 output resolution the
-// hardware bilinear adds another level of smoothing — captures structures > 8px.
 
 float4 ComputeLowFreqPS(float4 pos : SV_Position,
                         float2 uv  : TEXCOORD0) : SV_Target
@@ -119,7 +121,9 @@ float4 ComputeLowFreqPS(float4 pos : SV_Position,
     return float4(luma * 0.25, 0, 0, 1);
 }
 
-// ─── Pass 3 — Apply multi-scale CDF tone curve ─────────────────────────────
+// ─── Pass 3 — Apply levels S-curve, multi-scale ────────────────────────────
+// Smoothstep anchored at p10/p90: shadows pushed darker, highlights brighter.
+// Applied to low-freq luma only — fine detail reconstructed unchanged.
 
 float4 ApplyContrastPS(float4 pos : SV_Position,
                        float2 uv  : TEXCOORD0) : SV_Target
@@ -129,17 +133,22 @@ float4 ApplyContrastPS(float4 pos : SV_Position,
 
     float4 col       = tex2D(BackBuffer, uv);
     float  luma_full = Luma(col.rgb);
-
     if (luma_full < 0.005) return col;
 
     float luma_low  = tex2D(LowFreqSamp, uv).r;
     float luma_high = luma_full - luma_low;
 
-    float equalized_low = tex2D(LumCDF, float2(luma_low, 0.5)).r;
-    float new_luma_low  = lerp(luma_low, equalized_low, -(CURVE_STRENGTH / 100.0));
+    float4 levels = tex2D(LevelsSamp, float2(0.5, 0.5));
+    float lo = levels.r;
+    float hi = levels.g;
 
-    float new_luma = max(0.001, new_luma_low + luma_high);
-    float scale    = clamp(new_luma / luma_full, 0.0, 3.0);
+    // Smoothstep S-curve: maps [lo,hi] → [0,1]; tails scale proportionally
+    float t = saturate((luma_low - lo) / max(hi - lo, 0.01));
+    float s = t * t * (3.0 - 2.0 * t);
+
+    float new_luma_low = lerp(luma_low, s, CURVE_STRENGTH / 100.0);
+    float new_luma     = max(0.001, new_luma_low + luma_high);
+    float scale        = clamp(new_luma / luma_full, 0.0, 3.0);
 
     return float4(saturate(col.rgb * scale), col.a);
 }
@@ -148,11 +157,11 @@ float4 ApplyContrastPS(float4 pos : SV_Position,
 
 technique AlphaZoneContrast
 {
-    pass BuildCDF
+    pass BuildLevels
     {
         VertexShader = PostProcessVS;
-        PixelShader  = BuildCDFPS;
-        RenderTarget = LumCDFTex;
+        PixelShader  = BuildLevelsPS;
+        RenderTarget = LevelsTex;
     }
     pass ComputeLowFreq
     {
