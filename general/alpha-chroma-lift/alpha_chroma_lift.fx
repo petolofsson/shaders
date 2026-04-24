@@ -2,36 +2,22 @@
 //
 // Boosts all non-grey pixel saturation by a fixed multiplier, with the
 // multiplier scaling up for desaturated scenes. Proportional scaling
-// preserves relative saturation relationships — unlike CDF equalization
-// which redistributes them and causes a grey/flat appearance.
+// preserves relative saturation relationships.
 //
-// Grey gate derived from scene p10 saturation: pixels near the grey
-// floor are left untouched.
+// Stats are derived from the BackBuffer this shader receives — NOT from
+// frame_analysis histograms. This ensures mean/p10 match the post-
+// primary_correction signal, not the raw game output.
 //
 // Two passes:
-//   Pass 1 — ComputeSatStats: compute mean saturation and p10 (grey gate)
-//             from SatHistTex, averaged across all 6 hue bands → SatStatsTex.
+//   Pass 1 — ComputeSatStats: sample BackBuffer in 8×8 grid → mean
+//             saturation + binary-search p10 (grey gate) → SatStatsTex.
 //   Pass 2 — ApplyChromaLift: proportional saturation boost, gated.
-//
-// Requires frame_analysis.fx to run before this in the chain.
 
 #define CURVE_STRENGTH  15     // 0–100; saturation boost. 15 = technical baseline.
-#define HIST_BINS       64
 
-// ─── Shared histogram texture — must match frame_analysis.fx exactly ───────
-texture2D SatHistTex { Width = HIST_BINS; Height = 6; Format = R32F; MipLevels = 1; };
-sampler2D SatHist
-{
-    Texture   = SatHistTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
-
-// ─── Scene saturation stats — 1×1 RG16F ───────────────────────────────────
-// .r = mean saturation (drives adaptive boost), .g = p10 (grey gate)
-texture2D SatStatsTex { Width = 1; Height = 1; Format = RG16F; MipLevels = 1; };
+// ─── Scene saturation stats — 1×1 RGBA16F ─────────────────────────────────
+// .r = mean saturation, .g = p10 (grey gate)
+texture2D SatStatsTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
 sampler2D SatStatsSamp
 {
     Texture   = SatStatsTex;
@@ -81,50 +67,47 @@ float3 HSVtoRGB(float3 c)
 }
 
 // ─── Pass 1 — Compute scene saturation stats ──────────────────────────────
-// Loops SatHistTex (64 bins × 6 bands), averages bands, derives mean and p10.
-// Runs on a 1×1 target — negligible cost.
+// Samples BackBuffer in 8×8 grid. Computes mean saturation and binary-
+// searches for p10 (grey gate). Reads post-correction signal.
 
 float4 ComputeSatStatsPS(float4 pos : SV_Position,
                          float2 uv  : TEXCOORD0) : SV_Target
 {
-    float total = 0.0, weighted = 0.0;
-
+    // Mean saturation
+    float sum = 0.0;
     [loop]
-    for (int i = 0; i < HIST_BINS; i++)
-    {
-        float avg = 0.0;
-        [loop]
-        for (int b = 0; b < 6; b++)
-            avg += tex2Dlod(SatHist, float4((i + 0.5) / HIST_BINS, (b + 0.5) / 6.0, 0, 0)).r;
-        avg /= 6.0;
-        total    += avg;
-        weighted += (i + 0.5) / HIST_BINS * avg;
-    }
-
-    float mean_sat = (total > 0.001) ? weighted / total : 0.15;
-
-    // Find p10 for grey gate
-    float cum = 0.0;
-    float p10 = 0.05;
+    for (int y = 0; y < 8; y++)
     [loop]
-    for (int j = 0; j < HIST_BINS; j++)
+    for (int x = 0; x < 8; x++)
     {
-        float avg = 0.0;
-        [loop]
-        for (int b = 0; b < 6; b++)
-            avg += tex2Dlod(SatHist, float4((j + 0.5) / HIST_BINS, (b + 0.5) / 6.0, 0, 0)).r;
-        avg /= 6.0;
-        cum += avg / max(total, 0.001);
-        if (cum >= 0.10) { p10 = (j + 0.5) / HIST_BINS; break; }
+        float3 rgb = tex2Dlod(BackBuffer, float4((x + 0.5) / 8.0, (y + 0.5) / 8.0, 0, 0)).rgb;
+        sum += RGBtoHSV(rgb).y;
     }
+    float mean_sat = sum / 64.0;
+
+    // Binary search for p10 (grey gate)
+    float lo = 0.0, hi = 1.0;
+    [loop]
+    for (int i = 0; i < 6; i++)
+    {
+        float mid = (lo + hi) * 0.5;
+        float below = 0.0;
+        [loop]
+        for (int y2 = 0; y2 < 8; y2++)
+        [loop]
+        for (int x2 = 0; x2 < 8; x2++)
+        {
+            float3 rgb = tex2Dlod(BackBuffer, float4((x2 + 0.5) / 8.0, (y2 + 0.5) / 8.0, 0, 0)).rgb;
+            below += (RGBtoHSV(rgb).y < mid) ? 1.0 : 0.0;
+        }
+        if (below / 64.0 < 0.10) lo = mid; else hi = mid;
+    }
+    float p10 = (lo + hi) * 0.5;
 
     return float4(mean_sat, p10, 0, 1);
 }
 
 // ─── Pass 2 — Apply proportional saturation boost ─────────────────────────
-// Boost scales with CURVE_STRENGTH, with a small adaptive component:
-// desaturated scenes get slightly more lift; already-saturated less.
-// Grey gate prevents boosting near-grey pixels.
 
 float4 ApplyChromaLiftPS(float4 pos : SV_Position,
                          float2 uv  : TEXCOORD0) : SV_Target
@@ -137,14 +120,11 @@ float4 ApplyChromaLiftPS(float4 pos : SV_Position,
 
     float2 stats    = tex2D(SatStatsSamp, float2(0.5, 0.5)).rg;
     float mean_sat  = stats.r;
-    float gate_sat  = max(stats.g, 0.005);  // prevent degenerate smoothstep when scene has no saturation
+    float gate_sat  = max(stats.g, 0.005);
 
-    // Grey gate — don't touch pixels near the scene's saturation floor
     float gate = smoothstep(gate_sat * 0.5, gate_sat * 2.0, hsv.y);
     if (gate < 0.001) return col;
 
-    // Only boost when scene saturation is genuinely compressed (mean below HEALTHY_SAT).
-    // Passthrough on healthy scenes — this is correction, not grading.
     float deficit  = max(0.0, 0.22 - mean_sat);
     float boost    = 1.0 + (CURVE_STRENGTH / 100.0) * (deficit / 0.22);
     float new_sat  = min(hsv.y * boost, 1.0);
