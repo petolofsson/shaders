@@ -1,21 +1,39 @@
-// scope.fx — Real-time luma histogram overlay
+// scope.fx — Dual luma histogram overlay
 //
-// Single panel showing the luminance distribution of the current frame.
-// Use to verify range: bars should span from shadow floor to near 0.90.
+// Two panels (each 80px tall, 4px divider):
+//   Top   (white) — post-correction — current BackBuffer
+//   Bottom (red)  — pre-correction  — LumHistTex from frame_analysis
+//
+// Compare: if the corrective chain is expanding range, the white panel
+// will spread wider than the red panel.
 //
 // Reference lines:
 //   Yellow = 0.18 (18% grey — photographic middle grey)
 //   Grey   = 0.90 (p95 target — where highlights should land)
 //
-// 16×16 = 256 samples, 64 bins.
+// 16×16 = 256 samples per frame for post-correction panel.
+// Pre-correction panel reads frame_analysis LumHistTex (normalized, R32F).
 
-#define SCOPE_X   10
-#define SCOPE_Y   10
-#define SCOPE_W   256
-#define SCOPE_H   80
-#define SCOPE_AMP 1.5
-#define SCOPE_S   16
+#define SCOPE_X    10
+#define SCOPE_Y    10
+#define SCOPE_W    256
+#define SCOPE_PH   80
+#define SCOPE_DIV  4
+#define SCOPE_H    (SCOPE_PH * 2 + SCOPE_DIV)
+#define SCOPE_AMP  1.5
+#define SCOPE_S    16
 #define SCOPE_BINS 64
+
+// ─── Pre-correction histogram — written by frame_analysis ──────────────────
+texture2D LumHistTex { Width = SCOPE_BINS; Height = 1; Format = R32F; MipLevels = 1; };
+sampler2D LumHist
+{
+    Texture   = LumHistTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
 
 texture2D BackBufferTex : COLOR;
 sampler2D BackBuffer
@@ -56,37 +74,61 @@ float4 ScopePS(float4 pos : SV_Position,
         return float4(0.3, 0.3, 0.3, 1.0);
 
     int   bin       = int((pos.x - x0) / float(SCOPE_W) * float(SCOPE_BINS));
-    float bucket_lo = float(bin)     / float(SCOPE_BINS);
-    float bucket_hi = float(bin + 1) / float(SCOPE_BINS);
-    float pix       = 1.0 - (pos.y - y0) / float(SCOPE_H);
+    float rel_y     = pos.y - y0;
 
-    // Count samples in this bin
-    float count = 0.0;
-    [loop]
-    for (int sy = 0; sy < SCOPE_S; sy++)
-    [loop]
-    for (int sx = 0; sx < SCOPE_S; sx++)
-    {
-        float luma = Luma(tex2Dlod(BackBuffer,
-            float4((sx + 0.5) / float(SCOPE_S), (sy + 0.5) / float(SCOPE_S), 0, 0)).rgb);
-        count += (luma >= bucket_lo && luma < bucket_hi) ? 1.0 : 0.0;
-    }
-    float bar = saturate(count / float(SCOPE_S * SCOPE_S) * float(SCOPE_BINS) * SCOPE_AMP);
+    bool in_top = rel_y < SCOPE_PH;
+    bool in_div = rel_y >= SCOPE_PH && rel_y < (SCOPE_PH + SCOPE_DIV);
+    bool in_bot = rel_y >= (SCOPE_PH + SCOPE_DIV);
 
-    // Reference lines
+    if (in_div)
+        return float4(0.18, 0.18, 0.18, 1.0);
+
+    // Reference line columns
     bool ref_18 = (bin == int(0.18 * float(SCOPE_BINS)));
     bool ref_90 = (bin == int(0.90 * float(SCOPE_BINS)));
 
-    float3 bg    = float3(0.06, 0.06, 0.06);
-    float3 bar_c = float3(0.9, 0.15, 0.15);
+    float3 bg = float3(0.06, 0.06, 0.06);
 
-    float3 scope;
-    if      (ref_18)       scope = float3(1.0,  0.85, 0.0);
-    else if (ref_90)       scope = float3(0.4,  0.4,  0.4);
-    else if (pix <= bar)   scope = bar_c;
-    else                   scope = bg;
+    if (in_top)
+    {
+        // White — post-correction (live BackBuffer sample)
+        float pix = 1.0 - rel_y / float(SCOPE_PH);
+        float bucket_lo = float(bin)     / float(SCOPE_BINS);
+        float bucket_hi = float(bin + 1) / float(SCOPE_BINS);
+        float count = 0.0;
+        [loop]
+        for (int sy = 0; sy < SCOPE_S; sy++)
+        [loop]
+        for (int sx = 0; sx < SCOPE_S; sx++)
+        {
+            float luma = Luma(tex2Dlod(BackBuffer,
+                float4((sx + 0.5) / float(SCOPE_S), (sy + 0.5) / float(SCOPE_S), 0, 0)).rgb);
+            count += (luma >= bucket_lo && luma < bucket_hi) ? 1.0 : 0.0;
+        }
+        float bar = saturate(count / float(SCOPE_S * SCOPE_S) * float(SCOPE_BINS) * SCOPE_AMP);
 
-    return float4(lerp(col.rgb, scope, 0.92), col.a);
+        float3 scope;
+        if      (ref_18)     scope = float3(1.0, 0.85, 0.0);
+        else if (ref_90)     scope = float3(0.4, 0.4,  0.4);
+        else if (pix <= bar) scope = float3(0.9, 0.9,  0.9);
+        else                 scope = bg;
+        return float4(lerp(col.rgb, scope, 0.92), col.a);
+    }
+    else
+    {
+        // Red — pre-correction (LumHistTex from frame_analysis)
+        float pix     = 1.0 - (rel_y - float(SCOPE_PH + SCOPE_DIV)) / float(SCOPE_PH);
+        float hist_u  = (float(bin) + 0.5) / float(SCOPE_BINS);
+        float raw_val = tex2Dlod(LumHist, float4(hist_u, 0.5, 0, 0)).r;
+        float bar     = saturate(raw_val * float(SCOPE_BINS) * SCOPE_AMP);
+
+        float3 scope;
+        if      (ref_18)     scope = float3(1.0, 0.85, 0.0);
+        else if (ref_90)     scope = float3(0.4, 0.4,  0.4);
+        else if (pix <= bar) scope = float3(0.9, 0.15, 0.15);
+        else                 scope = bg;
+        return float4(lerp(col.rgb, scope, 0.92), col.a);
+    }
 }
 
 technique Scope
