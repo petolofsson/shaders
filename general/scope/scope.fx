@@ -19,7 +19,7 @@
 #define SCOPE_W    256
 #define SCOPE_PH   80
 #define SCOPE_DIV  4
-#define SCOPE_H    (SCOPE_PH * 2 + SCOPE_DIV)
+#define SCOPE_H    164
 #define SCOPE_AMP  1.5
 #define SCOPE_S    16
 #define SCOPE_BINS 64
