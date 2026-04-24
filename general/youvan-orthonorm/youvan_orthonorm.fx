@@ -18,10 +18,9 @@
 
 // ─── Tuning ────────────────────────────────────────────────────────────────
 
-#define ORTHO_STRENGTH   15     // -100 to 100; 0 = bypass, positive = correct toward neutral, negative = exaggerate cast
 #define LERP_SPEED       2      // 0–100; adaptation speed — slow keeps matrix stable
-#define ZONE_DARK_MAX    33     // 0–100; luma threshold: dark zone upper bound
-#define ZONE_BRIGHT_MIN  66     // 0–100; luma threshold: bright zone lower bound
+#define ZONE_DARK_MAX    33     // 0–100; luma threshold: dark zone upper bound (photographic thirds)
+#define ZONE_BRIGHT_MIN  66     // 0–100; luma threshold: bright zone lower bound (photographic thirds)
 
 uniform int FRAME_COUNT < source = "framecount"; >;
 
@@ -260,7 +259,17 @@ float4 ApplyOrthoPS(float4 pos : SV_Position,
                     ? lerp(corr_max, corrected, sat_scale) * brightness_scale
                     : corrected;
 
-    float3 result = lerp(col.rgb, hue_only, ORTHO_STRENGTH / 100.0);
+    // Cast magnitude: L1 norm of (B − I). Near-neutral → near 0. Strong cast → up to 1.
+    // Avoids length() intrinsic — uses abs() only. No manual strength value.
+    float3 d0 = B0 - float3(1, 0, 0);
+    float3 d1 = B1 - float3(0, 1, 0);
+    float3 d2 = B2 - float3(0, 0, 1);
+    float cast = abs(d0.r) + abs(d0.g) + abs(d0.b)
+               + abs(d1.r) + abs(d1.g) + abs(d1.b)
+               + abs(d2.r) + abs(d2.g) + abs(d2.b);
+    float strength = saturate(cast);
+
+    float3 result = lerp(col.rgb, hue_only, strength);
     return float4(saturate(result), col.a);
 }
 
