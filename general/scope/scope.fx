@@ -13,7 +13,7 @@
 #define SCOPE_Y   10
 #define SCOPE_W   256
 #define SCOPE_H   80
-#define SCOPE_AMP 6.0
+#define SCOPE_AMP 1.5
 #define SCOPE_S   16
 #define SCOPE_BINS 64
 
@@ -78,7 +78,7 @@ float4 ScopePS(float4 pos : SV_Position,
     bool ref_90 = (bin == int(0.90 * float(SCOPE_BINS)));
 
     float3 bg    = float3(0.06, 0.06, 0.06);
-    float3 bar_c = float3(0.85, 0.85, 0.85);
+    float3 bar_c = float3(0.9, 0.15, 0.15);
 
     float3 scope;
     if      (ref_18)       scope = float3(1.0,  0.85, 0.0);
