@@ -1,23 +1,28 @@
-// primary_correction.fx — Input normalization + adaptive highlight recovery
+// primary_correction.fx — Input normalization + auto-exposure + adaptive highlight recovery
 //
-// Step 1 of the pipeline: white balance, exposure, and adaptive inverse
+// Step 1 of the pipeline: white balance, auto-exposure, and adaptive inverse
 // tone mapping to recover highlights compressed by the game's tone mapper.
 //
+// Auto-exposure:
+//   Computes scene mean luminance from LumHistTex each frame. Scales the
+//   image so the mean maps to TARGET_LUMA. Clamped to ±1.5 stops so extreme
+//   scenes don't blow out or crush. Chain-length independent — no manual
+//   re-calibration needed when shaders are added/removed.
+//
 // Inverse tone mapping:
-//   Reads LumHistTex (previous frame, from frame_analysis) to find the
-//   scene 95th-percentile luminance. If highlights are compressed (p95
-//   well below 1.0), a power curve expands them proportionally.
-//   Fully adaptive — strength scales with detected compression, zero
+//   Reads LumHistTex to find scene p95. If highlights are compressed,
+//   a power curve expands them proportionally. Fully adaptive — zero
 //   effect on uncompressed scenes.
 //
 // Two passes:
-//   Pass 1 — ComputeExpansion: walk LumHistTex, find p95 → ITMTex (1×1)
-//   Pass 2 — Apply: WB + exposure + luma-gated highlight expansion
+//   Pass 1 — ComputeExpansion: walk LumHistTex → scene mean, p95,
+//             ITM power → ITMTex (1×1 RGBA16F)
+//   Pass 2 — Apply: WB + auto-exposure + luma-gated highlight expansion
 
-#define WB_R         100    // 0–100+; 100 = neutral, >100 warmer, <100 cooler
+#define WB_R         100    // 0–200; 100 = neutral, >100 warmer, <100 cooler
 #define WB_G         100
 #define WB_B         100
-#define EXPOSURE     -40    // -100 to 100; 0 = scene baseline (-0.13 stop baked in), ±100 = ±1 stop
+#define TARGET_LUMA  0.18   // 0–1; scene mean luminance target (0.18 = 18% grey card)
 #define ITM_STRENGTH 50     // 0–100; how aggressively to undo highlight compression
 
 // ─── Internal constants ────────────────────────────────────────────────────
@@ -36,9 +41,10 @@ sampler2D LumHist
     MagFilter = POINT;
 };
 
-// ─── ITM expansion factor — 1×1 ───────────────────────────────────────────
+// ─── Scene stats — 1×1 RGBA16F ────────────────────────────────────────────
+// .r = ITM power, .g = p95, .b = scene mean luma
 
-texture2D ITMTex { Width = 1; Height = 1; Format = R32F; MipLevels = 1; };
+texture2D ITMTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
 sampler2D ITMSamp
 {
     Texture   = ITMTex;
@@ -66,40 +72,43 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 
 float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
-// ─── Pass 1 — Compute highlight expansion power ────────────────────────────
-// Walks LumHistTex to find 95th-percentile luminance.
-// Expansion power = 1 - (1 - p95) * strength — lower = more expansion.
+// ─── Pass 1 — Compute scene stats ─────────────────────────────────────────
+// Loop 1: total count + weighted mean.
+// Loop 2: cumulative for p95.
 
 float4 ComputeExpansionPS(float4 pos : SV_Position,
                           float2 uv  : TEXCOORD0) : SV_Target
 {
-    float total = 0.0;
+    float total = 0.0, weighted = 0.0;
     [loop]
     for (int i = 0; i < HIST_BINS; i++)
-        total += tex2Dlod(LumHist, float4((i + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
+    {
+        float luma  = (i + 0.5) / float(HIST_BINS);
+        float count = tex2Dlod(LumHist, float4(luma, 0.5, 0, 0)).r;
+        total    += count;
+        weighted += luma * count;
+    }
 
-    if (total < 0.001) return float4(1.0, 0, 0, 1);  // no data — passthrough
+    if (total < 0.001) return float4(1.0, 1.0, TARGET_LUMA, 1);
+
+    float scene_mean = weighted / total;
 
     float cumulative = 0.0;
     float p95        = 1.0;
-
     [loop]
     for (int j = 0; j < HIST_BINS; j++)
     {
         cumulative += tex2Dlod(LumHist, float4((j + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r / total;
-        if (cumulative >= 0.95)
-        {
-            p95 = (j + 0.5) / float(HIST_BINS);
-            break;
-        }
+        if (cumulative >= 0.95) { p95 = (j + 0.5) / float(HIST_BINS); break; }
     }
 
     float compression = saturate(1.0 - p95);
     float power       = 1.0 - compression * (ITM_STRENGTH / 100.0);
-    return float4(power, p95, 0, 1);
+
+    return float4(power, p95, scene_mean, 1);
 }
 
-// ─── Pass 2 — Apply WB, exposure, and adaptive highlight expansion ─────────
+// ─── Pass 2 — Apply WB, auto-exposure, and adaptive highlight expansion ────
 
 float4 PrimaryCorrectionPS(float4 pos : SV_Position,
                            float2 uv  : TEXCOORD0) : SV_Target
@@ -109,15 +118,17 @@ float4 PrimaryCorrectionPS(float4 pos : SV_Position,
 
     float4 col = tex2D(BackBuffer, uv);
 
-    // White balance + exposure
-    float3 c = col.rgb * float3(WB_R / 100.0, WB_G / 100.0, WB_B / 100.0)
-                       * pow(2.0, -0.13 + EXPOSURE / 100.0);
+    float3 itm       = tex2D(ITMSamp, float2(0.5, 0.5)).rgb;
+    float  power     = itm.r;
+    float  p95       = itm.g;
+    float  scene_mean = itm.b;
+
+    // Auto-exposure: scale to hit TARGET_LUMA, clamped to ±1.5 stops
+    float ae = clamp(TARGET_LUMA / max(scene_mean, 0.001), 0.35, 2.83);
+
+    float3 c = col.rgb * float3(WB_R / 100.0, WB_G / 100.0, WB_B / 100.0) * ae;
 
     // Adaptive highlight expansion
-    float2 itm  = tex2D(ITMSamp, float2(0.5, 0.5)).rg;
-    float  power = itm.r;
-    float  p95   = itm.g;
-
     float luma_in = Luma(c);
     if (luma_in > 0.001 && power < 0.999)
     {
