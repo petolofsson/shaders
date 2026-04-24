@@ -2,34 +2,35 @@
 //
 // Expands tonal range by anchoring a smoothstep S-curve at the scene's
 // own p10/p90. Shadows below p10 push darker; highlights above p90 push
-// brighter; midtones between are gently stretched. No redistribution —
-// the relative tonal relationships are preserved, not flattened.
+// brighter; midtones between are gently stretched. Midtone at (p10+p90)/2
+// is invariant — no grey lift.
 //
 // Applied multi-scale: curve runs on low-frequency luma (1/8 res) only.
 // High-frequency detail (edges, texture) is added back unchanged.
 //
+// Stats are derived from the BackBuffer this shader receives — NOT from
+// frame_analysis histograms. This ensures p10/p90 match the post-
+// primary_correction signal, not the raw game output.
+//
 // Three passes:
-//   Pass 1 — BuildLevels: find p10/p90 from LumHistTex, lerp into
-//             LevelsTex (1×1) for temporal stability.
-//   Pass 2 — ComputeLowFreq: downsample BackBuffer luma to 1/8 res.
+//   Pass 1 — ComputeLowFreq: downsample BackBuffer luma to 1/8 res.
+//   Pass 2 — BuildLevels: binary-search p10/p90 from LowFreqTex,
+//             lerp into LevelsTex (1×1) for temporal stability.
 //   Pass 3 — ApplyContrast: S-curve on low-freq, reconstruct with
 //             high-freq detail, scale RGB (hue+sat preserved).
-//
-// Requires frame_analysis.fx to run before this in the chain.
 
 #define CURVE_STRENGTH  20      // 0–100; blend toward S-curve. 20 = technical baseline.
 #define LERP_SPEED      10      // % per frame temporal smoothing for levels
-#define HIST_BINS       64
 
-// ─── Shared histogram texture — must match frame_analysis.fx exactly ───────
-texture2D LumHistTex { Width = HIST_BINS; Height = 1; Format = R32F; MipLevels = 1; };
-sampler2D LumHist
+// ─── Low-frequency luma — 1/8 resolution ───────────────────────────────────
+texture2D LowFreqTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = R16F; MipLevels = 1; };
+sampler2D LowFreqSamp
 {
-    Texture   = LumHistTex;
+    Texture   = LowFreqTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
 };
 
 // ─── Scene levels (p10, p90) — 1×1, temporally smoothed ──────────────────
@@ -44,18 +45,7 @@ sampler2D LevelsSamp
     MagFilter = POINT;
 };
 
-// ─── Low-frequency luma — 1/8 resolution, bilinear upsampled on read ───────
-texture2D LowFreqTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = R16F; MipLevels = 1; };
-sampler2D LowFreqSamp
-{
-    Texture   = LowFreqTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = LINEAR;
-    MagFilter = LINEAR;
-};
-
-// ─── Textures ──────────────────────────────────────────────────────────────
+// ─── BackBuffer ────────────────────────────────────────────────────────────
 texture2D BackBufferTex : COLOR;
 sampler2D BackBuffer
 {
@@ -78,36 +68,7 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 
 float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
-// ─── Pass 1 — Build scene levels (p10, p90) ────────────────────────────────
-
-float4 BuildLevelsPS(float4 pos : SV_Position,
-                     float2 uv  : TEXCOORD0) : SV_Target
-{
-    float total = 0.0;
-    [loop]
-    for (int i = 0; i < HIST_BINS; i++)
-        total += tex2Dlod(LumHist, float4((i + 0.5) / HIST_BINS, 0.5, 0, 0)).r;
-
-    float4 prev = tex2Dlod(LevelsSamp, float4(0.5, 0.5, 0, 0));
-    if (total < 0.001) return float4(prev.r, prev.g, 1, 1);
-
-    float cum = 0.0;
-    float lo = 0.10, hi = 0.90;
-    bool  found_lo = false;
-
-    [loop]
-    for (int j = 0; j < HIST_BINS; j++)
-    {
-        cum += tex2Dlod(LumHist, float4((j + 0.5) / HIST_BINS, 0.5, 0, 0)).r / total;
-        if (!found_lo && cum >= 0.10) { lo = (j + 0.5) / HIST_BINS; found_lo = true; }
-        if (cum >= 0.90) { hi = (j + 0.5) / HIST_BINS; break; }
-    }
-
-    float speed = (prev.b < 0.5) ? 1.0 : LERP_SPEED / 100.0;
-    return float4(lerp(prev.r, lo, speed), lerp(prev.g, hi, speed), 1.0, 1.0);
-}
-
-// ─── Pass 2 — Downsample to low-frequency luma ─────────────────────────────
+// ─── Pass 1 — Downsample to low-frequency luma ─────────────────────────────
 
 float4 ComputeLowFreqPS(float4 pos : SV_Position,
                         float2 uv  : TEXCOORD0) : SV_Target
@@ -121,8 +82,60 @@ float4 ComputeLowFreqPS(float4 pos : SV_Position,
     return float4(luma * 0.25, 0, 0, 1);
 }
 
+// ─── Pass 2 — Build scene levels via binary search on LowFreqTex ───────────
+// Reads the post-correction signal (not frame_analysis histogram).
+// Binary search over 8×8 grid samples: 6 iterations × 64 samples per percentile.
+
+float4 BuildLevelsPS(float4 pos : SV_Position,
+                     float2 uv  : TEXCOORD0) : SV_Target
+{
+    float4 prev = tex2Dlod(LevelsSamp, float4(0.5, 0.5, 0, 0));
+
+    // Binary search for p10
+    float lo_lo = 0.0, lo_hi = 1.0;
+    [loop]
+    for (int i = 0; i < 6; i++)
+    {
+        float mid = (lo_lo + lo_hi) * 0.5;
+        float below = 0.0;
+        [loop]
+        for (int y = 0; y < 8; y++)
+        [loop]
+        for (int x = 0; x < 8; x++)
+        {
+            float val = tex2Dlod(LowFreqSamp, float4((x + 0.5) / 8.0, (y + 0.5) / 8.0, 0, 0)).r;
+            below += (val < mid) ? 1.0 : 0.0;
+        }
+        if (below / 64.0 < 0.10) lo_lo = mid; else lo_hi = mid;
+    }
+
+    // Binary search for p90
+    float hi_lo = 0.0, hi_hi = 1.0;
+    [loop]
+    for (int j = 0; j < 6; j++)
+    {
+        float mid = (hi_lo + hi_hi) * 0.5;
+        float below = 0.0;
+        [loop]
+        for (int y = 0; y < 8; y++)
+        [loop]
+        for (int x = 0; x < 8; x++)
+        {
+            float val = tex2Dlod(LowFreqSamp, float4((x + 0.5) / 8.0, (y + 0.5) / 8.0, 0, 0)).r;
+            below += (val < mid) ? 1.0 : 0.0;
+        }
+        if (below / 64.0 < 0.90) hi_lo = mid; else hi_hi = mid;
+    }
+
+    float lo = (lo_lo + lo_hi) * 0.5;
+    float hi = (hi_lo + hi_hi) * 0.5;
+
+    float speed = (prev.b < 0.5) ? 1.0 : LERP_SPEED / 100.0;
+    return float4(lerp(prev.r, lo, speed), lerp(prev.g, hi, speed), 1.0, 1.0);
+}
+
 // ─── Pass 3 — Apply levels S-curve, multi-scale ────────────────────────────
-// Smoothstep anchored at p10/p90: shadows pushed darker, highlights brighter.
+// S-curve maps [lo,hi] → [lo,hi] with enhanced contrast. Midtone is invariant.
 // Applied to low-freq luma only — fine detail reconstructed unchanged.
 
 float4 ApplyContrastPS(float4 pos : SV_Position,
@@ -142,9 +155,8 @@ float4 ApplyContrastPS(float4 pos : SV_Position,
     float lo = levels.r;
     float hi = levels.g;
 
-    // S-curve: maps [lo,hi] → [lo,hi] with enhanced contrast. Midtone at (lo+hi)/2
-    // is invariant — no grey lift. Shadows push darker, highlights push brighter
-    // within the existing range. Only engages when range is compressed (spread < 0.7).
+    // S-curve within [lo,hi]: midtone at (lo+hi)/2 is invariant.
+    // Only engages when tonal range is compressed (spread < 0.7).
     float spread    = hi - lo;
     float compress  = saturate(1.0 - spread / 0.7);
     float strength  = (CURVE_STRENGTH / 100.0) * compress;
@@ -163,17 +175,17 @@ float4 ApplyContrastPS(float4 pos : SV_Position,
 
 technique AlphaZoneContrast
 {
-    pass BuildLevels
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = BuildLevelsPS;
-        RenderTarget = LevelsTex;
-    }
     pass ComputeLowFreq
     {
         VertexShader = PostProcessVS;
         PixelShader  = ComputeLowFreqPS;
         RenderTarget = LowFreqTex;
+    }
+    pass BuildLevels
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = BuildLevelsPS;
+        RenderTarget = LevelsTex;
     }
     pass ApplyContrast
     {
