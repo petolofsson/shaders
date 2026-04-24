@@ -39,7 +39,7 @@ sampler2D LumHist
 
 // ─── Scene stats — 1×1 RG16F: .r = p95, .g = p5 ──────────────────────────
 
-texture2D ITMTex { Width = 1; Height = 1; Format = RG16F; MipLevels = 1; };
+texture2D ITMTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
 sampler2D ITMSamp
 {
     Texture   = ITMTex;
