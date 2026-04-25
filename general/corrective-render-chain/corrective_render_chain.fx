@@ -237,18 +237,18 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     if (pos.y < 1.0) return col;
 
     float3 result    = col.rgb;
-    float  opendrt_t = OPENDRT_STRENGTH / 100.0;
+    float  hermite_t = HERMITE_STRENGTH / 100.0;
 
     // Gamut compression — only active with tone curve
     float luma_gc = Luma(result);
-    float under   = saturate(-min(result.r, min(result.g, result.b)) * 10.0) * opendrt_t;
+    float under   = saturate(-min(result.r, min(result.g, result.b)) * 10.0) * hermite_t;
     result        = lerp(result, float3(luma_gc, luma_gc, luma_gc), under);
 
     float gc_max = max(result.r, max(result.g, result.b));
     float gc_min = min(result.r, min(result.g, result.b));
     float sat_gc = (gc_max > 0.001) ? (gc_max - gc_min) / gc_max : 0.0;
     float excess = max(0.0, sat_gc - OT_SAT_MAX / 100.0) / (1.0 - OT_SAT_MAX / 100.0);
-    float gc_amt = excess * excess * (OT_SAT_BLEND / 100.0) * opendrt_t;
+    float gc_amt = excess * excess * (OT_SAT_BLEND / 100.0) * hermite_t;
     result       = result + (gc_max - result) * gc_amt;
 
     // Black lift
@@ -269,7 +269,7 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     // Tone curve on OKLab L + Hunt-effect chroma compensation
     float3 lab_in      = RGBtoOKLab(result);
     float  L_before    = max(lab_in.x, 0.0);
-    float  L_mapped    = HermiteContrast(L_before, grey, opendrt_t);
+    float  L_mapped    = HermiteContrast(L_before, grey, hermite_t);
     float  chroma_comp = (L_before > 0.001) ? pow(L_mapped / L_before, 0.5) : 1.0;
     result = OKLabtoRGB(float3(L_mapped, lab_in.yz * chroma_comp));
 
