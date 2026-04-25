@@ -251,8 +251,12 @@ float4 ApplyContrastPS(float4 pos : SV_Position,
     float strength = (ZONE_STRENGTH / 100.0) * tonal_w * (1.0 - zone_iqr);
 
     float new_luma = SCurve(luma, zone_median, strength);
-    float scale    = new_luma / max(luma, 0.001);
 
+    // Shadow lift — expand dark range, tapers to zero at 0.4 luma
+    float lift_w = smoothstep(0.4, 0.0, new_luma);
+    new_luma     = saturate(new_luma + (SHADOW_LIFT / 100.0) * 0.15 * lift_w);
+
+    float scale = new_luma / max(luma, 0.001);
     return float4(col.rgb * scale, col.a);
 }
 

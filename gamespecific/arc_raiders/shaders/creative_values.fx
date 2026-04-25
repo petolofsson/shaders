@@ -1,8 +1,6 @@
 // creative_values.fx — tune here
-// HERMITE : 0 = passthrough, 100 = full effect
-// ZONE / CHROMA : -100 to +100 — negative flattens contrast / desaturates
-// filmic: HERMITE_STRENGTH 50–100  ZONE_STRENGTH 15–25  CHROMA_STRENGTH 10–20
+// ZONE / CHROMA : 0 to 100 — 0 = passthrough, 100 = full effect
 
-#define HERMITE_STRENGTH  50  // display-referred Hermite S-curve contrast (OKLab L)
-#define ZONE_STRENGTH     25  // tonal contrast
-#define CHROMA_STRENGTH   30  // color lift
+#define ZONE_STRENGTH   30  // tonal zone contrast
+#define CHROMA_STRENGTH 20  // per-hue saturation lift
+#define SHADOW_LIFT     25  // raise dark tones toward grey (0–100)
