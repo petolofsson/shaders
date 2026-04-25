@@ -10,7 +10,7 @@
 //   4 = Fuji Eterna 500    — cool, flat, green-leaning mids
 //   5 = Kodak 5219         — punchy, pushed, deep warm blacks
 
-#define PRESET              1
+#define PRESET              0
 #define GRADE_STRENGTH      100   // 0–100; blend toward original
 #define CREATIVE_SATURATION 1.0   // >1.0 = more vibrant, <1.0 = muted
 #define CREATIVE_CONTRAST   1.0   // >1.0 = more filmic punch, <1.0 = flatter
