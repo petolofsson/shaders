@@ -8,10 +8,11 @@
 //
 // White balance (WB_R/G/B): neutral by default.
 
-#define WB_R       100    // 0–200; 100 = neutral
-#define WB_G       100
-#define WB_B       100
-#define TARGET_P95 1.0
+#define WB_R        100   // 0–200; 100 = neutral
+#define WB_G        100
+#define WB_B        100
+#define TARGET_P95  1.0
+#define LERP_SPEED  8     // % per frame temporal smoothing — prevents flicker
 
 // ─── Scene stats — 1×1 RGBA16F: .r = p95, .g = p5 ────────────────────────
 
@@ -44,6 +45,7 @@ float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 float4 ComputeStatsPS(float4 pos : SV_Position,
                       float2 uv  : TEXCOORD0) : SV_Target
 {
+    float4 prev = tex2Dlod(ITMSamp, float4(0.5, 0.5, 0, 0));
     // Binary search for p95
     float hi_lo = 0.0, hi_hi = 1.0;
     [loop]
@@ -84,7 +86,8 @@ float4 ComputeStatsPS(float4 pos : SV_Position,
     }
     float p5 = (lo_lo + lo_hi) * 0.5;
 
-    return float4(p95, p5, 0, 1);
+    float speed = (prev.b < 0.5) ? 1.0 : LERP_SPEED / 100.0;
+    return float4(lerp(prev.r, p95, speed), lerp(prev.g, p5, speed), 1.0, 1.0);
 }
 
 // ─── Pass 2 — Levels stretch [p5, p95] → [0, TARGET_P95] ─────────────────
