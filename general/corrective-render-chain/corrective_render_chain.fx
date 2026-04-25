@@ -4,7 +4,7 @@
 //
 //   Pass 1  WhiteBalance       BackBuffer    → CorrectiveBuf    WB_R/G/B only
 //   Pass 2  ComputeLowFreq     CorrectiveBuf → LowFreqTex       1/8 res downsample
-//   Pass 3  IlluminantEstimate LowFreqTex    → IlluminantTex    Grey Pixel per 4×4 zone
+//   Pass 3  IlluminantEstimate LowFreqTex    → IlluminantTex    Shades of Grey (Minkowski p=6) per 4×4 zone
 //   Pass 4  CopyBufToSrc       CorrectiveBuf → CorrectiveSrcTex
 //   Pass 5  ApplyAdaptation    CorrectiveSrc → CorrectiveBuf    CAT16 illuminant correction
 //   Pass 6  CopyBufToSrc       CorrectiveBuf → CorrectiveSrcTex
