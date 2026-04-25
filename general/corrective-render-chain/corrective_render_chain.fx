@@ -539,16 +539,18 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     // Black lift
     result = result * (1.0 - OT_BLACK_POINT / 100.0) + OT_BLACK_POINT / 100.0;
 
-    // Scene-adaptive grey point — average luma across all 16 IlluminantTex zones (EMA-smoothed)
-    float grey = 0.0;
+    // Scene-adaptive grey point — average linear luma from IlluminantTex, converted to OKLab L space
+    float grey_linear = 0.0;
     [loop] for (int zy = 0; zy < 4; zy++)
     [loop] for (int zx = 0; zx < 4; zx++)
     {
         float3 illum = tex2Dlod(IlluminantSamp,
             float4((zx + 0.5) / 4.0, (zy + 0.5) / 4.0, 0, 0)).rgb;
-        grey += Luma(illum);
+        grey_linear += Luma(illum);
     }
-    grey = clamp(grey / 16.0, 0.05, 0.40);
+    grey_linear = clamp(grey_linear / 16.0, 0.05, 0.40);
+    // Convert to OKLab L space so the grey anchor matches where midtones actually sit
+    float grey = RGBtoOKLab(float3(grey_linear, grey_linear, grey_linear)).x;
 
     // Tone curve in OKLab L only — chroma (a*,b*) unchanged, zero saturation loss
     float3 lab_in     = RGBtoOKLab(result);
