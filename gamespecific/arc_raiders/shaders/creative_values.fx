@@ -16,3 +16,7 @@
 #define GRADE_STRENGTH    100    // blend: 0=off, 100=full
 #define CREATIVE_SATURATION 1.0  // >1 more vibrant, <1 muted
 #define CREATIVE_CONTRAST   1.0  // >1 more punch, <1 flatter
+
+// Pro-mist
+#define DIFFUSE_STRENGTH  0.15   // 0–1; softness intensity
+#define DIFFUSE_RADIUS    0.020  // blur width (~38 px at 1080p)

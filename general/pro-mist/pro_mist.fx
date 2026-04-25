@@ -15,8 +15,7 @@
 //   PercTex { Width=1; Height=1; Format=RGBA16F } — written by frame_analysis
 //   r=p25, g=p50, b=p75, a=iqr
 
-#define DIFFUSE_STRENGTH  0.14   // 0–1; softness intensity
-#define DIFFUSE_RADIUS    0.020  // blur width in UV space (0.02 ≈ 38 px at 1080p)
+#include "creative_values.fx"
 
 #define LUM_BOOST         3.5    // extra scatter weight per unit source luminance
 #define DIFFUSE_LUMA_LO   0.55   // gate: below this luma effect fades to zero
