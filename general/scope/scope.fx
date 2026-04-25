@@ -76,7 +76,22 @@ float4 ScopePS(float4 pos : SV_Position,
     if (in_div)
         return float4(0.18, 0.18, 0.18, 1.0);
 
-    bool ref_18 = (bin == int(0.18 * float(SCOPE_BINS)));
+    float data_v = 0.5 / float(BUFFER_HEIGHT);
+
+    // Adaptive yellow line — post-correction mean (computed live)
+    float post_mean = 0.0;
+    [loop]
+    for (int my = 0; my < SCOPE_S; my++)
+    [loop]
+    for (int mx = 0; mx < SCOPE_S; mx++)
+        post_mean += Luma(tex2Dlod(BackBuffer,
+            float4((mx + 0.5) / float(SCOPE_S), (my + 0.5) / float(SCOPE_S), 0, 0)).rgb);
+    post_mean /= float(SCOPE_S * SCOPE_S);
+
+    // Pre-correction mean from data highway pixel 128
+    float pre_mean_u = (float(SCOPE_BINS) + 0.5) / float(BUFFER_WIDTH);
+    float pre_mean   = tex2Dlod(BackBuffer, float4(pre_mean_u, data_v, 0, 0)).r;
+
     bool ref_90 = (bin == int(0.90 * float(SCOPE_BINS)));
 
     float3 bg = float3(0.06, 0.06, 0.06);
@@ -98,8 +113,10 @@ float4 ScopePS(float4 pos : SV_Position,
         }
         float bar = saturate(count / float(SCOPE_S * SCOPE_S) * float(SCOPE_BINS) * SCOPE_AMP);
 
+        bool ref_mean = (bin == int(post_mean * float(SCOPE_BINS)));
+
         float3 scope;
-        if      (ref_18)     scope = float3(1.0, 0.85, 0.0);
+        if      (ref_mean)   scope = float3(1.0, 0.85, 0.0);
         else if (ref_90)     scope = float3(0.4, 0.4,  0.4);
         else if (pix <= bar) scope = float3(0.9, 0.9,  0.9);
         else                 scope = bg;
@@ -107,15 +124,15 @@ float4 ScopePS(float4 pos : SV_Position,
     }
     else
     {
-        // Read pre-correction histogram from BackBuffer row y=0
-        float pix    = 1.0 - (rel_y - float(SCOPE_PH + SCOPE_DIV)) / float(SCOPE_PH);
-        float data_u = (float(bin) + 0.5) / float(BUFFER_WIDTH);
-        float data_v = 0.5 / float(BUFFER_HEIGHT);
+        float pix     = 1.0 - (rel_y - float(SCOPE_PH + SCOPE_DIV)) / float(SCOPE_PH);
+        float data_u  = (float(bin) + 0.5) / float(BUFFER_WIDTH);
         float raw_val = tex2Dlod(BackBuffer, float4(data_u, data_v, 0, 0)).r;
         float bar     = saturate(raw_val * float(SCOPE_BINS) * SCOPE_AMP);
 
+        bool ref_mean = (bin == int(pre_mean * float(SCOPE_BINS)));
+
         float3 scope;
-        if      (ref_18)     scope = float3(1.0, 0.85, 0.0);
+        if      (ref_mean)   scope = float3(1.0, 0.85, 0.0);
         else if (ref_90)     scope = float3(0.4, 0.4,  0.4);
         else if (pix <= bar) scope = float3(0.9, 0.15, 0.15);
         else                 scope = bg;
