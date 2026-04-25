@@ -17,7 +17,7 @@
 #define WB_B  100
 
 #define YOUVAN_LERP_SPEED    4.3
-#define GREY_PIXEL_THRESHOLD 0.1
+#define MINKOWSKI_P          6.0
 
 #define OT_CONTRAST        1.35
 #define OT_CHROMA_COMPRESS 0.0
@@ -181,7 +181,7 @@ float4 ComputeLowFreqPS(float4 pos : SV_Position,
     return float4(rgb, Luma(rgb));
 }
 
-// Pass 3 — Grey Pixel illuminant estimator: per 4×4 spatial zone, EMA smoothing
+// Pass 3 — Shades of Grey (Minkowski p=6) illuminant estimator: per 4×4 spatial zone, EMA smoothing
 float4 IlluminantEstimatePS(float4 pos : SV_Position,
                             float2 uv  : TEXCOORD0) : SV_Target
 {
@@ -192,25 +192,18 @@ float4 IlluminantEstimatePS(float4 pos : SV_Position,
     float u_lo = float(zone_x) / 4.0;
     float v_lo = float(zone_y) / 4.0;
 
-    float3 sum_neutral = 0.0;
-    float  cnt_neutral = 0.0;
-    float3 sum_all     = 0.0;
+    float3 acc = 0.0;
 
     [loop] for (int sy = 0; sy < 10; sy++)
     [loop] for (int sx = 0; sx < 10; sx++)
     {
-        float2 suv     = float2(u_lo + (sx + 0.5) / 40.0,
-                                v_lo + (sy + 0.5) / 40.0);
-        float3 rgb     = tex2Dlod(LowFreqSamp, float4(suv, 0, 0)).rgb;
-        float  den     = rgb.r + rgb.g + rgb.b + 0.001;
-        float  neutral = max(abs(rgb.r - rgb.g), abs(rgb.r - rgb.b)) / den;
-        float  w       = step(neutral, GREY_PIXEL_THRESHOLD);
-        sum_neutral   += rgb * w;
-        cnt_neutral   += w;
-        sum_all       += rgb;
+        float2 suv = float2(u_lo + (sx + 0.5) / 40.0,
+                            v_lo + (sy + 0.5) / 40.0);
+        float3 rgb = tex2Dlod(LowFreqSamp, float4(suv, 0, 0)).rgb;
+        acc += pow(max(rgb, 0.0), MINKOWSKI_P);
     }
 
-    float3 illum   = (cnt_neutral > 0.5) ? (sum_neutral / cnt_neutral) : (sum_all / 100.0);
+    float3 illum   = pow(acc / 100.0, 1.0 / MINKOWSKI_P);
     float2 zone_uv = float2((float(zone_x) + 0.5) / 4.0, (float(zone_y) + 0.5) / 4.0);
     float4 prev    = tex2Dlod(IlluminantSamp, float4(zone_uv, 0, 0));
     float  speed   = (prev.a < 0.001) ? 1.0 : (YOUVAN_LERP_SPEED / 100.0) * (frametime / 10.0);
