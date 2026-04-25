@@ -1,43 +1,20 @@
-// primary_correction.fx — Signal range normalization with shadow-preserving toe
+// primary_correction.fx — Full linear range normalization
 //
-// Responsibility: expand the game's output to a full linear range so all
-// downstream corrective stages receive a consistent, full-range signal.
+// Maps scene [p5, p95] → [0, 0.90] via a true levels stretch.
+// Pixels at the scene's 5th percentile map to black; pixels at the
+// 95th percentile map to 0.90. Everything in between scales linearly.
 //
-// Method: p95 normalization with soft toe. The 95th-percentile luma maps to
-// TARGET_P95 (0.90) via a per-pixel gain that tapers to 1.0 near the scene's
-// black point (p5). Highlights get the full expansion; shadows are left
-// progressively more intact, preserving atmospheric depth and dark-scene mood.
+// Stats computed from BackBuffer directly (8×8 grid, binary search)
+// to ensure they reflect the actual post-WB signal, not a stale histogram.
 //
-// Tonal shaping is NOT done here — that is alpha_zone's job.
-// Saturation recovery is NOT done here — that is alpha_chroma's job.
-//
-// White balance (WB_R/G/B): neutral by default. Adjust only for games
-// with a known persistent color cast.
-//
-// Two passes:
-//   Pass 1 — ComputeStats: walk LumHistTex → p5 + p95 → ITMTex (1×1 RG16F)
-//   Pass 2 — Apply: WB + soft-toe p95 normalization
+// White balance (WB_R/G/B): neutral by default.
 
 #define WB_R       100    // 0–200; 100 = neutral
 #define WB_G       100
 #define WB_B       100
-#define TARGET_P95 0.90   // p95 maps here; leaves headroom for output_transform
+#define TARGET_P95 0.90
 
-#define HIST_BINS  64
-
-// ─── Shared histogram texture — written by frame_analysis ──────────────────
-
-texture2D LumHistTex { Width = HIST_BINS; Height = 1; Format = R32F; MipLevels = 1; };
-sampler2D LumHist
-{
-    Texture   = LumHistTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
-
-// ─── Scene stats — 1×1 RG16F: .r = p95, .g = p5 ──────────────────────────
+// ─── Scene stats — 1×1 RGBA16F: .r = p95, .g = p5 ────────────────────────
 
 texture2D ITMTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
 sampler2D ITMSamp
@@ -49,12 +26,8 @@ sampler2D ITMSamp
     MagFilter = POINT;
 };
 
-// ─── Textures ──────────────────────────────────────────────────────────────
-
 texture2D BackBufferTex : COLOR;
 sampler2D BackBuffer { Texture = BackBufferTex; };
-
-// ─── Vertex shader ─────────────────────────────────────────────────────────
 
 void PostProcessVS(in  uint   id  : SV_VertexID,
                    out float4 pos : SV_Position,
@@ -67,35 +40,55 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 
 float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
-// ─── Pass 1 — Compute scene p5 and p95 ────────────────────────────────────
+// ─── Pass 1 — Compute p5 and p95 from BackBuffer ──────────────────────────
 
 float4 ComputeStatsPS(float4 pos : SV_Position,
                       float2 uv  : TEXCOORD0) : SV_Target
 {
-    float total = 0.0;
+    // Binary search for p95
+    float hi_lo = 0.0, hi_hi = 1.0;
     [loop]
-    for (int i = 0; i < HIST_BINS; i++)
-        total += tex2Dlod(LumHist, float4((i + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
-
-    if (total < 0.001) return float4(TARGET_P95, 0.0, 0, 1);
-
-    float cum      = 0.0;
-    float p5       = 0.0;
-    float p95      = TARGET_P95;
-    bool  found_p5 = false;
-
-    [loop]
-    for (int j = 0; j < HIST_BINS; j++)
+    for (int i = 0; i < 8; i++)
     {
-        cum += tex2Dlod(LumHist, float4((j + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r / total;
-        if (!found_p5 && cum >= 0.05) { p5  = (j + 0.5) / float(HIST_BINS); found_p5 = true; }
-        if (cum >= 0.95)              { p95 = (j + 0.5) / float(HIST_BINS); break; }
+        float mid = (hi_lo + hi_hi) * 0.5;
+        float below = 0.0;
+        [loop]
+        for (int y = 0; y < 8; y++)
+        [loop]
+        for (int x = 0; x < 8; x++)
+        {
+            float luma = Luma(tex2Dlod(BackBuffer,
+                float4((x + 0.5) / 8.0, (y + 0.5) / 8.0, 0, 0)).rgb);
+            below += (luma < mid) ? 1.0 : 0.0;
+        }
+        if (below / 64.0 < 0.95) hi_lo = mid; else hi_hi = mid;
     }
+    float p95 = (hi_lo + hi_hi) * 0.5;
+
+    // Binary search for p5
+    float lo_lo = 0.0, lo_hi = 1.0;
+    [loop]
+    for (int j = 0; j < 8; j++)
+    {
+        float mid = (lo_lo + lo_hi) * 0.5;
+        float below = 0.0;
+        [loop]
+        for (int y2 = 0; y2 < 8; y2++)
+        [loop]
+        for (int x2 = 0; x2 < 8; x2++)
+        {
+            float luma = Luma(tex2Dlod(BackBuffer,
+                float4((x2 + 0.5) / 8.0, (y2 + 0.5) / 8.0, 0, 0)).rgb);
+            below += (luma < mid) ? 1.0 : 0.0;
+        }
+        if (below / 64.0 < 0.05) lo_lo = mid; else lo_hi = mid;
+    }
+    float p5 = (lo_lo + lo_hi) * 0.5;
 
     return float4(p95, p5, 0, 1);
 }
 
-// ─── Pass 2 — Apply WB and soft-toe p95 normalization ─────────────────────
+// ─── Pass 2 — Levels stretch [p5, p95] → [0, TARGET_P95] ─────────────────
 
 float4 PrimaryCorrectionPS(float4 pos : SV_Position,
                            float2 uv  : TEXCOORD0) : SV_Target
@@ -105,23 +98,20 @@ float4 PrimaryCorrectionPS(float4 pos : SV_Position,
 
     float4 col = tex2D(BackBuffer, uv);
 
-    if (pos.y < 1.0) return col; // scope_pre data highway — do not modify row 0
+    if (pos.y < 1.0) return col;
 
     float2 stats = tex2D(ITMSamp, float2(0.5, 0.5)).rg;
     float  p95   = stats.r;
     float  p5    = stats.g;
 
-    float ae = clamp(TARGET_P95 / max(p95, 0.01), 0.35, 2.83);
-
     float3 c    = col.rgb * float3(WB_R / 100.0, WB_G / 100.0, WB_B / 100.0);
     float  luma = Luma(c);
 
-    // Soft toe: full gain at highlights, tapers to 1.0 at the shadow floor.
-    // Transition anchored to scene p5 — no exposed tuning constants.
-    float toe_gate     = smoothstep(p5 * 0.5, max(p5 * 2.0, 0.02), luma);
-    float effective_ae = lerp(1.0, ae, toe_gate);
+    float range     = max(p95 - p5, 0.01);
+    float new_luma  = saturate((luma - p5) / range * TARGET_P95);
+    float scale     = new_luma / max(luma, 0.001);
 
-    return float4(saturate(c * effective_ae), col.a);
+    return float4(saturate(c * scale), col.a);
 }
 
 // ─── Technique ─────────────────────────────────────────────────────────────
