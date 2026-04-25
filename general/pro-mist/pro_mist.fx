@@ -22,8 +22,11 @@
 #define DIFFUSE_LUMA_HI   0.65   // gate: above this luma full effect
 #define DIFFUSE_LUMA_CAP  0.95   // gate: fades back toward clip
 
-// 9-tap Gaussian weights (sigma ≈ 1.5, centre-symmetric)
-static const float GW[5] = { 0.2270, 0.1945, 0.1216, 0.0540, 0.0162 };
+#define GW0 0.2270
+#define GW1 0.1945
+#define GW2 0.1216
+#define GW3 0.0540
+#define GW4 0.0162
 
 // ─── Shared percentile cache ───────────────────────────────────────────────
 
@@ -76,21 +79,27 @@ float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
 float4 DiffuseHPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    float  step_uv = DIFFUSE_RADIUS / 4.0;
-    float3 acc     = tex2D(BackBuffer, uv).rgb * GW[0];
-    float  w       = GW[0];
+    float  r   = DIFFUSE_RADIUS / 4.0;
+    float3 acc = tex2Dlod(BackBuffer, float4(uv, 0, 0)).rgb * GW0;
+    float  w   = GW0;
 
-    [loop]
-    for (int i = 1; i <= 4; i++)
-    {
-        float2 off = float2(step_uv * float(i), 0.0);
-        float3 tp  = tex2Dlod(BackBuffer, float4(uv + off, 0, 0)).rgb;
-        float3 tn  = tex2Dlod(BackBuffer, float4(uv - off, 0, 0)).rgb;
-        float  wp  = GW[i] * (1.0 + Luma(tp) * LUM_BOOST);
-        float  wn  = GW[i] * (1.0 + Luma(tn) * LUM_BOOST);
-        acc += tp * wp + tn * wn;
-        w   += wp + wn;
-    }
+    float3 tp1 = tex2Dlod(BackBuffer, float4(uv + float2(r,     0), 0, 0)).rgb;
+    float3 tn1 = tex2Dlod(BackBuffer, float4(uv - float2(r,     0), 0, 0)).rgb;
+    float3 tp2 = tex2Dlod(BackBuffer, float4(uv + float2(r*2.0, 0), 0, 0)).rgb;
+    float3 tn2 = tex2Dlod(BackBuffer, float4(uv - float2(r*2.0, 0), 0, 0)).rgb;
+    float3 tp3 = tex2Dlod(BackBuffer, float4(uv + float2(r*3.0, 0), 0, 0)).rgb;
+    float3 tn3 = tex2Dlod(BackBuffer, float4(uv - float2(r*3.0, 0), 0, 0)).rgb;
+    float3 tp4 = tex2Dlod(BackBuffer, float4(uv + float2(r*4.0, 0), 0, 0)).rgb;
+    float3 tn4 = tex2Dlod(BackBuffer, float4(uv - float2(r*4.0, 0), 0, 0)).rgb;
+
+    float wp1 = GW1*(1.0+Luma(tp1)*LUM_BOOST); float wn1 = GW1*(1.0+Luma(tn1)*LUM_BOOST);
+    float wp2 = GW2*(1.0+Luma(tp2)*LUM_BOOST); float wn2 = GW2*(1.0+Luma(tn2)*LUM_BOOST);
+    float wp3 = GW3*(1.0+Luma(tp3)*LUM_BOOST); float wn3 = GW3*(1.0+Luma(tn3)*LUM_BOOST);
+    float wp4 = GW4*(1.0+Luma(tp4)*LUM_BOOST); float wn4 = GW4*(1.0+Luma(tn4)*LUM_BOOST);
+
+    acc += tp1*wp1 + tn1*wn1 + tp2*wp2 + tn2*wn2
+         + tp3*wp3 + tn3*wn3 + tp4*wp4 + tn4*wn4;
+    w   += wp1+wn1 + wp2+wn2 + wp3+wn3 + wp4+wn4;
 
     return float4(acc / w, 1.0);
 }
@@ -102,21 +111,27 @@ float4 DiffuseVPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float4 base = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return base;
 
-    float  step_uv = DIFFUSE_RADIUS / 4.0;
-    float3 acc     = tex2D(DiffuseSamp, uv).rgb * GW[0];
-    float  w       = GW[0];
+    float  r   = DIFFUSE_RADIUS / 4.0;
+    float3 acc = tex2Dlod(DiffuseSamp, float4(uv, 0, 0)).rgb * GW0;
+    float  w   = GW0;
 
-    [loop]
-    for (int i = 1; i <= 4; i++)
-    {
-        float2 off = float2(0.0, step_uv * float(i));
-        float3 tp  = tex2Dlod(DiffuseSamp, float4(uv + off, 0, 0)).rgb;
-        float3 tn  = tex2Dlod(DiffuseSamp, float4(uv - off, 0, 0)).rgb;
-        float  wp  = GW[i] * (1.0 + Luma(tp) * LUM_BOOST);
-        float  wn  = GW[i] * (1.0 + Luma(tn) * LUM_BOOST);
-        acc += tp * wp + tn * wn;
-        w   += wp + wn;
-    }
+    float3 tp1 = tex2Dlod(DiffuseSamp, float4(uv + float2(0, r),     0, 0)).rgb;
+    float3 tn1 = tex2Dlod(DiffuseSamp, float4(uv - float2(0, r),     0, 0)).rgb;
+    float3 tp2 = tex2Dlod(DiffuseSamp, float4(uv + float2(0, r*2.0), 0, 0)).rgb;
+    float3 tn2 = tex2Dlod(DiffuseSamp, float4(uv - float2(0, r*2.0), 0, 0)).rgb;
+    float3 tp3 = tex2Dlod(DiffuseSamp, float4(uv + float2(0, r*3.0), 0, 0)).rgb;
+    float3 tn3 = tex2Dlod(DiffuseSamp, float4(uv - float2(0, r*3.0), 0, 0)).rgb;
+    float3 tp4 = tex2Dlod(DiffuseSamp, float4(uv + float2(0, r*4.0), 0, 0)).rgb;
+    float3 tn4 = tex2Dlod(DiffuseSamp, float4(uv - float2(0, r*4.0), 0, 0)).rgb;
+
+    float wp1 = GW1*(1.0+Luma(tp1)*LUM_BOOST); float wn1 = GW1*(1.0+Luma(tn1)*LUM_BOOST);
+    float wp2 = GW2*(1.0+Luma(tp2)*LUM_BOOST); float wn2 = GW2*(1.0+Luma(tn2)*LUM_BOOST);
+    float wp3 = GW3*(1.0+Luma(tp3)*LUM_BOOST); float wn3 = GW3*(1.0+Luma(tn3)*LUM_BOOST);
+    float wp4 = GW4*(1.0+Luma(tp4)*LUM_BOOST); float wn4 = GW4*(1.0+Luma(tn4)*LUM_BOOST);
+
+    acc += tp1*wp1 + tn1*wn1 + tp2*wp2 + tn2*wn2
+         + tp3*wp3 + tn3*wn3 + tp4*wp4 + tn4*wn4;
+    w   += wp1+wn1 + wp2+wn2 + wp3+wn3 + wp4+wn4;
     float3 diffused = acc / w;
 
     float luma_in   = Luma(base.rgb);
