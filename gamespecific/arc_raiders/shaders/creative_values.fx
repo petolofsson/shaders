@@ -4,5 +4,5 @@
 
 #define YOUVAN_STRENGTH    0  // hue correction toward neutral
 #define OPENDRT_STRENGTH   0  // display tone curve
-#define ZONE_STRENGTH     30  // tonal contrast
+#define ZONE_STRENGTH      0  // tonal contrast
 #define CHROMA_STRENGTH    0  // color lift
