@@ -76,6 +76,9 @@ float4 ScopeCapturePS(float4 pos : SV_Position,
         return float4(v, v, v, 1.0);
     }
 
+    // Debug indicator — orange (slot 1)
+    if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 64) && pos.x < float(BUFFER_WIDTH - 52))
+        return float4(1.0, 0.50, 0.0, 1.0);
     return tex2D(BackBuffer, uv);
 }
 

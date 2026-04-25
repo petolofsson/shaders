@@ -4,50 +4,45 @@
 // between stages. Full scene-linear range reaches OpenDRT intact.
 //
 // CORRECTIVE (technical, game-agnostic):
-//   Pass  1  WhiteBalance      BackBuffer    → CorrectiveBuf   WB_R/G/B only; no tonal change
-//   Pass  2  ZoneStats         CorrectiveBuf → ZoneTex         Youvan: 64 Halton zone means
-//   Pass  3  ComputeMatrix     ZoneTex       → MatrixTex       Youvan: B = M × A⁻¹
-//   Pass  4  CopyBufToSrc      CorrectiveBuf → CorrectiveSrcTex
-//   Pass  5  ApplyOrtho        CorrectiveSrc → CorrectiveBuf   Youvan: hue correction
-//   Pass  6  ComputeLowFreq    CorrectiveBuf → LowFreqTex      Zone: 1/8 res downsample
-//   Pass  7  ComputeZoneHist   LowFreqTex    → ZoneHistTex     Zone: 32-bin per-zone histogram
-//   Pass  8  BuildZoneLevels   ZoneHistTex   → ZoneLevelsTex   Zone: CDF → zone medians
-//   Pass  9  CopyBufToSrc      CorrectiveBuf → CorrectiveSrcTex
-//   Pass 10  ApplyContrast     CorrectiveSrc → CorrectiveBuf   Zone: S-curve anchored at median
-//   Pass 11  BuildSatLevels    SatHistTex    → SatLevelsTex    Chroma: CDF → band medians
-//   Pass 12  CopyBufToSrc      CorrectiveBuf → CorrectiveSrcTex
-//   Pass 13  ApplyChroma       CorrectiveSrc → CorrectiveBuf   Chroma: per-hue S-curve
-//   Pass 14  CopyBufToSrc      CorrectiveBuf → CorrectiveSrcTex
+//   Pass  1  WhiteBalance         BackBuffer    → CorrectiveBuf   WB_R/G/B only; no tonal change
+//   Pass  2  ComputeLowFreq       CorrectiveBuf → LowFreqTex      1/8 res downsample (shared)
+//   Pass  3  IlluminantEstimate   LowFreqTex    → IlluminantTex   Grey Pixel per 4×4 spatial zone
+//   Pass  4  ComputeZoneHist      LowFreqTex    → ZoneHistTex     Zone: 32-bin per-zone histogram
+//   Pass  5  BuildZoneLevels      ZoneHistTex   → ZoneLevelsTex   Zone: CDF → zone medians
+//   Pass  6  CopyBufToSrc         CorrectiveBuf → CorrectiveSrcTex
+//   Pass  7  ApplyAdaptation      CorrectiveSrc → CorrectiveBuf   CAT16 per-zone illuminant correction
+//   Pass  8  CopyBufToSrc         CorrectiveBuf → CorrectiveSrcTex
+//   Pass  9  ApplyContrast        CorrectiveSrc → CorrectiveBuf   Zone: S-curve anchored at median
+//   Pass 10  BuildSatLevels       SatHistTex    → SatLevelsTex    Chroma: CDF → band medians
+//   Pass 11  CopyBufToSrc         CorrectiveBuf → CorrectiveSrcTex
+//   Pass 12  ApplyChroma          CorrectiveSrc → CorrectiveBuf   Chroma: per-hue S-curve
+//   Pass 13  CopyBufToSrc         CorrectiveBuf → CorrectiveSrcTex
 //
 // OUTPUT TRANSFORM (display rendering, not creative):
-//   Pass 15  OutputTransform   CorrectiveSrc → BackBuffer      OpenDRT + OKLab highlight rolloff
+//   Pass 14  OutputTransform      CorrectiveSrc → BackBuffer      OpenDRT + OKLab highlight rolloff
 
-// ─── White balance ──────────────────────────────────────────────────────────
-#define WB_R  100   // 0–200; 100 = neutral
+#include "creative_values.fx"
+
+#define WB_R  100
 #define WB_G  100
 #define WB_B  100
 
-// ─── Youvan ─────────────────────────────────────────────────────────────────
-#define YOUVAN_LERP_SPEED       2      // 0–100; zone mean adaptation speed
-#define YOUVAN_ZONE_DARK_MAX    33     // luma threshold: dark zone upper bound
-#define YOUVAN_ZONE_BRIGHT_MIN  66     // luma threshold: bright zone lower bound
+#define YOUVAN_LERP_SPEED       2
+#define GREY_PIXEL_THRESHOLD    0.1
 
-// ─── Alpha zone contrast ─────────────────────────────────────────────────────
-#define ZONE_CURVE_STRENGTH  0      // 0–100; S-curve blend strength
-#define ZONE_LERP_SPEED      0.01   // % per second, frametime-normalized
-#define ZONE_HIST_LERP       5.0    // % per second, frametime-normalized
+#define ZONE_CURVE_STRENGTH  0
+#define ZONE_LERP_SPEED      0.01
+#define ZONE_HIST_LERP       5.0
 
-// ─── Alpha chroma lift ───────────────────────────────────────────────────────
-#define CHROMA_CURVE_STRENGTH  0      // 0–100; S-curve blend strength
-#define CHROMA_LERP_SPEED      0.01   // % per second, frametime-normalized
-#define CHROMA_BAND_WIDTH      0.15   // hue band half-width — must match frame_analysis.fx
+#define CHROMA_CURVE_STRENGTH  0
+#define CHROMA_LERP_SPEED      0.01
+#define CHROMA_BAND_WIDTH      0.15
 
-// ─── Output transform ────────────────────────────────────────────────────────
-#define OT_CONTRAST         1.35    // tone curve contrast
-#define OT_CHROMA_COMPRESS  0.40    // highlight chroma rolloff strength
-#define OT_BLACK_POINT      3.5     // black floor lift (0–100)
-#define OT_SAT_MAX          85      // gamut compression threshold (0–100)
-#define OT_SAT_BLEND        15      // gamut compression strength (0–100)
+#define OT_CONTRAST         1.35
+#define OT_CHROMA_COMPRESS  0.0
+#define OT_BLACK_POINT      0
+#define OT_SAT_MAX          85
+#define OT_SAT_BLEND        15
 
 uniform float frametime < source = "frametime"; >;
 
@@ -94,26 +89,16 @@ sampler2D SatHistSamp
     MagFilter = POINT;
 };
 
-// ─── Youvan textures ─────────────────────────────────────────────────────────
+// ─── Illuminant textures ──────────────────────────────────────────────────────
 
-texture2D ZoneTex { Width = 3; Height = 1; Format = RGBA16F; MipLevels = 1; };
-sampler2D ZoneSampler
+texture2D IlluminantTex { Width = 4; Height = 4; Format = RGBA16F; MipLevels = 1; };
+sampler2D IlluminantSamp
 {
-    Texture   = ZoneTex;
+    Texture   = IlluminantTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
-
-texture2D MatrixTex { Width = 3; Height = 1; Format = RGBA32F; MipLevels = 1; };
-sampler2D MatrixSampler
-{
-    Texture   = MatrixTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
 };
 
 // ─── Alpha zone textures ──────────────────────────────────────────────────────
@@ -138,7 +123,7 @@ sampler2D ZoneHistSamp
     MagFilter = POINT;
 };
 
-texture2D ZoneLevelsTex { Width = 4; Height = 4; Format = R16F; MipLevels = 1; };
+texture2D ZoneLevelsTex { Width = 4; Height = 4; Format = RGBA16F; MipLevels = 1; };
 sampler2D ZoneLevelsSamp
 {
     Texture   = ZoneLevelsTex;
@@ -150,7 +135,7 @@ sampler2D ZoneLevelsSamp
 
 // ─── Alpha chroma textures ────────────────────────────────────────────────────
 
-texture2D SatLevelsTex { Width = 6; Height = 1; Format = R16F; MipLevels = 1; };
+texture2D SatLevelsTex { Width = 6; Height = 1; Format = RGBA16F; MipLevels = 1; };
 sampler2D SatLevelsSamp
 {
     Texture   = SatLevelsTex;
@@ -185,68 +170,19 @@ float SCurve(float x, float m, float strength)
     return lerp(x, s, strength);
 }
 
-// ─── Youvan helpers ───────────────────────────────────────────────────────────
+// ─── CAT16 chromatic adaptation matrices ─────────────────────────────────────
 
-static const float2 kHalton[64] = {
-    float2(0.500000, 0.333333), float2(0.250000, 0.666667),
-    float2(0.750000, 0.111111), float2(0.125000, 0.444444),
-    float2(0.625000, 0.777778), float2(0.375000, 0.222222),
-    float2(0.875000, 0.555556), float2(0.062500, 0.888889),
-    float2(0.562500, 0.037037), float2(0.312500, 0.370370),
-    float2(0.812500, 0.703704), float2(0.187500, 0.148148),
-    float2(0.687500, 0.481481), float2(0.437500, 0.814815),
-    float2(0.937500, 0.259259), float2(0.031250, 0.592593),
-    float2(0.531250, 0.925926), float2(0.281250, 0.074074),
-    float2(0.781250, 0.407407), float2(0.156250, 0.740741),
-    float2(0.656250, 0.185185), float2(0.406250, 0.518519),
-    float2(0.906250, 0.851852), float2(0.093750, 0.296296),
-    float2(0.593750, 0.629630), float2(0.343750, 0.962963),
-    float2(0.843750, 0.012346), float2(0.218750, 0.345679),
-    float2(0.718750, 0.679012), float2(0.468750, 0.123457),
-    float2(0.968750, 0.456790), float2(0.015625, 0.790123),
-    float2(0.515625, 0.234568), float2(0.265625, 0.567901),
-    float2(0.765625, 0.901235), float2(0.140625, 0.049383),
-    float2(0.640625, 0.382716), float2(0.390625, 0.716049),
-    float2(0.890625, 0.160494), float2(0.078125, 0.493827),
-    float2(0.578125, 0.827160), float2(0.328125, 0.271605),
-    float2(0.828125, 0.604938), float2(0.203125, 0.938272),
-    float2(0.703125, 0.086420), float2(0.453125, 0.419753),
-    float2(0.953125, 0.753086), float2(0.046875, 0.197531),
-    float2(0.546875, 0.530864), float2(0.296875, 0.864198),
-    float2(0.796875, 0.308642), float2(0.171875, 0.641975),
-    float2(0.671875, 0.975309), float2(0.421875, 0.024691),
-    float2(0.921875, 0.358025), float2(0.109375, 0.691358),
-    float2(0.609375, 0.135802), float2(0.359375, 0.469136),
-    float2(0.859375, 0.802469), float2(0.234375, 0.246914),
-    float2(0.734375, 0.580247), float2(0.484375, 0.913580),
-    float2(0.984375, 0.061728), float2(0.007812, 0.395062)
-};
+static const float3x3 M_CAT16 = float3x3(
+     0.401288,  0.650173, -0.051461,
+    -0.250268,  1.204414,  0.045854,
+    -0.002079,  0.048952,  0.953127
+);
 
-float3x3 Invert3x3(float3x3 m)
-{
-    float a = m[0][0], b = m[0][1], c = m[0][2];
-    float d = m[1][0], e = m[1][1], f = m[1][2];
-    float g = m[2][0], h = m[2][1], i = m[2][2];
-
-    float A =  e*i - f*h;
-    float B = -(d*i - f*g);
-    float C =  d*h - e*g;
-    float D = -(b*i - c*h);
-    float E =  a*i - c*g;
-    float F = -(a*h - b*g);
-    float G =  b*f - c*e;
-    float H = -(a*f - c*d);
-    float I =  a*e - b*d;
-
-    float det = a*A + b*B + c*C;
-    if (abs(det) < 1e-6)
-        return float3x3(1,0,0, 0,1,0, 0,0,1);
-
-    float inv_det = 1.0 / det;
-    return float3x3(A*inv_det, D*inv_det, G*inv_det,
-                    B*inv_det, E*inv_det, H*inv_det,
-                    C*inv_det, F*inv_det, I*inv_det);
-}
+static const float3x3 M_CAT16_inv = float3x3(
+     1.862068, -1.011255,  0.149187,
+     0.387526,  0.621447, -0.008974,
+    -0.015842, -0.034123,  1.049964
+);
 
 // ─── Alpha chroma helpers ─────────────────────────────────────────────────────
 
@@ -335,123 +271,14 @@ float4 WhiteBalancePS(float4 pos : SV_Position,
     return float4(c, col.a);
 }
 
-// Passes 4, 9, 12, 14 — Snapshot CorrectiveBuf → CorrectiveSrcTex
+// Passes 6, 8, 11, 13 — Snapshot CorrectiveBuf → CorrectiveSrcTex
 float4 CopyBufToSrcPS(float4 pos : SV_Position,
                       float2 uv  : TEXCOORD0) : SV_Target
 {
     return tex2D(CorrectiveSamp, uv);
 }
 
-// Pass 2 — Youvan: zone mean statistics
-float4 ZoneStatsPS(float4 pos : SV_Position,
-                   float2 uv  : TEXCOORD0) : SV_Target
-{
-    int zone = int(pos.x);
-    if (pos.y >= 1.0 || zone >= 3) return float4(0, 0, 0, 0);
-
-    float3 sum = 0.0;
-    float  w   = 0.0;
-
-    [loop]
-    for (int i = 0; i < 64; i++)
-    {
-        float3 rgb  = tex2Dlod(CorrectiveSamp, float4(kHalton[i], 0, 0)).rgb;
-        float  luma = Luma(rgb);
-
-        float in_zone = 0.0;
-        if (zone == 0) in_zone = step(luma,                          YOUVAN_ZONE_DARK_MAX   / 100.0);
-        if (zone == 1) in_zone = step(YOUVAN_ZONE_DARK_MAX  / 100.0, luma) * step(luma, YOUVAN_ZONE_BRIGHT_MIN / 100.0);
-        if (zone == 2) in_zone = step(YOUVAN_ZONE_BRIGHT_MIN / 100.0, luma);
-
-        sum += rgb * in_zone;
-        w   += in_zone;
-    }
-
-    float fallback = (zone == 0) ? (YOUVAN_ZONE_DARK_MAX   / 100.0) * 0.5
-                   : (zone == 1) ? 0.50
-                   :               (1.0 + YOUVAN_ZONE_BRIGHT_MIN / 100.0) * 0.5;
-    float3 mean = (w > 0.5) ? (sum / w) : float3(fallback, fallback, fallback);
-
-    float4 prev  = tex2Dlod(ZoneSampler, float4((zone + 0.5) / 3.0, 0.5, 0, 0));
-    float  speed = (prev.a < 0.001) ? 1.0 : (YOUVAN_LERP_SPEED / 100.0);
-
-    return float4(lerp(prev.rgb, mean, speed), lerp(prev.a, 1.0, speed));
-}
-
-// Pass 3 — Youvan: build correction matrix B = M × A⁻¹
-float4 ComputeMatrixPS(float4 pos : SV_Position,
-                       float2 uv  : TEXCOORD0) : SV_Target
-{
-    int row = int(pos.x);
-    if (pos.y >= 1.0 || row >= 3) return float4(0, 0, 0, 1);
-
-    float3 v_dark   = tex2Dlod(ZoneSampler, float4(0.5 / 3.0, 0.5, 0, 0)).rgb;
-    float3 v_mid    = tex2Dlod(ZoneSampler, float4(1.5 / 3.0, 0.5, 0, 0)).rgb;
-    float3 v_bright = tex2Dlod(ZoneSampler, float4(2.5 / 3.0, 0.5, 0, 0)).rgb;
-
-    float L_dark   = Luma(v_dark);
-    float L_mid    = Luma(v_mid);
-    float L_bright = Luma(v_bright);
-
-    float3x3 A = float3x3(
-        v_dark.r,   v_mid.r,   v_bright.r,
-        v_dark.g,   v_mid.g,   v_bright.g,
-        v_dark.b,   v_mid.b,   v_bright.b
-    );
-    float3x3 M = float3x3(
-        L_dark,   L_mid,   L_bright,
-        L_dark,   L_mid,   L_bright,
-        L_dark,   L_mid,   L_bright
-    );
-
-    float3x3 B = mul(M, Invert3x3(A));
-    return float4(B[row][0], B[row][1], B[row][2], 1.0);
-}
-
-// Pass 5 — Youvan: apply hue correction
-float4 ApplyOrthoPS(float4 pos : SV_Position,
-                    float2 uv  : TEXCOORD0) : SV_Target
-{
-    float4 col = tex2D(CorrectiveSrc, uv);
-    if (pos.y < 1.0) return col;  // data highway
-
-    float3 B0 = tex2D(MatrixSampler, float2(0.5 / 3.0, 0.5)).rgb;
-    float3 B1 = tex2D(MatrixSampler, float2(1.5 / 3.0, 0.5)).rgb;
-    float3 B2 = tex2D(MatrixSampler, float2(2.5 / 3.0, 0.5)).rgb;
-
-    float3 corrected;
-    corrected.r = dot(B0, col.rgb);
-    corrected.g = dot(B1, col.rgb);
-    corrected.b = dot(B2, col.rgb);
-
-    float orig_max = max(col.r, max(col.g, col.b));
-    float orig_min = min(col.r, min(col.g, col.b));
-    float orig_sat = (orig_max > 0.001) ? (orig_max - orig_min) / orig_max : 0.0;
-
-    float corr_max = max(corrected.r, max(corrected.g, corrected.b));
-    float corr_min = min(corrected.r, min(corrected.g, corrected.b));
-    float corr_sat = (corr_max > 0.001) ? (corr_max - corr_min) / corr_max : 0.0;
-
-    float sat_scale        = (corr_sat > 0.001) ? orig_sat / corr_sat : 1.0;
-    float brightness_scale = (corr_max > 0.001) ? orig_max / corr_max : 1.0;
-    float3 hue_only = corr_max > 0.001
-                    ? lerp(corr_max, corrected, sat_scale) * brightness_scale
-                    : corrected;
-
-    float3 v_d = tex2D(ZoneSampler, float2(0.5 / 3.0, 0.5)).rgb;
-    float3 v_m = tex2D(ZoneSampler, float2(1.5 / 3.0, 0.5)).rgb;
-    float3 v_b = tex2D(ZoneSampler, float2(2.5 / 3.0, 0.5)).rgb;
-    float L_d = Luma(v_d), L_m = Luma(v_m), L_b = Luma(v_b);
-    float dev_d = max(abs(v_d.r-L_d), max(abs(v_d.g-L_d), abs(v_d.b-L_d)));
-    float dev_m = max(abs(v_m.r-L_m), max(abs(v_m.g-L_m), abs(v_m.b-L_m)));
-    float dev_b = max(abs(v_b.r-L_b), max(abs(v_b.g-L_b), abs(v_b.b-L_b)));
-    float strength = saturate(max(dev_d, max(dev_m, dev_b)));
-
-    float3 result = lerp(col.rgb, hue_only, strength);
-    return float4(result, col.a);
-}
-
-// Pass 6 — Alpha zone: 1/8 res downsample
+// Pass 2 — 1/8 res downsample (shared by illuminant estimate + zone contrast)
 float4 ComputeLowFreqPS(float4 pos : SV_Position,
                         float2 uv  : TEXCOORD0) : SV_Target
 {
@@ -465,7 +292,45 @@ float4 ComputeLowFreqPS(float4 pos : SV_Position,
     return float4(rgb, Luma(rgb));
 }
 
-// Pass 7 — Alpha zone: per-zone 32-bin luma histogram
+// Pass 3 — Grey Pixel illuminant estimator: per 4×4 spatial zone, EMA temporal smoothing
+float4 IlluminantEstimatePS(float4 pos : SV_Position,
+                            float2 uv  : TEXCOORD0) : SV_Target
+{
+    int zone_x = int(pos.x);
+    int zone_y = int(pos.y);
+    if (zone_x >= 4 || zone_y >= 4) return float4(0, 0, 0, 0);
+
+    float u_lo = float(zone_x) / 4.0;
+    float v_lo = float(zone_y) / 4.0;
+
+    float3 sum_neutral = 0.0;
+    float  cnt_neutral = 0.0;
+    float3 sum_all     = 0.0;
+
+    [loop] for (int sy = 0; sy < 10; sy++)
+    [loop] for (int sx = 0; sx < 10; sx++)
+    {
+        float2 suv     = float2(u_lo + (sx + 0.5) / 40.0,
+                                v_lo + (sy + 0.5) / 40.0);
+        float3 rgb     = tex2Dlod(LowFreqSamp, float4(suv, 0, 0)).rgb;
+        float  den     = rgb.r + rgb.g + rgb.b + 0.001;
+        float  neutral = max(abs(rgb.r - rgb.g), abs(rgb.r - rgb.b)) / den;
+        float  w       = step(neutral, GREY_PIXEL_THRESHOLD);
+        sum_neutral   += rgb * w;
+        cnt_neutral   += w;
+        sum_all       += rgb;
+    }
+
+    float3 illum   = (cnt_neutral > 0.5) ? (sum_neutral / cnt_neutral) : (sum_all / 100.0);
+
+    float2 zone_uv = float2((float(zone_x) + 0.5) / 4.0, (float(zone_y) + 0.5) / 4.0);
+    float4 prev    = tex2Dlod(IlluminantSamp, float4(zone_uv, 0, 0));
+    float  speed   = (prev.a < 0.001) ? 1.0 : (YOUVAN_LERP_SPEED / 100.0) * (frametime / 10.0);
+
+    return float4(lerp(prev.rgb, illum, speed), lerp(prev.a, 1.0, speed));
+}
+
+// Pass 4 — Zone contrast: per-zone 32-bin luma histogram
 float4 ComputeZoneHistogramPS(float4 pos : SV_Position,
                               float2 uv  : TEXCOORD0) : SV_Target
 {
@@ -496,7 +361,7 @@ float4 ComputeZoneHistogramPS(float4 pos : SV_Position,
     return float4(h, h, h, 1.0);
 }
 
-// Pass 8 — Alpha zone: CDF walk → zone medians
+// Pass 5 — Zone contrast: CDF walk → zone medians
 float4 BuildZoneLevelsPS(float4 pos : SV_Position,
                          float2 uv  : TEXCOORD0) : SV_Target
 {
@@ -509,8 +374,8 @@ float4 BuildZoneLevelsPS(float4 pos : SV_Position,
     float  speed   = (prev.r < 0.001) ? 1.0 : (ZONE_LERP_SPEED / 100.0) * (frametime / 10.0);
 
     float cumulative = 0.0;
-    float median     = 0.5;
-    float locked     = 0.0;
+    float p25 = 0.25, median = 0.5, p75 = 0.75;
+    float lock25 = 0.0, lock50 = 0.0, lock75 = 0.0;
 
     [loop] for (int b = 0; b < 32; b++)
     {
@@ -519,15 +384,44 @@ float4 BuildZoneLevelsPS(float4 pos : SV_Position,
             float4((float(b) + 0.5) / 32.0, (float(zone) + 0.5) / 16.0, 0, 0)).r;
         cumulative += frac;
 
-        float at50 = step(0.50, cumulative) * (1.0 - locked);
-        median     = lerp(median, bv, at50);
-        locked     = saturate(locked + at50);
+        float at25 = step(0.25, cumulative) * (1.0 - lock25);
+        float at50 = step(0.50, cumulative) * (1.0 - lock50);
+        float at75 = step(0.75, cumulative) * (1.0 - lock75);
+        p25    = lerp(p25,    bv, at25);
+        median = lerp(median, bv, at50);
+        p75    = lerp(p75,    bv, at75);
+        lock25 = saturate(lock25 + at25);
+        lock50 = saturate(lock50 + at50);
+        lock75 = saturate(lock75 + at75);
     }
 
-    return float4(lerp(prev.r, median, speed), 0.0, 0.0, 1.0);
+    return float4(lerp(prev.r, median, speed),
+                  lerp(prev.g, p25,    speed),
+                  lerp(prev.b, p75,    speed),
+                  1.0);
 }
 
-// Pass 10 — Alpha zone: S-curve anchored at zone median
+// Pass 7 — CAT16 chromatic adaptation: correct per-zone illuminant toward neutral grey
+float4 ApplyAdaptationPS(float4 pos : SV_Position,
+                         float2 uv  : TEXCOORD0) : SV_Target
+{
+    float4 col = tex2D(CorrectiveSrc, uv);
+    if (pos.y < 1.0) return col;  // data highway
+
+    float3 illuminant = tex2D(IlluminantSamp, uv).rgb;
+    float  grey       = Luma(illuminant);
+
+    float3 lms_illum  = mul(M_CAT16, illuminant);
+    float3 lms_pixel  = mul(M_CAT16, col.rgb);
+    float3 scale      = float3(grey, grey, grey) / max(abs(lms_illum), 0.001);
+    scale             = clamp(scale, 0.1, 10.0);
+    float3 adapted    = mul(M_CAT16_inv, lms_pixel * scale);
+
+    float3 result = lerp(col.rgb, adapted, YOUVAN_STRENGTH / 100.0);
+    return float4(result, col.a);
+}
+
+// Pass 9 — Zone contrast: S-curve anchored at zone median
 float4 ApplyContrastPS(float4 pos : SV_Position,
                        float2 uv  : TEXCOORD0) : SV_Target
 {
@@ -536,11 +430,13 @@ float4 ApplyContrastPS(float4 pos : SV_Position,
 
     float luma = Luma(col.rgb);
 
-    float zone_median = tex2D(ZoneLevelsSamp, uv).r;
+    float4 zone_levels = tex2D(ZoneLevelsSamp, uv);
+    float  zone_median = zone_levels.r;
+    float  zone_iqr    = saturate(zone_levels.b - zone_levels.g);
 
     float t        = luma * 2.0 - 1.0;
     float tonal_w  = 1.0 - t * t;
-    float strength = (ZONE_CURVE_STRENGTH / 100.0) * tonal_w;
+    float strength = (ZONE_CURVE_STRENGTH / 100.0) * tonal_w * (1.0 - zone_iqr);
 
     float new_luma = SCurve(luma, zone_median, strength);
     float scale    = new_luma / max(luma, 0.001);
@@ -548,7 +444,7 @@ float4 ApplyContrastPS(float4 pos : SV_Position,
     return float4(col.rgb * scale, col.a);
 }
 
-// Pass 11 — Alpha chroma: CDF walk on SatHistTex → per-band saturation medians
+// Pass 10 — Chroma: CDF walk on SatHistTex → per-band saturation medians
 float4 BuildSatLevelsPS(float4 pos : SV_Position,
                         float2 uv  : TEXCOORD0) : SV_Target
 {
@@ -559,8 +455,8 @@ float4 BuildSatLevelsPS(float4 pos : SV_Position,
     float  speed = (prev.r < 0.001) ? 1.0 : (CHROMA_LERP_SPEED / 100.0) * (frametime / 10.0);
 
     float cumulative = 0.0;
-    float median     = 0.5;
-    float locked     = 0.0;
+    float p25 = 0.25, median = 0.5, p75 = 0.75;
+    float lock25 = 0.0, lock50 = 0.0, lock75 = 0.0;
 
     [loop] for (int b = 0; b < 64; b++)
     {
@@ -569,15 +465,24 @@ float4 BuildSatLevelsPS(float4 pos : SV_Position,
             float4((float(b) + 0.5) / 64.0, row_v, 0, 0)).r;
         cumulative += frac;
 
-        float at50 = step(0.50, cumulative) * (1.0 - locked);
-        median     = lerp(median, bv, at50);
-        locked     = saturate(locked + at50);
+        float at25 = step(0.25, cumulative) * (1.0 - lock25);
+        float at50 = step(0.50, cumulative) * (1.0 - lock50);
+        float at75 = step(0.75, cumulative) * (1.0 - lock75);
+        p25    = lerp(p25,    bv, at25);
+        median = lerp(median, bv, at50);
+        p75    = lerp(p75,    bv, at75);
+        lock25 = saturate(lock25 + at25);
+        lock50 = saturate(lock50 + at50);
+        lock75 = saturate(lock75 + at75);
     }
 
-    return float4(lerp(prev.r, median, speed), 0.0, 0.0, 1.0);
+    return float4(lerp(prev.r, median, speed),
+                  lerp(prev.g, p25,    speed),
+                  lerp(prev.b, p75,    speed),
+                  1.0);
 }
 
-// Pass 13 — Alpha chroma: per-hue-band saturation S-curve
+// Pass 12 — Chroma: per-hue-band saturation S-curve
 float4 ApplyChromaPS(float4 pos : SV_Position,
                      float2 uv  : TEXCOORD0) : SV_Target
 {
@@ -587,25 +492,30 @@ float4 ApplyChromaPS(float4 pos : SV_Position,
     float3 hsv = RGBtoHSV(col.rgb);
 
     float blended_median = 0.0;
+    float blended_iqr    = 0.0;
     float total_w        = 0.0;
 
     [loop] for (int band = 0; band < 6; band++)
     {
-        float w = HueBandWeight(hsv.x, kBandCenters[band]);
-        float m = tex2Dlod(SatLevelsSamp, float4((float(band) + 0.5) / 6.0, 0.5, 0, 0)).r;
-        blended_median += m * w;
+        float  w      = HueBandWeight(hsv.x, kBandCenters[band]);
+        float4 levels = tex2Dlod(SatLevelsSamp, float4((float(band) + 0.5) / 6.0, 0.5, 0, 0));
+        blended_median += levels.r * w;
+        blended_iqr    += saturate(levels.b - levels.g) * w;
         total_w        += w;
     }
 
     blended_median = (total_w > 0.001) ? blended_median / total_w : 0.5;
+    blended_iqr    = (total_w > 0.001) ? blended_iqr    / total_w : 0.5;
 
-    float new_sat = SCurve(hsv.y, blended_median, CHROMA_CURVE_STRENGTH / 100.0);
-    float3 result = HSVtoRGB(float3(hsv.x, new_sat, hsv.z));
+    float sat_w   = smoothstep(0.0, 0.15, hsv.y);
+    float strength = (CHROMA_CURVE_STRENGTH / 100.0) * sat_w * (1.0 - blended_iqr);
+    float new_sat  = SCurve(hsv.y, blended_median, strength);
+    float3 result  = HSVtoRGB(float3(hsv.x, new_sat, hsv.z));
 
     return float4(result, col.a);
 }
 
-// Pass 15 — Output transform: OpenDRT tone curve + OKLab highlight rolloff → BackBuffer
+// Pass 14 — Output transform: OpenDRT tone curve + OKLab highlight rolloff → BackBuffer
 float4 OutputTransformPS(float4 pos : SV_Position,
                          float2 uv  : TEXCOORD0) : SV_Target
 {
@@ -630,7 +540,8 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     result = result * (1.0 - OT_BLACK_POINT / 100.0) + OT_BLACK_POINT / 100.0;
 
     // OpenDRT per-channel tone curve
-    result = OpenDRT(result);
+    float3 tonemapped = OpenDRT(result);
+    result = lerp(result, tonemapped, OPENDRT_STRENGTH / 100.0);
 
     // Highlight chroma compression (OKLab)
     float3 lab    = RGBtoOKLab(result);
@@ -638,6 +549,9 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     lab.yz       *= (1.0 - hl_gate * OT_CHROMA_COMPRESS);
     result        = OKLabtoRGB(lab);
 
+    // Debug indicator — green (slot 2)
+    if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 50) && pos.x < float(BUFFER_WIDTH - 38))
+        return float4(0.1, 0.90, 0.1, 1.0);
     return saturate(float4(result, col.a));
 }
 
@@ -651,35 +565,17 @@ technique OlofssonianRenderChain
         PixelShader  = WhiteBalancePS;
         RenderTarget = CorrectiveBuf;
     }
-    pass ZoneStats
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = ZoneStatsPS;
-        RenderTarget = ZoneTex;
-    }
-    pass ComputeMatrix
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = ComputeMatrixPS;
-        RenderTarget = MatrixTex;
-    }
-    pass CopyBufToSrc0
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = CopyBufToSrcPS;
-        RenderTarget = CorrectiveSrcTex;
-    }
-    pass ApplyOrtho
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = ApplyOrthoPS;
-        RenderTarget = CorrectiveBuf;
-    }
     pass ComputeLowFreq
     {
         VertexShader = PostProcessVS;
         PixelShader  = ComputeLowFreqPS;
         RenderTarget = LowFreqTex;
+    }
+    pass IlluminantEstimate
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = IlluminantEstimatePS;
+        RenderTarget = IlluminantTex;
     }
     pass ComputeZoneHistogram
     {
@@ -692,6 +588,18 @@ technique OlofssonianRenderChain
         VertexShader = PostProcessVS;
         PixelShader  = BuildZoneLevelsPS;
         RenderTarget = ZoneLevelsTex;
+    }
+    pass CopyBufToSrc0
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = CopyBufToSrcPS;
+        RenderTarget = CorrectiveSrcTex;
+    }
+    pass ApplyAdaptation
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = ApplyAdaptationPS;
+        RenderTarget = CorrectiveBuf;
     }
     pass CopyBufToSrc1
     {

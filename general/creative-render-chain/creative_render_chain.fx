@@ -1,0 +1,343 @@
+// creative_render_chain.fx — Creative chain (game-agnostic)
+//
+// Runs after corrective_render_chain on display-referred [0,1] BackBuffer.
+// Zone contrast + chroma lift, tuned via creative_values.fx.
+//
+// Pass 1  ComputeLowFreq     BackBuffer → CreativeLowFreqTex      1/8 res downsample
+// Pass 2  ComputeZoneHist    CreativeLowFreq → CreativeZoneHistTex 32-bin per-zone histogram
+// Pass 3  BuildZoneLevels    CreativeZoneHist → CreativeZoneLevelsTex CDF → zone medians
+// Pass 4  ApplyContrast      BackBuffer → BackBuffer               zone S-curve (ZONE_STRENGTH)
+// Pass 5  BuildSatLevels     SatHistTex → CreativeSatLevelsTex     CDF → per-band sat medians
+// Pass 6  ApplyChroma        BackBuffer → BackBuffer               per-hue sat S-curve (CHROMA_STRENGTH)
+
+#include "creative_values.fx"
+
+// ZONE_STRENGTH and CHROMA_STRENGTH come from creative_values.fx (0–100, 0=passthrough)
+
+#define ZONE_LERP_SPEED   0.01   // % per second, frametime-normalized
+#define ZONE_HIST_LERP    5.0    // % per second, frametime-normalized
+#define CHROMA_LERP_SPEED 0.01   // % per second, frametime-normalized
+#define CHROMA_BAND_WIDTH 0.15   // hue band half-width — must match frame_analysis.fx
+
+uniform float frametime < source = "frametime"; >;
+
+// ─── Textures ──────────────────────────────────────────────────────────────
+
+texture2D BackBufferTex : COLOR;
+sampler2D BackBuffer
+{
+    Texture   = BackBufferTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+};
+
+// Shared with frame_analysis — identical declaration = same GPU resource
+texture2D SatHistTex { Width = 64; Height = 6; Format = R32F; MipLevels = 1; };
+sampler2D SatHistSamp
+{
+    Texture   = SatHistTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
+texture2D CreativeLowFreqTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 1; };
+sampler2D CreativeLowFreqSamp
+{
+    Texture   = CreativeLowFreqTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+};
+
+texture2D CreativeZoneHistTex { Width = 32; Height = 16; Format = R16F; MipLevels = 1; };
+sampler2D CreativeZoneHistSamp
+{
+    Texture   = CreativeZoneHistTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
+texture2D CreativeZoneLevelsTex { Width = 4; Height = 4; Format = R16F; MipLevels = 1; };
+sampler2D CreativeZoneLevelsSamp
+{
+    Texture   = CreativeZoneLevelsTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+};
+
+texture2D CreativeSatLevelsTex { Width = 6; Height = 1; Format = R16F; MipLevels = 1; };
+sampler2D CreativeSatLevelsSamp
+{
+    Texture   = CreativeSatLevelsTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
+// ─── Vertex shader ───────────────────────────────────────────────────────────
+
+void PostProcessVS(in  uint   id  : SV_VertexID,
+                   out float4 pos : SV_Position,
+                   out float2 uv  : TEXCOORD0)
+{
+    uv.x = (id == 2) ? 2.0 : 0.0;
+    uv.y = (id == 1) ? 2.0 : 0.0;
+    pos  = float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
+}
+
+// ─── Shared helpers ──────────────────────────────────────────────────────────
+
+float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
+
+float SCurve(float x, float m, float strength)
+{
+    float t_lo = saturate(x / max(m, 0.001));
+    float t_hi = saturate((x - m) / max(1.0 - m, 0.001));
+    float s_lo = m * (t_lo * t_lo * (3.0 - 2.0 * t_lo));
+    float s_hi = m + (1.0 - m) * (t_hi * t_hi * (3.0 - 2.0 * t_hi));
+    float s    = lerp(s_lo, s_hi, step(m, x));
+    return lerp(x, s, strength);
+}
+
+float3 RGBtoHSV(float3 c)
+{
+    float4 K = float4(0.0, -1.0/3.0, 2.0/3.0, -1.0);
+    float4 p = lerp(float4(c.bg, K.wz), float4(c.gb, K.xy), step(c.b, c.g));
+    float4 q = lerp(float4(p.xyw, c.r), float4(c.r, p.yzx), step(p.x, c.r));
+    float  d = q.x - min(q.w, q.y);
+    float  e = 1.0e-10;
+    return float3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+}
+
+float3 HSVtoRGB(float3 c)
+{
+    float4 K = float4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
+    float3 p = abs(frac(c.xxx + K.xyz) * 6.0 - K.www);
+    return c.z * lerp(K.xxx, saturate(p - K.xxx), c.y);
+}
+
+float HueBandWeight(float hue, float center)
+{
+    float d = abs(hue - center);
+    d = min(d, 1.0 - d);
+    return saturate(1.0 - d / CHROMA_BAND_WIDTH);
+}
+
+static const float kBandCenters[6] = {
+      0.0 / 360.0,   // Red
+     60.0 / 360.0,   // Yellow
+    120.0 / 360.0,   // Green
+    180.0 / 360.0,   // Cyan
+    240.0 / 360.0,   // Blue
+    300.0 / 360.0    // Magenta
+};
+
+// ═══ Pixel shaders ════════════════════════════════════════════════════════════
+
+// Pass 1 — 1/8 res downsample of BackBuffer
+float4 ComputeLowFreqPS(float4 pos : SV_Position,
+                        float2 uv  : TEXCOORD0) : SV_Target
+{
+    float2 px = float2(1.0 / BUFFER_WIDTH, 1.0 / BUFFER_HEIGHT);
+    float3 rgb = 0.0;
+    rgb += tex2Dlod(BackBuffer, float4(uv + float2(-1.5, -1.5) * px, 0, 0)).rgb;
+    rgb += tex2Dlod(BackBuffer, float4(uv + float2( 1.5, -1.5) * px, 0, 0)).rgb;
+    rgb += tex2Dlod(BackBuffer, float4(uv + float2(-1.5,  1.5) * px, 0, 0)).rgb;
+    rgb += tex2Dlod(BackBuffer, float4(uv + float2( 1.5,  1.5) * px, 0, 0)).rgb;
+    rgb *= 0.25;
+    return float4(rgb, Luma(rgb));
+}
+
+// Pass 2 — per-zone 32-bin luma histogram
+float4 ComputeZoneHistogramPS(float4 pos : SV_Position,
+                              float2 uv  : TEXCOORD0) : SV_Target
+{
+    int b        = int(pos.x);
+    int zone     = int(pos.y);
+    int zone_col = zone % 4;
+    int zone_row = zone / 4;
+
+    float u_lo      = float(zone_col) / 4.0;
+    float v_lo      = float(zone_row) / 4.0;
+    float bucket_lo = float(b)     / 32.0;
+    float bucket_hi = float(b + 1) / 32.0;
+
+    float count = 0.0;
+    [loop] for (int sy = 0; sy < 10; sy++)
+    [loop] for (int sx = 0; sx < 10; sx++)
+    {
+        float2 suv  = float2(u_lo + (sx + 0.5) / 10.0 * 0.25,
+                             v_lo + (sy + 0.5) / 10.0 * 0.25);
+        float  luma = tex2Dlod(CreativeLowFreqSamp, float4(suv, 0, 0)).a;
+        count += (luma >= bucket_lo && luma < bucket_hi) ? 1.0 : 0.0;
+    }
+
+    float v    = count / 100.0;
+    float prev = tex2Dlod(CreativeZoneHistSamp,
+        float4((float(b) + 0.5) / 32.0, (float(zone) + 0.5) / 16.0, 0, 0)).r;
+    float h    = lerp(prev, v, (ZONE_HIST_LERP / 100.0) * (frametime / 10.0));
+    return float4(h, h, h, 1.0);
+}
+
+// Pass 3 — CDF walk → zone medians
+float4 BuildZoneLevelsPS(float4 pos : SV_Position,
+                         float2 uv  : TEXCOORD0) : SV_Target
+{
+    int zone_x = int(pos.x);
+    int zone_y = int(pos.y);
+    int zone   = zone_y * 4 + zone_x;
+
+    float2 prev_uv = float2((float(zone_x) + 0.5) / 4.0, (float(zone_y) + 0.5) / 4.0);
+    float4 prev    = tex2Dlod(CreativeZoneLevelsSamp, float4(prev_uv, 0, 0));
+    float  speed   = (prev.r < 0.001) ? 1.0 : (ZONE_LERP_SPEED / 100.0) * (frametime / 10.0);
+
+    float cumulative = 0.0;
+    float median     = 0.5;
+    float locked     = 0.0;
+
+    [loop] for (int b = 0; b < 32; b++)
+    {
+        float bv   = float(b) / 32.0;
+        float frac = tex2Dlod(CreativeZoneHistSamp,
+            float4((float(b) + 0.5) / 32.0, (float(zone) + 0.5) / 16.0, 0, 0)).r;
+        cumulative += frac;
+
+        float at50 = step(0.50, cumulative) * (1.0 - locked);
+        median     = lerp(median, bv, at50);
+        locked     = saturate(locked + at50);
+    }
+
+    return float4(lerp(prev.r, median, speed), 0.0, 0.0, 1.0);
+}
+
+// Pass 4 — Zone S-curve anchored at zone median
+float4 ApplyContrastPS(float4 pos : SV_Position,
+                       float2 uv  : TEXCOORD0) : SV_Target
+{
+    float4 col = tex2D(BackBuffer, uv);
+    if (pos.y < 1.0) return col;  // data highway
+
+    // Debug indicator — purple (slot 3)
+    if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 36) && pos.x < float(BUFFER_WIDTH - 24))
+        return float4(0.7, 0.20, 1.0, 1.0);
+
+    float luma = Luma(col.rgb);
+
+    float zone_median = tex2D(CreativeZoneLevelsSamp, uv).r;
+
+    float t        = luma * 2.0 - 1.0;
+    float tonal_w  = 1.0 - t * t;
+    float strength = (ZONE_STRENGTH / 100.0) * tonal_w;
+
+    float new_luma = SCurve(luma, zone_median, strength);
+    float scale    = new_luma / max(luma, 0.001);
+
+    return float4(col.rgb * scale, col.a);
+}
+
+// Pass 5 — CDF walk on SatHistTex → per-band saturation medians
+float4 BuildSatLevelsPS(float4 pos : SV_Position,
+                        float2 uv  : TEXCOORD0) : SV_Target
+{
+    int   band  = int(pos.x);
+    float row_v = (float(band) + 0.5) / 6.0;
+
+    float4 prev  = tex2Dlod(CreativeSatLevelsSamp, float4((float(band) + 0.5) / 6.0, 0.5, 0, 0));
+    float  speed = (prev.r < 0.001) ? 1.0 : (CHROMA_LERP_SPEED / 100.0) * (frametime / 10.0);
+
+    float cumulative = 0.0;
+    float median     = 0.5;
+    float locked     = 0.0;
+
+    [loop] for (int b = 0; b < 64; b++)
+    {
+        float bv   = float(b) / 64.0;
+        float frac = tex2Dlod(SatHistSamp,
+            float4((float(b) + 0.5) / 64.0, row_v, 0, 0)).r;
+        cumulative += frac;
+
+        float at50 = step(0.50, cumulative) * (1.0 - locked);
+        median     = lerp(median, bv, at50);
+        locked     = saturate(locked + at50);
+    }
+
+    return float4(lerp(prev.r, median, speed), 0.0, 0.0, 1.0);
+}
+
+// Pass 6 — Per-hue-band saturation S-curve
+float4 ApplyChromaPS(float4 pos : SV_Position,
+                     float2 uv  : TEXCOORD0) : SV_Target
+{
+    float4 col = tex2D(BackBuffer, uv);
+    if (pos.y < 1.0) return col;  // data highway
+
+    float3 hsv = RGBtoHSV(col.rgb);
+
+    float blended_median = 0.0;
+    float total_w        = 0.0;
+
+    [loop] for (int band = 0; band < 6; band++)
+    {
+        float w = HueBandWeight(hsv.x, kBandCenters[band]);
+        float m = tex2Dlod(CreativeSatLevelsSamp, float4((float(band) + 0.5) / 6.0, 0.5, 0, 0)).r;
+        blended_median += m * w;
+        total_w        += w;
+    }
+
+    blended_median = (total_w > 0.001) ? blended_median / total_w : 0.5;
+
+    float new_sat = SCurve(hsv.y, blended_median, CHROMA_STRENGTH / 100.0);
+    float3 result = HSVtoRGB(float3(hsv.x, new_sat, hsv.z));
+
+    return float4(result, col.a);
+}
+
+// ─── Technique ───────────────────────────────────────────────────────────────
+
+technique CreativeRenderChain
+{
+    pass ComputeLowFreq
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = ComputeLowFreqPS;
+        RenderTarget = CreativeLowFreqTex;
+    }
+    pass ComputeZoneHistogram
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = ComputeZoneHistogramPS;
+        RenderTarget = CreativeZoneHistTex;
+    }
+    pass BuildZoneLevels
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = BuildZoneLevelsPS;
+        RenderTarget = CreativeZoneLevelsTex;
+    }
+    pass ApplyContrast
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = ApplyContrastPS;
+    }
+    pass BuildSatLevels
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = BuildSatLevelsPS;
+        RenderTarget = CreativeSatLevelsTex;
+    }
+    pass ApplyChroma
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = ApplyChromaPS;
+    }
+}

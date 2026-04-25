@@ -188,8 +188,8 @@ float4 SatHistGatherPS(float4 pos : SV_Position,
         for (int x = 0; x < DS_W; x++)
         {
             float2 s_uv   = float2((x + 0.5) / float(DS_W), (y + 0.5) / float(DS_H));
-            float3 linear = tex2D(Downsample, s_uv).rgb;  // already linear — vkBasalt linearizes on read
-            float3 hsv    = RGBtoHSV(linear);
+            float3 col = tex2D(Downsample, s_uv).rgb;
+            float3 hsv = RGBtoHSV(col);
             float  w      = HueBandWeight(hsv.x, center) * step(SAT_THRESHOLD / 100.0, hsv.y);
             float  in_b   = (hsv.y >= bucket_lo && hsv.y < bucket_hi) ? 1.0 : 0.0;
             count   += in_b * w;
@@ -201,18 +201,17 @@ float4 SatHistGatherPS(float4 pos : SV_Position,
     return float4(normalized, 0.0, 0.0, 1.0);
 }
 
-// ─── Pass 4 — Debug overlay ────────────────────────────────────────────────
+// ─── Pass 4 — Debug indicator (yellow, slot 0) ────────────────────────────
 
 float4 DebugOverlayPS(float4 pos : SV_Position,
                       float2 uv  : TEXCOORD0) : SV_Target
 {
-    if (pos.x > 2443 && pos.x < 2455 && pos.y > 15 && pos.y < 27)
+    if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 78) && pos.x < float(BUFFER_WIDTH - 66))
         return float4(1.0, 0.95, 0.0, 1.0);
-
     return tex2D(BackBuffer, uv);
 }
 
-// ─── Pass 6 — Smooth luminance histogram ───────────────────────────────────
+// ─── Pass 5 — Smooth luminance histogram ───────────────────────────────────
 
 float4 LumHistSmoothPS(float4 pos : SV_Position,
                        float2 uv  : TEXCOORD0) : SV_Target
@@ -222,7 +221,7 @@ float4 LumHistSmoothPS(float4 pos : SV_Position,
     return float4(lerp(prev, raw, LERP_SPEED / 100.0), 0.0, 0.0, 1.0);
 }
 
-// ─── Pass 7 — Smooth saturation histogram ──────────────────────────────────
+// ─── Pass 6 — Smooth saturation histogram ──────────────────────────────────
 
 float4 SatHistSmoothPS(float4 pos : SV_Position,
                        float2 uv  : TEXCOORD0) : SV_Target

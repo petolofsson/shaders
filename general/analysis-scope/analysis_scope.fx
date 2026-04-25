@@ -79,6 +79,10 @@ float4 ScopePS(float4 pos : SV_Position,
         return col; // pixels 130+: passthrough (reserved for future stage means)
     }
 
+    // Debug indicator — cyan (slot 4)
+    if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 22) && pos.x < float(BUFFER_WIDTH - 10))
+        return float4(0.0, 0.80, 1.0, 1.0);
+
     float x0 = SCOPE_X;
     float y0 = BUFFER_HEIGHT - SCOPE_Y - SCOPE_H;
     float x1 = x0 + SCOPE_W;
