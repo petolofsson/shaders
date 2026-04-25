@@ -249,13 +249,13 @@ float3 OKLabtoRGB(float3 c)
     );
 }
 
-float3 OpenDRT(float3 x)
+// Scalar luma-based sigmoid — grey is the adaptive scene midpoint
+float OpenDRT_luma(float luma, float grey)
 {
-    const float grey = 0.18;
-    float gc = pow(grey, OT_CONTRAST);
-    float K  = gc * (1.0 - grey) / (grey - gc);
+    float gc = pow(max(grey, 0.001), OT_CONTRAST);
+    float K  = gc * (1.0 - grey) / max(grey - gc, 0.0001);
     float A  = 1.0 + K;
-    float3 xc = pow(max(x, 0.0), OT_CONTRAST);
+    float xc = pow(max(luma, 0.0), OT_CONTRAST);
     return A * xc / (xc + K);
 }
 
@@ -539,8 +539,15 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     // Black lift
     result = result * (1.0 - OT_BLACK_POINT / 100.0) + OT_BLACK_POINT / 100.0;
 
-    // OpenDRT per-channel tone curve
-    float3 tonemapped = OpenDRT(result);
+    // Scene-adaptive grey point — scene mean luma from highway (scope_pre, row 0 pixel 128)
+    float scene_mean = tex2Dlod(CorrectiveSrc,
+        float4((128.5) / BUFFER_WIDTH, 0.5 / BUFFER_HEIGHT, 0, 0)).r;
+    float grey = clamp(scene_mean, 0.05, 0.40);
+
+    // Luma-based tone curve — apply sigmoid to luma only, scale RGB proportionally (no hue shift)
+    float  luma_in    = Luma(result);
+    float  luma_out   = OpenDRT_luma(luma_in, grey);
+    float3 tonemapped = (luma_in > 0.001) ? result * (luma_out / luma_in) : result;
     result = lerp(result, tonemapped, OPENDRT_STRENGTH / 100.0);
 
     // Highlight chroma compression (OKLab)
