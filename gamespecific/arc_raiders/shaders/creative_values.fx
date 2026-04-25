@@ -20,3 +20,6 @@
 // Pro-mist
 #define DIFFUSE_STRENGTH  0.15   // 0–1; softness intensity
 #define DIFFUSE_RADIUS    0.020  // blur width (~38 px at 1080p)
+
+// Veil
+#define VEIL_STRENGTH     10     // 0–100; veiling glare intensity

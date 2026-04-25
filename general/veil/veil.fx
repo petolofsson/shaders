@@ -1,51 +1,39 @@
-// veil.fx — Veiling glare: global luminance lift
+// veil.fx — Veiling glare: additive luminance lift
 //
-// True veiling glare is a global effect — stray light inside the lens
-// adds a roughly uniform offset to the entire sensor, proportional to
-// scene average luminance. Bright scene = lifted shadows everywhere.
+// Simulates intraocular scatter / lens internal reflections: a global additive
+// lift proportional to scene median luminance, stronger at centre than edges.
 //
-// This is physically correct and has no edge bleeding because there is
-// no blur. Shadows lift, local contrast compresses, image gains depth.
+// Physics: glare is additive scatter — adds a spectrally-shifted floor to every
+// channel. Desaturation is a natural side effect (no extra code needed).
+// Radial: AR coating reflections are slightly stronger toward the optical axis.
+// Tint: float3(1.0, 0.95, 0.80) — leftover spectrum from typical AR coatings.
 //
-// Two passes:
-//   Pass 1: Walk LumHistTex (from frame_analysis) to compute scene
-//           average luminance → AvgLumTex (1×1)
-//   Pass 2: Add warm-tinted constant lift to every pixel
+// Run after pro_mist: pro_mist handles spatial highlight glow, veil handles the
+// DC offset (global contrast floor).
+//
+// One pass — reads scene median (p50) from shared PercTex.
+//
+// Shared texture contract:
+//   PercTex { Width=1; Height=1; Format=RGBA16F } — written by frame_analysis
+//   r=p25, g=p50, b=p75, a=iqr
 
-// ─── Tuning ────────────────────────────────────────────────────────────────
+#include "creative_values.fx"
 
-#define VEIL_STRENGTH  0.10    // 0–1; lift intensity (0.05–0.15 is subtle)
-#define VEIL_WARMTH    0.5     // 0 = neutral tint, 1 = warm tint on lift
+static const float3 VEIL_TINT = float3(1.0, 0.95, 0.80);  // AR coating amber
 
-// ─── Internal constants ────────────────────────────────────────────────────
+// ─── Shared percentile cache ───────────────────────────────────────────────
 
-#define HIST_BINS  64
-
-// ─── Shared histogram texture — must match frame_analysis.fx exactly ───────
-
-texture2D LumHistTex { Width = HIST_BINS; Height = 1; Format = R32F; MipLevels = 1; };
-sampler2D LumHist
+texture2D PercTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+sampler2D PercSamp
 {
-    Texture   = LumHistTex;
+    Texture   = PercTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = POINT;
     MagFilter = POINT;
 };
 
-// ─── Average luminance result — 1×1 ───────────────────────────────────────
-
-texture2D AvgLumTex { Width = 1; Height = 1; Format = R32F; MipLevels = 1; };
-sampler2D AvgLum
-{
-    Texture   = AvgLumTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
-
-// ─── Textures ──────────────────────────────────────────────────────────────
+// ─── Textures ─────────────────────────────────────────────────────────────
 
 texture2D BackBufferTex : COLOR;
 sampler2D BackBuffer
@@ -57,7 +45,7 @@ sampler2D BackBuffer
     MagFilter = LINEAR;
 };
 
-// ─── Vertex shader ─────────────────────────────────────────────────────────
+// ─── Vertex shader ────────────────────────────────────────────────────────
 
 void PostProcessVS(in  uint   id  : SV_VertexID,
                    out float4 pos : SV_Position,
@@ -68,61 +56,31 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
     pos  = float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
 }
 
-// ─── Pass 1 — Compute scene average luminance ──────────────────────────────
+// ─── Pass 1 — Apply veiling glare ─────────────────────────────────────────
 
-float4 ComputeAvgLumPS(float4 pos : SV_Position,
-                       float2 uv  : TEXCOORD0) : SV_Target
+float4 ApplyVeilPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    float weighted = 0.0;
-    float total    = 0.0;
+    float4 col = tex2D(BackBuffer, uv);
+    if (pos.y < 1.0) return col;
 
-    [loop]
-    for (int i = 0; i < HIST_BINS; i++)
-    {
-        float luma  = (i + 0.5) / float(HIST_BINS);
-        float count = tex2Dlod(LumHist, float4((i + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
-        weighted   += luma * count;
-        total      += count;
-    }
+    float lum_p50 = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0)).g;
 
-    float avg = (total > 0.001) ? weighted / total : 0.0;
-    return float4(avg, 0, 0, 1);
+    // Radial: 1.0 at centre, 0.85 at corners (0.707 = max UV distance)
+    float dist    = distance(uv, float2(0.5, 0.5));
+    float spatial = lerp(1.0, 0.85, saturate(dist / 0.707));
+
+    float3 glare  = lum_p50 * (VEIL_STRENGTH / 100.0) * VEIL_TINT * spatial;
+
+    return float4(saturate(col.rgb + glare), col.a);
 }
 
-// ─── Pass 2 — Apply global lift ────────────────────────────────────────────
-
-float4 ApplyPS(float4 pos : SV_Position,
-               float2 uv  : TEXCOORD0) : SV_Target
-{
-    if (pos.x > 2533 && pos.x < 2545 && pos.y > 15 && pos.y < 27)
-        return float4(0.4, 0.6, 1.0, 1.0);
-
-    float4 col     = tex2D(BackBuffer, uv);
-    float  avg_lum = tex2D(AvgLum, float2(0.5, 0.5)).r;
-
-    // Warm tint on the lift — slightly amber, like real lens scatter
-    float3 tint = lerp(float3(1.0, 1.0, 1.0), float3(1.04, 1.00, 0.88), VEIL_WARMTH);
-    float3 lift = avg_lum * VEIL_STRENGTH * tint;
-
-    // Additive lift — shadows rise, highlights barely affected (already bright)
-    float3 result = col.rgb + lift;
-
-    return float4(saturate(result), col.a);
-}
-
-// ─── Technique ─────────────────────────────────────────────────────────────
+// ─── Technique ────────────────────────────────────────────────────────────
 
 technique Veil
 {
-    pass ComputeAvgLum
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = ComputeAvgLumPS;
-        RenderTarget = AvgLumTex;
-    }
     pass Apply
     {
         VertexShader = PostProcessVS;
-        PixelShader  = ApplyPS;
+        PixelShader  = ApplyVeilPS;
     }
 }
