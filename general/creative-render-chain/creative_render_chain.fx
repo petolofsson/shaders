@@ -61,6 +61,26 @@ sampler2D CreativeZoneLevelsSamp
     MagFilter = LINEAR;
 };
 
+texture2D SatHistTex { Width = 64; Height = 6; Format = R32F; MipLevels = 1; };
+sampler2D SatHistSamp
+{
+    Texture   = SatHistTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
+texture2D CreativeSatLevelsTex { Width = 6; Height = 1; Format = RGBA16F; MipLevels = 1; };
+sampler2D CreativeSatLevelsSamp
+{
+    Texture   = CreativeSatLevelsTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+};
+
 // ─── Vertex shader ───────────────────────────────────────────────────────────
 
 void PostProcessVS(in  uint   id  : SV_VertexID,
@@ -106,6 +126,23 @@ float3 HSVtoRGB(float3 c)
     float4 K = float4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
     float3 p = abs(frac(c.xxx + K.xyz) * 6.0 - K.www);
     return c.z * lerp(K.xxx, saturate(p - K.xxx), c.y);
+}
+
+float GetBandCenter(int band)
+{
+    if (band == 0) return 0.0000;
+    if (band == 1) return 0.1667;
+    if (band == 2) return 0.3333;
+    if (band == 3) return 0.5000;
+    if (band == 4) return 0.6667;
+    return 0.8333;
+}
+
+float HueBandWeight(float hue, int band)
+{
+    float d = abs(hue - GetBandCenter(band));
+    d = min(d, 1.0 - d);
+    return saturate(1.0 - d / 0.15);
 }
 
 
@@ -223,18 +260,64 @@ float4 ApplyContrastPS(float4 pos : SV_Position,
     return float4(col.rgb * scale, col.a);
 }
 
-// Pass 5 — Multiplicative saturation lift
+// Pass 5 — CDF walk over SatHistTex → p25/p50/p75 per hue band
+float4 BuildSatLevelsPS(float4 pos : SV_Position,
+                        float2 uv  : TEXCOORD0) : SV_Target
+{
+    int band = int(pos.x);
+
+    float cumulative = 0.0;
+    float p25 = 0.25, median = 0.5, p75 = 0.75;
+    float lock25 = 0.0, lock50 = 0.0, lock75 = 0.0;
+
+    [loop] for (int b = 0; b < 64; b++)
+    {
+        float  bv   = float(b) / 64.0;
+        float2 suv  = float2((float(b) + 0.5) / 64.0, (float(band) + 0.5) / 6.0);
+        float  frac = tex2Dlod(SatHistSamp, float4(suv, 0, 0)).r;
+        cumulative += frac;
+
+        float at25 = step(0.25, cumulative) * (1.0 - lock25);
+        float at50 = step(0.50, cumulative) * (1.0 - lock50);
+        float at75 = step(0.75, cumulative) * (1.0 - lock75);
+        p25    = lerp(p25,    bv, at25);
+        median = lerp(median, bv, at50);
+        p75    = lerp(p75,    bv, at75);
+        lock25 = saturate(lock25 + at25);
+        lock50 = saturate(lock50 + at50);
+        lock75 = saturate(lock75 + at75);
+    }
+
+    return float4(median, p25, p75, 1.0);
+}
+
+// Pass 6 — IQR-adaptive saturation lift
 float4 ApplyChromaPS(float4 pos : SV_Position,
                      float2 uv  : TEXCOORD0) : SV_Target
 {
     float4 col = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return col;  // data highway
 
-    float3 hsv    = RGBtoHSV(col.rgb);
-    float  sat_w  = smoothstep(0.0, 0.15, hsv.y);
-    float  boost  = (CHROMA_STRENGTH / 100.0) * sat_w;
-    float  new_sat = saturate(hsv.y * (1.0 + boost));
-    float3 result = HSVtoRGB(float3(hsv.x, new_sat, hsv.z));
+    float3 hsv = RGBtoHSV(col.rgb);
+    float  sat_w = smoothstep(0.0, 0.15, hsv.y);
+
+    float blended_iqr = 0.0, total_w = 0.0;
+    [loop] for (int band = 0; band < 6; band++)
+    {
+        float w = HueBandWeight(hsv.x, band);
+        if (w > 0.001)
+        {
+            float2 suv = float2((float(band) + 0.5) / 6.0, 0.5);
+            float4 lvl = tex2Dlod(CreativeSatLevelsSamp, float4(suv, 0, 0));
+            blended_iqr += w * saturate(lvl.b - lvl.g);
+            total_w     += w;
+        }
+    }
+    if (total_w > 0.001) blended_iqr /= total_w;
+
+    float  strength = (CHROMA_STRENGTH / 100.0) * sat_w * (1.0 - blended_iqr);
+    float  new_sat  = saturate(hsv.y * (1.0 + strength));
+    float3 result   = HSVtoRGB(float3(hsv.x, new_sat, hsv.z));
 
     return float4(result, col.a);
 }
@@ -265,6 +348,12 @@ technique CreativeRenderChain
     {
         VertexShader = PostProcessVS;
         PixelShader  = ApplyContrastPS;
+    }
+    pass BuildSatLevels
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = BuildSatLevelsPS;
+        RenderTarget = CreativeSatLevelsTex;
     }
     pass ApplyChroma
     {
