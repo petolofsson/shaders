@@ -10,8 +10,10 @@
 //   4 = Fuji Eterna 500    — cool, flat, green-leaning mids
 //   5 = Kodak 5219         — punchy, pushed, deep warm blacks
 
-#define PRESET         1
-#define GRADE_STRENGTH 100    // 0–100; 0 = bypass, 100 = full preset
+#define PRESET              1
+#define GRADE_STRENGTH      100   // 0–100; blend toward original
+#define CREATIVE_SATURATION 1.0   // >1.0 = more vibrant, <1.0 = muted
+#define CREATIVE_CONTRAST   1.0   // >1.0 = more filmic punch, <1.0 = flatter
 
 // ─── Tinting ranges ────────────────────────────────────────────────────────
 #define TOE_RANGE       30      // 0–100; luma range for toe tint
@@ -271,6 +273,27 @@ float4 ColorGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     result = lerp(result, film, film_gate);
 
     result = pow(max(result, 0.0), 2.2);  // gamma → linear before blend
+
+    // Creative saturation — HSV space, applied before blend
+    if (CREATIVE_SATURATION != 1.0)
+    {
+        float cs_max = max(result.r, max(result.g, result.b));
+        float cs_min = min(result.r, min(result.g, result.b));
+        float cs_lum = Luma(result);
+        result = cs_lum + (result - cs_lum) * CREATIVE_SATURATION;
+        result = saturate(result);
+    }
+
+    // Creative contrast — luma S-curve anchored at 0.18
+    if (CREATIVE_CONTRAST != 1.0)
+    {
+        float cc_luma = Luma(result);
+        float cc_t    = saturate(cc_luma / 0.36);
+        float cc_s    = cc_t * cc_t * (3.0 - 2.0 * cc_t) * 0.36;
+        float cc_new  = lerp(cc_luma, cc_s, CREATIVE_CONTRAST - 1.0);
+        float cc_scale = cc_new / max(cc_luma, 0.001);
+        result = saturate(result * cc_scale);
+    }
 
     // Blend toward original by GRADE_STRENGTH
     result = lerp(col.rgb, result, GRADE_STRENGTH / 100.0);
