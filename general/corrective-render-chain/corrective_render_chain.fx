@@ -237,7 +237,7 @@ float4 ApplyAdaptationPS(float4 pos : SV_Position,
 
     float3 cast     = abs(illuminant - float3(grey, grey, grey));
     float deviation = length(cast) / max(grey, 0.001);
-    float youvan_t  = (YOUVAN_STRENGTH / 100.0) * saturate(deviation / 0.08);
+    float youvan_t  = saturate(deviation / 0.08);
     float3 result   = lerp(col.rgb, adapted, youvan_t);
     return float4(result, col.a);
 }
