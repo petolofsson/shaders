@@ -27,15 +27,15 @@
 #define WB_G  100
 #define WB_B  100
 
-#define YOUVAN_LERP_SPEED       2
+#define YOUVAN_LERP_SPEED       0.5
 #define GREY_PIXEL_THRESHOLD    0.1
 
 #define ZONE_CURVE_STRENGTH  0
-#define ZONE_LERP_SPEED      0.01
-#define ZONE_HIST_LERP       3.0
+#define ZONE_LERP_SPEED      0.5
+#define ZONE_HIST_LERP       0.5
 
 #define CHROMA_CURVE_STRENGTH  0
-#define CHROMA_LERP_SPEED      0.01
+#define CHROMA_LERP_SPEED      0.5
 #define CHROMA_BAND_WIDTH      0.15
 
 #define OT_CONTRAST         1.35
