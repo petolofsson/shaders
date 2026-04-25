@@ -8,7 +8,8 @@
       "WebSearch",
       "WebFetch(domain:eng.aurelienpierre.com)",
       "Bash(git *)",
-      "Bash(xargs sed -i 's/olofssonian_chroma_contrast/olofssonian_chroma_lift/g; *)"
+      "Bash(xargs sed -i 's/olofssonian_chroma_contrast/olofssonian_chroma_lift/g; *)",
+      "WebFetch(domain:research.nvidia.com)"
     ]
   }
 }
