@@ -12,7 +12,7 @@
 #define WB_R       100    // 0–200; 100 = neutral
 #define WB_G       100
 #define WB_B       100
-#define TARGET_P95 0.90
+#define TARGET_P95 1.0
 
 // ─── Scene stats — 1×1 RGBA16F: .r = p95, .g = p5 ────────────────────────
 
