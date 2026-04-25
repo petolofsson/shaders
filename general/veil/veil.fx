@@ -19,7 +19,7 @@
 
 #include "creative_values.fx"
 
-static const float3 VEIL_TINT = float3(1.0, 0.95, 0.80);  // AR coating amber
+#define VEIL_TINT float3(1.0, 0.95, 0.80)  // AR coating amber
 
 // ─── Shared percentile cache ───────────────────────────────────────────────
 
