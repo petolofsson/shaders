@@ -23,3 +23,7 @@
 
 // Veil
 #define VEIL_STRENGTH     10     // 0–100; veiling glare intensity
+
+// Retinal vignette
+#define RETINAL_STRENGTH  80     // 0–100; chroma reduction % at screen corners
+#define RETINAL_FALLOFF   1.5    // power curve — 1=linear, 2=slow centre/fast edge
