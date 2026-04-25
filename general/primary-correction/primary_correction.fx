@@ -12,7 +12,7 @@
 #define WB_G        100
 #define WB_B        100
 #define TARGET_P95  1.0
-#define LERP_SPEED  8     // % per frame temporal smoothing — prevents flicker
+#define LERP_SPEED  3     // % per frame temporal smoothing — prevents flicker
 
 // ─── Scene stats — 1×1 RGBA16F: .r = p95, .g = p5 ────────────────────────
 
