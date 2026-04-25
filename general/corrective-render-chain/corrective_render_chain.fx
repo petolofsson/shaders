@@ -265,13 +265,15 @@ float4 OutputTransformPS(float4 pos : SV_Position,
             float4((zx + 0.5) / 4.0, (zy + 0.5) / 4.0, 0, 0)).rgb;
         grey_linear += Luma(illum);
     }
-    grey_linear = clamp(grey_linear / 16.0, 0.05, 0.40);
+    grey_linear = clamp(grey_linear / 16.0, 0.05, 0.55);
     float grey  = RGBtoOKLab(float3(grey_linear, grey_linear, grey_linear)).x;
 
-    // Tone curve on OKLab L only — zero hue/saturation change
-    float3 lab_in     = RGBtoOKLab(result);
-    float  L_mapped   = OpenDRT_luma(max(lab_in.x, 0.0), grey);
-    float3 tonemapped = OKLabtoRGB(float3(L_mapped, lab_in.yz));
+    // Tone curve on OKLab L + Hunt-effect chroma compensation
+    float3 lab_in      = RGBtoOKLab(result);
+    float  L_before    = max(lab_in.x, 0.0);
+    float  L_mapped    = OpenDRT_luma(L_before, grey);
+    float  chroma_comp = (L_before > 0.001) ? pow(L_mapped / L_before, 0.5) : 1.0;
+    float3 tonemapped  = OKLabtoRGB(float3(L_mapped, lab_in.yz * chroma_comp));
     result = lerp(result, tonemapped, opendrt_t);
 
     // Highlight chroma rolloff (OKLab)
