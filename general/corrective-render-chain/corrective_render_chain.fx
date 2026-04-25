@@ -95,7 +95,7 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     rgb_out      = rgb_out + (gc_max - rgb_out) * gc_amt;
 
     // Exposure normalization — bring scene median to perceptual midgrey
-    float exposure = clamp(0.45 / max(lum_p50, 0.001), 0.85, 1.5);
+    float exposure = clamp(0.40 / max(lum_p50, 0.001), 0.85, 1.5);
     rgb_out *= exposure;
 
     // Debug indicator — green (slot 2)
