@@ -105,6 +105,18 @@ sampler2D SatHist
     MagFilter = POINT;
 };
 
+// Shared percentile cache — r=p25, g=p50, b=p75, a=iqr
+// Written here, read by inverse_grade and corrective_render_chain
+texture2D PercTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+sampler2D PercSamp
+{
+    Texture   = PercTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
 // ─── Vertex shader ─────────────────────────────────────────────────────────
 
 void PostProcessVS(in  uint   id  : SV_VertexID,
@@ -239,6 +251,35 @@ float4 SatHistSmoothPS(float4 pos : SV_Position,
     return float4(lerp(prev, raw, (LERP_SPEED / 100.0) * (frametime / 10.0)), 0.0, 0.0, 1.0);
 }
 
+// ─── Pass 7 — CDF walk → 1×1 percentile cache ─────────────────────────────
+
+float4 CDFWalkPS(float4 pos : SV_Position,
+                 float2 uv  : TEXCOORD0) : SV_Target
+{
+    float cumul = 0.0;
+    float p25 = 0.25, p50 = 0.50, p75 = 0.75;
+    float lk25 = 0.0, lk50 = 0.0, lk75 = 0.0;
+
+    [loop] for (int b = 0; b < HIST_BINS; b++)
+    {
+        float bv  = float(b) / float(HIST_BINS);
+        float frc = tex2Dlod(LumHist, float4((float(b) + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
+        cumul += frc;
+
+        float at25 = step(0.25, cumul) * (1.0 - lk25);
+        float at50 = step(0.50, cumul) * (1.0 - lk50);
+        float at75 = step(0.75, cumul) * (1.0 - lk75);
+        p25  = lerp(p25,  bv, at25);
+        p50  = lerp(p50,  bv, at50);
+        p75  = lerp(p75,  bv, at75);
+        lk25 = saturate(lk25 + at25);
+        lk50 = saturate(lk50 + at50);
+        lk75 = saturate(lk75 + at75);
+    }
+
+    return float4(p25, p50, p75, saturate(p75 - p25));
+}
+
 // ─── Technique ─────────────────────────────────────────────────────────────
 
 technique FrameAnalysis
@@ -277,5 +318,11 @@ technique FrameAnalysis
         VertexShader = PostProcessVS;
         PixelShader  = SatHistSmoothPS;
         RenderTarget = SatHistTex;
+    }
+    pass CDFWalk
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = CDFWalkPS;
+        RenderTarget = PercTex;
     }
 }

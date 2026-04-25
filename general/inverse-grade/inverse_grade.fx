@@ -25,10 +25,10 @@ sampler2D BackBuffer
     MagFilter = LINEAR;
 };
 
-texture2D LumHistTex { Width = 64; Height = 1; Format = R32F; MipLevels = 1; };
-sampler2D LumHistSamp
+texture2D PercTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+sampler2D PercSamp
 {
-    Texture   = LumHistTex;
+    Texture   = PercTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = POINT;
@@ -76,29 +76,9 @@ float4 InverseGradePS(float4 pos : SV_Position,
     float4 col = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return col;
 
-    // CDF walk — p25/p50/p75 from luminance histogram
-    float cumul = 0.0;
-    float p25 = 0.25, p50 = 0.50, p75 = 0.75;
-    float lk25 = 0.0, lk50 = 0.0, lk75 = 0.0;
-
-    [loop] for (int b = 0; b < 64; b++)
-    {
-        float bv  = float(b) / 64.0;
-        float frc = tex2Dlod(LumHistSamp, float4((float(b) + 0.5) / 64.0, 0.5, 0, 0)).r;
-        cumul += frc;
-
-        float at25 = step(0.25, cumul) * (1.0 - lk25);
-        float at50 = step(0.50, cumul) * (1.0 - lk50);
-        float at75 = step(0.75, cumul) * (1.0 - lk75);
-        p25  = lerp(p25,  bv, at25);
-        p50  = lerp(p50,  bv, at50);
-        p75  = lerp(p75,  bv, at75);
-        lk25 = saturate(lk25 + at25);
-        lk50 = saturate(lk50 + at50);
-        lk75 = saturate(lk75 + at75);
-    }
-
-    float iqr      = saturate(p75 - p25);
+    // Percentile fetch — p25/p50/p75/iqr from shared 1×1 cache (written by frame_analysis)
+    float4 perc    = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
+    float p25      = perc.r, p50 = perc.g, p75 = perc.b, iqr = perc.a;
     float strength = saturate(smoothstep(0.15, 0.50, iqr) * IG_MAX);
 
     // Shoulder boost — heavy game compression above p75 gets extra expansion

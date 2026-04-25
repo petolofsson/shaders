@@ -28,10 +28,10 @@ sampler2D CorrectiveSrc
     MagFilter = LINEAR;
 };
 
-texture2D LumHistTex { Width = 64; Height = 1; Format = R32F; MipLevels = 1; };
-sampler2D LumHistSamp
+texture2D PercTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+sampler2D PercSamp
 {
-    Texture   = LumHistTex;
+    Texture   = PercTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = POINT;
@@ -71,16 +71,8 @@ float4 OutputTransformPS(float4 pos : SV_Position,
 
     float3 rgb_out = col.rgb;
 
-    // CDF walk — p50 for exposure normalization
-    float lum_cumul = 0.0, lum_p50 = 0.50, lum_lock50 = 0.0;
-    [loop] for (int lb = 0; lb < 64; lb++)
-    {
-        float lum_frac = tex2Dlod(LumHistSamp, float4((float(lb) + 0.5) / 64.0, 0.5, 0, 0)).r;
-        lum_cumul += lum_frac;
-        float at50  = step(0.50, lum_cumul) * (1.0 - lum_lock50);
-        lum_p50     = lerp(lum_p50, float(lb) / 64.0, at50);
-        lum_lock50  = saturate(lum_lock50 + at50);
-    }
+    // Percentile fetch — p50 from shared 1×1 cache (written by frame_analysis)
+    float lum_p50 = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0)).g;
 
     // Gamut compression — clean up out-of-gamut from inverse_grade
     float luma_gc = Luma(rgb_out);
