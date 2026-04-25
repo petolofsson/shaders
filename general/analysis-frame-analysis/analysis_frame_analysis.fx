@@ -29,9 +29,15 @@
 #define BAND_BLUE    (240.0 / 360.0)
 #define BAND_MAGENTA (300.0 / 360.0)
 
-static const float kBandCenters[6] = {
-    BAND_RED, BAND_YELLOW, BAND_GREEN, BAND_CYAN, BAND_BLUE, BAND_MAGENTA
-};
+float GetBandCenter(int band)
+{
+    if (band == 0) return BAND_RED;
+    if (band == 1) return BAND_YELLOW;
+    if (band == 2) return BAND_GREEN;
+    if (band == 3) return BAND_CYAN;
+    if (band == 4) return BAND_BLUE;
+    return BAND_MAGENTA;
+}
 
 uniform float frametime < source = "frametime"; >;
 
@@ -178,7 +184,7 @@ float4 SatHistGatherPS(float4 pos : SV_Position,
     int   band      = int(pos.y);
     float bucket_lo = float(b)     / float(HIST_BINS);
     float bucket_hi = float(b + 1) / float(HIST_BINS);
-    float center    = kBandCenters[band];
+    float center    = GetBandCenter(band);
 
     float count   = 0.0;
     float total_w = 0.0;
