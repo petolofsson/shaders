@@ -78,6 +78,16 @@ sampler2D IlluminantSamp
     MagFilter = LINEAR;
 };
 
+texture2D LumHistTex { Width = 64; Height = 1; Format = R32F; MipLevels = 1; };
+sampler2D LumHistSamp
+{
+    Texture   = LumHistTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
 // ─── Vertex shader ───────────────────────────────────────────────────────────
 
 void PostProcessVS(in  uint   id  : SV_VertexID,
@@ -225,7 +235,10 @@ float4 ApplyAdaptationPS(float4 pos : SV_Position,
     scale            = clamp(scale, 0.1, 10.0);
     float3 adapted   = mul(M_CAT16_inv, lms_pixel * scale);
 
-    float3 result = lerp(col.rgb, adapted, YOUVAN_STRENGTH / 100.0);
+    float3 cast     = abs(illuminant - float3(grey, grey, grey));
+    float deviation = length(cast) / max(grey, 0.001);
+    float youvan_t  = (YOUVAN_STRENGTH / 100.0) * saturate(deviation / 0.08);
+    float3 result   = lerp(col.rgb, adapted, youvan_t);
     return float4(result, col.a);
 }
 
@@ -237,7 +250,23 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     if (pos.y < 1.0) return col;
 
     float3 result    = col.rgb;
-    float  hermite_t = HERMITE_STRENGTH / 100.0;
+
+    // Tonal IQR from pre-correction histogram — wide range → less curve, flat → more
+    float lum_cumul = 0.0, lum_p25 = 0.25, lum_p75 = 0.75;
+    float lum_lock25 = 0.0, lum_lock75 = 0.0;
+    [loop] for (int lb = 0; lb < 64; lb++)
+    {
+        float lum_frac = tex2Dlod(LumHistSamp, float4((float(lb) + 0.5) / 64.0, 0.5, 0, 0)).r;
+        lum_cumul += lum_frac;
+        float at25 = step(0.25, lum_cumul) * (1.0 - lum_lock25);
+        float at75 = step(0.75, lum_cumul) * (1.0 - lum_lock75);
+        lum_p25    = lerp(lum_p25, float(lb) / 64.0, at25);
+        lum_p75    = lerp(lum_p75, float(lb) / 64.0, at75);
+        lum_lock25 = saturate(lum_lock25 + at25);
+        lum_lock75 = saturate(lum_lock75 + at75);
+    }
+    float lum_iqr  = saturate(lum_p75 - lum_p25);
+    float hermite_t = (HERMITE_STRENGTH / 100.0) * (1.0 - lum_iqr * 0.5);
 
     // Gamut compression — only active with tone curve
     float luma_gc = Luma(result);
