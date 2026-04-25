@@ -544,10 +544,10 @@ float4 OutputTransformPS(float4 pos : SV_Position,
         float4((128.5) / BUFFER_WIDTH, 0.5 / BUFFER_HEIGHT, 0, 0)).r;
     float grey = clamp(scene_mean, 0.05, 0.40);
 
-    // Luma-based tone curve — apply sigmoid to luma only, scale RGB proportionally (no hue shift)
-    float  luma_in    = Luma(result);
-    float  luma_out   = OpenDRT_luma(luma_in, grey);
-    float3 tonemapped = (luma_in > 0.001) ? result * (luma_out / luma_in) : result;
+    // Tone curve in OKLab L only — chroma (a*,b*) unchanged, zero saturation loss
+    float3 lab_in     = RGBtoOKLab(result);
+    float  L_mapped   = OpenDRT_luma(max(lab_in.x, 0.0), grey);
+    float3 tonemapped = OKLabtoRGB(float3(L_mapped, lab_in.yz));
     result = lerp(result, tonemapped, OPENDRT_STRENGTH / 100.0);
 
     // Highlight chroma compression (OKLab)

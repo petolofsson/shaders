@@ -2,7 +2,7 @@
 // 0 = passthrough  100 = full effect
 // filmic: YOUVAN_STRENGTH 100  OPENDRT_STRENGTH 100  ZONE_STRENGTH 15–25  CHROMA_STRENGTH 10–20
 
-#define YOUVAN_STRENGTH   70  // hue correction toward neutral
+#define YOUVAN_STRENGTH   30  // hue correction toward neutral
 #define OPENDRT_STRENGTH 100  // display tone curve
 #define ZONE_STRENGTH     28  // tonal contrast
-#define CHROMA_STRENGTH   25  // color lift
+#define CHROMA_STRENGTH   35  // color lift
