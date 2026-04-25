@@ -156,7 +156,7 @@ float4 ScopePS(float4 pos : SV_Position,
         float3 scope;
         if      (ref_mean)   scope = float3(1.0, 0.85, 0.0);
         else if (ref_90)     scope = float3(0.4, 0.4,  0.4);
-        else if (pix <= bar) scope = float3(0.9, 0.15, 0.15);
+        else if (pix <= bar) scope = float3(1.0, 0.05, 0.05);
         else                 scope = bg;
         return float4(lerp(col.rgb, scope, 0.92), col.a);
     }
