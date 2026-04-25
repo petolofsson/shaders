@@ -4,9 +4,8 @@
 // multiplier scaling up for desaturated scenes. Proportional scaling
 // preserves relative saturation relationships.
 //
-// Stats are derived from the BackBuffer this shader receives — NOT from
-// frame_analysis histograms. This ensures mean/p10 match the post-
-// primary_correction signal, not the raw game output.
+// Stats are derived from the BackBuffer this shader receives, ensuring
+// mean/p10 reflect the post-primary_correction signal.
 //
 // Two passes:
 //   Pass 1 — ComputeSatStats: sample BackBuffer in 8×8 grid → mean

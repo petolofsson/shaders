@@ -1,11 +1,10 @@
 // primary_correction.fx — Full linear range normalization
 //
-// Maps scene [p5, p95] → [0, 0.90] via a true levels stretch.
+// Maps scene [p5, p95] → [0, 1.0] via a true levels stretch.
 // Pixels at the scene's 5th percentile map to black; pixels at the
-// 95th percentile map to 0.90. Everything in between scales linearly.
+// 95th percentile map to 1.0. Everything in between scales linearly.
 //
-// Stats computed from BackBuffer directly (8×8 grid, binary search)
-// to ensure they reflect the actual post-WB signal, not a stale histogram.
+// Stats computed from BackBuffer directly (8×8 grid, binary search).
 //
 // White balance (WB_R/G/B): neutral by default.
 

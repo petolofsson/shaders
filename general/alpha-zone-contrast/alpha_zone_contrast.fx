@@ -8,9 +8,8 @@
 // Applied multi-scale: curve runs on low-frequency luma (1/8 res) only.
 // High-frequency detail (edges, texture) is added back unchanged.
 //
-// Stats are derived from the BackBuffer this shader receives — NOT from
-// frame_analysis histograms. This ensures p10/p90 match the post-
-// primary_correction signal, not the raw game output.
+// Stats are derived from the BackBuffer this shader receives, ensuring
+// p10/p90 reflect the post-primary_correction signal.
 //
 // Three passes:
 //   Pass 1 — ComputeLowFreq: downsample BackBuffer luma to 1/8 res.
