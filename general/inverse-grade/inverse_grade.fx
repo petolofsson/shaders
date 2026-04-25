@@ -93,8 +93,10 @@ float4 InverseGradePS(float4 pos : SV_Position,
     float  lum_steer = Luma(rgb);
     rgb = lerp(rgb, float3(lum_steer, lum_steer, lum_steer), steer * 0.4);
 
-    // Triangle dither — breaks 8-bit banding during shadow expansion
-    float h      = frac(sin(dot(pos.xy, float2(127.1, 311.7))) * 43758.5453);
+    // Triangle dither — sine-free hash avoids NaN on large pixel coords (SPIR-V OpSin UB)
+    float2 hpos  = frac(pos.xy * float2(0.1031, 0.1030));
+    hpos        += dot(hpos, hpos.yx + 33.33);
+    float h      = frac((hpos.x + hpos.y) * hpos.x);
     float dither = (h < 0.5 ? sqrt(2.0 * h) - 1.0 : 1.0 - sqrt(2.0 * (1.0 - h))) / 255.0;
     rgb = saturate(rgb + dither);
 
