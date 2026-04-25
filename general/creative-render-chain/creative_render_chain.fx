@@ -240,10 +240,6 @@ float4 ApplyContrastPS(float4 pos : SV_Position,
     float4 col = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return col;  // data highway
 
-    // Debug indicator — purple (slot 3)
-    if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 36) && pos.x < float(BUFFER_WIDTH - 24))
-        return float4(0.7, 0.20, 1.0, 1.0);
-
     float luma = Luma(col.rgb);
 
     float4 zone_levels = tex2D(CreativeZoneLevelsSamp, uv);
@@ -317,9 +313,13 @@ float4 ApplyChromaPS(float4 pos : SV_Position,
 
     float  strength = (CHROMA_STRENGTH / 100.0) * sat_w * (1.0 - blended_iqr);
     float  new_sat  = saturate(hsv.y * (1.0 + strength));
-    float3 result   = HSVtoRGB(float3(hsv.x, new_sat, hsv.z));
+    float3 rgb_out  = HSVtoRGB(float3(hsv.x, new_sat, hsv.z));
 
-    return float4(result, col.a);
+    // Debug indicator — purple (slot 3)
+    if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 36) && pos.x < float(BUFFER_WIDTH - 24))
+        return float4(0.7, 0.20, 1.0, 1.0);
+
+    return float4(rgb_out, col.a);
 }
 
 // ─── Technique ───────────────────────────────────────────────────────────────

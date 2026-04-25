@@ -5,4 +5,4 @@
 
 #define HERMITE_STRENGTH  50  // display-referred Hermite S-curve contrast (OKLab L)
 #define ZONE_STRENGTH     25  // tonal contrast
-#define CHROMA_STRENGTH   15  // color lift
+#define CHROMA_STRENGTH   30  // color lift

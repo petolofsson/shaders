@@ -2,21 +2,17 @@
 //
 // All passes share CorrectiveBuf (RGBA16F) — no UNORM clamping between stages.
 //
-//   Pass 1  WhiteBalance       BackBuffer    → CorrectiveBuf    WB_R/G/B only
-//   Pass 2  ComputeLowFreq     CorrectiveBuf → LowFreqTex       1/8 res downsample
-//   Pass 3  IlluminantEstimate LowFreqTex    → IlluminantTex    Shades of Grey (Minkowski p=6) per 4×4 zone
-//   Pass 4  CopyBufToSrc       CorrectiveBuf → CorrectiveSrcTex
-//   Pass 5  ApplyAdaptation    CorrectiveSrc → CorrectiveBuf    CAT16 illuminant correction
-//   Pass 6  CopyBufToSrc       CorrectiveBuf → CorrectiveSrcTex
-//   Pass 7  OutputTransform    CorrectiveSrc → BackBuffer       OKLab tone curve + scene-adaptive grey
+//   Pass 1  ComputeLowFreq      BackBuffer    → LowFreqTex       1/8 res downsample
+//   Pass 2  IlluminantEstimate  LowFreqTex    → IlluminantTex    Shades of Grey (Minkowski p=6) per 4×4 zone
+//   Pass 3  ApplyAdaptation     BackBuffer    → CorrectiveBuf    CAT16 illuminant correction
+//   Pass 4  CopyBufToSrc        CorrectiveBuf → CorrectiveSrcTex
+//   Pass 5  OutputTransform     CorrectiveSrc → BackBuffer       OKLab Hermite S-curve + scene-adaptive grey
 
 #include "creative_values.fx"
 
 #define YOUVAN_LERP_SPEED    4.3
 #define MINKOWSKI_P          6.0
 
-#define OT_CHROMA_COMPRESS 0.0
-#define OT_BLACK_POINT     0
 #define OT_SAT_MAX         85
 #define OT_SAT_BLEND       15
 
@@ -205,27 +201,11 @@ float4 IlluminantEstimatePS(float4 pos : SV_Position,
     return float4(lerp(prev.rgb, illum, speed), lerp(prev.a, 1.0, speed));
 }
 
-// Pass 5 — CAT16 chromatic adaptation toward neutral grey
+// Pass 5 — Passthrough (YOUVAN disabled pending inverse-grade rewrite)
 float4 ApplyAdaptationPS(float4 pos : SV_Position,
                          float2 uv  : TEXCOORD0) : SV_Target
 {
-    float4 col = tex2D(BackBuffer, uv);
-    if (pos.y < 1.0) return col;
-
-    float3 illuminant = tex2D(IlluminantSamp, uv).rgb;
-    float  grey       = Luma(illuminant);
-
-    float3 lms_illum = mul(M_CAT16, illuminant);
-    float3 lms_pixel = mul(M_CAT16, col.rgb);
-    float3 scale     = float3(grey, grey, grey) / max(abs(lms_illum), 0.001);
-    scale            = clamp(scale, 0.1, 10.0);
-    float3 adapted   = mul(M_CAT16_inv, lms_pixel * scale);
-
-    float3 cast     = abs(illuminant - float3(grey, grey, grey));
-    float deviation = length(cast) / max(grey, 0.001);
-    float youvan_t  = saturate(deviation / 0.08);
-    float3 result   = lerp(col.rgb, adapted, youvan_t);
-    return float4(result, col.a);
+    return tex2D(BackBuffer, uv);
 }
 
 // Pass 7 — Output transform: scene-adaptive OKLab tone curve → BackBuffer
@@ -235,7 +215,7 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     float4 col    = tex2D(CorrectiveSrc, uv);
     if (pos.y < 1.0) return col;
 
-    float3 result    = col.rgb;
+    float3 rgb_out    = col.rgb;
 
     // Tonal IQR from pre-correction histogram — wide range → less curve, flat → more
     float lum_cumul = 0.0, lum_p25 = 0.25, lum_p75 = 0.75;
@@ -255,19 +235,16 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     float hermite_t = (HERMITE_STRENGTH / 100.0) * (1.0 - lum_iqr * 0.5);
 
     // Gamut compression — only active with tone curve
-    float luma_gc = Luma(result);
-    float under   = saturate(-min(result.r, min(result.g, result.b)) * 10.0) * hermite_t;
-    result        = lerp(result, float3(luma_gc, luma_gc, luma_gc), under);
+    float luma_gc = Luma(rgb_out);
+    float under   = saturate(-min(rgb_out.r, min(rgb_out.g, rgb_out.b)) * 10.0) * hermite_t;
+    rgb_out       = lerp(rgb_out, float3(luma_gc, luma_gc, luma_gc), under);
 
-    float gc_max = max(result.r, max(result.g, result.b));
-    float gc_min = min(result.r, min(result.g, result.b));
+    float gc_max = max(rgb_out.r, max(rgb_out.g, rgb_out.b));
+    float gc_min = min(rgb_out.r, min(rgb_out.g, rgb_out.b));
     float sat_gc = (gc_max > 0.001) ? (gc_max - gc_min) / gc_max : 0.0;
     float excess = max(0.0, sat_gc - OT_SAT_MAX / 100.0) / (1.0 - OT_SAT_MAX / 100.0);
     float gc_amt = excess * excess * (OT_SAT_BLEND / 100.0) * hermite_t;
-    result       = result + (gc_max - result) * gc_amt;
-
-    // Black lift
-    result = result * (1.0 - OT_BLACK_POINT / 100.0) + OT_BLACK_POINT / 100.0;
+    rgb_out      = rgb_out + (gc_max - rgb_out) * gc_amt;
 
     // Scene-adaptive grey point — averaged from IlluminantTex (EMA-smoothed), in OKLab L space
     float grey_linear = 0.0;
@@ -282,22 +259,16 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     float grey  = RGBtoOKLab(float3(grey_linear, grey_linear, grey_linear)).x;
 
     // Tone curve on OKLab L + Hunt-effect chroma compensation
-    float3 lab_in      = RGBtoOKLab(result);
+    float3 lab_in      = RGBtoOKLab(rgb_out);
     float  L_before    = max(lab_in.x, 0.0);
     float  L_mapped    = HermiteContrast(L_before, grey, hermite_t);
-    float  chroma_comp = (L_before > 0.001) ? pow(L_mapped / L_before, 0.5) : 1.0;
-    result = OKLabtoRGB(float3(L_mapped, lab_in.yz * chroma_comp));
-
-    // Highlight chroma rolloff (OKLab)
-    float3 lab    = RGBtoOKLab(result);
-    float hl_gate = smoothstep(0.65, 1.0, lab.x);
-    lab.yz       *= (1.0 - hl_gate * OT_CHROMA_COMPRESS);
-    result        = OKLabtoRGB(lab);
+    float  chroma_comp = (L_before > 0.001) ? max(pow(L_mapped / L_before, 0.5), 1.0) : 1.0;
+    rgb_out = OKLabtoRGB(float3(L_mapped, lab_in.yz * chroma_comp));
 
     // Debug indicator — green (slot 2)
     if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 50) && pos.x < float(BUFFER_WIDTH - 38))
         return float4(0.1, 0.90, 0.1, 1.0);
-    return saturate(float4(result, col.a));
+    return saturate(float4(rgb_out, col.a));
 }
 
 // ─── Technique ───────────────────────────────────────────────────────────────

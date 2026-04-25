@@ -1,18 +1,20 @@
-// scope.fx — Dual luma histogram overlay
+// scope.fx — Three-panel scope overlay (512×168px, bottom-left)
 //
-// Two panels (each 80px tall, 4px divider):
-//   Top   (white) — post-correction — current BackBuffer
-//   Bottom (red)  — pre-correction  — read from BackBuffer row y=0
-//                   (encoded by scope_pre.fx, preserved by corrective shaders)
+// Top 40px    (white bars)     — post-correction luma histogram, digit overlay = post_mean
+// 4px divider
+// Mid 40px    (grey bars)      — pre-correction luma histogram,  digit overlay = pre_mean
+// 4px divider
+// Bottom 80px (hue)            — top 40px post hue (live), bottom 40px pre hue (highway)
 //
-// Data highway layout (row y=0):
-//   Pixels 0..127  — pre-correction histogram bins (written by scope_pre)
-//   Pixel  128     — pre-correction mean            (written by scope_pre)
-//   Pixel  129     — post-correction mean, smoothed (written by this shader)
+// Data highway layout (row y=0, written by scope_pre.fx):
+//   Pixels   0..127  — pre-correction luma histogram bins
+//   Pixel    128     — pre-correction mean luma
+//   Pixel    129     — post-correction mean, smoothed (written by this shader)
+//   Pixels 130..193  — pre-correction hue histogram bins
 //
 // Reference lines:
-//   Yellow = scene mean for that panel (pre or post correction)
-//   Grey   = 0.90 (p95 target — where highlights should land)
+//   Yellow = scene mean for that panel
+//   Grey   = 0.90 reference line
 
 #define SCOPE_X    10
 #define SCOPE_Y    10
@@ -110,9 +112,9 @@ float4 ScopePS(float4 pos : SV_Position,
     // Row y=0 — data highway
     if (pos.y < 1.0)
     {
-        // Pixels 0..128: restore from y=1 (histogram + pre_mean, written by scope_pre)
+        // Pixels 0..128: put game content back (highway data not needed after this pass)
         if (int(pos.x) <= SCOPE_BINS)
-            return tex2D(BackBuffer, float2(uv.x, 1.0 / float(BUFFER_HEIGHT)));
+            return tex2D(BackBuffer, float2(uv.x, 1.5 / float(BUFFER_HEIGHT)));
 
         // Pixel 129: compute + store smoothed post-correction mean
         if (int(pos.x) == SCOPE_BINS + 1)
