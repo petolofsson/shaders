@@ -11,7 +11,8 @@
 // Shared texture contract:
 //   LumHistTex { Width=64; Height=1; Format=R32F } — declared in frame_analysis (WRITER)
 
-#define IG_MAX  0.35  // maximum inverse-grade strength
+#include "creative_values.fx"
+#define IG_MAX  (INVERSE_STRENGTH / 100.0)
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
@@ -49,6 +50,36 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
+
+float3 LinearRGB_to_OKLab(float3 c)
+{
+    float l = 0.4122214708*c.r + 0.5363325363*c.g + 0.0514459929*c.b;
+    float m = 0.2119034982*c.r + 0.6806995451*c.g + 0.1073969566*c.b;
+    float s = 0.0883024619*c.r + 0.2817188376*c.g + 0.6299787005*c.b;
+    float l_ = pow(max(l, 0.0), 1.0/3.0);
+    float m_ = pow(max(m, 0.0), 1.0/3.0);
+    float s_ = pow(max(s, 0.0), 1.0/3.0);
+    return float3(
+        0.2104542553*l_ + 0.7936177850*m_ - 0.0040720468*s_,
+        1.9779984951*l_ - 2.4285922050*m_ + 0.4505937099*s_,
+        0.0259040371*l_ + 0.7827717662*m_ - 0.8086757660*s_
+    );
+}
+
+float3 OKLab_to_LinearRGB(float3 lab)
+{
+    float l_ = lab.x + 0.3963377774*lab.y + 0.2158037573*lab.z;
+    float m_ = lab.x - 0.1055613458*lab.y - 0.0638541728*lab.z;
+    float s_ = lab.x - 0.0894841775*lab.y - 1.2914855480*lab.z;
+    float l  = l_*l_*l_;
+    float m  = m_*m_*m_;
+    float s  = s_*s_*s_;
+    return float3(
+        +4.0767416621*l - 3.3077115913*m + 0.2309699292*s,
+        -1.2684380046*l + 2.6097574011*m - 0.3413193965*s,
+        -0.0041960863*l - 0.7034186147*m + 1.7076147010*s
+    );
+}
 
 // Inverse S-curve anchored at pivot. shoulder_boost increases expansion
 // above p75 when the game has compressed the highlight shoulder.
@@ -100,11 +131,19 @@ float4 InverseGradePS(float4 pos : SV_Position,
     float dither = (h < 0.5 ? sqrt(2.0 * h) - 1.0 : 1.0 - sqrt(2.0 * (1.0 - h))) / 255.0;
     rgb = saturate(rgb + dither);
 
-    // Apply inverse S on luma, scale RGB to preserve hue
-    float luma_in  = Luma(rgb);
-    float luma_out = InverseS(luma_in, p50, strength, p75, shoulder_boost);
-    float scale    = (luma_in > 0.001) ? luma_out / luma_in : 1.0;
-    float3 rgb_out = lerp(col.rgb, rgb * scale, strength);
+    // OKLab inverse grade — expand L, recover chroma proportionally
+    float3 lab   = LinearRGB_to_OKLab(rgb);
+    float  L_in  = lab.x;
+    float  L_out = InverseS(L_in, p50, strength, p75, shoulder_boost);
+    float  expansion = L_out / max(L_in, 0.001);
+    lab.x   = L_out;
+    lab.yz *= lerp(1.0, expansion, 0.5);
+
+    float3 rgb_out = lerp(col.rgb, max(OKLab_to_LinearRGB(lab), 0.0), strength);
+
+    // Debug indicator — teal (slot 1)
+    if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 106) && pos.x < float(BUFFER_WIDTH - 94))
+        return float4(0.0, 0.85, 0.75, 1.0);
 
     return float4(rgb_out, col.a);
 }

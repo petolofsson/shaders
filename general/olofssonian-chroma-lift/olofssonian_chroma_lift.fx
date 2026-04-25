@@ -417,10 +417,11 @@ float4 ApplyChromaPS(float4 pos : SV_Position,
                      float2 uv  : TEXCOORD0) : SV_Target
 {
     // Debug box — must be first so compile failures don't hide it
-    if (pos.x > 2504 && pos.x < 2516 && pos.y > 15 && pos.y < 27)
-        return float4(1.0, 0.0, 0.0, 1.0);
+    if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 50) && pos.x < float(BUFFER_WIDTH - 38))
+        return float4(1.0, 0.20, 0.20, 1.0);
 
     float4 col = tex2D(BackBuffer, uv);
+    if (pos.y < 1.0) return col;
     float3 hsv = RGBtoHSV(col.rgb);
 
     if (hsv.y < SAT_THRESHOLD / 100.0) return col;
@@ -454,8 +455,19 @@ float4 ApplyChromaPS(float4 pos : SV_Position,
     // Nudge green-band hues 4° toward cyan
     float final_hue = hsv.x - GREEN_HUE_COOL * green_w * final_sat;
 
-    float3 result = HSVtoRGB(float3(final_hue, final_sat, hsv.z));
-    return float4(result, col.a);
+    // HK: lifted saturation reads as brighter — pull V back down
+    float hk_factor = (final_sat > 0.001 && hsv.y > 0.001)
+                    ? pow(hsv.y / final_sat, 0.15)
+                    : 1.0;
+    float hk_val = saturate(hsv.z * hk_factor);
+
+    // Subtractive density: dye absorption on lifted colours only, shadow-protected
+    float delta_sat = max(final_sat - hsv.y, 0.0);
+    float shadow_w  = smoothstep(0.0, 0.25, hk_val);
+    float final_val = saturate(hk_val - delta_sat * shadow_w * (DENSITY_STRENGTH / 100.0));
+
+    float3 result = HSVtoRGB(float3(final_hue, final_sat, final_val));
+    return float4(saturate(result), col.a);
 }
 
 // ─── Technique ─────────────────────────────────────────────────────────────

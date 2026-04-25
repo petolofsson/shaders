@@ -304,12 +304,14 @@ float4 ColorGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     result.r += TOE_TINT_R * toe_bell * tt_gate;
     result.g += TOE_TINT_G * toe_bell * tt_gate;
     result.b += TOE_TINT_B * toe_bell * tt_gate;
+    result = saturate(result);
 
     // Black lift
     float black_w = 1.0 - smoothstep(0.0, 0.10, result_luma);
     result.r += BLACK_LIFT_R * black_w;
     result.g += BLACK_LIFT_G * black_w;
     result.b += BLACK_LIFT_B * black_w;
+    result = saturate(result);
 
     // Shadow tint — saturation-gated
     float st_max  = max(result.r, max(result.g, result.b));
@@ -317,7 +319,7 @@ float4 ColorGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float st_sat  = (st_max > 0.001) ? (st_max - st_min) / st_max : 0.0;
     float st_gate = smoothstep(0.08, 0.22, st_sat);
     float shadow_w = result_luma * (1.0 - smoothstep(0.0, SHADOW_RANGE / 100.0, result_luma)) * st_gate;
-    result += float3(SHADOW_TINT_R, SHADOW_TINT_G, SHADOW_TINT_B) * shadow_w;
+    result = saturate(result + float3(SHADOW_TINT_R, SHADOW_TINT_G, SHADOW_TINT_B) * shadow_w);
 
     // Highlight lift
     float hl_t        = smoothstep(HIGHLIGHT_START / 100.0, 1.0, result_luma);
@@ -325,6 +327,7 @@ float4 ColorGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     result.r += HIGHLIGHT_TINT_R * highlight_w;
     result.g += HIGHLIGHT_TINT_G * highlight_w;
     result.b += HIGHLIGHT_TINT_B * highlight_w;
+    result = saturate(result);
 
     // Luma-neutral midtone cast
     float luma_pre = Luma(result);
@@ -376,7 +379,7 @@ float4 ColorGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     result = lerp(col.rgb, result, GRADE_STRENGTH / 100.0);
 
     // Debug indicator — blue (color grade slot)
-    if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 57) && pos.x < float(BUFFER_WIDTH - 45))
+    if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 36) && pos.x < float(BUFFER_WIDTH - 24))
         return float4(0.2, 0.2, 0.9, 1.0);
 
     return float4(saturate(result), col.a);

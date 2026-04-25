@@ -226,7 +226,7 @@ float4 SatHistGatherPS(float4 pos : SV_Position,
 float4 DebugOverlayPS(float4 pos : SV_Position,
                       float2 uv  : TEXCOORD0) : SV_Target
 {
-    if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 78) && pos.x < float(BUFFER_WIDTH - 66))
+    if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 120) && pos.x < float(BUFFER_WIDTH - 108))
         return float4(1.0, 0.95, 0.0, 1.0);
     return tex2D(BackBuffer, uv);
 }

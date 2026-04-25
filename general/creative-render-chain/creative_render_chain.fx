@@ -196,7 +196,12 @@ float4 ApplyContrastPS(float4 pos : SV_Position,
     new_luma     = saturate(new_luma + (SHADOW_LIFT / 100.0) * 0.15 * lift_w);
 
     float scale = new_luma / max(luma, 0.001);
-    return float4(col.rgb * scale, col.a);
+
+    // Debug indicator — purple (slot 4)
+    if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 64) && pos.x < float(BUFFER_WIDTH - 52))
+        return float4(0.7, 0.20, 1.0, 1.0);
+
+    return float4(saturate(col.rgb * scale), col.a);
 }
 
 // ─── Technique ───────────────────────────────────────────────────────────────

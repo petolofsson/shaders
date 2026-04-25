@@ -42,6 +42,17 @@ sampler2D BackBuffer
     MagFilter = LINEAR;
 };
 
+// Native (pre-inverse_grade) histogram — shared with frame_analysis
+texture2D LumHistTex { Width = 64; Height = 1; Format = R32F; MipLevels = 1; };
+sampler2D LumHistSamp
+{
+    Texture   = LumHistTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
 void PostProcessVS(in  uint   id  : SV_VertexID,
                    out float4 pos : SV_Position,
                    out float2 uv  : TEXCOORD0)
