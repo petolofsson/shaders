@@ -68,15 +68,26 @@ float3 HueToRGB(float h)
     return saturate(p - 1.0);
 }
 
-static const int kDigits[55] = {
-    7,5,5,5,7, 2,2,2,2,7, 7,1,7,4,7, 7,1,7,1,7, 5,5,7,1,1,
-    7,4,7,1,7, 7,4,7,5,7, 7,1,1,1,1, 7,5,7,5,7, 7,5,7,1,7,
-    0,0,0,0,2
-};
+int GetDigitRow(int d, int row)
+{
+    int enc = 0;
+    if (d== 0) enc = 31599;
+    if (d== 1) enc =  9367;
+    if (d== 2) enc = 29671;
+    if (d== 3) enc = 29647;
+    if (d== 4) enc = 23497;
+    if (d== 5) enc = 31183;
+    if (d== 6) enc = 31215;
+    if (d== 7) enc = 29257;
+    if (d== 8) enc = 31727;
+    if (d== 9) enc = 31695;
+    if (d==10) enc =     2;
+    return (enc >> (3 * (4 - row))) & 7;
+}
 
 bool SampleDigit(int d, int px, int py)
 {
-    return ((kDigits[clamp(d, 0, 10) * 5 + py] >> (2 - px)) & 1) != 0;
+    return (GetDigitRow(clamp(d, 0, 10), py) >> (2 - px)) & 1;
 }
 
 bool ShowNumber(float val, int px, int py)
