@@ -17,9 +17,9 @@
 #define SCOPE_X    10
 #define SCOPE_Y    10
 #define SCOPE_W    512
-#define SCOPE_PH   80
+#define SCOPE_PH   40
 #define SCOPE_DIV  4
-#define SCOPE_H    248
+#define SCOPE_H    168
 #define SCOPE_AMP  1.5
 #define SCOPE_S    16
 #define SCOPE_BINS 128
@@ -66,6 +66,29 @@ float3 HueToRGB(float h)
 {
     float3 p = abs(frac(h + float3(0.0, 2.0/3.0, 1.0/3.0)) * 6.0 - 3.0);
     return saturate(p - 1.0);
+}
+
+static const int kDigits[55] = {
+    7,5,5,5,7, 2,2,2,2,7, 7,1,7,4,7, 7,1,7,1,7, 5,5,7,1,1,
+    7,4,7,1,7, 7,4,7,5,7, 7,1,1,1,1, 7,5,7,5,7, 7,5,7,1,7,
+    0,0,0,0,2
+};
+
+bool SampleDigit(int d, int px, int py)
+{
+    return ((kDigits[clamp(d, 0, 10) * 5 + py] >> (2 - px)) & 1) != 0;
+}
+
+bool ShowNumber(float val, int px, int py)
+{
+    val = clamp(val, 0.0, 0.999);
+    int w = int(val);
+    int f = int(frac(val) * 100.0);
+    if (px >= 0  && px <= 2)  return SampleDigit(w,      px,      py);
+    if (px >= 4  && px <= 6)  return SampleDigit(10,     px - 4,  py);
+    if (px >= 8  && px <= 10) return SampleDigit(f / 10, px - 8,  py);
+    if (px >= 12 && px <= 14) return SampleDigit(f % 10, px - 12, py);
+    return false;
 }
 
 float4 ScopePS(float4 pos : SV_Position,
@@ -159,6 +182,11 @@ float4 ScopePS(float4 pos : SV_Position,
         else if (ref_90)     scope = float3(0.4, 0.4,  0.4);
         else if (pix <= bar) scope = float3(0.9, 0.9,  0.9);
         else                 scope = bg;
+        int dig_x = int(pos.x - x0) - (SCOPE_W - 18);
+        int dig_y = int(rel_y) - 2;
+        if (dig_x >= 0 && dig_x < 15 && dig_y >= 0 && dig_y < 5)
+            if (ShowNumber(post_mean, dig_x, dig_y))
+                scope = float3(1.0, 0.85, 0.0);
         return float4(lerp(col.rgb, scope, 0.92), col.a);
     }
 
@@ -172,8 +200,13 @@ float4 ScopePS(float4 pos : SV_Position,
         float3 scope;
         if      (ref_mean)   scope = float3(1.0, 0.85, 0.0);
         else if (ref_90)     scope = float3(0.4, 0.4,  0.4);
-        else if (pix <= bar) scope = float3(1.0, 0.05, 0.05);
+        else if (pix <= bar) scope = float3(0.45, 0.45, 0.45);
         else                 scope = bg;
+        int dig_x = int(pos.x - x0) - (SCOPE_W - 18);
+        int dig_y = int(rel_y) - (SCOPE_PH + SCOPE_DIV + 2);
+        if (dig_x >= 0 && dig_x < 15 && dig_y >= 0 && dig_y < 5)
+            if (ShowNumber(pre_mean, dig_x, dig_y))
+                scope = float3(1.0, 0.85, 0.0);
         return float4(lerp(col.rgb, scope, 0.92), col.a);
     }
 
