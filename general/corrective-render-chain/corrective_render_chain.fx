@@ -3,6 +3,8 @@
 //   Pass 1  CopyToSrc       BackBuffer    → CorrectiveSrcTex  (RGBA16F snapshot)
 //   Pass 2  OutputTransform CorrectiveSrc → BackBuffer        Gamut compress + exposure normalize
 
+#include "creative_values.fx"
+
 #define OT_SAT_MAX   85
 #define OT_SAT_BLEND 15
 
@@ -87,7 +89,8 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     rgb_out      = rgb_out + (gc_max - rgb_out) * gc_amt;
 
     // Exposure normalization — bring scene median to perceptual midgrey
-    float exposure = clamp(0.40 / max(lum_p50, 0.001), 0.85, 1.5);
+    float _exp_target = lerp(0.20, 0.60, EXPOSURE / 100.0);
+    float exposure = min(_exp_target / max(lum_p50, 0.001), 1.5);
     rgb_out *= exposure;
 
     // Debug indicator — green (slot 2)

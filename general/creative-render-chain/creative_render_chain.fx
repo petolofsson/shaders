@@ -14,10 +14,6 @@
 
 // ZONE_STRENGTH and CHROMA_STRENGTH come from creative_values.fx (0–100, 0=passthrough)
 
-#define ZONE_LERP_SPEED   4.3
-#define ZONE_HIST_LERP    4.3
-
-uniform float frametime < source = "frametime"; >;
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
@@ -61,20 +57,12 @@ sampler2D CreativeZoneLevelsSamp
     MagFilter = LINEAR;
 };
 
-texture2D SatHistTex { Width = 64; Height = 6; Format = R32F; MipLevels = 1; };
-sampler2D SatHistSamp
-{
-    Texture   = SatHistTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
+#define ZONE_LERP_SPEED  8    // 0–100; temporal adaptation speed (matches chroma)
 
-texture2D CreativeSatLevelsTex { Width = 6; Height = 1; Format = RGBA16F; MipLevels = 1; };
-sampler2D CreativeSatLevelsSamp
+texture2D ZoneHistoryTex { Width = 4; Height = 4; Format = RGBA16F; MipLevels = 1; };
+sampler2D ZoneHistorySamp
 {
-    Texture   = CreativeSatLevelsTex;
+    Texture   = ZoneHistoryTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = LINEAR;
@@ -96,54 +84,6 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 
 float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
-float SCurve(float x, float m, float strength)
-{
-    float p = 1.0 + strength * 2.0;
-    if (x < m)
-    {
-        float t = x / max(m, 0.001);
-        return m * pow(t, p);
-    }
-    else
-    {
-        float t = (x - m) / max(1.0 - m, 0.001);
-        return m + (1.0 - m) * (1.0 - pow(1.0 - t, p));
-    }
-}
-
-float3 RGBtoHSV(float3 c)
-{
-    float4 K = float4(0.0, -1.0/3.0, 2.0/3.0, -1.0);
-    float4 p = lerp(float4(c.bg, K.wz), float4(c.gb, K.xy), step(c.b, c.g));
-    float4 q = lerp(float4(p.xyw, c.r), float4(c.r, p.yzx), step(p.x, c.r));
-    float  d = q.x - min(q.w, q.y);
-    float  e = 1.0e-10;
-    return float3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
-}
-
-float3 HSVtoRGB(float3 c)
-{
-    float4 K = float4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
-    float3 p = abs(frac(c.xxx + K.xyz) * 6.0 - K.www);
-    return c.z * lerp(K.xxx, saturate(p - K.xxx), c.y);
-}
-
-float GetBandCenter(int band)
-{
-    if (band == 0) return 0.0000;
-    if (band == 1) return 0.1667;
-    if (band == 2) return 0.3333;
-    if (band == 3) return 0.5000;
-    if (band == 4) return 0.6667;
-    return 0.8333;
-}
-
-float HueBandWeight(float hue, int band)
-{
-    float d = abs(hue - GetBandCenter(band));
-    d = min(d, 1.0 - d);
-    return saturate(1.0 - d / 0.15);
-}
 
 
 // ═══ Pixel shaders ════════════════════════════════════════════════════════════
@@ -186,11 +126,8 @@ float4 ComputeZoneHistogramPS(float4 pos : SV_Position,
         count += (luma >= bucket_lo && luma < bucket_hi) ? 1.0 : 0.0;
     }
 
-    float v    = count / 100.0;
-    float prev = tex2Dlod(CreativeZoneHistSamp,
-        float4((float(b) + 0.5) / 32.0, (float(zone) + 0.5) / 16.0, 0, 0)).r;
-    float h    = lerp(prev, v, (ZONE_HIST_LERP / 100.0) * (frametime / 10.0));
-    return float4(h, h, h, 1.0);
+    float v = count / 100.0;
+    return float4(v, v, v, 1.0);
 }
 
 // Pass 3 — CDF walk → zone medians
@@ -200,10 +137,6 @@ float4 BuildZoneLevelsPS(float4 pos : SV_Position,
     int zone_x = int(pos.x);
     int zone_y = int(pos.y);
     int zone   = zone_y * 4 + zone_x;
-
-    float2 prev_uv = float2((float(zone_x) + 0.5) / 4.0, (float(zone_y) + 0.5) / 4.0);
-    float4 prev    = tex2Dlod(CreativeZoneLevelsSamp, float4(prev_uv, 0, 0));
-    float  speed   = (prev.r < 0.001) ? 1.0 : (ZONE_LERP_SPEED / 100.0) * (frametime / 10.0);
 
     float cumulative = 0.0;
     float p25 = 0.25, median = 0.5, p75 = 0.75;
@@ -227,30 +160,36 @@ float4 BuildZoneLevelsPS(float4 pos : SV_Position,
         lock75 = saturate(lock75 + at75);
     }
 
-    return float4(lerp(prev.r, median, speed),
-                  lerp(prev.g, p25,    speed),
-                  lerp(prev.b, p75,    speed),
-                  1.0);
+    return float4(median, p25, p75, 1.0);
 }
 
-// Pass 4 — Zone S-curve anchored at zone median
+// Pass 4 — Lerp fresh zone levels into history texture (temporal smoothing)
+float4 SmoothZoneLevelsPS(float4 pos : SV_Position,
+                          float2 uv  : TEXCOORD0) : SV_Target
+{
+    float4 current = tex2D(CreativeZoneLevelsSamp, uv);
+    float4 prev    = tex2D(ZoneHistorySamp, uv);
+    float  speed   = (prev.r < 0.001) ? 1.0 : (ZONE_LERP_SPEED / 100.0);
+    return lerp(prev, current, speed);
+}
+
+// Pass 5 — Zone S-curve anchored at zone median
 float4 ApplyContrastPS(float4 pos : SV_Position,
                        float2 uv  : TEXCOORD0) : SV_Target
 {
     float4 col = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return col;  // data highway
 
-    float luma = Luma(col.rgb);
+    float luma        = Luma(col.rgb);
+    float zone_median = tex2D(ZoneHistorySamp, uv).r;
+    float strength   = ZONE_STRENGTH / 100.0;
 
-    float4 zone_levels = tex2D(CreativeZoneLevelsSamp, uv);
-    float  zone_median = zone_levels.r;
-    float  zone_iqr    = saturate(zone_levels.b - zone_levels.g);
-
-    float t        = luma * 2.0 - 1.0;
-    float tonal_w  = 1.0 - t * t;
-    float strength = (ZONE_STRENGTH / 100.0) * tonal_w * (1.0 - zone_iqr);
-
-    float new_luma = SCurve(luma, zone_median, strength);
+    // Olofssonian pivoted S-curve — applied directly to pixel luma, anchored at zone_median.
+    // Self-limiting: effect tapers to zero at extremes (true blacks/whites unaffected).
+    // No LF-grid intermediary — no 8×8-block spatial artifacts in smooth bright areas.
+    float dt       = luma - zone_median;
+    float bent     = dt + strength * dt * (1.0 - saturate(abs(dt)));
+    float new_luma = saturate(zone_median + bent);
 
     // Shadow lift — expand dark range, tapers to zero at 0.4 luma
     float lift_w = smoothstep(0.4, 0.0, new_luma);
@@ -258,72 +197,6 @@ float4 ApplyContrastPS(float4 pos : SV_Position,
 
     float scale = new_luma / max(luma, 0.001);
     return float4(col.rgb * scale, col.a);
-}
-
-// Pass 5 — CDF walk over SatHistTex → p25/p50/p75 per hue band
-float4 BuildSatLevelsPS(float4 pos : SV_Position,
-                        float2 uv  : TEXCOORD0) : SV_Target
-{
-    int band = int(pos.x);
-
-    float cumulative = 0.0;
-    float p25 = 0.25, median = 0.5, p75 = 0.75;
-    float lock25 = 0.0, lock50 = 0.0, lock75 = 0.0;
-
-    [loop] for (int b = 0; b < 64; b++)
-    {
-        float  bv   = float(b) / 64.0;
-        float2 suv  = float2((float(b) + 0.5) / 64.0, (float(band) + 0.5) / 6.0);
-        float  frac = tex2Dlod(SatHistSamp, float4(suv, 0, 0)).r;
-        cumulative += frac;
-
-        float at25 = step(0.25, cumulative) * (1.0 - lock25);
-        float at50 = step(0.50, cumulative) * (1.0 - lock50);
-        float at75 = step(0.75, cumulative) * (1.0 - lock75);
-        p25    = lerp(p25,    bv, at25);
-        median = lerp(median, bv, at50);
-        p75    = lerp(p75,    bv, at75);
-        lock25 = saturate(lock25 + at25);
-        lock50 = saturate(lock50 + at50);
-        lock75 = saturate(lock75 + at75);
-    }
-
-    return float4(median, p25, p75, 1.0);
-}
-
-// Pass 6 — IQR-adaptive saturation lift
-float4 ApplyChromaPS(float4 pos : SV_Position,
-                     float2 uv  : TEXCOORD0) : SV_Target
-{
-    float4 col = tex2D(BackBuffer, uv);
-    if (pos.y < 1.0) return col;  // data highway
-
-    float3 hsv = RGBtoHSV(col.rgb);
-    float  sat_w = smoothstep(0.0, 0.15, hsv.y);
-
-    float blended_iqr = 0.0, total_w = 0.0;
-    [loop] for (int band = 0; band < 6; band++)
-    {
-        float w = HueBandWeight(hsv.x, band);
-        if (w > 0.001)
-        {
-            float2 suv = float2((float(band) + 0.5) / 6.0, 0.5);
-            float4 lvl = tex2Dlod(CreativeSatLevelsSamp, float4(suv, 0, 0));
-            blended_iqr += w * saturate(lvl.b - lvl.g);
-            total_w     += w;
-        }
-    }
-    if (total_w > 0.001) blended_iqr /= total_w;
-
-    float  strength = (CHROMA_STRENGTH / 100.0) * sat_w * (1.0 - blended_iqr);
-    float  new_sat  = saturate(hsv.y * (1.0 + strength));
-    float3 rgb_out  = HSVtoRGB(float3(hsv.x, new_sat, hsv.z));
-
-    // Debug indicator — purple (slot 3)
-    if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 36) && pos.x < float(BUFFER_WIDTH - 24))
-        return float4(0.7, 0.20, 1.0, 1.0);
-
-    return float4(rgb_out, col.a);
 }
 
 // ─── Technique ───────────────────────────────────────────────────────────────
@@ -348,20 +221,15 @@ technique CreativeRenderChain
         PixelShader  = BuildZoneLevelsPS;
         RenderTarget = CreativeZoneLevelsTex;
     }
+    pass SmoothZoneLevels
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = SmoothZoneLevelsPS;
+        RenderTarget = ZoneHistoryTex;
+    }
     pass ApplyContrast
     {
         VertexShader = PostProcessVS;
         PixelShader  = ApplyContrastPS;
-    }
-    pass BuildSatLevels
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = BuildSatLevelsPS;
-        RenderTarget = CreativeSatLevelsTex;
-    }
-    pass ApplyChroma
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = ApplyChromaPS;
     }
 }

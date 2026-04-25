@@ -12,7 +12,7 @@
 //         p25 = mean - 0.674*stddev, p50 = mean, p75 = mean + 0.674*stddev.
 
 // ─── Tuning ────────────────────────────────────────────────────────────────
-#define CURVE_STRENGTH  40     // -100 to 100; S-curve bend strength
+#include "creative_values.fx"
 #define LERP_SPEED      8      // 0–100; adaptation speed
 #define BAND_WIDTH      15     // 0–100; hue band overlap width
 #define MIN_WEIGHT      1.0
@@ -319,9 +319,15 @@ static const float2 kHalton[256] = {
     float2(0.001953, 0.482853)
 };
 
-static const float kBandCenters[6] = {
-    BAND_RED, BAND_YELLOW, BAND_GREEN, BAND_CYAN, BAND_BLUE, BAND_MAGENTA
-};
+float GetBandCenter(int b)
+{
+    if (b == 0) return BAND_RED;
+    if (b == 1) return BAND_YELLOW;
+    if (b == 2) return BAND_GREEN;
+    if (b == 3) return BAND_CYAN;
+    if (b == 4) return BAND_BLUE;
+    return BAND_MAGENTA;
+}
 
 // ─── Vertex shader ─────────────────────────────────────────────────────────
 
@@ -386,7 +392,7 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
         float3 rgb   = tex2Dlod(BackBuffer, float4(s_uv, 0, 0)).rgb;
         float3 hsv_s = RGBtoHSV(rgb);
 
-        float w    = HueBandWeight(hsv_s.x, kBandCenters[band_idx]) + MIN_WEIGHT;
+        float w    = HueBandWeight(hsv_s.x, GetBandCenter(band_idx)) + MIN_WEIGHT;
         float s    = hsv_s.y;
         sum_w   += w;
         sum_ws  += w * s;
@@ -425,7 +431,7 @@ float4 ApplyChromaPS(float4 pos : SV_Position,
 
     for (int b = 0; b < 6; b++)
     {
-        float w        = HueBandWeight(hsv.x, kBandCenters[b]);
+        float w        = HueBandWeight(hsv.x, GetBandCenter(b));
         float2 hist_uv = float2((b + 0.5) / 8.0, 0.5 / 4.0);
         float4 hist    = tex2D(ChromaHistory, hist_uv);
 
@@ -435,7 +441,7 @@ float4 ApplyChromaPS(float4 pos : SV_Position,
         float p50    = mean;
         float p75    = min(mean + 0.674 * stddev, 1.0);
 
-        float band_s = PivotedSCurve(hsv.y, p50, CURVE_STRENGTH / 100.0);
+        float band_s = PivotedSCurve(hsv.y, p50, CHROMA_STRENGTH / 100.0);
 
         new_sat += band_s * w;
         total_w += w;
