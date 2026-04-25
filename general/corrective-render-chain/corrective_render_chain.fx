@@ -32,7 +32,7 @@
 
 #define ZONE_CURVE_STRENGTH  0
 #define ZONE_LERP_SPEED      0.01
-#define ZONE_HIST_LERP       5.0
+#define ZONE_HIST_LERP       3.0
 
 #define CHROMA_CURVE_STRENGTH  0
 #define CHROMA_LERP_SPEED      0.01
@@ -539,10 +539,16 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     // Black lift
     result = result * (1.0 - OT_BLACK_POINT / 100.0) + OT_BLACK_POINT / 100.0;
 
-    // Scene-adaptive grey point — scene mean luma from highway (scope_pre, row 0 pixel 128)
-    float scene_mean = tex2Dlod(CorrectiveSrc,
-        float4((128.5) / BUFFER_WIDTH, 0.5 / BUFFER_HEIGHT, 0, 0)).r;
-    float grey = clamp(scene_mean, 0.05, 0.40);
+    // Scene-adaptive grey point — average luma across all 16 IlluminantTex zones (EMA-smoothed)
+    float grey = 0.0;
+    [loop] for (int zy = 0; zy < 4; zy++)
+    [loop] for (int zx = 0; zx < 4; zx++)
+    {
+        float3 illum = tex2Dlod(IlluminantSamp,
+            float4((zx + 0.5) / 4.0, (zy + 0.5) / 4.0, 0, 0)).rgb;
+        grey += Luma(illum);
+    }
+    grey = clamp(grey / 16.0, 0.05, 0.40);
 
     // Tone curve in OKLab L only — chroma (a*,b*) unchanged, zero saturation loss
     float3 lab_in     = RGBtoOKLab(result);
