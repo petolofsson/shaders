@@ -19,7 +19,6 @@
 #define YOUVAN_LERP_SPEED    4.3
 #define MINKOWSKI_P          6.0
 
-#define OT_CONTRAST        1.35
 #define OT_CHROMA_COMPRESS 0.0
 #define OT_BLACK_POINT     0
 #define OT_SAT_MAX         85
@@ -138,14 +137,13 @@ float3 OKLabtoRGB(float3 c)
     );
 }
 
-// Scalar sigmoid — applied to OKLab L with scene-adaptive grey point
-float OpenDRT_luma(float luma, float grey)
+// Hermite S-curve anchored at scene-adaptive grey point — display-referred [0,1] → [0,1]
+float HermiteContrast(float L, float grey, float strength)
 {
-    float gc = pow(max(grey, 0.001), OT_CONTRAST);
-    float K  = gc * (1.0 - grey) / max(grey - gc, 0.0001);
-    float A  = 1.0 + K;
-    float xc = pow(max(luma, 0.0), OT_CONTRAST);
-    return A * xc / (xc + K);
+    float bias     = 0.5 - grey;
+    float centered = saturate(L + bias);
+    float curve    = smoothstep(0.0, 1.0, centered);
+    return saturate(lerp(centered, curve, strength) - bias);
 }
 
 // ═══ Pixel shaders ════════════════════════════════════════════════════════════
@@ -271,10 +269,9 @@ float4 OutputTransformPS(float4 pos : SV_Position,
     // Tone curve on OKLab L + Hunt-effect chroma compensation
     float3 lab_in      = RGBtoOKLab(result);
     float  L_before    = max(lab_in.x, 0.0);
-    float  L_mapped    = OpenDRT_luma(L_before, grey);
+    float  L_mapped    = HermiteContrast(L_before, grey, opendrt_t);
     float  chroma_comp = (L_before > 0.001) ? pow(L_mapped / L_before, 0.5) : 1.0;
-    float3 tonemapped  = OKLabtoRGB(float3(L_mapped, lab_in.yz * chroma_comp));
-    result = lerp(result, tonemapped, opendrt_t);
+    result = OKLabtoRGB(float3(L_mapped, lab_in.yz * chroma_comp));
 
     // Highlight chroma rolloff (OKLab)
     float3 lab    = RGBtoOKLab(result);
