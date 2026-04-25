@@ -5,11 +5,13 @@
 //   Bottom (red)  — pre-correction  — read from BackBuffer row y=0
 //                   (encoded by scope_pre.fx, preserved by corrective shaders)
 //
-// Compare: if the corrective chain is expanding range, the white panel
-// will spread wider than the red panel.
+// Data highway layout (row y=0):
+//   Pixels 0..127  — pre-correction histogram bins (written by scope_pre)
+//   Pixel  128     — pre-correction mean            (written by scope_pre)
+//   Pixel  129     — post-correction mean, smoothed (written by this shader)
 //
 // Reference lines:
-//   Yellow = 0.18 (18% grey — photographic middle grey)
+//   Yellow = scene mean for that panel (pre or post correction)
 //   Grey   = 0.90 (p95 target — where highlights should land)
 
 #define SCOPE_X    10
@@ -21,6 +23,7 @@
 #define SCOPE_AMP  1.5
 #define SCOPE_S    16
 #define SCOPE_BINS 128
+#define SCOPE_LERP 3      // % per frame smoothing for stored post_mean
 
 texture2D BackBufferTex : COLOR;
 sampler2D BackBuffer
@@ -48,11 +51,32 @@ float4 ScopePS(float4 pos : SV_Position,
 {
     float4 col = tex2D(BackBuffer, uv);
 
-    // Restore row y=0 (data highway) — copy from y=1
+    // Row y=0 — data highway
     if (pos.y < 1.0)
     {
-        float2 restore_uv = float2(uv.x, 1.0 / float(BUFFER_HEIGHT));
-        return tex2D(BackBuffer, restore_uv);
+        // Pixels 0..128: restore from y=1 (histogram + pre_mean, written by scope_pre)
+        if (int(pos.x) <= SCOPE_BINS)
+            return tex2D(BackBuffer, float2(uv.x, 1.0 / float(BUFFER_HEIGHT)));
+
+        // Pixel 129: compute + store smoothed post-correction mean
+        if (int(pos.x) == SCOPE_BINS + 1)
+        {
+            float live = 0.0;
+            [loop]
+            for (int my = 0; my < SCOPE_S; my++)
+            [loop]
+            for (int mx = 0; mx < SCOPE_S; mx++)
+                live += Luma(tex2Dlod(BackBuffer,
+                    float4((mx + 0.5) / float(SCOPE_S), (my + 0.5) / float(SCOPE_S), 0, 0)).rgb);
+            live /= float(SCOPE_S * SCOPE_S);
+            float dv   = 0.5 / float(BUFFER_HEIGHT);
+            float prev = tex2Dlod(BackBuffer,
+                float4((float(SCOPE_BINS + 1) + 0.5) / float(BUFFER_WIDTH), dv, 0, 0)).r;
+            float s = lerp(prev, live, SCOPE_LERP / 100.0);
+            return float4(s, s, s, 1.0);
+        }
+
+        return col; // pixels 130+: passthrough (reserved for future stage means)
     }
 
     float x0 = SCOPE_X;
@@ -78,19 +102,11 @@ float4 ScopePS(float4 pos : SV_Position,
 
     float data_v = 0.5 / float(BUFFER_HEIGHT);
 
-    // Adaptive yellow line — post-correction mean (computed live)
-    float post_mean = 0.0;
-    [loop]
-    for (int my = 0; my < SCOPE_S; my++)
-    [loop]
-    for (int mx = 0; mx < SCOPE_S; mx++)
-        post_mean += Luma(tex2Dlod(BackBuffer,
-            float4((mx + 0.5) / float(SCOPE_S), (my + 0.5) / float(SCOPE_S), 0, 0)).rgb);
-    post_mean /= float(SCOPE_S * SCOPE_S);
-
-    // Pre-correction mean from data highway pixel 128
-    float pre_mean_u = (float(SCOPE_BINS) + 0.5) / float(BUFFER_WIDTH);
-    float pre_mean   = tex2Dlod(BackBuffer, float4(pre_mean_u, data_v, 0, 0)).r;
+    // Stage means from data highway (both temporally smoothed)
+    float pre_mean_u  = (float(SCOPE_BINS)     + 0.5) / float(BUFFER_WIDTH);
+    float post_mean_u = (float(SCOPE_BINS + 1) + 0.5) / float(BUFFER_WIDTH);
+    float pre_mean    = tex2Dlod(BackBuffer, float4(pre_mean_u,  data_v, 0, 0)).r;
+    float post_mean   = tex2Dlod(BackBuffer, float4(post_mean_u, data_v, 0, 0)).r;
 
     bool ref_90 = (bin == int(0.90 * float(SCOPE_BINS)));
 

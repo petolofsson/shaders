@@ -1,4 +1,9 @@
-// youvan_orthonorm.fx — Dynamic color space orthonormalization
+// youvan_orthonorm.fx — Dynamic color space orthonormalization (game-agnostic)
+//
+// CORRECTIVE STAGE — game-agnostic. Removes only demonstrable technical errors
+// (color cast, cross-channel bleed). Makes no creative decisions: saturation and
+// brightness are preserved; only hue accuracy is corrected. Strength scales with
+// the actual deviation from neutral — passthrough on already-neutral signals.
 //
 // Based on Youvan (2024): "Dynamic Orthonormalization of Color Spaces:
 // A Matrix Algebra Approach for Enhanced Signal Separation."
@@ -21,8 +26,6 @@
 #define LERP_SPEED       2      // 0–100; adaptation speed — slow keeps matrix stable
 #define ZONE_DARK_MAX    33     // 0–100; luma threshold: dark zone upper bound (photographic thirds)
 #define ZONE_BRIGHT_MIN  66     // 0–100; luma threshold: bright zone lower bound (photographic thirds)
-
-uniform int FRAME_COUNT < source = "framecount"; >;
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
@@ -230,12 +233,9 @@ float4 ComputeMatrixPS(float4 pos : SV_Position,
 float4 ApplyOrthoPS(float4 pos : SV_Position,
                     float2 uv  : TEXCOORD0) : SV_Target
 {
-    if (pos.x > 2458 && pos.x < 2470 && pos.y > 15 && pos.y < 27)
-        return float4(0.0, 0.85, 0.3, 1.0);
-
     float4 col = tex2D(BackBuffer, uv);
 
-    if (pos.y < 1.0) return col;
+    if (pos.y < 1.0) return col;  // data highway — must not be modified
 
     float3 B0 = tex2D(MatrixSampler, float2(0.5 / 3.0, 0.5)).rgb;
     float3 B1 = tex2D(MatrixSampler, float2(1.5 / 3.0, 0.5)).rgb;
@@ -273,7 +273,7 @@ float4 ApplyOrthoPS(float4 pos : SV_Position,
     float strength = saturate(max(dev_d, max(dev_m, dev_b)));
 
     float3 result = lerp(col.rgb, hue_only, strength);
-    return float4(saturate(result), col.a);
+    return float4(result, col.a);
 }
 
 // ─── Technique ─────────────────────────────────────────────────────────────

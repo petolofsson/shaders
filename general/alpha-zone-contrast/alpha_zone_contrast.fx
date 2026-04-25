@@ -1,28 +1,42 @@
-// alpha_zone_contrast.fx — Levels + S-curve luma contrast
+// alpha_zone_contrast.fx — Spatial 4×4 zone contrast with tonal weighting (game-agnostic)
 //
-// Expands tonal range by anchoring a smoothstep S-curve at the scene's
-// own p10/p90. Shadows below p10 push darker; highlights above p90 push
-// brighter; midtones between are gently stretched. Midtone at (p10+p90)/2
-// is invariant — no grey lift.
+// CORRECTIVE STAGE — game-agnostic.
 //
-// Applied multi-scale: curve runs on low-frequency luma (1/8 res) only.
-// High-frequency detail (edges, texture) is added back unchanged.
+// CONCEPTUAL BASIS:
+//   The screen is divided into a 4×4 grid of 16 zones. Each zone builds its own
+//   32-bin luma histogram from a 10×10 sample of the low-frequency scene (1/8 res).
+//   The median (p50) of each zone is located — the zone's local Zone V equivalent.
+//   A smoothstep S-curve is applied to each pixel's luma, anchored at the median
+//   of its zone. The 4×4 zone medians are stored in a texture sampled with LINEAR
+//   filtering, giving smooth bilinear transitions at every zone boundary.
 //
-// Stats are derived from the BackBuffer this shader receives, ensuring
-// p10/p90 reflect the post-primary_correction signal.
+//     - A bright sky zone adapts independently from a dark ground zone.
+//     - Zone boundaries blend seamlessly — no visible grid edges.
+//     - Tonal weighting: midtones receive full strength, extreme shadows and
+//       highlights taper toward zero — prevents crushing blacks or clipping whites.
 //
-// Three passes:
-//   Pass 1 — ComputeLowFreq: downsample BackBuffer luma to 1/8 res.
-//   Pass 2 — BuildLevels: binary-search p10/p90 from LowFreqTex,
-//             lerp into LevelsTex (1×1) for temporal stability.
-//   Pass 3 — ApplyContrast: S-curve on low-freq, reconstruct with
-//             high-freq detail, scale RGB (hue+sat preserved).
+// ARCHITECTURAL NOTE — do not change this approach without approval:
+//   The 4×4 spatial zone grid with bilinear blending is the deliberate design.
+//   It was chosen over a single global median because local zone medians let
+//   bright sky and dark ground adapt independently. The tonal weighting
+//   (parabola peaking at midtone) is what prevents shadows from being crushed.
+//   Any significant change to grid size, sampling, or S-curve anchor requires
+//   explicit approval before implementation.
+//
+// Four passes:
+//   Pass 1 — ComputeLowFreq: downsample CorrectiveSamp to 1/8 res (RGBA = R,G,B,luma)
+//   Pass 2 — ComputeZoneHistogram: 32-bin luma histogram per zone (32×16 texture)
+//   Pass 3 — BuildZoneLevels: CDF walk per zone → smoothed median → 4×4 ZoneLevelsTex
+//   Pass 4 — ApplyContrast: bilinear zone median + tonal weight → luma S-curve
 
-#define CURVE_STRENGTH  20      // 0–100; blend toward S-curve. 20 = technical baseline.
-#define LERP_SPEED      10      // % per frame temporal smoothing for levels
+#define CURVE_STRENGTH  15      // 0–100; S-curve blend strength.
+#define LERP_SPEED      0.01    // % per second, frametime-normalized
+#define HIST_LERP       5.0     // % per second, frametime-normalized
 
-// ─── Low-frequency luma — 1/8 resolution ───────────────────────────────────
-texture2D LowFreqTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = R16F; MipLevels = 1; };
+uniform float frametime < source = "frametime"; >;
+
+// ─── Low-frequency RGB+luma — 1/8 resolution ───────────────────────────────
+texture2D LowFreqTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 1; };
 sampler2D LowFreqSamp
 {
     Texture   = LowFreqTex;
@@ -32,19 +46,28 @@ sampler2D LowFreqSamp
     MagFilter = LINEAR;
 };
 
-// ─── Scene levels (p10, p90) — 1×1, temporally smoothed ──────────────────
-// .r = lo (p10), .g = hi (p90), .b = initialised flag
-texture2D LevelsTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
-sampler2D LevelsSamp
+// ─── 32-bin luma histogram, 16 rows (one per zone) ─────────────────────────
+texture2D ZoneHistTex { Width = 32; Height = 16; Format = R16F; MipLevels = 1; };
+sampler2D ZoneHistSamp
 {
-    Texture   = LevelsTex;
+    Texture   = ZoneHistTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = POINT;
     MagFilter = POINT;
 };
 
-// ─── BackBuffer ────────────────────────────────────────────────────────────
+// ─── Zone medians — 4×4 R16F, LINEAR sampled for smooth zone blending ───────
+texture2D ZoneLevelsTex { Width = 4; Height = 4; Format = R16F; MipLevels = 1; };
+sampler2D ZoneLevelsSamp
+{
+    Texture   = ZoneLevelsTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+};
+
 texture2D BackBufferTex : COLOR;
 sampler2D BackBuffer
 {
@@ -67,113 +90,120 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 
 float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
-// ─── Pass 1 — Downsample to low-frequency luma ─────────────────────────────
+// S-curve anchored at median m: m→m (invariant), full [0,1] range.
+float SCurve(float x, float m, float strength)
+{
+    float t_lo = saturate(x / max(m, 0.001));
+    float t_hi = saturate((x - m) / max(1.0 - m, 0.001));
+    float s_lo = m * (t_lo * t_lo * (3.0 - 2.0 * t_lo));
+    float s_hi = m + (1.0 - m) * (t_hi * t_hi * (3.0 - 2.0 * t_hi));
+    float s    = lerp(s_lo, s_hi, step(m, x));
+    return lerp(x, s, strength);
+}
 
+// ─── Pass 1 — Downsample to low-frequency RGB + luma ───────────────────────
 float4 ComputeLowFreqPS(float4 pos : SV_Position,
                         float2 uv  : TEXCOORD0) : SV_Target
 {
     float2 px = float2(1.0 / BUFFER_WIDTH, 1.0 / BUFFER_HEIGHT);
-    float luma = 0.0;
-    luma += Luma(tex2Dlod(BackBuffer, float4(uv + float2(-1.5, -1.5) * px, 0, 0)).rgb);
-    luma += Luma(tex2Dlod(BackBuffer, float4(uv + float2( 1.5, -1.5) * px, 0, 0)).rgb);
-    luma += Luma(tex2Dlod(BackBuffer, float4(uv + float2(-1.5,  1.5) * px, 0, 0)).rgb);
-    luma += Luma(tex2Dlod(BackBuffer, float4(uv + float2( 1.5,  1.5) * px, 0, 0)).rgb);
-    return float4(luma * 0.25, 0, 0, 1);
+    float3 rgb = 0.0;
+    rgb += tex2Dlod(BackBuffer, float4(uv + float2(-1.5, -1.5) * px, 0, 0)).rgb;
+    rgb += tex2Dlod(BackBuffer, float4(uv + float2( 1.5, -1.5) * px, 0, 0)).rgb;
+    rgb += tex2Dlod(BackBuffer, float4(uv + float2(-1.5,  1.5) * px, 0, 0)).rgb;
+    rgb += tex2Dlod(BackBuffer, float4(uv + float2( 1.5,  1.5) * px, 0, 0)).rgb;
+    rgb *= 0.25;
+    return float4(rgb, Luma(rgb));
 }
 
-// ─── Pass 2 — Build scene levels via binary search on LowFreqTex ───────────
-// Reads the post-correction signal (not frame_analysis histogram).
-// Binary search over 8×8 grid samples: 6 iterations × 64 samples per percentile.
+// ─── Pass 2 — Build per-zone luma histogram from LowFreqTex ────────────────
+// ZoneHistTex rows 0-15 = zones (row-major, 4 cols × 4 rows).
+// Each pixel (b, zone) = fraction of 10×10 samples in that bin for that zone.
 
-float4 BuildLevelsPS(float4 pos : SV_Position,
-                     float2 uv  : TEXCOORD0) : SV_Target
+float4 ComputeZoneHistogramPS(float4 pos : SV_Position,
+                              float2 uv  : TEXCOORD0) : SV_Target
 {
-    float4 prev = tex2Dlod(LevelsSamp, float4(0.5, 0.5, 0, 0));
+    int b        = int(pos.x);
+    int zone     = int(pos.y);
+    int zone_col = zone % 4;
+    int zone_row = zone / 4;
 
-    // Binary search for p10
-    float lo_lo = 0.0, lo_hi = 1.0;
-    [loop]
-    for (int i = 0; i < 6; i++)
+    float u_lo      = float(zone_col) / 4.0;
+    float v_lo      = float(zone_row) / 4.0;
+    float bucket_lo = float(b)     / 32.0;
+    float bucket_hi = float(b + 1) / 32.0;
+
+    float count = 0.0;
+    [loop] for (int sy = 0; sy < 10; sy++)
+    [loop] for (int sx = 0; sx < 10; sx++)
     {
-        float mid = (lo_lo + lo_hi) * 0.5;
-        float below = 0.0;
-        [loop]
-        for (int y = 0; y < 8; y++)
-        [loop]
-        for (int x = 0; x < 8; x++)
-        {
-            float val = tex2Dlod(LowFreqSamp, float4((x + 0.5) / 8.0, (y + 0.5) / 8.0, 0, 0)).r;
-            below += (val < mid) ? 1.0 : 0.0;
-        }
-        if (below / 64.0 < 0.10) lo_lo = mid; else lo_hi = mid;
+        float2 suv = float2(u_lo + (sx + 0.5) / 10.0 * 0.25,
+                            v_lo + (sy + 0.5) / 10.0 * 0.25);
+        float luma = tex2Dlod(LowFreqSamp, float4(suv, 0, 0)).a;
+        count += (luma >= bucket_lo && luma < bucket_hi) ? 1.0 : 0.0;
     }
 
-    // Binary search for p90
-    float hi_lo = 0.0, hi_hi = 1.0;
-    [loop]
-    for (int j = 0; j < 6; j++)
-    {
-        float mid = (hi_lo + hi_hi) * 0.5;
-        float below = 0.0;
-        [loop]
-        for (int y = 0; y < 8; y++)
-        [loop]
-        for (int x = 0; x < 8; x++)
-        {
-            float val = tex2Dlod(LowFreqSamp, float4((x + 0.5) / 8.0, (y + 0.5) / 8.0, 0, 0)).r;
-            below += (val < mid) ? 1.0 : 0.0;
-        }
-        if (below / 64.0 < 0.90) hi_lo = mid; else hi_hi = mid;
-    }
-
-    float lo = (lo_lo + lo_hi) * 0.5;
-    float hi = (hi_lo + hi_hi) * 0.5;
-
-    float speed = (prev.b < 0.5) ? 1.0 : LERP_SPEED / 100.0;
-    return float4(lerp(prev.r, lo, speed), lerp(prev.g, hi, speed), 1.0, 1.0);
+    float v    = count / 100.0;
+    float prev = tex2Dlod(ZoneHistSamp,
+        float4((float(b) + 0.5) / 32.0, (float(zone) + 0.5) / 16.0, 0, 0)).r;
+    float h    = lerp(prev, v, (HIST_LERP / 100.0) * (frametime / 10.0));
+    return float4(h, h, h, 1.0);
 }
 
-// ─── Pass 3 — Apply levels S-curve, multi-scale ────────────────────────────
-// S-curve maps [lo,hi] → [lo,hi] with enhanced contrast. Midtone is invariant.
-// Applied to low-freq luma only — fine detail reconstructed unchanged.
+// ─── Pass 3 — Walk per-zone CDF for median → 4×4 ZoneLevelsTex ─────────────
+float4 BuildZoneLevelsPS(float4 pos : SV_Position,
+                         float2 uv  : TEXCOORD0) : SV_Target
+{
+    int zone_x = int(pos.x);
+    int zone_y = int(pos.y);
+    int zone   = zone_y * 4 + zone_x;
 
+    float2 prev_uv = float2((float(zone_x) + 0.5) / 4.0, (float(zone_y) + 0.5) / 4.0);
+    float4 prev    = tex2Dlod(ZoneLevelsSamp, float4(prev_uv, 0, 0));
+    float  speed   = (prev.r < 0.001) ? 1.0 : (LERP_SPEED / 100.0) * (frametime / 10.0);
+
+    float cumulative = 0.0;
+    float median     = 0.5;
+    float locked     = 0.0;
+
+    [loop] for (int b = 0; b < 32; b++)
+    {
+        float bv   = float(b) / 32.0;
+        float frac = tex2Dlod(ZoneHistSamp,
+            float4((float(b) + 0.5) / 32.0, (float(zone) + 0.5) / 16.0, 0, 0)).r;
+        cumulative += frac;
+
+        float at50 = step(0.50, cumulative) * (1.0 - locked);
+        median     = lerp(median, bv, at50);
+        locked     = saturate(locked + at50);
+    }
+
+    return float4(lerp(prev.r, median, speed), 0.0, 0.0, 1.0);
+}
+
+// ─── Pass 4 — Apply contrast ────────────────────────────────────────────────
 float4 ApplyContrastPS(float4 pos : SV_Position,
                        float2 uv  : TEXCOORD0) : SV_Target
 {
-    if (pos.x > 2473 && pos.x < 2485 && pos.y > 15 && pos.y < 27)
-        return float4(0.0, 0.7, 0.7, 1.0);
+    float4 col = tex2D(BackBuffer, uv);
 
-    float4 col       = tex2D(BackBuffer, uv);
+    if (pos.y < 1.0) return col;  // data highway — must not be modified
 
-    if (pos.y < 1.0) return col;
-    float  luma_full = Luma(col.rgb);
-    if (luma_full < 0.005) return col;
+    float luma = Luma(col.rgb);
 
-    float luma_low  = tex2D(LowFreqSamp, uv).r;
-    float luma_high = luma_full - luma_low;
+    float zone_median = tex2D(ZoneLevelsSamp, uv).r;
 
-    float4 levels = tex2D(LevelsSamp, float2(0.5, 0.5));
-    float lo = levels.r;
-    float hi = levels.g;
+    // Tonal weighting: peaks at midtone (0.5), tapers to zero at black/white.
+    float t        = luma * 2.0 - 1.0;
+    float tonal_w  = 1.0 - t * t;
+    float strength = (CURVE_STRENGTH / 100.0) * tonal_w;
 
-    // S-curve within [lo,hi]: midtone at (lo+hi)/2 is invariant.
-    // Only engages when tonal range is compressed (spread < 0.7).
-    float spread    = hi - lo;
-    float compress  = saturate(1.0 - spread / 0.7);
-    float strength  = (CURVE_STRENGTH / 100.0) * compress;
+    float new_luma = SCurve(luma, zone_median, strength);
+    float scale    = new_luma / max(luma, 0.001);
 
-    float t = saturate((luma_low - lo) / max(spread, 0.01));
-    float s = lo + (t * t * (3.0 - 2.0 * t)) * spread;
-
-    float new_luma_low = lerp(luma_low, s, strength);
-    float new_luma     = max(0.001, new_luma_low + luma_high);
-    float scale        = clamp(new_luma / luma_full, 0.0, 3.0);
-
-    return float4(saturate(col.rgb * scale), col.a);
+    return float4(col.rgb * scale, col.a);
 }
 
 // ─── Technique ─────────────────────────────────────────────────────────────
-
 technique AlphaZoneContrast
 {
     pass ComputeLowFreq
@@ -182,11 +212,17 @@ technique AlphaZoneContrast
         PixelShader  = ComputeLowFreqPS;
         RenderTarget = LowFreqTex;
     }
-    pass BuildLevels
+    pass ComputeZoneHistogram
     {
         VertexShader = PostProcessVS;
-        PixelShader  = BuildLevelsPS;
-        RenderTarget = LevelsTex;
+        PixelShader  = ComputeZoneHistogramPS;
+        RenderTarget = ZoneHistTex;
+    }
+    pass BuildZoneLevels
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = BuildZoneLevelsPS;
+        RenderTarget = ZoneLevelsTex;
     }
     pass ApplyContrast
     {

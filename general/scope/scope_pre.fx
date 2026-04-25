@@ -1,12 +1,17 @@
 // scope_pre.fx — Pre-correction luma histogram + mean capture
 //
 // Must run BEFORE any corrective shaders in the chain.
-// Encodes into BackBuffer row y=0:
+// Writes into BackBuffer row y=0 (the data highway):
 //   Pixels 0..127 — 128-bin luma histogram (R = fraction for that bin)
 //   Pixel  128    — scene mean luma (R = mean)
 //
-// Corrective shaders must skip row y=0 (return col unchanged).
-// scope.fx reads row y=0 and restores those pixels by copying from row y=1.
+// DATA HIGHWAY CONTRACT
+//   This shader is the WRITER. Every corrective shader between scope_pre and
+//   scope must preserve row y=0 unchanged (guard: if (pos.y < 1.0) return col).
+//   scope.fx is the READER: it reads pixels 0–128 for the red panel and yellow
+//   needle, restores those pixels from row y=1, and writes pixel 129 (smoothed
+//   post-correction mean). Breaking the guard in any corrective shader corrupts
+//   the scope's pre-correction panel.
 
 #define SCOPE_BINS 128
 #define SCOPE_S    16
