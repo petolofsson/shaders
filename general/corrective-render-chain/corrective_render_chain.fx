@@ -12,10 +12,6 @@
 
 #include "creative_values.fx"
 
-#define WB_R  100
-#define WB_G  100
-#define WB_B  100
-
 #define YOUVAN_LERP_SPEED    4.3
 #define MINKOWSKI_P          6.0
 
@@ -158,33 +154,23 @@ float HermiteContrast(float L, float grey, float strength)
 
 // ═══ Pixel shaders ════════════════════════════════════════════════════════════
 
-// Pass 1 — White balance
-float4 WhiteBalancePS(float4 pos : SV_Position,
-                      float2 uv  : TEXCOORD0) : SV_Target
-{
-    float4 col = tex2D(BackBuffer, uv);
-    if (pos.y < 1.0) return col;
-    float3 c = col.rgb * float3(WB_R / 100.0, WB_G / 100.0, WB_B / 100.0);
-    return float4(c, col.a);
-}
-
-// Passes 4, 6 — Snapshot CorrectiveBuf → CorrectiveSrcTex
+// Pass 4 — Snapshot CorrectiveBuf → CorrectiveSrcTex
 float4 CopyBufToSrcPS(float4 pos : SV_Position,
                       float2 uv  : TEXCOORD0) : SV_Target
 {
     return tex2D(CorrectiveSamp, uv);
 }
 
-// Pass 2 — 1/8 res downsample for illuminant estimation
+// Pass 1 — 1/8 res downsample for illuminant estimation
 float4 ComputeLowFreqPS(float4 pos : SV_Position,
                         float2 uv  : TEXCOORD0) : SV_Target
 {
     float2 px = float2(1.0 / BUFFER_WIDTH, 1.0 / BUFFER_HEIGHT);
     float3 rgb = 0.0;
-    rgb += tex2Dlod(CorrectiveSamp, float4(uv + float2(-1.5, -1.5) * px, 0, 0)).rgb;
-    rgb += tex2Dlod(CorrectiveSamp, float4(uv + float2( 1.5, -1.5) * px, 0, 0)).rgb;
-    rgb += tex2Dlod(CorrectiveSamp, float4(uv + float2(-1.5,  1.5) * px, 0, 0)).rgb;
-    rgb += tex2Dlod(CorrectiveSamp, float4(uv + float2( 1.5,  1.5) * px, 0, 0)).rgb;
+    rgb += tex2Dlod(BackBuffer, float4(uv + float2(-1.5, -1.5) * px, 0, 0)).rgb;
+    rgb += tex2Dlod(BackBuffer, float4(uv + float2( 1.5, -1.5) * px, 0, 0)).rgb;
+    rgb += tex2Dlod(BackBuffer, float4(uv + float2(-1.5,  1.5) * px, 0, 0)).rgb;
+    rgb += tex2Dlod(BackBuffer, float4(uv + float2( 1.5,  1.5) * px, 0, 0)).rgb;
     rgb *= 0.25;
     return float4(rgb, Luma(rgb));
 }
@@ -223,7 +209,7 @@ float4 IlluminantEstimatePS(float4 pos : SV_Position,
 float4 ApplyAdaptationPS(float4 pos : SV_Position,
                          float2 uv  : TEXCOORD0) : SV_Target
 {
-    float4 col = tex2D(CorrectiveSrc, uv);
+    float4 col = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return col;
 
     float3 illuminant = tex2D(IlluminantSamp, uv).rgb;
@@ -318,12 +304,6 @@ float4 OutputTransformPS(float4 pos : SV_Position,
 
 technique OlofssonianRenderChain
 {
-    pass WhiteBalance
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = WhiteBalancePS;
-        RenderTarget = CorrectiveBuf;
-    }
     pass ComputeLowFreq
     {
         VertexShader = PostProcessVS;
@@ -335,12 +315,6 @@ technique OlofssonianRenderChain
         VertexShader = PostProcessVS;
         PixelShader  = IlluminantEstimatePS;
         RenderTarget = IlluminantTex;
-    }
-    pass CopyBufToSrc0
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = CopyBufToSrcPS;
-        RenderTarget = CorrectiveSrcTex;
     }
     pass ApplyAdaptation
     {
