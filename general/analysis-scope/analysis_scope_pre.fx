@@ -13,8 +13,10 @@
 //   post-correction mean). Breaking the guard in any corrective shader corrupts
 //   the scope's pre-correction panel.
 
-#define SCOPE_BINS 128
-#define SCOPE_S    16
+#define SCOPE_BINS  128
+#define SCOPE_S      16
+#define HUE_BINS     64
+#define HUE_OFFSET  130
 
 texture2D BackBufferTex : COLOR;
 sampler2D BackBuffer
@@ -36,6 +38,15 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 }
 
 float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
+
+float3 RGBtoHSV(float3 c)
+{
+    float4 K = float4(0.0, -1.0/3.0, 2.0/3.0, -1.0);
+    float4 p = lerp(float4(c.bg, K.wz), float4(c.gb, K.xy), step(c.b, c.g));
+    float4 q = lerp(float4(p.xyw, c.r), float4(c.r, p.yzx), step(p.x, c.r));
+    float  d = q.x - min(q.w, q.y);
+    return float3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);
+}
 
 float4 ScopeCapturePS(float4 pos : SV_Position,
                       float2 uv  : TEXCOORD0) : SV_Target
@@ -73,6 +84,27 @@ float4 ScopeCapturePS(float4 pos : SV_Position,
             count += (samples[i] >= bucket_lo && samples[i] < bucket_hi) ? 1.0 : 0.0;
 
         float v = count / float(SCOPE_S * SCOPE_S);
+        return float4(v, v, v, 1.0);
+    }
+
+    // Pixels HUE_OFFSET..HUE_OFFSET+HUE_BINS-1: pre-correction hue histogram
+    if (pos.y < 1.0 && int(pos.x) >= HUE_OFFSET && int(pos.x) < HUE_OFFSET + HUE_BINS)
+    {
+        int   b         = int(pos.x) - HUE_OFFSET;
+        float bucket_lo = float(b)     / float(HUE_BINS);
+        float bucket_hi = float(b + 1) / float(HUE_BINS);
+        float count = 0.0, total_w = 0.0;
+        [loop] for (int sy = 0; sy < SCOPE_S; sy++)
+        [loop] for (int sx = 0; sx < SCOPE_S; sx++)
+        {
+            float3 col = tex2Dlod(BackBuffer,
+                float4((sx + 0.5) / float(SCOPE_S), (sy + 0.5) / float(SCOPE_S), 0, 0)).rgb;
+            float3 hsv = RGBtoHSV(col);
+            float  w   = step(0.04, hsv.y);
+            count   += (hsv.x >= bucket_lo && hsv.x < bucket_hi) ? w : 0.0;
+            total_w += w;
+        }
+        float v = (total_w > 0.5) ? count / total_w : 0.0;
         return float4(v, v, v, 1.0);
     }
 
