@@ -16,8 +16,6 @@
 
 #define ZONE_LERP_SPEED   4.3
 #define ZONE_HIST_LERP    4.3
-#define CHROMA_LERP_SPEED 4.3
-#define CHROMA_BAND_WIDTH 0.15   // hue band half-width — must match frame_analysis.fx
 
 uniform float frametime < source = "frametime"; >;
 
@@ -31,17 +29,6 @@ sampler2D BackBuffer
     AddressV  = CLAMP;
     MinFilter = LINEAR;
     MagFilter = LINEAR;
-};
-
-// Shared with frame_analysis — identical declaration = same GPU resource
-texture2D SatHistTex { Width = 64; Height = 6; Format = R32F; MipLevels = 1; };
-sampler2D SatHistSamp
-{
-    Texture   = SatHistTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
 };
 
 texture2D CreativeLowFreqTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 1; };
@@ -72,16 +59,6 @@ sampler2D CreativeZoneLevelsSamp
     AddressV  = CLAMP;
     MinFilter = LINEAR;
     MagFilter = LINEAR;
-};
-
-texture2D CreativeSatLevelsTex { Width = 6; Height = 1; Format = RGBA16F; MipLevels = 1; };
-sampler2D CreativeSatLevelsSamp
-{
-    Texture   = CreativeSatLevelsTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
 };
 
 // ─── Vertex shader ───────────────────────────────────────────────────────────
@@ -131,21 +108,6 @@ float3 HSVtoRGB(float3 c)
     return c.z * lerp(K.xxx, saturate(p - K.xxx), c.y);
 }
 
-float HueBandWeight(float hue, float center)
-{
-    float d = abs(hue - center);
-    d = min(d, 1.0 - d);
-    return saturate(1.0 - d / CHROMA_BAND_WIDTH);
-}
-
-static const float kBandCenters[6] = {
-      0.0 / 360.0,   // Red
-     60.0 / 360.0,   // Yellow
-    120.0 / 360.0,   // Green
-    180.0 / 360.0,   // Cyan
-    240.0 / 360.0,   // Blue
-    300.0 / 360.0    // Magenta
-};
 
 // ═══ Pixel shaders ════════════════════════════════════════════════════════════
 
@@ -261,73 +223,18 @@ float4 ApplyContrastPS(float4 pos : SV_Position,
     return float4(col.rgb * scale, col.a);
 }
 
-// Pass 5 — CDF walk on SatHistTex → per-band saturation medians
-float4 BuildSatLevelsPS(float4 pos : SV_Position,
-                        float2 uv  : TEXCOORD0) : SV_Target
-{
-    int   band  = int(pos.x);
-    float row_v = (float(band) + 0.5) / 6.0;
-
-    float4 prev  = tex2Dlod(CreativeSatLevelsSamp, float4((float(band) + 0.5) / 6.0, 0.5, 0, 0));
-    float  speed = (prev.r < 0.001) ? 1.0 : (CHROMA_LERP_SPEED / 100.0) * (frametime / 10.0);
-
-    float cumulative = 0.0;
-    float p25 = 0.25, median = 0.5, p75 = 0.75;
-    float lock25 = 0.0, lock50 = 0.0, lock75 = 0.0;
-
-    [loop] for (int b = 0; b < 64; b++)
-    {
-        float bv   = float(b) / 64.0;
-        float frac = tex2Dlod(SatHistSamp,
-            float4((float(b) + 0.5) / 64.0, row_v, 0, 0)).r;
-        cumulative += frac;
-
-        float at25 = step(0.25, cumulative) * (1.0 - lock25);
-        float at50 = step(0.50, cumulative) * (1.0 - lock50);
-        float at75 = step(0.75, cumulative) * (1.0 - lock75);
-        p25    = lerp(p25,    bv, at25);
-        median = lerp(median, bv, at50);
-        p75    = lerp(p75,    bv, at75);
-        lock25 = saturate(lock25 + at25);
-        lock50 = saturate(lock50 + at50);
-        lock75 = saturate(lock75 + at75);
-    }
-
-    return float4(lerp(prev.r, median, speed),
-                  lerp(prev.g, p25,    speed),
-                  lerp(prev.b, p75,    speed),
-                  1.0);
-}
-
-// Pass 6 — Per-hue-band saturation S-curve
+// Pass 5 — Multiplicative saturation lift
 float4 ApplyChromaPS(float4 pos : SV_Position,
                      float2 uv  : TEXCOORD0) : SV_Target
 {
     float4 col = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return col;  // data highway
 
-    float3 hsv = RGBtoHSV(col.rgb);
-
-    float blended_median = 0.0;
-    float blended_iqr    = 0.0;
-    float total_w        = 0.0;
-
-    [loop] for (int band = 0; band < 6; band++)
-    {
-        float  w      = HueBandWeight(hsv.x, kBandCenters[band]);
-        float4 levels = tex2Dlod(CreativeSatLevelsSamp, float4((float(band) + 0.5) / 6.0, 0.5, 0, 0));
-        blended_median += levels.r * w;
-        blended_iqr    += saturate(levels.b - levels.g) * w;
-        total_w        += w;
-    }
-
-    blended_median = (total_w > 0.001) ? blended_median / total_w : 0.5;
-    blended_iqr    = (total_w > 0.001) ? blended_iqr    / total_w : 0.5;
-
-    float sat_w    = smoothstep(0.0, 0.15, hsv.y);
-    float strength = (CHROMA_STRENGTH / 100.0) * sat_w;
-    float new_sat  = SCurve(hsv.y, blended_median, strength);
-    float3 result  = HSVtoRGB(float3(hsv.x, new_sat, hsv.z));
+    float3 hsv    = RGBtoHSV(col.rgb);
+    float  sat_w  = smoothstep(0.0, 0.15, hsv.y);
+    float  boost  = (CHROMA_STRENGTH / 100.0) * sat_w;
+    float  new_sat = saturate(hsv.y * (1.0 + boost));
+    float3 result = HSVtoRGB(float3(hsv.x, new_sat, hsv.z));
 
     return float4(result, col.a);
 }
@@ -358,12 +265,6 @@ technique CreativeRenderChain
     {
         VertexShader = PostProcessVS;
         PixelShader  = ApplyContrastPS;
-    }
-    pass BuildSatLevels
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = BuildSatLevelsPS;
-        RenderTarget = CreativeSatLevelsTex;
     }
     pass ApplyChroma
     {
