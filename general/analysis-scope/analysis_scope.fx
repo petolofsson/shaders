@@ -23,7 +23,7 @@
 #define SCOPE_AMP  1.5
 #define SCOPE_S    16
 #define SCOPE_BINS 128
-#define SCOPE_LERP 3      // % per frame smoothing for stored post_mean
+#define SCOPE_LERP 4.3
 
 texture2D BackBufferTex : COLOR;
 sampler2D BackBuffer
@@ -43,6 +43,8 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
     uv.y = (id == 1) ? 2.0 : 0.0;
     pos  = float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
 }
+
+uniform float frametime < source = "frametime"; >;
 
 float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
@@ -72,7 +74,7 @@ float4 ScopePS(float4 pos : SV_Position,
             float dv   = 0.5 / float(BUFFER_HEIGHT);
             float prev = tex2Dlod(BackBuffer,
                 float4((float(SCOPE_BINS + 1) + 0.5) / float(BUFFER_WIDTH), dv, 0, 0)).r;
-            float s = lerp(prev, live, SCOPE_LERP / 100.0);
+            float s = lerp(prev, live, (SCOPE_LERP / 100.0) * (frametime / 10.0));
             return float4(s, s, s, 1.0);
         }
 

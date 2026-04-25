@@ -40,7 +40,7 @@ float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 float4 ScopeCapturePS(float4 pos : SV_Position,
                       float2 uv  : TEXCOORD0) : SV_Target
 {
-    if (pos.y < 1.0 && pos.x <= float(SCOPE_BINS))
+    if (pos.y < 1.0 && int(pos.x) <= SCOPE_BINS)
     {
         // Sample grid once — used for both histogram and mean
         float samples[256];

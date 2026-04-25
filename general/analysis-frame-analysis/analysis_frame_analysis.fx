@@ -18,7 +18,7 @@
 #define DS_W          32
 #define DS_H          18
 #define HIST_BINS     64
-#define LERP_SPEED    8         // 0–100; temporal smoothing rate for histograms
+#define LERP_SPEED    4.3
 #define SAT_THRESHOLD 4         // 0–100; minimum saturation to include in histogram
 #define BAND_WIDTH    0.15
 
@@ -32,6 +32,8 @@
 static const float kBandCenters[6] = {
     BAND_RED, BAND_YELLOW, BAND_GREEN, BAND_CYAN, BAND_BLUE, BAND_MAGENTA
 };
+
+uniform float frametime < source = "frametime"; >;
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
@@ -218,7 +220,7 @@ float4 LumHistSmoothPS(float4 pos : SV_Position,
 {
     float raw  = tex2D(LumHistRaw, uv).r;
     float prev = tex2D(LumHist,    uv).r;
-    return float4(lerp(prev, raw, LERP_SPEED / 100.0), 0.0, 0.0, 1.0);
+    return float4(lerp(prev, raw, (LERP_SPEED / 100.0) * (frametime / 10.0)), 0.0, 0.0, 1.0);
 }
 
 // ─── Pass 6 — Smooth saturation histogram ──────────────────────────────────
@@ -228,7 +230,7 @@ float4 SatHistSmoothPS(float4 pos : SV_Position,
 {
     float raw  = tex2D(SatHistRaw, uv).r;
     float prev = tex2D(SatHist,    uv).r;
-    return float4(lerp(prev, raw, LERP_SPEED / 100.0), 0.0, 0.0, 1.0);
+    return float4(lerp(prev, raw, (LERP_SPEED / 100.0) * (frametime / 10.0)), 0.0, 0.0, 1.0);
 }
 
 // ─── Technique ─────────────────────────────────────────────────────────────

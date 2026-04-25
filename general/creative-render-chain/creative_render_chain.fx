@@ -14,9 +14,9 @@
 
 // ZONE_STRENGTH and CHROMA_STRENGTH come from creative_values.fx (0–100, 0=passthrough)
 
-#define ZONE_LERP_SPEED   0.01   // % per second, frametime-normalized
-#define ZONE_HIST_LERP    5.0    // % per second, frametime-normalized
-#define CHROMA_LERP_SPEED 0.01   // % per second, frametime-normalized
+#define ZONE_LERP_SPEED   4.3
+#define ZONE_HIST_LERP    4.3
+#define CHROMA_LERP_SPEED 4.3
 #define CHROMA_BAND_WIDTH 0.15   // hue band half-width — must match frame_analysis.fx
 
 uniform float frametime < source = "frametime"; >;
@@ -64,7 +64,7 @@ sampler2D CreativeZoneHistSamp
     MagFilter = POINT;
 };
 
-texture2D CreativeZoneLevelsTex { Width = 4; Height = 4; Format = R16F; MipLevels = 1; };
+texture2D CreativeZoneLevelsTex { Width = 4; Height = 4; Format = RGBA16F; MipLevels = 1; };
 sampler2D CreativeZoneLevelsSamp
 {
     Texture   = CreativeZoneLevelsTex;
@@ -74,7 +74,7 @@ sampler2D CreativeZoneLevelsSamp
     MagFilter = LINEAR;
 };
 
-texture2D CreativeSatLevelsTex { Width = 6; Height = 1; Format = R16F; MipLevels = 1; };
+texture2D CreativeSatLevelsTex { Width = 6; Height = 1; Format = RGBA16F; MipLevels = 1; };
 sampler2D CreativeSatLevelsSamp
 {
     Texture   = CreativeSatLevelsTex;
@@ -202,8 +202,8 @@ float4 BuildZoneLevelsPS(float4 pos : SV_Position,
     float  speed   = (prev.r < 0.001) ? 1.0 : (ZONE_LERP_SPEED / 100.0) * (frametime / 10.0);
 
     float cumulative = 0.0;
-    float median     = 0.5;
-    float locked     = 0.0;
+    float p25 = 0.25, median = 0.5, p75 = 0.75;
+    float lock25 = 0.0, lock50 = 0.0, lock75 = 0.0;
 
     [loop] for (int b = 0; b < 32; b++)
     {
@@ -212,12 +212,21 @@ float4 BuildZoneLevelsPS(float4 pos : SV_Position,
             float4((float(b) + 0.5) / 32.0, (float(zone) + 0.5) / 16.0, 0, 0)).r;
         cumulative += frac;
 
-        float at50 = step(0.50, cumulative) * (1.0 - locked);
-        median     = lerp(median, bv, at50);
-        locked     = saturate(locked + at50);
+        float at25 = step(0.25, cumulative) * (1.0 - lock25);
+        float at50 = step(0.50, cumulative) * (1.0 - lock50);
+        float at75 = step(0.75, cumulative) * (1.0 - lock75);
+        p25    = lerp(p25,    bv, at25);
+        median = lerp(median, bv, at50);
+        p75    = lerp(p75,    bv, at75);
+        lock25 = saturate(lock25 + at25);
+        lock50 = saturate(lock50 + at50);
+        lock75 = saturate(lock75 + at75);
     }
 
-    return float4(lerp(prev.r, median, speed), 0.0, 0.0, 1.0);
+    return float4(lerp(prev.r, median, speed),
+                  lerp(prev.g, p25,    speed),
+                  lerp(prev.b, p75,    speed),
+                  1.0);
 }
 
 // Pass 4 — Zone S-curve anchored at zone median
@@ -233,11 +242,13 @@ float4 ApplyContrastPS(float4 pos : SV_Position,
 
     float luma = Luma(col.rgb);
 
-    float zone_median = tex2D(CreativeZoneLevelsSamp, uv).r;
+    float4 zone_levels = tex2D(CreativeZoneLevelsSamp, uv);
+    float  zone_median = zone_levels.r;
+    float  zone_iqr    = saturate(zone_levels.b - zone_levels.g);
 
     float t        = luma * 2.0 - 1.0;
     float tonal_w  = 1.0 - t * t;
-    float strength = (ZONE_STRENGTH / 100.0) * tonal_w;
+    float strength = (ZONE_STRENGTH / 100.0) * tonal_w * (1.0 - zone_iqr);
 
     float new_luma = SCurve(luma, zone_median, strength);
     float scale    = new_luma / max(luma, 0.001);
@@ -256,8 +267,8 @@ float4 BuildSatLevelsPS(float4 pos : SV_Position,
     float  speed = (prev.r < 0.001) ? 1.0 : (CHROMA_LERP_SPEED / 100.0) * (frametime / 10.0);
 
     float cumulative = 0.0;
-    float median     = 0.5;
-    float locked     = 0.0;
+    float p25 = 0.25, median = 0.5, p75 = 0.75;
+    float lock25 = 0.0, lock50 = 0.0, lock75 = 0.0;
 
     [loop] for (int b = 0; b < 64; b++)
     {
@@ -266,12 +277,21 @@ float4 BuildSatLevelsPS(float4 pos : SV_Position,
             float4((float(b) + 0.5) / 64.0, row_v, 0, 0)).r;
         cumulative += frac;
 
-        float at50 = step(0.50, cumulative) * (1.0 - locked);
-        median     = lerp(median, bv, at50);
-        locked     = saturate(locked + at50);
+        float at25 = step(0.25, cumulative) * (1.0 - lock25);
+        float at50 = step(0.50, cumulative) * (1.0 - lock50);
+        float at75 = step(0.75, cumulative) * (1.0 - lock75);
+        p25    = lerp(p25,    bv, at25);
+        median = lerp(median, bv, at50);
+        p75    = lerp(p75,    bv, at75);
+        lock25 = saturate(lock25 + at25);
+        lock50 = saturate(lock50 + at50);
+        lock75 = saturate(lock75 + at75);
     }
 
-    return float4(lerp(prev.r, median, speed), 0.0, 0.0, 1.0);
+    return float4(lerp(prev.r, median, speed),
+                  lerp(prev.g, p25,    speed),
+                  lerp(prev.b, p75,    speed),
+                  1.0);
 }
 
 // Pass 6 — Per-hue-band saturation S-curve
@@ -284,20 +304,25 @@ float4 ApplyChromaPS(float4 pos : SV_Position,
     float3 hsv = RGBtoHSV(col.rgb);
 
     float blended_median = 0.0;
+    float blended_iqr    = 0.0;
     float total_w        = 0.0;
 
     [loop] for (int band = 0; band < 6; band++)
     {
-        float w = HueBandWeight(hsv.x, kBandCenters[band]);
-        float m = tex2Dlod(CreativeSatLevelsSamp, float4((float(band) + 0.5) / 6.0, 0.5, 0, 0)).r;
-        blended_median += m * w;
+        float  w      = HueBandWeight(hsv.x, kBandCenters[band]);
+        float4 levels = tex2Dlod(CreativeSatLevelsSamp, float4((float(band) + 0.5) / 6.0, 0.5, 0, 0));
+        blended_median += levels.r * w;
+        blended_iqr    += saturate(levels.b - levels.g) * w;
         total_w        += w;
     }
 
     blended_median = (total_w > 0.001) ? blended_median / total_w : 0.5;
+    blended_iqr    = (total_w > 0.001) ? blended_iqr    / total_w : 0.5;
 
-    float new_sat = SCurve(hsv.y, blended_median, CHROMA_STRENGTH / 100.0);
-    float3 result = HSVtoRGB(float3(hsv.x, new_sat, hsv.z));
+    float sat_w    = smoothstep(0.0, 0.15, hsv.y);
+    float strength = (CHROMA_STRENGTH / 100.0) * sat_w * (1.0 - blended_iqr);
+    float new_sat  = SCurve(hsv.y, blended_median, strength);
+    float3 result  = HSVtoRGB(float3(hsv.x, new_sat, hsv.z));
 
     return float4(result, col.a);
 }
