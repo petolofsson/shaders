@@ -101,12 +101,17 @@ float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
 float SCurve(float x, float m, float strength)
 {
-    float t_lo = saturate(x / max(m, 0.001));
-    float t_hi = saturate((x - m) / max(1.0 - m, 0.001));
-    float s_lo = m * (t_lo * t_lo * (3.0 - 2.0 * t_lo));
-    float s_hi = m + (1.0 - m) * (t_hi * t_hi * (3.0 - 2.0 * t_hi));
-    float s    = lerp(s_lo, s_hi, step(m, x));
-    return lerp(x, s, strength);
+    float p = 1.0 + strength * 2.0;
+    if (x < m)
+    {
+        float t = x / max(m, 0.001);
+        return m * pow(t, p);
+    }
+    else
+    {
+        float t = (x - m) / max(1.0 - m, 0.001);
+        return m + (1.0 - m) * (1.0 - pow(1.0 - t, p));
+    }
 }
 
 float3 RGBtoHSV(float3 c)
@@ -320,7 +325,7 @@ float4 ApplyChromaPS(float4 pos : SV_Position,
     blended_iqr    = (total_w > 0.001) ? blended_iqr    / total_w : 0.5;
 
     float sat_w    = smoothstep(0.0, 0.15, hsv.y);
-    float strength = (CHROMA_STRENGTH / 100.0) * sat_w * (1.0 - blended_iqr);
+    float strength = (CHROMA_STRENGTH / 100.0) * sat_w;
     float new_sat  = SCurve(hsv.y, blended_median, strength);
     float3 result  = HSVtoRGB(float3(hsv.x, new_sat, hsv.z));
 
