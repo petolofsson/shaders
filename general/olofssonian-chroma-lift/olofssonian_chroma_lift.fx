@@ -485,11 +485,16 @@ float4 ApplyChromaPS(float4 pos : SV_Position,
 
     float final_C = (total_w > 0.001) ? new_C / total_w : C;
 
-    // Nudge green-band hues toward cyan (rotate chroma vector)
-    float h_rad     = atan2(lab.z, lab.y);
-    float h_nudged  = h_rad - GREEN_HUE_COOL * 2.0 * 3.14159265 * green_w * final_C;
-    float final_a   = final_C * cos(h_nudged);
-    float final_b   = final_C * sin(h_nudged);
+    // Hue corrections: green nudge + Abney compensation (counteract perceived hue shifts under saturation)
+    // Blues shift toward purple → push toward cyan; cyans shift toward blue → push back; yellows toward orange → push back
+    float h_rad    = atan2(lab.z, lab.y);
+    float abney    = 0.0;
+    abney -= HueBandWeight(h, BAND_BLUE)   * 0.08 * final_C;
+    abney -= HueBandWeight(h, BAND_CYAN)   * 0.05 * final_C;
+    abney += HueBandWeight(h, BAND_YELLOW) * 0.05 * final_C;
+    float h_nudged = h_rad - GREEN_HUE_COOL * 2.0 * 3.14159265 * green_w * final_C + abney;
+    float final_a  = final_C * cos(h_nudged);
+    float final_b  = final_C * sin(h_nudged);
 
     // HK: increased chroma appears brighter — reduce L
     float hk_factor = (final_C > 0.05 && C > 0.05)

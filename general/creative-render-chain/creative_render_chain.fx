@@ -196,7 +196,8 @@ float4 ApplyContrastPS(float4 pos : SV_Position,
     float low_luma     = tex2D(CreativeLowFreqSamp, uv).a;
     float detail       = luma - low_luma;
     float clarity_mask = smoothstep(0.0, 0.2, luma) * (1.0 - smoothstep(0.6, 0.9, luma));
-    new_luma = saturate(new_luma + detail * clarity_mask * (CLARITY_STRENGTH / 100.0));
+    float edge_w       = 1.0 - smoothstep(0.05, 0.20, abs(detail));
+    new_luma = saturate(new_luma + detail * clarity_mask * edge_w * (CLARITY_STRENGTH / 100.0));
 
     // Shadow lift — expand dark range, tapers to zero at 0.4 luma
     float lift_w = smoothstep(0.4, 0.0, new_luma);

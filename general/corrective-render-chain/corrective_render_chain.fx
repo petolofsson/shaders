@@ -51,12 +51,15 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 
 // Scene-adaptive film S-curve. Shoulder knee driven by p75 (hot scenes compress more).
 // Toe knee driven by p25 (dark scenes lift more). White→0.95, black→0.03. Maps [0,1]→[0,1].
-float3 FilmCurve(float3 x, float p25, float p75)
+float3 FilmCurve(float3 x, float p25, float p50, float p75)
 {
     // Shoulder knee: 0.90 at p75=0.60 → 0.80 at p75=0.90 (hot scenes compress more)
     float knee   = lerp(0.90, 0.80, saturate((p75 - 0.60) / 0.30));
     float width  = 1.0 - knee;
-    float factor = 0.05 / (width * width); // white always → 0.95
+
+    // Stevens: shoulder compression scales with scene luminance (dark=flatter, bright=punchier)
+    float stevens = lerp(0.85, 1.15, saturate((p50 - 0.10) / 0.50));
+    float factor  = 0.05 / (width * width) * stevens;
 
     // Toe knee: 0.15 at p25=0.40 → 0.25 at p25=0.10 (dark scenes lift more)
     float knee_toe = lerp(0.15, 0.25, saturate((0.40 - p25) / 0.30));
@@ -85,7 +88,7 @@ float4 OutputTransformPS(float4 pos : SV_Position,
 
     // Direct gamma: 1.0 = passthrough, <1 = brighten, >1 = darken. SDR-safe by construction.
     float4 perc = tex2D(PercSamp, float2(0.5, 0.5));
-    float3 rgb_out = FilmCurve(pow(max(col.rgb, 0.0), EXPOSURE), perc.r, perc.b);
+    float3 rgb_out = FilmCurve(pow(max(col.rgb, 0.0), EXPOSURE), perc.r, perc.g, perc.b);
 
     // Debug indicator — green (slot 2)
     if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 78) && pos.x < float(BUFFER_WIDTH - 66))
