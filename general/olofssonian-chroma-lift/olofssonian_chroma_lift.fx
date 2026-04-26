@@ -502,6 +502,16 @@ float4 ApplyChromaPS(float4 pos : SV_Position,
     float density_L = saturate(final_L - delta_C * shadow_w * (DENSITY_STRENGTH / 100.0));
 
     float3 result = OklabToRGB(float3(density_L, final_a, final_b));
+
+    // Output gamut compression: if any channel clips, desaturate toward same-luma grey
+    float rmax = max(result.r, max(result.g, result.b));
+    if (rmax > 1.0)
+    {
+        float L_grey = dot(result, float3(0.2126, 0.7152, 0.0722));
+        float t      = (1.0 - L_grey) / max(rmax - L_grey, 0.001);
+        result       = L_grey + t * (result - L_grey);
+    }
+
     return float4(saturate(result), col.a);
 }
 
