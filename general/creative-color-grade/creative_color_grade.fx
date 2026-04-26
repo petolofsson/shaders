@@ -225,11 +225,10 @@
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
-// Input: game image snapshot (from corrective_render_chain CopyToSrc)
-texture2D CorrectiveSrcTex { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; MipLevels = 1; };
-sampler2D CorrectiveSrc
+texture2D BackBufferTex : COLOR;
+sampler2D BackBuffer
 {
-    Texture   = CorrectiveSrcTex;
+    Texture   = BackBufferTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = LINEAR;
@@ -386,7 +385,7 @@ float3 LogDecode(float3 x) { return max(0.18 * exp2((x - 0.5) * 12.0), 0.0); }
 
 float4 MegaPassPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    float4 col = tex2D(CorrectiveSrc, uv);
+    float4 col = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return col;  // data highway
 
     float4 perc = tex2D(PercSamp, float2(0.5, 0.5));
