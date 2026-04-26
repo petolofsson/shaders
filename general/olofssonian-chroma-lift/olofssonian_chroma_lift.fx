@@ -411,12 +411,12 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
     int band_idx = int(pos.x);
     if (pos.y >= 1.0 || band_idx >= 6) return float4(0, 0, 0, 0);
 
-    int   base_idx = (FRAME_COUNT % 128);
+    int   base_idx = (FRAME_COUNT * 8) % 256;
     float sum_w    = 0.0;
     float sum_wc   = 0.0;
     float sum_wc2  = 0.0;
 
-    for (int i = 0; i < 64; i++)
+    for (int i = 0; i < 8; i++)
     {
         float2 s_uv = kHalton[(base_idx + i) % 256];
         float3 rgb  = tex2Dlod(BackBuffer, float4(s_uv, 0, 0)).rgb;
