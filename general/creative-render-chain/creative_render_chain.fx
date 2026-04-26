@@ -173,45 +173,6 @@ float4 SmoothZoneLevelsPS(float4 pos : SV_Position,
     return lerp(prev, current, speed);
 }
 
-// Pass 5 — Zone S-curve anchored at zone median
-float4 ApplyContrastPS(float4 pos : SV_Position,
-                       float2 uv  : TEXCOORD0) : SV_Target
-{
-    float4 col = tex2D(BackBuffer, uv);
-    if (pos.y < 1.0) return col;  // data highway
-
-    float luma        = Luma(col.rgb);
-    float zone_median = tex2D(ZoneHistorySamp, uv).r;
-    float strength   = ZONE_STRENGTH / 100.0;
-
-    // Olofssonian pivoted S-curve — applied directly to pixel luma, anchored at zone_median.
-    // Self-limiting: effect tapers to zero at extremes (true blacks/whites unaffected).
-    // No LF-grid intermediary — no 8×8-block spatial artifacts in smooth bright areas.
-    float dt       = luma - zone_median;
-    float bent     = dt + strength * dt * (1.0 - saturate(abs(dt)));
-    float new_luma = saturate(zone_median + bent);
-
-    // Clarity — base/detail local contrast, midtone-focused (like Lightroom Clarity)
-    // detail = deviation from 1/8-res base; mask peaks at midtones, tapers at shadows/highlights
-    float low_luma     = tex2D(CreativeLowFreqSamp, uv).a;
-    float detail       = luma - low_luma;
-    float clarity_mask = smoothstep(0.0, 0.2, luma) * (1.0 - smoothstep(0.6, 0.9, luma));
-    float edge_w       = 1.0 - smoothstep(0.05, 0.20, abs(detail));
-    new_luma = saturate(new_luma + detail * clarity_mask * edge_w * (CLARITY_STRENGTH / 100.0));
-
-    // Shadow lift — expand dark range, tapers to zero at 0.4 luma
-    float lift_w = smoothstep(0.4, 0.0, new_luma);
-    new_luma     = saturate(new_luma + (SHADOW_LIFT / 100.0) * 0.15 * lift_w);
-
-    float scale = new_luma / max(luma, 0.001);
-
-    // Debug indicator — purple (slot 4)
-    if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 64) && pos.x < float(BUFFER_WIDTH - 52))
-        return float4(0.7, 0.20, 1.0, 1.0);
-
-    return float4(saturate(col.rgb * scale), col.a);
-}
-
 // ─── Technique ───────────────────────────────────────────────────────────────
 
 technique CreativeRenderChain
@@ -239,10 +200,5 @@ technique CreativeRenderChain
         VertexShader = PostProcessVS;
         PixelShader  = SmoothZoneLevelsPS;
         RenderTarget = ZoneHistoryTex;
-    }
-    pass ApplyContrast
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = ApplyContrastPS;
     }
 }

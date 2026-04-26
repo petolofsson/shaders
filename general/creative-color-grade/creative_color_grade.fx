@@ -1,32 +1,36 @@
-// olofssonian_color_grade.fx — Camera/film color grade (creative)
+// creative_color_grade.fx — Mega-pass: all downstream color work in one full-res pass
 //
-// Operates on linear input. Internally converts to gamma for grading,
-// then back to linear before blending. All preset values are in gamma space.
+// Eliminates 3 inter-pass VRAM read-write cycles by running in registers:
+//   1. EXPOSURE gamma + scene-adaptive FilmCurve  (was corrective_render_chain P2)
+//   2. Zone contrast S-curve + Clarity + Shadow lift  (was creative_render_chain P5)
+//   3. Oklab chroma lift + Hunt + Abney + HK + density + gamut compress  (was chroma_lift P2)
+//   4. Film stock grade — log matrix + zone tints + sat rolloff
 //
-// Set PRESET to select film stock:
-//   1 = ARRI ALEXA         — clean, neutral, wide latitude
-//   2 = Kodak Vision3 500T — warm, filmic, golden highlights
-//   3 = Sony Venice        — warm neutral, slight character, protected mids
-//   4 = Fuji Eterna 500    — cool, flat, green-leaning mids
-//   5 = Kodak 5219         — punchy, pushed, deep warm blacks
+// Reads from CorrectiveSrcTex (snapshot by corrective_render_chain CopyToSrc).
+// All history textures (ZoneHistoryTex, ChromaHistoryTex, PercTex, CreativeLowFreqTex)
+// are computed by earlier passes in the chain before this runs.
 
 #include "creative_values.fx"
 
+// ─── Chroma lift constants ─────────────────────────────────────────────────
+#define BAND_WIDTH      8
+#define MIN_WEIGHT      1.0
+#define SAT_THRESHOLD   2
+#define GREEN_HUE_COOL  (4.0 / 360.0)
+#define BAND_RED        0.083
+#define BAND_YELLOW     0.305
+#define BAND_GREEN      0.396
+#define BAND_CYAN       0.542
+#define BAND_BLUE       0.735
+#define BAND_MAGENTA    0.913
+
 // ─── Tinting ranges ────────────────────────────────────────────────────────
-#define TOE_RANGE       30      // 0–100; luma range for toe tint
-#define SHADOW_RANGE    18      // 0–100; luma range for shadow tint
-#define HIGHLIGHT_START 65      // 0–100; luma above this gets highlight tint
+#define TOE_RANGE       30
+#define SHADOW_RANGE    18
+#define HIGHLIGHT_START 65
 
 // ─── Preset values ─────────────────────────────────────────────────────────
-//
-// SAT_ROLLOFF_FACTOR — luminance exponent for highlight desaturation
-//                      low (2) = aggressive (Kodak creamy), high (8) = subtle (Fuji vivid)
-// SAT_ROLLOFF_MAX    — max blend toward grey at peak (0.0 = off)
-// HUE_SHIFT_CENTER   — hue to rotate (0–1 hue wheel)
-// HUE_SHIFT_AMOUNT   — signed rotation amount (0.0 = off)
-// HUE_SHIFT_WIDTH    — half-width of affected hue range
-
-#if PRESET == 0  // Soft base — no hard blacks/whites, neutral character
+#if PRESET == 0
 #define WHITE_R          0.993
 #define WHITE_G          0.993
 #define WHITE_B          0.993
@@ -57,7 +61,7 @@
 #define HUE_SHIFT_AMOUNT   0.0
 #define HUE_SHIFT_WIDTH    0.1
 
-#elif PRESET == 1  // ARRI ALEXA — clean, neutral, wide latitude
+#elif PRESET == 1
 #define WHITE_R          0.99
 #define WHITE_G          0.98
 #define WHITE_B          0.98
@@ -88,7 +92,7 @@
 #define HUE_SHIFT_AMOUNT   0.0
 #define HUE_SHIFT_WIDTH    0.1
 
-#elif PRESET == 2  // Kodak Vision3 500T — warm, filmic, golden highlights
+#elif PRESET == 2
 #define WHITE_R          0.97
 #define WHITE_G          0.95
 #define WHITE_B          0.93
@@ -119,7 +123,7 @@
 #define HUE_SHIFT_AMOUNT  -0.025
 #define HUE_SHIFT_WIDTH    0.15
 
-#elif PRESET == 3  // Sony Venice — warm neutral, slight character, protected mids
+#elif PRESET == 3
 #define WHITE_R          0.97
 #define WHITE_G          0.96
 #define WHITE_B          0.95
@@ -150,7 +154,7 @@
 #define HUE_SHIFT_AMOUNT   0.015
 #define HUE_SHIFT_WIDTH    0.12
 
-#elif PRESET == 4  // Fuji Eterna 500 — cool, flat, green-leaning mids
+#elif PRESET == 4
 #define WHITE_R          0.96
 #define WHITE_G          0.96
 #define WHITE_B          0.95
@@ -181,7 +185,7 @@
 #define HUE_SHIFT_AMOUNT   0.055
 #define HUE_SHIFT_WIDTH    0.12
 
-#elif PRESET == 5  // Kodak 5219 — punchy, pushed, deep warm blacks
+#elif PRESET == 5
 #define WHITE_R          0.97
 #define WHITE_G          0.94
 #define WHITE_B          0.91
@@ -221,8 +225,58 @@
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
-texture2D BackBufferTex : COLOR;
-sampler2D BackBuffer { Texture = BackBufferTex; };
+// Input: game image snapshot (from corrective_render_chain CopyToSrc)
+texture2D CorrectiveSrcTex { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; MipLevels = 1; };
+sampler2D CorrectiveSrc
+{
+    Texture   = CorrectiveSrcTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+};
+
+// Scene percentiles — r=p25, g=p50, b=p75, a=iqr
+texture2D PercTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+sampler2D PercSamp
+{
+    Texture   = PercTex;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
+// Zone medians (from creative_render_chain SmoothZoneLevels)
+texture2D ZoneHistoryTex { Width = 4; Height = 4; Format = RGBA16F; MipLevels = 1; };
+sampler2D ZoneHistorySamp
+{
+    Texture   = ZoneHistoryTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+};
+
+// 1/8-res low-freq base (from creative_render_chain ComputeLowFreq, luma in .a)
+texture2D CreativeLowFreqTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 1; };
+sampler2D CreativeLowFreqSamp
+{
+    Texture   = CreativeLowFreqTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+};
+
+// Per-band chroma stats (from olofssonian_chroma_lift UpdateHistory)
+texture2D ChromaHistoryTex { Width = 8; Height = 4; Format = RGBA16F; MipLevels = 1; };
+sampler2D ChromaHistory
+{
+    Texture   = ChromaHistoryTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
 
 // ─── Vertex shader ─────────────────────────────────────────────────────────
 
@@ -239,14 +293,73 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 
 float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
-// 12-stop log encode/decode — 0.18 grey maps to 0.5
-float3 LogEncode(float3 x)
+float3 FilmCurve(float3 x, float p25, float p50, float p75)
 {
-    return log2(max(x, 0.0001) / 0.18) / 12.0 + 0.5;
+    float knee    = lerp(0.90, 0.80, saturate((p75 - 0.60) / 0.30));
+    float width   = 1.0 - knee;
+    float stevens = lerp(0.85, 1.15, saturate((p50 - 0.10) / 0.50));
+    float factor  = 0.05 / (width * width) * stevens;
+    float knee_toe = lerp(0.15, 0.25, saturate((0.40 - p25) / 0.30));
+    float3 above = max(x - knee,      0.0);
+    float3 below = max(knee_toe - x,  0.0);
+    return x - factor * above * above
+               + (0.03 / (knee_toe * knee_toe)) * below * below;
 }
-float3 LogDecode(float3 x)
+
+float3 RGBtoOklab(float3 rgb)
 {
-    return max(0.18 * exp2((x - 0.5) * 12.0), 0.0);
+    float l = dot(rgb, float3(0.4122214708, 0.5363325363, 0.0514459929));
+    float m = dot(rgb, float3(0.2119034982, 0.6806995451, 0.1073969566));
+    float s = dot(rgb, float3(0.0883024619, 0.2817188376, 0.6299787005));
+    l = sign(l) * pow(abs(l), 1.0 / 3.0);
+    m = sign(m) * pow(abs(m), 1.0 / 3.0);
+    s = sign(s) * pow(abs(s), 1.0 / 3.0);
+    return float3(
+        dot(float3(l, m, s), float3( 0.2104542553,  0.7936177850, -0.0040720468)),
+        dot(float3(l, m, s), float3( 1.9779984951, -2.4285922050,  0.4505937099)),
+        dot(float3(l, m, s), float3( 0.0259040371,  0.7827717662, -0.8086757660))
+    );
+}
+
+float3 OklabToRGB(float3 lab)
+{
+    float l = dot(lab, float3(1.0,  0.3963377774,  0.2158037573));
+    float m = dot(lab, float3(1.0, -0.1055613458, -0.0638541728));
+    float s = dot(lab, float3(1.0, -0.0894841775, -1.2914855480));
+    l = l * l * l;
+    m = m * m * m;
+    s = s * s * s;
+    return float3(
+        dot(float3(l, m, s), float3( 4.0767416621, -3.3077115913,  0.2309699292)),
+        dot(float3(l, m, s), float3(-1.2684380046,  2.6097574011, -0.3413193965)),
+        dot(float3(l, m, s), float3(-0.0041960863, -0.7034186147,  1.7076147010))
+    );
+}
+
+float OklabHueNorm(float a, float b) { return frac(atan2(b, a) / (2.0 * 3.14159265) + 1.0); }
+
+float HueBandWeight(float hue, float center)
+{
+    float d = abs(hue - center);
+    d = min(d, 1.0 - d);
+    return saturate(1.0 - d / (BAND_WIDTH / 100.0));
+}
+
+float PivotedSCurve(float x, float m, float strength)
+{
+    float t    = x - m;
+    float bent = t + strength * t * (1.0 - saturate(abs(t)));
+    return saturate(m + bent);
+}
+
+float GetBandCenter(int b)
+{
+    if (b == 0) return BAND_RED;
+    if (b == 1) return BAND_YELLOW;
+    if (b == 2) return BAND_GREEN;
+    if (b == 3) return BAND_CYAN;
+    if (b == 4) return BAND_BLUE;
+    return BAND_MAGENTA;
 }
 
 float3 RGBtoHSV(float3 c)
@@ -266,35 +379,106 @@ float3 HSVtoRGB(float3 c)
     return c.z * lerp(K.xxx, saturate(p - K.xxx), c.y);
 }
 
-// ─── Pixel shader ──────────────────────────────────────────────────────────
+float3 LogEncode(float3 x) { return log2(max(x, 0.0001) / 0.18) / 12.0 + 0.5; }
+float3 LogDecode(float3 x) { return max(0.18 * exp2((x - 0.5) * 12.0), 0.0); }
 
-float4 ColorGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+// ─── Mega-pass pixel shader ─────────────────────────────────────────────────
+
+float4 MegaPassPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    float4 col = tex2D(BackBuffer, uv);
+    float4 col = tex2D(CorrectiveSrc, uv);
     if (pos.y < 1.0) return col;  // data highway
 
-    float3 lin = max(col.rgb, 0.0);
+    float4 perc = tex2D(PercSamp, float2(0.5, 0.5));
 
-    // ── 1. Film matrix in log space (simulates dye interlayer cross-talk) ──
-    float3 log_in = LogEncode(lin);
+    // ── 1. EXPOSURE + FilmCurve ───────────────────────────────────────────────
+    float3 lin = FilmCurve(pow(max(col.rgb, 0.0), EXPOSURE), perc.r, perc.g, perc.b);
+
+    // ── 2. Zone contrast + Clarity + Shadow lift ──────────────────────────────
+    float luma        = Luma(lin);
+    float zone_median = tex2D(ZoneHistorySamp, uv).r;
+    float dt          = luma - zone_median;
+    float bent        = dt + (ZONE_STRENGTH / 100.0) * dt * (1.0 - saturate(abs(dt)));
+    float new_luma    = saturate(zone_median + bent);
+
+    float low_luma     = tex2D(CreativeLowFreqSamp, uv).a;
+    float detail       = luma - low_luma;
+    float clarity_mask = smoothstep(0.0, 0.2, luma) * (1.0 - smoothstep(0.6, 0.9, luma));
+    float edge_w       = 1.0 - smoothstep(0.05, 0.20, abs(detail));
+    new_luma = saturate(new_luma + detail * clarity_mask * edge_w * (CLARITY_STRENGTH / 100.0));
+
+    float lift_w = smoothstep(0.4, 0.0, new_luma);
+    new_luma     = saturate(new_luma + (SHADOW_LIFT / 100.0) * 0.15 * lift_w);
+    lin          = saturate(lin * (new_luma / max(luma, 0.001)));
+
+    // ── 3. Oklab chroma lift ──────────────────────────────────────────────────
+    float3 lab = RGBtoOklab(lin);
+    float  C   = length(lab.yz);
+    float  h   = OklabHueNorm(lab.y, lab.z);
+
+    if (C >= SAT_THRESHOLD / 100.0)
+    {
+        float hunt_scale = lerp(0.7, 1.3, saturate((perc.g - 0.15) / 0.50));
+        float chroma_str = saturate(CHROMA_STRENGTH / 100.0 * hunt_scale);
+
+        float new_C = 0.0, total_w = 0.0, green_w = 0.0;
+        for (int band = 0; band < 6; band++)
+        {
+            float w      = HueBandWeight(h, GetBandCenter(band));
+            float4 hist  = tex2D(ChromaHistory, float2((band + 0.5) / 8.0, 0.5 / 4.0));
+            new_C   += PivotedSCurve(C, hist.r, chroma_str) * w;
+            total_w += w;
+            if (band == 2) green_w = w;
+        }
+        float final_C = (total_w > 0.001) ? new_C / total_w : C;
+
+        float h_rad    = atan2(lab.z, lab.y);
+        float abney    = -HueBandWeight(h, BAND_BLUE)   * 0.08 * final_C
+                        - HueBandWeight(h, BAND_CYAN)   * 0.05 * final_C
+                        + HueBandWeight(h, BAND_YELLOW) * 0.05 * final_C;
+        float h_nudged = h_rad - GREEN_HUE_COOL * 2.0 * 3.14159265 * green_w * final_C + abney;
+        float f_oka    = final_C * cos(h_nudged);
+        float f_okb    = final_C * sin(h_nudged);
+
+        float hk_factor = (final_C > 0.05 && C > 0.05) ? pow(C / final_C, 0.15) : 1.0;
+        float final_L   = saturate(lab.x * hk_factor);
+
+        float delta_C   = max(final_C - C, 0.0);
+        float c_shadow  = smoothstep(0.0, 0.2, final_L);
+        float density_L = saturate(final_L - delta_C * c_shadow * (DENSITY_STRENGTH / 100.0));
+
+        float3 chroma_rgb = OklabToRGB(float3(density_L, f_oka, f_okb));
+        float  rmax       = max(chroma_rgb.r, max(chroma_rgb.g, chroma_rgb.b));
+        if (rmax > 1.0)
+        {
+            float L_grey = dot(chroma_rgb, float3(0.2126, 0.7152, 0.0722));
+            float t      = (1.0 - L_grey) / max(rmax - L_grey, 0.001);
+            chroma_rgb   = L_grey + t * (chroma_rgb - L_grey);
+        }
+        lin = saturate(chroma_rgb);
+    }
+
+    // ── 4. Film grade ─────────────────────────────────────────────────────────
+    float3 grade_in = lin;
+
+    float3 log_in = LogEncode(grade_in);
     float3 film_log;
     film_log.r = log_in.r * (1.0 - FILM_RG - FILM_RB) + log_in.g * FILM_RG + log_in.b * FILM_RB;
     film_log.g = log_in.r * FILM_GR + log_in.g * (1.0 - FILM_GR - FILM_GB) + log_in.b * FILM_GB;
     film_log.b = log_in.r * FILM_BR + log_in.g * FILM_BG + log_in.b * (1.0 - FILM_BR - FILM_BG);
 
-    float fm_luma   = Luma(lin);
-    float fm_max    = max(lin.r, max(lin.g, lin.b));
-    float fm_min    = min(lin.r, min(lin.g, lin.b));
+    float fm_luma   = Luma(grade_in);
+    float fm_max    = max(grade_in.r, max(grade_in.g, grade_in.b));
+    float fm_min    = min(grade_in.r, min(grade_in.g, grade_in.b));
     float fm_chroma = (fm_max > 0.001) ? (fm_max - fm_min) / fm_max : 0.0;
     float fm_gate   = smoothstep(FILM_CHROMA_LO, FILM_CHROMA_HI, fm_chroma)
-                    * smoothstep(FILM_LUMA_LO, FILM_LUMA_HI, fm_luma);
+                    * smoothstep(FILM_LUMA_LO,   FILM_LUMA_HI,   fm_luma);
     float3 film_lin = LogDecode(lerp(log_in, film_log, fm_gate));
 
-    // ── 2. Zone tinting in gamma space ─────────────────────────────────────
     float3 result = pow(max(film_lin, 0.0), 1.0 / 2.2);
     float  result_luma = Luma(result);
 
-    // Toe tint — bell curve peaks mid-shadow, saturation-gated
+    // Toe tint
     float tint_base = 1.0 - smoothstep(0.0, TOE_RANGE / 100.0, result_luma);
     float toe_bell  = tint_base * (1.0 - tint_base) * 4.0;
     float tt_max    = max(result.r, max(result.g, result.b));
@@ -308,56 +492,48 @@ float4 ColorGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
     // Black lift
     float black_w = 1.0 - smoothstep(0.0, 0.10, result_luma);
-    result.r += BLACK_LIFT_R * black_w;
-    result.g += BLACK_LIFT_G * black_w;
-    result.b += BLACK_LIFT_B * black_w;
+    result += float3(BLACK_LIFT_R, BLACK_LIFT_G, BLACK_LIFT_B) * black_w;
     result = saturate(result);
 
-    // Shadow tint — saturation-gated
-    float st_max  = max(result.r, max(result.g, result.b));
-    float st_min  = min(result.r, min(result.g, result.b));
-    float st_sat  = (st_max > 0.001) ? (st_max - st_min) / st_max : 0.0;
-    float st_gate = smoothstep(0.08, 0.22, st_sat);
-    float shadow_w = result_luma * (1.0 - smoothstep(0.0, SHADOW_RANGE / 100.0, result_luma)) * st_gate;
-    result = saturate(result + float3(SHADOW_TINT_R, SHADOW_TINT_G, SHADOW_TINT_B) * shadow_w);
+    // Shadow tint
+    float st_max   = max(result.r, max(result.g, result.b));
+    float st_min   = min(result.r, min(result.g, result.b));
+    float st_sat   = (st_max > 0.001) ? (st_max - st_min) / st_max : 0.0;
+    float st_gate  = smoothstep(0.08, 0.22, st_sat);
+    float g_shadow = result_luma * (1.0 - smoothstep(0.0, SHADOW_RANGE / 100.0, result_luma)) * st_gate;
+    result = saturate(result + float3(SHADOW_TINT_R, SHADOW_TINT_G, SHADOW_TINT_B) * g_shadow);
 
     // Highlight lift
     float hl_t        = smoothstep(HIGHLIGHT_START / 100.0, 1.0, result_luma);
     float highlight_w = hl_t * hl_t * (1.0 - result_luma) / max(1.0 - HIGHLIGHT_START / 100.0, 0.001);
-    result.r += HIGHLIGHT_TINT_R * highlight_w;
-    result.g += HIGHLIGHT_TINT_G * highlight_w;
-    result.b += HIGHLIGHT_TINT_B * highlight_w;
+    result += float3(HIGHLIGHT_TINT_R, HIGHLIGHT_TINT_G, HIGHLIGHT_TINT_B) * highlight_w;
     result = saturate(result);
 
     // Luma-neutral midtone cast
     float luma_pre = Luma(result);
-    result.r *= GRADE_R;
-    result.g *= GRADE_G;
-    result.b *= GRADE_B;
-    result   *= luma_pre / max(Luma(result), 0.001);
+    result *= float3(GRADE_R, GRADE_G, GRADE_B);
+    result *= luma_pre / max(Luma(result), 0.001);
 
     // White point
-    float3 white = float3(WHITE_R, WHITE_G, WHITE_B);
-    result += (white - 1.0) * result * result;
+    result += (float3(WHITE_R, WHITE_G, WHITE_B) - 1.0) * result * result;
 
-    // ── 3. Per-hue rotation — chroma-weighted, mimics dye gamut compression ─
+    // Per-hue rotation
     {
         float3 hsv     = RGBtoHSV(result);
-        float hue_dist = abs(hsv.x - HUE_SHIFT_CENTER);
-        hue_dist       = min(hue_dist, 1.0 - hue_dist);
-        float hue_w    = smoothstep(HUE_SHIFT_WIDTH, 0.0, hue_dist) * hsv.y;
-        hsv.x          = frac(hsv.x + HUE_SHIFT_AMOUNT * hue_w);
-        result         = HSVtoRGB(hsv);
+        float  hue_dist = abs(hsv.x - HUE_SHIFT_CENTER);
+        hue_dist        = min(hue_dist, 1.0 - hue_dist);
+        float  hue_w    = smoothstep(HUE_SHIFT_WIDTH, 0.0, hue_dist) * hsv.y;
+        hsv.x           = frac(hsv.x + HUE_SHIFT_AMOUNT * hue_w);
+        result          = HSVtoRGB(hsv);
     }
 
-    // ── 4. Luminance-dependent saturation roll-off ──────────────────────────
+    // Luminance-dependent sat rolloff
     {
         float rl      = Luma(result);
         float rolloff = pow(max(rl, 0.0), SAT_ROLLOFF_FACTOR);
         result        = lerp(result, float3(rl, rl, rl), rolloff * SAT_ROLLOFF_MAX);
     }
 
-    // ── 5. Back to linear + creative adjustments ───────────────────────────
     result = pow(max(result, 0.0), 2.2);
 
     if (CREATIVE_SATURATION != 1.0)
@@ -365,20 +541,17 @@ float4 ColorGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
         float cs_lum = Luma(result);
         result = saturate(cs_lum + (result - cs_lum) * CREATIVE_SATURATION);
     }
-
     if (CREATIVE_CONTRAST != 1.0)
     {
         float cc_luma = Luma(result);
         float cc_t    = saturate(cc_luma / 0.36);
         float cc_s    = cc_t * cc_t * (3.0 - 2.0 * cc_t) * 0.36;
-        float cc_new  = lerp(cc_luma, cc_s, CREATIVE_CONTRAST - 1.0);
-        result = saturate(result * (cc_new / max(cc_luma, 0.001)));
+        result = saturate(result * (lerp(cc_luma, cc_s, CREATIVE_CONTRAST - 1.0) / max(cc_luma, 0.001)));
     }
 
-    // Blend toward original by GRADE_STRENGTH
-    result = lerp(col.rgb, result, GRADE_STRENGTH / 100.0);
+    result = lerp(grade_in, result, GRADE_STRENGTH / 100.0);
 
-    // Debug indicator — blue (color grade slot)
+    // Debug indicator — blue (slot 5)
     if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 36) && pos.x < float(BUFFER_WIDTH - 24))
         return float4(0.2, 0.2, 0.9, 1.0);
 
@@ -389,9 +562,9 @@ float4 ColorGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
 technique OlofssonianColorGrade
 {
-    pass
+    pass MegaPass
     {
         VertexShader = PostProcessVS;
-        PixelShader  = ColorGradePS;
+        PixelShader  = MegaPassPS;
     }
 }
