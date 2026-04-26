@@ -24,8 +24,3 @@
 // Chroma lift
 #define CHROMA_STRENGTH    10    // -100 to 100; per-hue saturation S-curve bend
 #define DENSITY_STRENGTH   25    // 0–100; subtractive dye density (film body/weight)
-
-// Pro-mist
-#define DIFFUSE_STRENGTH  0.08   // 0–1; softness intensity
-#define DIFFUSE_RADIUS    0.020  // blur width (~38 px at 1080p)
-

@@ -456,7 +456,7 @@ float4 ApplyChromaPS(float4 pos : SV_Position,
     float final_hue = hsv.x - GREEN_HUE_COOL * green_w * final_sat;
 
     // HK: lifted saturation reads as brighter — pull V back down
-    float hk_factor = (final_sat > 0.001 && hsv.y > 0.001)
+    float hk_factor = (final_sat > 0.05 && hsv.y > 0.05)
                     ? pow(hsv.y / final_sat, 0.15)
                     : 1.0;
     float hk_val = saturate(hsv.z * hk_factor);
