@@ -46,4 +46,9 @@ technique OlofssonianRenderChain
         PixelShader  = CopyToSrcPS;
         RenderTarget = CorrectiveSrcTex;
     }
+    pass Passthrough
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = CopyToSrcPS;
+    }
 }

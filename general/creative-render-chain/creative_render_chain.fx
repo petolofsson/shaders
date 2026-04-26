@@ -173,6 +173,11 @@ float4 SmoothZoneLevelsPS(float4 pos : SV_Position,
     return lerp(prev, current, speed);
 }
 
+float4 PassthroughPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    return tex2D(BackBuffer, uv);
+}
+
 // ─── Technique ───────────────────────────────────────────────────────────────
 
 technique CreativeRenderChain
@@ -200,5 +205,10 @@ technique CreativeRenderChain
         VertexShader = PostProcessVS;
         PixelShader  = SmoothZoneLevelsPS;
         RenderTarget = ZoneHistoryTex;
+    }
+    pass Passthrough
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = PassthroughPS;
     }
 }

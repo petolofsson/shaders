@@ -408,6 +408,11 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
     return float4(new_mean, new_std, new_wsum, 1.0);
 }
 
+float4 PassthroughPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    return tex2D(BackBuffer, uv);
+}
+
 // ─── Technique ─────────────────────────────────────────────────────────────
 
 technique OlofssonianChromaLift
@@ -417,5 +422,10 @@ technique OlofssonianChromaLift
         VertexShader = PostProcessVS;
         PixelShader  = UpdateHistoryPS;
         RenderTarget = ChromaHistoryTex;
+    }
+    pass Passthrough
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = PassthroughPS;
     }
 }
