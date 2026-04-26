@@ -191,6 +191,13 @@ float4 ApplyContrastPS(float4 pos : SV_Position,
     float bent     = dt + strength * dt * (1.0 - saturate(abs(dt)));
     float new_luma = saturate(zone_median + bent);
 
+    // Clarity — base/detail local contrast, midtone-focused (like Lightroom Clarity)
+    // detail = deviation from 1/8-res base; mask peaks at midtones, tapers at shadows/highlights
+    float low_luma     = tex2D(CreativeLowFreqSamp, uv).a;
+    float detail       = luma - low_luma;
+    float clarity_mask = smoothstep(0.0, 0.2, luma) * (1.0 - smoothstep(0.6, 0.9, luma));
+    new_luma = saturate(new_luma + detail * clarity_mask * (CLARITY_STRENGTH / 100.0));
+
     // Shadow lift — expand dark range, tapers to zero at 0.4 luma
     float lift_w = smoothstep(0.4, 0.0, new_luma);
     new_luma     = saturate(new_luma + (SHADOW_LIFT / 100.0) * 0.15 * lift_w);

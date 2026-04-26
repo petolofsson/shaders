@@ -1,30 +1,28 @@
-// olofssonian_chroma_lift.fx — Per-frame adaptive chroma S-curve
+// olofssonian_chroma_lift.fx — Per-frame adaptive chroma S-curve (Oklab)
 //
-// Scene-adaptive saturation contrast via percentile-pivoted S-curves.
-// Analogous to OlofssonianZoneContrast but operating on HSV saturation.
-//
-// Six hue bands — one per primary/secondary color, 60° each with smooth overlap:
-//   Red (0°), Yellow (60°), Green (120°), Cyan (180°), Blue (240°), Magenta (300°)
+// Scene-adaptive chroma contrast via percentile-pivoted S-curves in Oklab space.
+// Six hue bands based on sRGB primary/secondary hue positions in Oklab (0–1 normalized).
 //
 // Pass 1: 64 Halton-sampled pixels per frame. Computes per-band weighted mean
-//         and variance (E[x²]-E[x]² identity). Lerps into ChromaHistoryTex.
+//         and variance of Oklab chroma C. Lerps into ChromaHistoryTex.
 // Pass 2: Per-band S-curve using Normal distribution percentile approximation:
 //         p25 = mean - 0.674*stddev, p50 = mean, p75 = mean + 0.674*stddev.
 
 // ─── Tuning ────────────────────────────────────────────────────────────────
 #include "creative_values.fx"
 #define LERP_SPEED      8      // 0–100; adaptation speed
-#define BAND_WIDTH      15     // 0–100; hue band overlap width
+#define BAND_WIDTH      8      // hue overlap width (% of [0,1] hue range)
 #define MIN_WEIGHT      1.0
-#define SAT_THRESHOLD   5      // 0–100; minimum saturation to process
+#define SAT_THRESHOLD   2      // minimum Oklab C×100 to process
 #define GREEN_HUE_COOL  (4.0 / 360.0)
 
-#define BAND_RED     (0.0   / 360.0)
-#define BAND_YELLOW  (60.0  / 360.0)
-#define BAND_GREEN   (120.0 / 360.0)
-#define BAND_CYAN    (180.0 / 360.0)
-#define BAND_BLUE    (240.0 / 360.0)
-#define BAND_MAGENTA (300.0 / 360.0)
+// sRGB primary/secondary hue positions in Oklab (normalized 0–1)
+#define BAND_RED     0.083
+#define BAND_YELLOW  0.305
+#define BAND_GREEN   0.396
+#define BAND_CYAN    0.542
+#define BAND_BLUE    0.735
+#define BAND_MAGENTA 0.913
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
@@ -38,8 +36,17 @@ sampler2D BackBuffer
     MagFilter = LINEAR;
 };
 
+// Scene percentiles from analysis_frame_analysis (r=p25, g=p50, b=p75, a=iqr)
+texture2D PercTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+sampler2D PercSamp
+{
+    Texture   = PercTex;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
 // History texture — 8x4 RGBA16F, row 0 only, one texel per band (6 texels)
-//   R = mean saturation, G = stddev, B = weight sum
+//   R = mean chroma, G = stddev, B = weight sum
 texture2D ChromaHistoryTex
 {
     Width     = 8;
@@ -342,21 +349,44 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-float3 RGBtoHSV(float3 c)
+float3 RGBtoOklab(float3 rgb)
 {
-    float4 K = float4(0.0, -1.0/3.0, 2.0/3.0, -1.0);
-    float4 p = lerp(float4(c.bg, K.wz), float4(c.gb, K.xy), step(c.b, c.g));
-    float4 q = lerp(float4(p.xyw, c.r), float4(c.r, p.yzx), step(p.x, c.r));
-    float  d = q.x - min(q.w, q.y);
-    float  e = 1.0e-10;
-    return float3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+    float l = dot(rgb, float3(0.4122214708, 0.5363325363, 0.0514459929));
+    float m = dot(rgb, float3(0.2119034982, 0.6806995451, 0.1073969566));
+    float s = dot(rgb, float3(0.0883024619, 0.2817188376, 0.6299787005));
+
+    l = sign(l) * pow(abs(l), 1.0 / 3.0);
+    m = sign(m) * pow(abs(m), 1.0 / 3.0);
+    s = sign(s) * pow(abs(s), 1.0 / 3.0);
+
+    return float3(
+        dot(float3(l, m, s), float3( 0.2104542553,  0.7936177850, -0.0040720468)),
+        dot(float3(l, m, s), float3( 1.9779984951, -2.4285922050,  0.4505937099)),
+        dot(float3(l, m, s), float3( 0.0259040371,  0.7827717662, -0.8086757660))
+    );
 }
 
-float3 HSVtoRGB(float3 c)
+float3 OklabToRGB(float3 lab)
 {
-    float4 K = float4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
-    float3 p = abs(frac(c.xxx + K.xyz) * 6.0 - K.www);
-    return c.z * lerp(K.xxx, saturate(p - K.xxx), c.y);
+    float l = dot(lab, float3(1.0,  0.3963377774,  0.2158037573));
+    float m = dot(lab, float3(1.0, -0.1055613458, -0.0638541728));
+    float s = dot(lab, float3(1.0, -0.0894841775, -1.2914855480));
+
+    l = l * l * l;
+    m = m * m * m;
+    s = s * s * s;
+
+    return float3(
+        dot(float3(l, m, s), float3( 4.0767416621, -3.3077115913,  0.2309699292)),
+        dot(float3(l, m, s), float3(-1.2684380046,  2.6097574011, -0.3413193965)),
+        dot(float3(l, m, s), float3(-0.0041960863, -0.7034186147,  1.7076147010))
+    );
+}
+
+// Oklab hue normalized to [0, 1]
+float OklabHueNorm(float a, float b)
+{
+    return frac(atan2(b, a) / (2.0 * 3.14159265) + 1.0);
 }
 
 float HueBandWeight(float hue, float center)
@@ -383,90 +413,95 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
 
     int   base_idx = (FRAME_COUNT % 128);
     float sum_w    = 0.0;
-    float sum_ws   = 0.0;
-    float sum_ws2  = 0.0;
+    float sum_wc   = 0.0;
+    float sum_wc2  = 0.0;
 
     for (int i = 0; i < 64; i++)
     {
-        float2 s_uv  = kHalton[(base_idx + i) % 256];
-        float3 rgb   = tex2Dlod(BackBuffer, float4(s_uv, 0, 0)).rgb;
-        float3 hsv_s = RGBtoHSV(rgb);
+        float2 s_uv = kHalton[(base_idx + i) % 256];
+        float3 rgb  = tex2Dlod(BackBuffer, float4(s_uv, 0, 0)).rgb;
+        float3 lab  = RGBtoOklab(rgb);
+        float  C    = length(lab.yz);
+        float  h    = OklabHueNorm(lab.y, lab.z);
 
-        float w    = HueBandWeight(hsv_s.x, GetBandCenter(band_idx)) + MIN_WEIGHT;
-        float s    = hsv_s.y;
+        float w    = HueBandWeight(h, GetBandCenter(band_idx)) + MIN_WEIGHT;
         sum_w   += w;
-        sum_ws  += w * s;
-        sum_ws2 += w * s * s;
+        sum_wc  += w * C;
+        sum_wc2 += w * C * C;
     }
 
-    float mean   = sum_ws  / max(sum_w, 0.001);
-    float var    = max(sum_ws2 / max(sum_w, 0.001) - mean * mean, 0.0);
+    float mean   = sum_wc  / max(sum_w, 0.001);
+    float var    = max(sum_wc2 / max(sum_w, 0.001) - mean * mean, 0.0);
     float stddev = sqrt(var);
 
-    float4 prev      = tex2D(ChromaHistory, float2((band_idx + 0.5) / 8.0, 0.5 / 4.0));
-    float  new_mean  = lerp(prev.r, mean,   LERP_SPEED / 100.0);
-    float  new_std   = lerp(prev.g, stddev, LERP_SPEED / 100.0);
-    float  new_wsum  = lerp(prev.b, sum_w,  LERP_SPEED / 100.0);
+    float4 prev     = tex2D(ChromaHistory, float2((band_idx + 0.5) / 8.0, 0.5 / 4.0));
+    float new_mean  = lerp(prev.r, mean,   LERP_SPEED / 100.0);
+    float new_std   = lerp(prev.g, stddev, LERP_SPEED / 100.0);
+    float new_wsum  = lerp(prev.b, sum_w,  LERP_SPEED / 100.0);
 
     return float4(new_mean, new_std, new_wsum, 1.0);
 }
 
-// ─── Pass 2 — Apply per-band saturation S-curves ───────────────────────────
+// ─── Pass 2 — Apply per-band chroma S-curves in Oklab ──────────────────────
 
 float4 ApplyChromaPS(float4 pos : SV_Position,
                      float2 uv  : TEXCOORD0) : SV_Target
 {
-    // Debug box — must be first so compile failures don't hide it
     if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 50) && pos.x < float(BUFFER_WIDTH - 38))
         return float4(1.0, 0.20, 0.20, 1.0);
 
     float4 col = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return col;
-    float3 hsv = RGBtoHSV(col.rgb);
 
-    if (hsv.y < SAT_THRESHOLD / 100.0) return col;
+    float3 lab = RGBtoOklab(col.rgb);
+    float  C   = length(lab.yz);
+    float  h   = OklabHueNorm(lab.y, lab.z);
 
-    float new_sat = 0.0;
+    if (C < SAT_THRESHOLD / 100.0) return col;
+
+    // Hunt effect: colorfulness scales with scene luminance adaptation (p50)
+    float scene_p50  = tex2D(PercSamp, float2(0.5, 0.5)).g;
+    float hunt_scale = lerp(0.7, 1.3, saturate((scene_p50 - 0.15) / 0.50));
+    float chroma_str = saturate(CHROMA_STRENGTH / 100.0 * hunt_scale);
+
+    float new_C   = 0.0;
     float total_w = 0.0;
     float green_w = 0.0;
 
     for (int b = 0; b < 6; b++)
     {
-        float w        = HueBandWeight(hsv.x, GetBandCenter(b));
+        float w        = HueBandWeight(h, GetBandCenter(b));
         float2 hist_uv = float2((b + 0.5) / 8.0, 0.5 / 4.0);
         float4 hist    = tex2D(ChromaHistory, hist_uv);
 
-        float mean   = hist.r;
-        float stddev = hist.g;
-        float p25    = max(mean - 0.674 * stddev, 0.0);
-        float p50    = mean;
-        float p75    = min(mean + 0.674 * stddev, 1.0);
+        float p50    = hist.r;
+        float band_C = PivotedSCurve(C, p50, chroma_str);
 
-        float band_s = PivotedSCurve(hsv.y, p50, CHROMA_STRENGTH / 100.0);
-
-        new_sat += band_s * w;
+        new_C   += band_C * w;
         total_w += w;
 
-        if (b == 2) green_w = w;  // GREEN band
+        if (b == 2) green_w = w;
     }
 
-    float final_sat = (total_w > 0.001) ? new_sat / total_w : hsv.y;
+    float final_C = (total_w > 0.001) ? new_C / total_w : C;
 
-    // Nudge green-band hues 4° toward cyan
-    float final_hue = hsv.x - GREEN_HUE_COOL * green_w * final_sat;
+    // Nudge green-band hues toward cyan (rotate chroma vector)
+    float h_rad     = atan2(lab.z, lab.y);
+    float h_nudged  = h_rad - GREEN_HUE_COOL * 2.0 * 3.14159265 * green_w * final_C;
+    float final_a   = final_C * cos(h_nudged);
+    float final_b   = final_C * sin(h_nudged);
 
-    // HK: lifted saturation reads as brighter — pull V back down
-    float hk_factor = (final_sat > 0.05 && hsv.y > 0.05)
-                    ? pow(hsv.y / final_sat, 0.15)
-                    : 1.0;
-    float hk_val = saturate(hsv.z * hk_factor);
+    // HK: increased chroma appears brighter — reduce L
+    float hk_factor = (final_C > 0.05 && C > 0.05)
+                    ? pow(C / final_C, 0.15) : 1.0;
+    float final_L   = saturate(lab.x * hk_factor);
 
-    // Subtractive density: dye absorption on lifted colours only, shadow-protected
-    float delta_sat = max(final_sat - hsv.y, 0.0);
-    float shadow_w  = smoothstep(0.0, 0.25, hk_val);
-    float final_val = saturate(hk_val - delta_sat * shadow_w * (DENSITY_STRENGTH / 100.0));
+    // Subtractive density: reduce L proportional to chroma lift, shadow-protected
+    float delta_C  = max(final_C - C, 0.0);
+    float shadow_w = smoothstep(0.0, 0.2, final_L);
+    float density_L = saturate(final_L - delta_C * shadow_w * (DENSITY_STRENGTH / 100.0));
 
-    float3 result = HSVtoRGB(float3(final_hue, final_sat, final_val));
+    float3 result = OklabToRGB(float3(density_L, final_a, final_b));
     return float4(saturate(result), col.a);
 }
 

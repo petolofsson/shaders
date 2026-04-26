@@ -53,10 +53,10 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 // Toe knee driven by p25 (dark scenes lift more). White→0.95, black→0.03. Maps [0,1]→[0,1].
 float3 FilmCurve(float3 x, float p25, float p75)
 {
-    // Shoulder knee: fixed at 0.95 — only the hard peak is compressed, ring area stays untouched
-    float knee     = 0.95;
-    float width    = 0.05;
-    float factor   = 20.0; // white → 0.95
+    // Shoulder knee: 0.90 at p75=0.60 → 0.80 at p75=0.90 (hot scenes compress more)
+    float knee   = lerp(0.90, 0.80, saturate((p75 - 0.60) / 0.30));
+    float width  = 1.0 - knee;
+    float factor = 0.05 / (width * width); // white always → 0.95
 
     // Toe knee: 0.15 at p25=0.40 → 0.25 at p25=0.10 (dark scenes lift more)
     float knee_toe = lerp(0.15, 0.25, saturate((0.40 - p25) / 0.30));

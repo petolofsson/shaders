@@ -4,7 +4,8 @@
 
 #define EXPOSURE      1.10   // gamma: 1.0=passthrough, <1.0=brighten, >1.0=darken
 #define ZONE_STRENGTH    0  // tonal zone contrast
-#define SHADOW_LIFT     10  // raise dark tones toward grey (0–100)
+#define CLARITY_STRENGTH 10  // 0–100; local midtone contrast (base/detail separation)
+#define SHADOW_LIFT      5  // raise dark tones toward grey (0–100)
 
 // Camera preset
 //   0 — Soft base        (neutral, no true blacks/whites)
