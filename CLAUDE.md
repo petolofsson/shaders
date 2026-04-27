@@ -22,6 +22,14 @@ creative_render_chain : olofssonian_chroma_lift : creative_color_grade : analysi
 - Any effect where all passes use explicit RenderTargets must add a Passthrough pass
   that writes BackBuffer, or vkBasalt clears it for the next effect.
 
+## How I work
+
+- **90% clarity required before starting.** If the request is less than 90% clear, ask —
+  don't guess and implement the wrong thing.
+- **Plan before coding.** For any non-trivial edit: state which lines/approach will change
+  and wait for a nod before writing code.
+- **Strict scope.** Only change what was asked. No opportunistic cleanup of surrounding code.
+
 ## Non-negotiable rules
 
 - **`creative_values.fx` is the only tuning surface.** All user-facing knobs live there.
@@ -31,7 +39,6 @@ creative_render_chain : olofssonian_chroma_lift : creative_color_grade : analysi
 - **No gates.** Hard conditionals and smoothstep thresholds on pixel properties cause visible
   seams. Effects must be self-limiting by construction.
 - **No auto-exposure.** `EXPOSURE` is a deliberate knob set by the user.
-- **Propose significant architectural changes** and wait for approval before writing code.
 - **Never modify shader header comments** without explicit approval.
 - **Never touch `gzw.conf`** without explicit request.
 
