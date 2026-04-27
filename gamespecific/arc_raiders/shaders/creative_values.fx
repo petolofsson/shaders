@@ -6,12 +6,12 @@
 
 // ── TONAL ───────────────────────────────────────────────────────────────────
 #define TONAL_STRENGTH      100  // 0=passthrough, 100=full
-#define ZONE_STRENGTH        30  // 0–100; zone contrast S-curve
-#define CLARITY_STRENGTH     15  // 0–100; local midtone contrast
-#define SHADOW_LIFT          12  // 0–100; raise dark tones toward grey
+#define ZONE_STRENGTH        35  // 0–100; zone contrast S-curve
+#define CLARITY_STRENGTH     25  // 0–100; local midtone contrast
+#define SHADOW_LIFT          13  // 0–100; raise dark tones toward grey
 
 // ── CHROMA ──────────────────────────────────────────────────────────────────
-#define CHROMA_STRENGTH      35  // -100 to 100; per-hue saturation bend
+#define CHROMA_STRENGTH      25  // -100 to 100; per-hue saturation bend
 #define DENSITY_STRENGTH     55  // 0–100; subtractive dye density
 
 // ── FILM GRADE ──────────────────────────────────────────────────────────────

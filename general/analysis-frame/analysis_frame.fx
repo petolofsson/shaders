@@ -253,6 +253,9 @@ float4 SatHistSmoothPS(float4 pos : SV_Position,
 }
 
 // ─── Pass 7 — CDF walk → 1×1 percentile cache ─────────────────────────────
+// Trimmed: targets 0.275/0.50/0.725 exclude the bottom and top 5% of mass,
+// making anchors immune to specular spikes and crushed-black collapse.
+// Intra-bin interpolation raises effective resolution from 1/64 to ~1/512.
 
 float4 CDFWalkPS(float4 pos : SV_Position,
                  float2 uv  : TEXCOORD0) : SV_Target
@@ -263,16 +266,25 @@ float4 CDFWalkPS(float4 pos : SV_Position,
 
     [loop] for (int b = 0; b < HIST_BINS; b++)
     {
-        float bv  = float(b) / float(HIST_BINS);
-        float frc = tex2Dlod(LumHist, float4((float(b) + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
+        float frc  = tex2Dlod(LumHist, float4((float(b) + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
+        float prev = cumul;
         cumul += frc;
 
-        float at25 = step(0.25, cumul) * (1.0 - lk25);
-        float at50 = step(0.50, cumul) * (1.0 - lk50);
-        float at75 = step(0.75, cumul) * (1.0 - lk75);
-        p25  = lerp(p25,  bv, at25);
-        p50  = lerp(p50,  bv, at50);
-        p75  = lerp(p75,  bv, at75);
+        float inv  = (frc > 0.0) ? 1.0 / frc : 0.0;
+        float t25  = saturate((0.275 - prev) * inv);
+        float t50  = saturate((0.500 - prev) * inv);
+        float t75  = saturate((0.725 - prev) * inv);
+
+        float bv25 = (float(b) + t25) / float(HIST_BINS);
+        float bv50 = (float(b) + t50) / float(HIST_BINS);
+        float bv75 = (float(b) + t75) / float(HIST_BINS);
+
+        float at25 = step(0.275, cumul) * (1.0 - lk25);
+        float at50 = step(0.500, cumul) * (1.0 - lk50);
+        float at75 = step(0.725, cumul) * (1.0 - lk75);
+        p25  = lerp(p25, bv25, at25);
+        p50  = lerp(p50, bv50, at50);
+        p75  = lerp(p75, bv75, at75);
         lk25 = saturate(lk25 + at25);
         lk50 = saturate(lk50 + at50);
         lk75 = saturate(lk75 + at75);

@@ -399,9 +399,12 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // ── 2. TONAL: Zone contrast + Clarity + Shadow lift ───────────────────────
     float3 lin_pre_tonal = lin;
     float luma        = Luma(lin);
-    float zone_median = tex2D(ZoneHistorySamp, uv).r;
+    float4 zone_lvl   = tex2D(ZoneHistorySamp, uv);
+    float zone_median = zone_lvl.r;
+    float zone_iqr    = zone_lvl.b - zone_lvl.g;
+    float iqr_scale   = smoothstep(0.0, 0.25, zone_iqr);
     float dt          = luma - zone_median;
-    float bent        = dt + (ZONE_STRENGTH / 100.0) * dt * (1.0 - saturate(abs(dt)));
+    float bent        = dt + (ZONE_STRENGTH / 100.0) * iqr_scale * dt * (1.0 - saturate(abs(dt)));
     float new_luma    = saturate(zone_median + bent);
 
     float low_luma     = tex2D(CreativeLowFreqSamp, uv).a;
@@ -410,8 +413,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float edge_w       = 1.0 - smoothstep(0.05, 0.20, abs(detail));
     new_luma = saturate(new_luma + detail * clarity_mask * edge_w * (CLARITY_STRENGTH / 100.0));
 
-    float lift_w = smoothstep(0.4, 0.0, new_luma);
-    new_luma     = saturate(new_luma + (SHADOW_LIFT / 100.0) * 0.15 * lift_w);
+    float lift_w = new_luma * smoothstep(0.4, 0.0, new_luma);
+    new_luma     = saturate(new_luma + (SHADOW_LIFT / 100.0) * 0.75 * lift_w);
     lin          = saturate(lin * (new_luma / max(luma, 0.001)));
     lin = lerp(lin_pre_tonal, lin, TONAL_STRENGTH / 100.0);
 
