@@ -443,7 +443,7 @@ float4 MegaPassPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
         float final_L   = saturate(lab.x * hk_factor);
 
         float delta_C   = max(final_C - C, 0.0);
-        float c_shadow  = smoothstep(0.0, 0.2, final_L);
+        float c_shadow  = smoothstep(0.0, 0.15, final_L) * (1.0 - smoothstep(0.55, 0.85, final_L));
         float density_L = saturate(final_L - delta_C * c_shadow * (DENSITY_STRENGTH / 100.0));
 
         float3 chroma_rgb = OklabToRGB(float3(density_L, f_oka, f_okb));
