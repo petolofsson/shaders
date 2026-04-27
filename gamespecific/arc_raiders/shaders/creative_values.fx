@@ -2,17 +2,17 @@
 
 // ── CORRECTIVE ──────────────────────────────────────────────────────────────
 #define CORRECTIVE_STRENGTH 100  // 0=passthrough, 100=full
-#define EXPOSURE            1.16 // gamma: 1.0=passthrough, <1.0=brighten, >1.0=darken
+#define EXPOSURE            1.12 // gamma: 1.0=passthrough, <1.0=brighten, >1.0=darken
 
 // ── TONAL ───────────────────────────────────────────────────────────────────
 #define TONAL_STRENGTH      100  // 0=passthrough, 100=full
-#define ZONE_STRENGTH        20  // 0–100; zone contrast S-curve
-#define CLARITY_STRENGTH      0  // 0–100; local midtone contrast
-#define SHADOW_LIFT           5  // 0–100; raise dark tones toward grey
+#define ZONE_STRENGTH        30  // 0–100; zone contrast S-curve
+#define CLARITY_STRENGTH     15  // 0–100; local midtone contrast
+#define SHADOW_LIFT          12  // 0–100; raise dark tones toward grey
 
 // ── CHROMA ──────────────────────────────────────────────────────────────────
-#define CHROMA_STRENGTH      40  // -100 to 100; per-hue saturation bend
-#define DENSITY_STRENGTH     40  // 0–100; subtractive dye density
+#define CHROMA_STRENGTH      35  // -100 to 100; per-hue saturation bend
+#define DENSITY_STRENGTH     55  // 0–100; subtractive dye density
 
 // ── FILM GRADE ──────────────────────────────────────────────────────────────
 // Camera preset

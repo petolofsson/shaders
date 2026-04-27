@@ -1,12 +1,12 @@
 # Shader Pipeline
 
-vkBasalt HLSL post-process chain, Arc Raiders on Linux. SDR. Linear light throughout —
+vkBasalt HLSL post-process chain, game-agnostic. Arc Raiders used as test platform
+(exceptional lighting/contrast/color). SDR. Linear light throughout —
 vkBasalt auto-linearizes the sRGB swapchain. HDR must be OFF in-game.
 
 ## Active chain (`arc_raiders.conf`)
 ```
-analysis_frame_analysis : analysis_scope_pre : corrective_render_chain :
-creative_render_chain : olofssonian_chroma_lift : creative_color_grade : analysis_scope
+analysis_frame : analysis_scope_pre : corrective : grade : analysis_scope
 ```
 
 ## Silent-failure gotchas — verify before every shader edit
@@ -21,6 +21,8 @@ creative_render_chain : olofssonian_chroma_lift : creative_color_grade : analysi
   BackBuffer-writing pass must guard `if (pos.y < 1.0) return col;`
 - Any effect where all passes use explicit RenderTargets must add a Passthrough pass
   that writes BackBuffer, or vkBasalt clears it for the next effect.
+- `corrective.fx` is one effect with 6 passes — the final Passthrough keeps BB alive
+  for `grade.fx`. No inter-effect clears between corrective passes.
 
 ## How I work
 
@@ -47,12 +49,15 @@ creative_render_chain : olofssonian_chroma_lift : creative_color_grade : analysi
 | Path | Role |
 |------|------|
 | `gamespecific/arc_raiders/shaders/creative_values.fx` | Only tuning surface |
-| `general/creative-color-grade/creative_color_grade.fx` | All color work — `MegaPassPS` |
+| `general/corrective/corrective.fx` | Analysis passes — zone hist, chroma stats, Passthrough |
+| `general/grade/grade.fx` | All color work — `ColorTransformPS` (MegaPass) |
 | `gamespecific/arc_raiders/shaders/debug_text.fxh` | 3×5 debug font, included by all effects |
 | `gamespecific/arc_raiders/arc_raiders.conf` | Chain config — never touch without ask |
-| `research/backbuffer_requantization_fix.md` | Pending: single-file merge analysis |
 
-## `MegaPassPS` stage order (`creative_color_grade.fx`)
+## `ColorTransformPS` stage order (`grade.fx`)
+
+Reads from BackBuffer (post-corrective). Analysis textures (ZoneHistoryTex,
+ChromaHistoryTex, PercTex, CreativeLowFreqTex) written by earlier passes in corrective.fx.
 
 1. **CORRECTIVE** — `pow(rgb, EXPOSURE)` + FilmCurve (PercTex p25/p50/p75)
 2. **TONAL** — Zone S-curve (ZoneHistoryTex) + Clarity + Shadow lift
