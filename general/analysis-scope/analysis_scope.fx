@@ -1,4 +1,5 @@
 // scope.fx — Three-panel scope overlay (512×168px, bottom-left)
+#include "debug_text.fxh"
 //
 // Top 40px    (white bars)     — post-correction luma histogram, digit overlay = post_mean
 // 4px divider
@@ -148,9 +149,8 @@ float4 ScopePS(float4 pos : SV_Position,
         return col; // pixels 130+: passthrough (reserved for future stage means)
     }
 
-    // Debug indicator — cyan (slot 4)
-    if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 22) && pos.x < float(BUFFER_WIDTH - 10))
-        return float4(0.0, 0.80, 1.0, 1.0);
+    col = DrawLabel(col, pos, float(BUFFER_WIDTH) - 17.0, 52.0,
+                    83u, 67u, 79u, 80u, float3(0.0, 0.80, 1.0)); // SCOP
 
     float x0 = SCOPE_X;
     float y0 = BUFFER_HEIGHT - SCOPE_Y - SCOPE_H;

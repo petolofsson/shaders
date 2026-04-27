@@ -1,4 +1,5 @@
 // frame_analysis.fx — Frame-wide histogram analysis
+#include "debug_text.fxh"
 //
 // Builds per-frame luminance and per-hue saturation histograms.
 // Shared smoothed textures (LumHistTex, SatHistTex) are read by
@@ -226,9 +227,9 @@ float4 SatHistGatherPS(float4 pos : SV_Position,
 float4 DebugOverlayPS(float4 pos : SV_Position,
                       float2 uv  : TEXCOORD0) : SV_Target
 {
-    if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 120) && pos.x < float(BUFFER_WIDTH - 108))
-        return float4(1.0, 0.95, 0.0, 1.0);
-    return tex2D(BackBuffer, uv);
+    float4 c = tex2D(BackBuffer, uv);
+    return DrawLabel(c, pos, float(BUFFER_WIDTH) - 17.0, 4.0,
+                     65u, 78u, 76u, 90u, float3(1.0, 0.95, 0.0)); // ANLZ
 }
 
 // ─── Pass 5 — Smooth luminance histogram ───────────────────────────────────

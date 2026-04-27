@@ -1,4 +1,5 @@
 // creative_color_grade.fx — Mega-pass: all downstream color work in one full-res pass
+#include "debug_text.fxh"
 //
 // Eliminates 3 inter-pass VRAM read-write cycles by running in registers:
 //   1. EXPOSURE gamma + scene-adaptive FilmCurve  (was corrective_render_chain P2)
@@ -13,7 +14,7 @@
 #include "creative_values.fx"
 
 // ─── Chroma lift constants ─────────────────────────────────────────────────
-#define BAND_WIDTH      8
+#define BAND_WIDTH      14
 #define MIN_WEIGHT      1.0
 #define SAT_THRESHOLD   2
 #define GREEN_HUE_COOL  (4.0 / 360.0)
@@ -341,7 +342,8 @@ float HueBandWeight(float hue, float center)
 {
     float d = abs(hue - center);
     d = min(d, 1.0 - d);
-    return saturate(1.0 - d / (BAND_WIDTH / 100.0));
+    float t = saturate(1.0 - d / (BAND_WIDTH / 100.0));
+    return t * t * (3.0 - 2.0 * t);
 }
 
 float PivotedSCurve(float x, float m, float strength)
@@ -381,19 +383,21 @@ float3 HSVtoRGB(float3 c)
 float3 LogEncode(float3 x) { return log2(max(x, 0.0001) / 0.18) / 12.0 + 0.5; }
 float3 LogDecode(float3 x) { return max(0.18 * exp2((x - 0.5) * 12.0), 0.0); }
 
-// ─── Mega-pass pixel shader ─────────────────────────────────────────────────
+// ─── ColorTransform pixel shader ───────────────────────────────────────────
 
-float4 MegaPassPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float4 col = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return col;  // data highway
 
     float4 perc = tex2D(PercSamp, float2(0.5, 0.5));
 
-    // ── 1. EXPOSURE + FilmCurve ───────────────────────────────────────────────
+    // ── 1. CORRECTIVE: EXPOSURE + FilmCurve ──────────────────────────────────
     float3 lin = FilmCurve(pow(max(col.rgb, 0.0), EXPOSURE), perc.r, perc.g, perc.b);
+    lin = lerp(col.rgb, lin, CORRECTIVE_STRENGTH / 100.0);
 
-    // ── 2. Zone contrast + Clarity + Shadow lift ──────────────────────────────
+    // ── 2. TONAL: Zone contrast + Clarity + Shadow lift ───────────────────────
+    float3 lin_pre_tonal = lin;
     float luma        = Luma(lin);
     float zone_median = tex2D(ZoneHistorySamp, uv).r;
     float dt          = luma - zone_median;
@@ -409,55 +413,67 @@ float4 MegaPassPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float lift_w = smoothstep(0.4, 0.0, new_luma);
     new_luma     = saturate(new_luma + (SHADOW_LIFT / 100.0) * 0.15 * lift_w);
     lin          = saturate(lin * (new_luma / max(luma, 0.001)));
+    lin = lerp(lin_pre_tonal, lin, TONAL_STRENGTH / 100.0);
 
-    // ── 3. Oklab chroma lift ──────────────────────────────────────────────────
+    // ── 3. CHROMA: Oklab chroma lift ──────────────────────────────────────────
     float3 lab = RGBtoOklab(lin);
     float  C   = length(lab.yz);
     float  h   = OklabHueNorm(lab.y, lab.z);
 
-    if (C >= SAT_THRESHOLD / 100.0)
+    float hunt_scale = lerp(0.7, 1.3, saturate((perc.g - 0.15) / 0.50));
+    float chroma_str = saturate(CHROMA_STRENGTH / 100.0 * hunt_scale);
+
+    float new_C = 0.0, total_w = 0.0, green_w = 0.0;
+    for (int band = 0; band < 6; band++)
     {
-        float hunt_scale = lerp(0.7, 1.3, saturate((perc.g - 0.15) / 0.50));
-        float chroma_str = saturate(CHROMA_STRENGTH / 100.0 * hunt_scale);
-
-        float new_C = 0.0, total_w = 0.0, green_w = 0.0;
-        for (int band = 0; band < 6; band++)
-        {
-            float w      = HueBandWeight(h, GetBandCenter(band));
-            float4 hist  = tex2D(ChromaHistory, float2((band + 0.5) / 8.0, 0.5 / 4.0));
-            new_C   += PivotedSCurve(C, hist.r, chroma_str) * w;
-            total_w += w;
-            if (band == 2) green_w = w;
-        }
-        float final_C = (total_w > 0.001) ? new_C / total_w : C;
-
-        float h_rad    = atan2(lab.z, lab.y);
-        float abney    = -HueBandWeight(h, BAND_BLUE)   * 0.08 * final_C
-                        - HueBandWeight(h, BAND_CYAN)   * 0.05 * final_C
-                        + HueBandWeight(h, BAND_YELLOW) * 0.05 * final_C;
-        float h_nudged = h_rad - GREEN_HUE_COOL * 2.0 * 3.14159265 * green_w * final_C + abney;
-        float f_oka    = final_C * cos(h_nudged);
-        float f_okb    = final_C * sin(h_nudged);
-
-        float hk_factor = (final_C > 0.05 && C > 0.05) ? pow(C / final_C, 0.15) : 1.0;
-        float final_L   = saturate(lab.x * hk_factor);
-
-        float delta_C   = max(final_C - C, 0.0);
-        float c_shadow  = smoothstep(0.0, 0.15, final_L) * (1.0 - smoothstep(0.55, 0.85, final_L));
-        float density_L = saturate(final_L - delta_C * c_shadow * (DENSITY_STRENGTH / 100.0));
-
-        float3 chroma_rgb = OklabToRGB(float3(density_L, f_oka, f_okb));
-        float  rmax       = max(chroma_rgb.r, max(chroma_rgb.g, chroma_rgb.b));
-        if (rmax > 1.0)
-        {
-            float L_grey = dot(chroma_rgb, float3(0.2126, 0.7152, 0.0722));
-            float t      = (1.0 - L_grey) / max(rmax - L_grey, 0.001);
-            chroma_rgb   = L_grey + t * (chroma_rgb - L_grey);
-        }
-        lin = saturate(chroma_rgb);
+        float w     = HueBandWeight(h, GetBandCenter(band));
+        float4 hist = tex2D(ChromaHistory, float2((band + 0.5) / 8.0, 0.5 / 4.0));
+        new_C   += PivotedSCurve(C, hist.r, chroma_str) * w;
+        total_w += w;
+        if (band == 2) green_w = w;
     }
+    // max(lifted, C) — lift-only; identity limit at C = 0 by construction
+    float lifted_C = (total_w > 0.001) ? new_C / total_w : C;
+    float final_C  = max(lifted_C, C);
 
-    // ── 4. Film grade ─────────────────────────────────────────────────────────
+    // Vector-space (a,b) reconstruction — no atan2 needed for output direction
+    float2 ab_in  = float2(lab.y, lab.z);
+    float  C_safe = max(C, 1e-6);
+    float2 ab_s   = ab_in * (final_C / C_safe);
+
+    float abney  = (-HueBandWeight(h, BAND_BLUE)   * 0.08
+                   - HueBandWeight(h, BAND_CYAN)   * 0.05
+                   + HueBandWeight(h, BAND_YELLOW) * 0.05) * final_C;
+    float dtheta = -(GREEN_HUE_COOL * 2.0 * 3.14159265) * green_w * final_C + abney;
+    float cos_dt = cos(dtheta);
+    float sin_dt = sin(dtheta);
+    float f_oka  = ab_s.x * cos_dt - ab_s.y * sin_dt;
+    float f_okb  = ab_s.x * sin_dt + ab_s.y * cos_dt;
+
+    // Smooth HK luminance correction — continuous onset, no discrete ring
+    float hk_blend  = smoothstep(0.0, 0.10, C) * smoothstep(0.0, 0.10, final_C);
+    float hk_raw    = pow(max(C / max(final_C, 1e-6), 0.001), 0.15);
+    float hk_factor = lerp(1.0, hk_raw, hk_blend);
+    float final_L   = saturate(lab.x * hk_factor);
+
+    // Gamut-distance density: headroom limits darkening near the sRGB boundary
+    float3 rgb_probe  = OklabToRGB(float3(final_L, f_oka, f_okb));
+    float  rmax_probe = max(rgb_probe.r, max(rgb_probe.g, rgb_probe.b));
+    float  headroom   = saturate(1.0 - rmax_probe);
+    float  delta_C    = max(final_C - C, 0.0);
+    float  density_L  = saturate(final_L - delta_C * headroom * (DENSITY_STRENGTH / 100.0));
+
+    float3 chroma_rgb = OklabToRGB(float3(density_L, f_oka, f_okb));
+    float  rmax       = max(chroma_rgb.r, max(chroma_rgb.g, chroma_rgb.b));
+    if (rmax > 1.0)
+    {
+        float L_grey = dot(chroma_rgb, float3(0.2126, 0.7152, 0.0722));
+        float gclip  = (1.0 - L_grey) / max(rmax - L_grey, 0.001);
+        chroma_rgb   = L_grey + gclip * (chroma_rgb - L_grey);
+    }
+    lin = saturate(chroma_rgb);
+
+    // ── 4. FILM GRADE ─────────────────────────────────────────────────────────
     float3 grade_in = lin;
 
     float3 log_in = LogEncode(grade_in);
@@ -469,7 +485,7 @@ float4 MegaPassPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float fm_luma   = Luma(grade_in);
     float fm_max    = max(grade_in.r, max(grade_in.g, grade_in.b));
     float fm_min    = min(grade_in.r, min(grade_in.g, grade_in.b));
-    float fm_chroma = (fm_max > 0.001) ? (fm_max - fm_min) / fm_max : 0.0;
+    float fm_chroma = (fm_max - fm_min) / max(fm_max, 0.001);
     float fm_gate   = smoothstep(FILM_CHROMA_LO, FILM_CHROMA_HI, fm_chroma)
                     * smoothstep(FILM_LUMA_LO,   FILM_LUMA_HI,   fm_luma);
     float3 film_lin = LogDecode(lerp(log_in, film_log, fm_gate));
@@ -550,20 +566,18 @@ float4 MegaPassPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
     result = lerp(grade_in, result, GRADE_STRENGTH / 100.0);
 
-    // Debug indicator — blue (slot 5)
-    if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 36) && pos.x < float(BUFFER_WIDTH - 24))
-        return float4(0.2, 0.2, 0.9, 1.0);
-
-    return float4(saturate(result), col.a);
+    float4 pixel = float4(saturate(result), col.a);
+    return DrawLabel(pixel, pos, float(BUFFER_WIDTH) - 17.0, 44.0,
+                     71u, 82u, 65u, 68u, float3(0.2, 0.50, 1.0)); // GRAD
 }
 
 // ─── Technique ─────────────────────────────────────────────────────────────
 
 technique OlofssonianColorGrade
 {
-    pass MegaPass
+    pass ColorTransform
     {
         VertexShader = PostProcessVS;
-        PixelShader  = MegaPassPS;
+        PixelShader  = ColorTransformPS;
     }
 }

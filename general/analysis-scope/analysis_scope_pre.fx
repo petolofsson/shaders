@@ -1,4 +1,5 @@
 // scope_pre.fx — Pre-correction luma histogram + mean capture
+#include "debug_text.fxh"
 //
 // Must run BEFORE any corrective shaders in the chain.
 // Writes into BackBuffer row y=0 (the data highway):
@@ -108,10 +109,9 @@ float4 ScopeCapturePS(float4 pos : SV_Position,
         return float4(v, v, v, 1.0);
     }
 
-    // Debug indicator — orange (slot 1)
-    if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 92) && pos.x < float(BUFFER_WIDTH - 80))
-        return float4(1.0, 0.50, 0.0, 1.0);
-    return tex2D(BackBuffer, uv);
+    float4 c = tex2D(BackBuffer, uv);
+    return DrawLabel(c, pos, float(BUFFER_WIDTH) - 17.0, 12.0,
+                     83u, 67u, 80u, 82u, float3(1.0, 0.50, 0.0)); // SCPR
 }
 
 technique ScopeCapture

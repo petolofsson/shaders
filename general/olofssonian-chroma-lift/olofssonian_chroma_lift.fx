@@ -1,4 +1,5 @@
 // olofssonian_chroma_lift.fx — Per-frame adaptive chroma S-curve (Oklab)
+#include "debug_text.fxh"
 //
 // Scene-adaptive chroma contrast via percentile-pivoted S-curves in Oklab space.
 // Six hue bands based on sRGB primary/secondary hue positions in Oklab (0–1 normalized).
@@ -410,7 +411,9 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
 
 float4 PassthroughPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    return tex2D(BackBuffer, uv);
+    float4 c = tex2D(BackBuffer, uv);
+    return DrawLabel(c, pos, float(BUFFER_WIDTH) - 17.0, 36.0,
+                     67u, 72u, 82u, 77u, float3(1.0, 0.20, 0.20)); // CHRM
 }
 
 // ─── Technique ─────────────────────────────────────────────────────────────

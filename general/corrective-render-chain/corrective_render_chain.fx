@@ -1,4 +1,5 @@
 // corrective_render_chain.fx — Display transform (game-agnostic)
+#include "debug_text.fxh"
 //
 //   Pass 1  CopyToSrc       BackBuffer    → CorrectiveSrcTex  (RGBA16F snapshot)
 //   Pass 2  OutputTransform CorrectiveSrc → BackBuffer        Scene-adaptive power curve
@@ -36,6 +37,14 @@ float4 CopyToSrcPS(float4 pos : SV_Position,
     return tex2D(BackBuffer, uv);
 }
 
+float4 CorrectivePassthroughPS(float4 pos : SV_Position,
+                                float2 uv  : TEXCOORD0) : SV_Target
+{
+    float4 c = tex2D(BackBuffer, uv);
+    return DrawLabel(c, pos, float(BUFFER_WIDTH) - 17.0, 20.0,
+                     67u, 79u, 82u, 82u, float3(0.1, 0.90, 0.1)); // CORR
+}
+
 // ─── Technique ─────────────────────────────────────────────────────────────
 
 technique OlofssonianRenderChain
@@ -49,6 +58,6 @@ technique OlofssonianRenderChain
     pass Passthrough
     {
         VertexShader = PostProcessVS;
-        PixelShader  = CopyToSrcPS;
+        PixelShader  = CorrectivePassthroughPS;
     }
 }

@@ -1,4 +1,5 @@
 // creative_render_chain.fx — Creative chain (game-agnostic)
+#include "debug_text.fxh"
 //
 // Runs after corrective_render_chain on display-referred [0,1] BackBuffer.
 // Zone contrast + chroma lift, tuned via creative_values.fx.
@@ -175,7 +176,9 @@ float4 SmoothZoneLevelsPS(float4 pos : SV_Position,
 
 float4 PassthroughPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    return tex2D(BackBuffer, uv);
+    float4 c = tex2D(BackBuffer, uv);
+    return DrawLabel(c, pos, float(BUFFER_WIDTH) - 17.0, 28.0,
+                     90u, 79u, 78u, 69u, float3(0.7, 0.20, 1.0)); // ZONE
 }
 
 // ─── Technique ───────────────────────────────────────────────────────────────
