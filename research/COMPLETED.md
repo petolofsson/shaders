@@ -36,11 +36,42 @@
 
 ---
 
-# Pending Research Jobs
+## R11 — Stevens + Hunt Effects (2026-04-28)
+**Files:** `research/R11_stevens_hunt_effects.md` (spec), `research/R11_stevens_hunt_effects_findings.md`
+**Status:** Research complete, pending implementation
 
-| File | Domain | Priority |
-|------|--------|----------|
-| `R11_stevens_hunt_effects.md` | Stevens effect (contrast) + Hunt effect (chroma) | High — affects every pixel |
-| `R12_abney_hue_shift.md` | Full 6-band Abney hue shift with measured data | Medium — 3 bands currently uncited |
-| `R13_gamut_compression.md` | Perceptual smooth gamut compression replacing hard clamp | Medium — CLAUDE.md gate violation |
-| `R14_temporal_stability.md` | Adaptive temporal filtering for zone/chroma histories | Medium — pumping artifact in dynamic scenes |
+Key findings:
+- F1 Stevens: replace linear lerp with `(1.48 + sqrt(p50)) / 2.03` — CIECAM02 sqrt curve (low ROI, range barely changes)
+- F2 Hunt: replace linear lerp with FL^(1/4) from CIECAM02 — corrects 3× over-amplification at bright scenes (current upper bound 1.3 vs. literature 1.05)
+- Hellwig 2022 H-K hue formula `J_HK = J + f(h)*C^0.587` noted for future R08N refinement (non-trivial hue remapping required)
+
+## R12 — Abney Hue Shift (2026-04-28)
+**Files:** `research/R12_abney_hue_shift.md` (spec), `research/R12_abney_hue_shift_findings.md`
+**Status:** Research complete — partial improvement viable; Oklab-native data not yet publicly available
+
+Key findings:
+- Pridmore 2007: bimodal curve — PEAKS at Cyan & Red, TROUGHS at Blue & Green. Current shader has magnitudes **inverted** (Blue=0.08 is trough; Cyan=0.05 is peak).
+- F1: Swap Cyan↑ (−0.05→−0.08) and Blue↓ (−0.08→−0.04) — well-supported
+- F2: Add Red band (+0.06) — missing peak (medium confidence)
+- F3: Add Magenta band (−0.03) — conservative (low confidence)
+
+## R13 — Gamut Compression (2026-04-28)
+**Files:** `research/R13_gamut_compression.md` (spec), `research/R13_gamut_compression_findings.md`
+**Status:** Research complete — trivial fix found
+
+Key findings:
+- F1: Remove `if (rmax > 1.0)` gate by wrapping gclip in `saturate()` — 3-line change, mathematically equivalent
+- F2: Replace grey-point desaturation with hue-preserving `(a,b)` axis scale using `rmax_probe` (already computed)
+- F3: Optional Reinhard pre-compression at rmax=0.85 threshold
+- ACES powerP formula (industry standard) has a hard conditional — not gate-free
+- Ottosson adaptive-L₀ is gate-free but requires `find_cusp()` — not pursued
+
+## R14 — Temporal Stability (2026-04-28)
+**Files:** `research/R14_temporal_stability.md` (spec), `research/R14_temporal_stability_findings.md`
+**Status:** Research complete — simple adaptive formula found
+
+Key findings:
+- F1: Magnitude-adaptive zone speed: `speed = saturate(base * (1.0 + 10.0 * abs(current.r - prev.r)))` — replaces fixed lerp and first-frame gate, self-initialises
+- F2: Same pattern for chroma history
+- F3: Optional asymmetric adaptation (+30% speed brightening, −30% darkening) via sign(delta)
+- Narkowicz 2016 frame-rate-independent formula noted; deferred (not needed at fixed 60 fps)
