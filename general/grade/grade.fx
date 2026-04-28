@@ -336,7 +336,14 @@ float3 OklabToRGB(float3 lab)
     );
 }
 
-float OklabHueNorm(float a, float b) { return frac(atan2(b, a) / (2.0 * 3.14159265) + 1.0); }
+float OklabHueNorm(float a, float b)
+{
+    float ay = abs(b) + 1e-10;
+    float r  = (a - sign(a) * ay) / (ay + abs(a));
+    float th = 1.5707963 - sign(a) * 0.7853982;
+    th += (0.1963 * r * r - 0.9817) * r;
+    return frac(sign(b + 1e-10) * th / 6.28318 + 1.0);
+}
 
 float HueBandWeight(float hue, float center)
 {
@@ -407,11 +414,12 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float bent        = dt + (ZONE_STRENGTH / 100.0) * iqr_scale * dt * (1.0 - saturate(abs(dt)));
     float new_luma    = saturate(zone_median + bent);
 
-    float low_luma     = tex2D(CreativeLowFreqSamp, uv).a;
-    float detail       = luma - low_luma;
-    float clarity_mask = smoothstep(0.0, 0.2, luma) * (1.0 - smoothstep(0.6, 0.9, luma));
-    float edge_w       = 1.0 - smoothstep(0.05, 0.20, abs(detail));
-    new_luma = saturate(new_luma + detail * clarity_mask * edge_w * (CLARITY_STRENGTH / 100.0));
+    float low_luma_fine   = tex2D(CreativeLowFreqSamp, uv).a;
+    float low_luma_coarse = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 2)).a;
+    float detail          = lerp(luma - low_luma_fine, low_luma_fine - low_luma_coarse, 0.6);
+    float clarity_mask    = smoothstep(0.0, 0.2, luma) * (1.0 - smoothstep(0.6, 0.9, luma));
+    float bell            = 1.0 / (1.0 + detail * detail / 0.0144);
+    new_luma = saturate(new_luma + detail * (CLARITY_STRENGTH / 100.0) * bell * clarity_mask);
 
     float lift_w = new_luma * smoothstep(0.4, 0.0, new_luma);
     new_luma     = saturate(new_luma + (SHADOW_LIFT / 100.0) * 0.75 * lift_w);
@@ -427,7 +435,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float chroma_str = saturate(CHROMA_STRENGTH / 100.0 * hunt_scale);
 
     float new_C = 0.0, total_w = 0.0, green_w = 0.0;
-    for (int band = 0; band < 6; band++)
+    [unroll] for (int band = 0; band < 6; band++)
     {
         float w     = HueBandWeight(h, GetBandCenter(band));
         float4 hist = tex2D(ChromaHistory, float2((band + 0.5) / 8.0, 0.5 / 4.0));
@@ -437,7 +445,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     }
     // max(lifted, C) — lift-only; identity limit at C = 0 by construction
     float lifted_C = (total_w > 0.001) ? new_C / total_w : C;
-    float final_C  = max(lifted_C, C);
+    float final_C  = max(lifted_C, C) * (1.0 + abs(detail) * (CLARITY_STRENGTH / 100.0) * 0.25);
 
     // Vector-space (a,b) reconstruction — no atan2 needed for output direction
     float2 ab_in  = float2(lab.y, lab.z);
@@ -448,16 +456,14 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
                    - HueBandWeight(h, BAND_CYAN)   * 0.05
                    + HueBandWeight(h, BAND_YELLOW) * 0.05) * final_C;
     float dtheta = -(GREEN_HUE_COOL * 2.0 * 3.14159265) * green_w * final_C + abney;
-    float cos_dt = cos(dtheta);
-    float sin_dt = sin(dtheta);
+    float cos_dt = 1.0 - dtheta * dtheta * 0.5;
+    float sin_dt = dtheta;
     float f_oka  = ab_s.x * cos_dt - ab_s.y * sin_dt;
     float f_okb  = ab_s.x * sin_dt + ab_s.y * cos_dt;
 
-    // Smooth HK luminance correction — continuous onset, no discrete ring
-    float hk_blend  = smoothstep(0.0, 0.10, C) * smoothstep(0.0, 0.10, final_C);
-    float hk_raw    = pow(max(C / max(final_C, 1e-6), 0.001), 0.15);
-    float hk_factor = lerp(1.0, hk_raw, hk_blend);
-    float final_L   = saturate(lab.x * hk_factor);
+    // Seong 2025: HK perceived-brightness surplus ≈ linear in chroma
+    float hk_boost = 1.0 + (HK_STRENGTH / 100.0) * final_C;
+    float final_L  = saturate(lab.x / lerp(1.0, hk_boost, smoothstep(0.0, 0.35, lab.x)));
 
     // Gamut-distance density: headroom limits darkening near the sRGB boundary
     float3 rgb_probe  = OklabToRGB(float3(final_L, f_oka, f_okb));
@@ -493,7 +499,10 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
                     * smoothstep(FILM_LUMA_LO,   FILM_LUMA_HI,   fm_luma);
     float3 film_lin = LogDecode(lerp(log_in, film_log, fm_gate));
 
-    float3 result = pow(max(film_lin, 0.0), 1.0 / 2.2);
+    float3 S1 = sqrt(max(film_lin, 0.0));
+    float3 S2 = sqrt(S1);
+    float3 S3 = sqrt(S2);
+    float3 result = saturate(0.662002687 * S1 + 0.684122060 * S2 - 0.323583601 * S3 - 0.0225411470 * film_lin);
     float  result_luma = Luma(result);
 
     // Toe tint
@@ -552,7 +561,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         result        = lerp(result, float3(rl, rl, rl), rolloff * SAT_ROLLOFF_MAX);
     }
 
-    result = pow(max(result, 0.0), 2.2);
+    result = result * (result * (result * 0.305306011 + 0.682171111) + 0.012522878);
 
     if (CREATIVE_SATURATION != 1.0)
     {

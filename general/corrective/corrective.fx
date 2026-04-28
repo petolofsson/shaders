@@ -41,7 +41,7 @@ sampler2D BackBuffer
     MagFilter = LINEAR;
 };
 
-texture2D CreativeLowFreqTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 1; };
+texture2D CreativeLowFreqTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 3; };
 sampler2D CreativeLowFreqSamp
 {
     Texture   = CreativeLowFreqTex;
@@ -125,7 +125,11 @@ float3 RGBtoOklab(float3 rgb)
 
 float OklabHueNorm(float a, float b)
 {
-    return frac(atan2(b, a) / (2.0 * 3.14159265) + 1.0);
+    float ay = abs(b) + 1e-10;
+    float r  = (a - sign(a) * ay) / (ay + abs(a));
+    float th = 1.5707963 - sign(a) * 0.7853982;
+    th += (0.1963 * r * r - 0.9817) * r;
+    return frac(sign(b + 1e-10) * th / 6.28318 + 1.0);
 }
 
 float HueBandWeight(float hue, float center)
