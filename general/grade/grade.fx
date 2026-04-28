@@ -467,8 +467,11 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float f_oka  = ab_s.x * cos_dt - ab_s.y * sin_dt;
     float f_okb  = ab_s.x * sin_dt + ab_s.y * cos_dt;
 
-    // Seong 2025: HK perceived-brightness surplus ≈ linear in chroma
-    float hk_boost = 1.0 + (HK_STRENGTH / 100.0) * final_C;
+    // Hellwig 2022: hue-dependent H-K correction, C^0.587 (R15)
+    float sh, ch;
+    sincos(h * 6.28318, sh, ch);
+    float f_hk     = -0.160 * ch + 0.132 * (ch*ch - sh*sh) - 0.405 * sh + 0.080 * (2.0*sh*ch) + 0.792;
+    float hk_boost = 1.0 + (HK_STRENGTH / 100.0) * f_hk * pow(final_C, 0.587);
     float final_L  = saturate(lab.x / lerp(1.0, hk_boost, smoothstep(0.0, 0.35, lab.x)));
 
     // Gamut-distance density: headroom limits darkening near the sRGB boundary

@@ -66,6 +66,16 @@ Key findings:
 - ACES powerP formula (industry standard) has a hard conditional — not gate-free
 - Ottosson adaptive-L₀ is gate-free but requires `find_cusp()` — not pursued
 
+## R15 — Hellwig 2022 H-K Hue (2026-04-28)
+**Files:** `research/R15_hellwig_hk_hue.md` (spec), `research/R15_hellwig_hk_hue_findings.md`
+**Implemented:** Full Hellwig 2022 upgrade
+- `grade.fx`: Seong linear model → `f(h)*C^0.587` using sincos + double-angle identities (1 sincos + 1 pow)
+- Oklab hue usable directly — offset vs. CIECAM02 < 7° across sRGB primaries, error < 3% in f(h)
+- f(h) range: cyan 1.21 (peak), yellow 0.31 (trough) — 4× hue variation the old model was blind to
+- `creative_values.fx`: HK_STRENGTH 20 → 12 (parity at average saturation; tune upward for stronger)
+
+---
+
 ## R14 — Temporal Stability (2026-04-28)
 **Files:** `research/R14_temporal_stability.md` (spec), `research/R14_temporal_stability_findings.md`
 **Status:** Research complete — simple adaptive formula found

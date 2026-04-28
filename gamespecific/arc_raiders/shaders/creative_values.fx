@@ -13,10 +13,10 @@
 // ── CHROMA ──────────────────────────────────────────────────────────────────
 #define CHROMA_STRENGTH      10  // -100 to 100; per-hue saturation bend
 #define DENSITY_STRENGTH     45  // 0–100; subtractive dye density
-// Seong 2025 HK correction: coefficient derived for HSV sat (0–1), but grade.fx works in
-// Oklab chroma (~0–0.4 range), so HK_STRENGTH=20 gives ~6–8% max correction, not 20%.
-// To match the research's full 20% effect at peak saturation, set to ~60.
-#define HK_STRENGTH          20  // 0–100; perceived-brightness surplus from saturation
+// Hellwig 2022 H-K model: hue-dependent f(h)*C^0.587. f(h) ∈ [0.25, 1.21] (cyan peak, yellow trough).
+// Value 12 ≈ perceptual parity with previous Seong model at average scene saturation.
+// Increase toward 20–25 for stronger correction (more accurate to full psychophysical effect).
+#define HK_STRENGTH          12  // 0–100; perceived-brightness surplus from saturation
 
 // ── FILM GRADE ──────────────────────────────────────────────────────────────
 // Camera preset
