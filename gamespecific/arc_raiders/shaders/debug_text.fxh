@@ -5,6 +5,13 @@
 
 uint _FP(uint ch)
 {
+    if (ch == 49u) return 29842u; // 1
+    if (ch == 50u) return 31183u; // 2
+    if (ch == 51u) return 29647u; // 3
+    if (ch == 52u) return  5101u; // 4
+    if (ch == 53u) return 29671u; // 5
+    if (ch == 54u) return 31719u; // 6
+    if (ch == 55u) return  4687u; // 7
     if (ch == 65u) return 23530u; // A
     if (ch == 67u) return 14627u; // C
     if (ch == 68u) return 27502u; // D

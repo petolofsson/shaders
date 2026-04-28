@@ -228,8 +228,8 @@ float4 DebugOverlayPS(float4 pos : SV_Position,
                       float2 uv  : TEXCOORD0) : SV_Target
 {
     float4 c = tex2D(BackBuffer, uv);
-    return DrawLabel(c, pos, float(BUFFER_WIDTH) - 17.0, 4.0,
-                     65u, 78u, 76u, 90u, float3(1.0, 0.95, 0.0)); // ANLZ
+    return DrawLabel(c, pos, 270.0, 10.0,
+                     49u, 65u, 78u, 76u, float3(1.0, 0.95, 0.0)); // 1ANL
 }
 
 // ─── Pass 5 — Smooth luminance histogram ───────────────────────────────────

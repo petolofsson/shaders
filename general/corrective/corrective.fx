@@ -547,12 +547,12 @@ float4 PassthroughPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
 {
     float4 c = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return c;  // data highway
-    c = DrawLabel(c, pos, float(BUFFER_WIDTH) - 17.0, 20.0,
-                  67u, 79u, 82u, 82u, float3(0.1, 0.90, 0.1));  // CORR
-    c = DrawLabel(c, pos, float(BUFFER_WIDTH) - 17.0, 28.0,
-                  90u, 79u, 78u, 69u, float3(0.7, 0.20, 1.0));  // ZONE
-    c = DrawLabel(c, pos, float(BUFFER_WIDTH) - 17.0, 36.0,
-                  67u, 72u, 82u, 77u, float3(1.0, 0.20, 0.20)); // CHRM
+    c = DrawLabel(c, pos, 270.0, 26.0,
+                  51u, 67u, 79u, 82u, float3(0.1, 0.90, 0.1));  // 3COR
+    c = DrawLabel(c, pos, 270.0, 34.0,
+                  52u, 90u, 79u, 78u, float3(0.7, 0.20, 1.0));  // 4ZON
+    c = DrawLabel(c, pos, 270.0, 42.0,
+                  53u, 67u, 72u, 82u, float3(1.0, 0.20, 0.20)); // 5CHR
     return c;
 }
 

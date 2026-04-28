@@ -95,11 +95,17 @@ Each preset defines WHITE_*, FILM_*, TOE_TINT_*, SHADOW_TINT_*, HIGHLIGHT_TINT_*
 
 ## Research queue
 
-All priority items from ROADMAP.md are done. Queue is empty.
+**R19** — 3-Way Color Corrector: per-channel Lift/Gamma/Gain expressed as temp/tint axes (6–7 new knobs). Spec written, research pending.
 
-**Deferred (low ROI):** exposure gamma knob, shadow lift psychophysics, saturation rolloff near white.
+**R20** — Per-Channel Curves: independent FilmCurve knee/toe per R and B channels, derived from film sensitometry. Spec written, research pending.
+
+**R21** — Hue Rotation: per-band hue angle rotation in Oklab via existing bell weights. 6 new knobs. Spec written, research pending.
+
+**R22** — Saturation by Luminance: luma-driven chroma rolloff at toe and shoulder. 2 new knobs. Spec written, research pending.
 
 **R11 pending:** Stevens + Hunt implementations are researched but not coded. Low ROI (Stevens: range barely changes; Hunt: meaningful correction but not urgent).
+
+**Deferred (low ROI):** exposure gamma knob, shadow lift psychophysics, log working space.
 
 ---
 

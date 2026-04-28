@@ -671,8 +671,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     result = lerp(grade_in, result, GRADE_STRENGTH / 100.0);
 
     float4 pixel = float4(saturate(result), col.a);
-    return DrawLabel(pixel, pos, float(BUFFER_WIDTH) - 17.0, 44.0,
-                     71u, 82u, 65u, 68u, float3(0.2, 0.50, 1.0)); // GRAD
+    return DrawLabel(pixel, pos, 270.0, 50.0,
+                     54u, 71u, 82u, 65u, float3(0.2, 0.50, 1.0)); // 6GRA
 }
 
 // ─── Technique ─────────────────────────────────────────────────────────────

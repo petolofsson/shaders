@@ -110,8 +110,8 @@ float4 ScopeCapturePS(float4 pos : SV_Position,
     }
 
     float4 c = tex2D(BackBuffer, uv);
-    return DrawLabel(c, pos, float(BUFFER_WIDTH) - 17.0, 12.0,
-                     83u, 67u, 80u, 82u, float3(1.0, 0.50, 0.0)); // SCPR
+    return DrawLabel(c, pos, 270.0, 18.0,
+                     50u, 83u, 67u, 80u, float3(1.0, 0.50, 0.0)); // 2SCP
 }
 
 technique ScopeCapture

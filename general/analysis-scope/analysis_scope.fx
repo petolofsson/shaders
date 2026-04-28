@@ -19,16 +19,16 @@
 
 #define SCOPE_X    10
 #define SCOPE_Y    10
-#define SCOPE_W    512
-#define SCOPE_PH   40
-#define SCOPE_DIV  4
-#define SCOPE_H    168
+#define SCOPE_W    256
+#define SCOPE_PH   20
+#define SCOPE_DIV  2
+#define SCOPE_H    84
 #define SCOPE_AMP  1.5
 #define SCOPE_S    16
 #define SCOPE_BINS 128
 #define SCOPE_LERP 4.3
-#define SCOPE_HSB   40
-#define SCOPE_HS     8
+#define SCOPE_HSB   20
+#define SCOPE_HS     4
 #define SCOPE_HAMP 2.0
 #define HUE_BINS    64
 #define HUE_OFFSET 130
@@ -149,11 +149,11 @@ float4 ScopePS(float4 pos : SV_Position,
         return col; // pixels 130+: passthrough (reserved for future stage means)
     }
 
-    col = DrawLabel(col, pos, float(BUFFER_WIDTH) - 17.0, 52.0,
-                    83u, 67u, 79u, 80u, float3(0.0, 0.80, 1.0)); // SCOP
+    col = DrawLabel(col, pos, 270.0, 58.0,
+                    55u, 83u, 67u, 79u, float3(0.0, 0.80, 1.0)); // 7SCO
 
     float x0 = SCOPE_X;
-    float y0 = BUFFER_HEIGHT - SCOPE_Y - SCOPE_H;
+    float y0 = SCOPE_Y;
     float x1 = x0 + SCOPE_W;
     float y1 = y0 + SCOPE_H;
 
