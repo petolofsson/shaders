@@ -480,7 +480,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
     float3 chroma_rgb = OklabToRGB(float3(density_L, f_oka, f_okb));
     float  rmax       = max(chroma_rgb.r, max(chroma_rgb.g, chroma_rgb.b));
-    float  L_grey     = dot(chroma_rgb, float3(0.2126, 0.7152, 0.0722));
+    float  L_grey     = density_L * density_L * density_L;
     float  gclip      = saturate((1.0 - L_grey) / max(rmax - L_grey, 0.001));
     chroma_rgb        = L_grey + gclip * (chroma_rgb - L_grey);
     lin = saturate(chroma_rgb);
