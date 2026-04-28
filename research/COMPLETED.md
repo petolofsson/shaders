@@ -89,7 +89,7 @@ Key findings:
 ---
 
 ## R16 — FilmCurve: Zone-Informed Scene Key (2026-04-28)
-**File:** `research/R16_filmcurve_zone_key.md`
+**Files:** `research/R16_filmcurve_zone_key.md` (spec), `research/R16_filmcurve_zone_key_findings.md`
 **Implemented:** All three findings
 
 - F1: Zone geometric mean key replaces p50 — `zone_log_key = exp(mean(log(0.001 + z_i)))` over 16 zone medians (Reinhard 2002 log-average formula). Spatially-unbiased scene key, immune to large flat areas dominating the pixel histogram.
@@ -100,7 +100,7 @@ Key findings:
 ---
 
 ## R17 — Film Stock Presets: Scene-Adaptive Tint Balance (2026-04-28)
-**File:** `research/R17_filmstock_scene_adaptive.md`
+**Files:** `research/R17_filmstock_scene_adaptive.md` (spec), `research/R17_filmstock_scene_adaptive_findings.md`
 **Implemented:** Both findings
 
 - F1: Exposure-adaptive tint scale — `r17_stops = log2(zone_log_key / 0.18)` (stops above/below normal). `r17_hl_boost = 1 + TINT_ADAPT_SCALE * saturate(+stops)`, `r17_sh_boost = 1 + TINT_ADAPT_SCALE * saturate(-stops)`. Bright scene → warm highlights amplified; dark scene → cool shadows amplified. Cross-over shifts with actual scene key.
@@ -110,7 +110,7 @@ Key findings:
 ---
 
 ## R18 — Spatial Adaptation: Zone Luminance Normalization (2026-04-28)
-**File:** `research/R18_spatial_adaptation.md`
+**Files:** `research/R18_spatial_adaptation.md` (spec), `research/R18_spatial_adaptation_findings.md`
 **Implemented:** Both findings
 
 - F1: Zone luminance normalization — `r18_norm = pow(zone_log_key / zone_median, strength * 0.4)`. Multiplicative correction: dark zones gently brightened, bright zones gently darkened, zones at global key unchanged. Monotone, bounded.
