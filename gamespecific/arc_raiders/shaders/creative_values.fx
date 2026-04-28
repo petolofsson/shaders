@@ -7,6 +7,7 @@
 // ── TONAL ───────────────────────────────────────────────────────────────────
 #define TONAL_STRENGTH      100  // 0=passthrough, 100=full
 #define ZONE_STRENGTH        30  // 0–100; zone contrast S-curve
+#define SPATIAL_NORM_STRENGTH 20  // 0–100; zone-to-key normalization (between-zone luminance balance)
 #define CLARITY_STRENGTH     25  // 0–100; local midtone contrast
 #define SHADOW_LIFT          15  // 0–100; raise dark tones toward grey
 

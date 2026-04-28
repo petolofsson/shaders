@@ -61,6 +61,7 @@
 #define HUE_SHIFT_CENTER   0.5
 #define HUE_SHIFT_AMOUNT   0.0
 #define HUE_SHIFT_WIDTH    0.1
+#define TINT_ADAPT_SCALE   0.00
 
 #elif PRESET == 1
 #define WHITE_R          0.99
@@ -92,6 +93,7 @@
 #define HUE_SHIFT_CENTER   0.5
 #define HUE_SHIFT_AMOUNT   0.0
 #define HUE_SHIFT_WIDTH    0.1
+#define TINT_ADAPT_SCALE   0.15
 
 #elif PRESET == 2
 #define WHITE_R          0.97
@@ -123,6 +125,7 @@
 #define HUE_SHIFT_CENTER   0.667
 #define HUE_SHIFT_AMOUNT  -0.025
 #define HUE_SHIFT_WIDTH    0.15
+#define TINT_ADAPT_SCALE   0.35
 
 #elif PRESET == 3
 #define WHITE_R          0.97
@@ -154,6 +157,7 @@
 #define HUE_SHIFT_CENTER   0.167
 #define HUE_SHIFT_AMOUNT   0.015
 #define HUE_SHIFT_WIDTH    0.12
+#define TINT_ADAPT_SCALE   0.25
 
 #elif PRESET == 4
 #define WHITE_R          0.96
@@ -185,6 +189,7 @@
 #define HUE_SHIFT_CENTER   0.0
 #define HUE_SHIFT_AMOUNT   0.055
 #define HUE_SHIFT_WIDTH    0.12
+#define TINT_ADAPT_SCALE   0.10
 
 #elif PRESET == 5
 #define WHITE_R          0.97
@@ -216,6 +221,7 @@
 #define HUE_SHIFT_CENTER   0.667
 #define HUE_SHIFT_AMOUNT  -0.035
 #define HUE_SHIFT_WIDTH    0.18
+#define TINT_ADAPT_SCALE   0.40
 #endif
 
 // ─── Film matrix gate ──────────────────────────────────────────────────────
@@ -293,12 +299,12 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 
 float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
-float3 FilmCurve(float3 x, float p25, float p50, float p75)
+float3 FilmCurve(float3 x, float p25, float p50, float p75, float spread)
 {
     float knee    = lerp(0.90, 0.80, saturate((p75 - 0.60) / 0.30));
     float width   = 1.0 - knee;
     float stevens = (1.48 + sqrt(max(p50, 0.0))) / 2.03;
-    float factor  = 0.05 / (width * width) * stevens;
+    float factor  = 0.05 / (width * width) * stevens * spread;
     float knee_toe = lerp(0.15, 0.25, saturate((0.40 - p25) / 0.30));
     float3 above = max(x - knee,      0.0);
     float3 below = max(knee_toe - x,  0.0);
@@ -399,8 +405,53 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
     float4 perc = tex2D(PercSamp, float2(0.5, 0.5));
 
+    // ── R16: zone geometric mean key + min/max anchors + spread scale ─────────
+    float r16_z0  = tex2D(ZoneHistorySamp, float2(0.125, 0.125)).r;
+    float r16_z1  = tex2D(ZoneHistorySamp, float2(0.375, 0.125)).r;
+    float r16_z2  = tex2D(ZoneHistorySamp, float2(0.625, 0.125)).r;
+    float r16_z3  = tex2D(ZoneHistorySamp, float2(0.875, 0.125)).r;
+    float r16_z4  = tex2D(ZoneHistorySamp, float2(0.125, 0.375)).r;
+    float r16_z5  = tex2D(ZoneHistorySamp, float2(0.375, 0.375)).r;
+    float r16_z6  = tex2D(ZoneHistorySamp, float2(0.625, 0.375)).r;
+    float r16_z7  = tex2D(ZoneHistorySamp, float2(0.875, 0.375)).r;
+    float r16_z8  = tex2D(ZoneHistorySamp, float2(0.125, 0.625)).r;
+    float r16_z9  = tex2D(ZoneHistorySamp, float2(0.375, 0.625)).r;
+    float r16_z10 = tex2D(ZoneHistorySamp, float2(0.625, 0.625)).r;
+    float r16_z11 = tex2D(ZoneHistorySamp, float2(0.875, 0.625)).r;
+    float r16_z12 = tex2D(ZoneHistorySamp, float2(0.125, 0.875)).r;
+    float r16_z13 = tex2D(ZoneHistorySamp, float2(0.375, 0.875)).r;
+    float r16_z14 = tex2D(ZoneHistorySamp, float2(0.625, 0.875)).r;
+    float r16_z15 = tex2D(ZoneHistorySamp, float2(0.875, 0.875)).r;
+
+    // F1: log-average (geometric mean) — spatially-unbiased scene key (Reinhard 2002)
+    float r16_logsum = log(0.001+r16_z0)  + log(0.001+r16_z1)  + log(0.001+r16_z2)  + log(0.001+r16_z3)
+                     + log(0.001+r16_z4)  + log(0.001+r16_z5)  + log(0.001+r16_z6)  + log(0.001+r16_z7)
+                     + log(0.001+r16_z8)  + log(0.001+r16_z9)  + log(0.001+r16_z10) + log(0.001+r16_z11)
+                     + log(0.001+r16_z12) + log(0.001+r16_z13) + log(0.001+r16_z14) + log(0.001+r16_z15);
+    float zone_log_key = exp(r16_logsum * 0.0625);
+
+    // F2: zone min/max — structural anchors (40% blend with histogram p25/p75)
+    float r16_zmin = min(min(min(min(min(min(min(min(
+        min(min(min(min(min(min(min(r16_z0,r16_z1),r16_z2),r16_z3),r16_z4),r16_z5),r16_z6),r16_z7),
+        r16_z8),r16_z9),r16_z10),r16_z11),r16_z12),r16_z13),r16_z14),r16_z15);
+    float r16_zmax = max(max(max(max(max(max(max(max(
+        max(max(max(max(max(max(max(r16_z0,r16_z1),r16_z2),r16_z3),r16_z4),r16_z5),r16_z6),r16_z7),
+        r16_z8),r16_z9),r16_z10),r16_z11),r16_z12),r16_z13),r16_z14),r16_z15);
+    float eff_p25 = lerp(perc.r, r16_zmin, 0.4);
+    float eff_p75 = lerp(perc.b, r16_zmax, 0.4);
+
+    // F3: zone std dev — spread-adaptive factor scale (0.7 compact → 1.1 high contrast)
+    float r16_mean   = (r16_z0+r16_z1+r16_z2+r16_z3+r16_z4+r16_z5+r16_z6+r16_z7+
+                        r16_z8+r16_z9+r16_z10+r16_z11+r16_z12+r16_z13+r16_z14+r16_z15) * 0.0625;
+    float r16_sqmean = (r16_z0*r16_z0+r16_z1*r16_z1+r16_z2*r16_z2+r16_z3*r16_z3+
+                        r16_z4*r16_z4+r16_z5*r16_z5+r16_z6*r16_z6+r16_z7*r16_z7+
+                        r16_z8*r16_z8+r16_z9*r16_z9+r16_z10*r16_z10+r16_z11*r16_z11+
+                        r16_z12*r16_z12+r16_z13*r16_z13+r16_z14*r16_z14+r16_z15*r16_z15) * 0.0625;
+    float zone_std     = sqrt(max(r16_sqmean - r16_mean * r16_mean, 0.0));
+    float spread_scale = lerp(0.7, 1.1, smoothstep(0.08, 0.25, zone_std));
+
     // ── 1. CORRECTIVE: EXPOSURE + FilmCurve ──────────────────────────────────
-    float3 lin = FilmCurve(pow(max(col.rgb, 0.0), EXPOSURE), perc.r, perc.g, perc.b);
+    float3 lin = FilmCurve(pow(max(col.rgb, 0.0), EXPOSURE), eff_p25, zone_log_key, eff_p75, spread_scale);
     lin = lerp(col.rgb, lin, CORRECTIVE_STRENGTH / 100.0);
 
     // ── 2. TONAL: Zone contrast + Clarity + Shadow lift ───────────────────────
@@ -413,6 +464,11 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float dt          = luma - zone_median;
     float bent        = dt + (ZONE_STRENGTH / 100.0) * iqr_scale * dt * (1.0 - saturate(abs(dt)));
     float new_luma    = saturate(zone_median + bent);
+
+    // R18: zone luminance normalization — pulls zone medians toward global key (Reinhard local operator)
+    float r18_str  = SPATIAL_NORM_STRENGTH / 100.0 * 0.4;
+    float r18_norm = pow(max(zone_log_key, 0.001) / max(zone_median, 0.001), r18_str);
+    new_luma = saturate(new_luma * r18_norm);
 
     float low_luma_fine   = tex2D(CreativeLowFreqSamp, uv).a;
     float low_luma_coarse = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 2)).a;
@@ -511,6 +567,11 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float3 result = saturate(0.662002687 * S1 + 0.684122060 * S2 - 0.323583601 * S3 - 0.0225411470 * film_lin);
     float  result_luma = Luma(result);
 
+    // R17: exposure-adaptive tint balance — cross-over shifts with scene key (Reinhard zone V = 0.18)
+    float r17_stops    = log2(max(zone_log_key, 0.001) / 0.18);
+    float r17_hl_boost = 1.0 + TINT_ADAPT_SCALE * saturate( r17_stops);
+    float r17_sh_boost = 1.0 + TINT_ADAPT_SCALE * saturate(-r17_stops);
+
     // Toe tint
     float tint_base = 1.0 - smoothstep(0.0, TOE_RANGE / 100.0, result_luma);
     float toe_bell  = tint_base * (1.0 - tint_base) * 4.0;
@@ -518,9 +579,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float tt_min    = min(result.r, min(result.g, result.b));
     float tt_sat    = (tt_max > 0.001) ? (tt_max - tt_min) / tt_max : 0.0;
     float tt_gate   = smoothstep(0.14, 0.27, tt_sat);
-    result.r += TOE_TINT_R * toe_bell * tt_gate;
-    result.g += TOE_TINT_G * toe_bell * tt_gate;
-    result.b += TOE_TINT_B * toe_bell * tt_gate;
+    result.r += TOE_TINT_R * toe_bell * tt_gate * r17_sh_boost;
+    result.g += TOE_TINT_G * toe_bell * tt_gate * r17_sh_boost;
+    result.b += TOE_TINT_B * toe_bell * tt_gate * r17_sh_boost;
     result = saturate(result);
 
     // Black lift
@@ -534,12 +595,12 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float st_sat   = (st_max > 0.001) ? (st_max - st_min) / st_max : 0.0;
     float st_gate  = smoothstep(0.08, 0.22, st_sat);
     float g_shadow = result_luma * (1.0 - smoothstep(0.0, SHADOW_RANGE / 100.0, result_luma)) * st_gate;
-    result = saturate(result + float3(SHADOW_TINT_R, SHADOW_TINT_G, SHADOW_TINT_B) * g_shadow);
+    result = saturate(result + float3(SHADOW_TINT_R, SHADOW_TINT_G, SHADOW_TINT_B) * g_shadow * r17_sh_boost);
 
     // Highlight lift
     float hl_t        = smoothstep(HIGHLIGHT_START / 100.0, 1.0, result_luma);
     float highlight_w = hl_t * hl_t * (1.0 - result_luma) / max(1.0 - HIGHLIGHT_START / 100.0, 0.001);
-    result += float3(HIGHLIGHT_TINT_R, HIGHLIGHT_TINT_G, HIGHLIGHT_TINT_B) * highlight_w;
+    result += float3(HIGHLIGHT_TINT_R, HIGHLIGHT_TINT_G, HIGHLIGHT_TINT_B) * highlight_w * r17_hl_boost;
     result = saturate(result);
 
     // Luma-neutral midtone cast

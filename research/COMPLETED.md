@@ -85,3 +85,35 @@ Key findings:
 - F2: Same pattern for chroma history
 - F3: Optional asymmetric adaptation (+30% speed brightening, −30% darkening) via sign(delta)
 - Narkowicz 2016 frame-rate-independent formula noted; deferred (not needed at fixed 60 fps)
+
+---
+
+## R16 — FilmCurve: Zone-Informed Scene Key (2026-04-28)
+**File:** `research/R16_filmcurve_zone_key.md`
+**Implemented:** All three findings
+
+- F1: Zone geometric mean key replaces p50 — `zone_log_key = exp(mean(log(0.001 + z_i)))` over 16 zone medians (Reinhard 2002 log-average formula). Spatially-unbiased scene key, immune to large flat areas dominating the pixel histogram.
+- F2: Zone min/max blend with histogram p25/p75 as toe/knee anchors — `eff_p25 = lerp(perc.r, z_min, 0.4)`, `eff_p75 = lerp(perc.b, z_max, 0.4)`. 40% zone weight, 60% histogram.
+- F3: Zone std dev modulates FilmCurve factor — `spread_scale = lerp(0.7, 1.1, smoothstep(0.08, 0.25, zone_std))`. Compact scenes get gentler compression; high-contrast scenes slightly stronger.
+- All 16 zone reads share one pass — 16 tex2D reads + log/exp/sqrt chain.
+
+---
+
+## R17 — Film Stock Presets: Scene-Adaptive Tint Balance (2026-04-28)
+**File:** `research/R17_filmstock_scene_adaptive.md`
+**Implemented:** Both findings
+
+- F1: Exposure-adaptive tint scale — `r17_stops = log2(zone_log_key / 0.18)` (stops above/below normal). `r17_hl_boost = 1 + TINT_ADAPT_SCALE * saturate(+stops)`, `r17_sh_boost = 1 + TINT_ADAPT_SCALE * saturate(-stops)`. Bright scene → warm highlights amplified; dark scene → cool shadows amplified. Cross-over shifts with actual scene key.
+- F2: Per-preset TINT_ADAPT_SCALE constants: P0=0.00, P1=0.15, P2=0.35, P3=0.25, P4=0.10, P5=0.40. Derived from qualitative stock descriptions — visual calibration recommended.
+- Uses zone_log_key from R16 — no extra texture reads. Cost: 1 log2 + 6 MAD.
+
+---
+
+## R18 — Spatial Adaptation: Zone Luminance Normalization (2026-04-28)
+**File:** `research/R18_spatial_adaptation.md`
+**Implemented:** Both findings
+
+- F1: Zone luminance normalization — `r18_norm = pow(zone_log_key / zone_median, strength * 0.4)`. Multiplicative correction: dark zones gently brightened, bright zones gently darkened, zones at global key unchanged. Monotone, bounded.
+- F2: No new pass needed — ZoneHistoryTex LINEAR sampler at full-res UV already provides bilinear spatial interpolation of zone medians (~25% screen-width transitions). Zero halo risk, no separate blending kernel required.
+- Added `SPATIAL_NORM_STRENGTH 20` knob to creative_values.fx. Grade.fx cost: 1 pow + 2 divisions.
+- Three-tier spatial system: zone normalization (between zones) + zone S-curve (within zones) + clarity (pixel-level detail).
