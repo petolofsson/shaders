@@ -27,7 +27,7 @@
 
 | File | Domain | Priority |
 |------|--------|----------|
-| `R08_stevens_hunt_effects.md` | Stevens effect (contrast) + Hunt effect (chroma) in FilmCurve and chroma lift | High — affects every pixel |
-| `R09_abney_hue_shift.md` | Full 6-band Abney hue shift with measured data | Medium — 3 bands currently uncited |
-| `R10_gamut_compression.md` | Perceptual smooth gamut compression replacing hard clamp | Medium — CLAUDE.md gate violation |
-| `R11_temporal_stability.md` | Adaptive temporal filtering for zone/chroma histories | Medium — pumping artifact in dynamic scenes |
+| `research/R08_stevens_hunt_effects.md` | Stevens effect (contrast) + Hunt effect (chroma) in FilmCurve and chroma lift | High — affects every pixel |
+| `research/R09_abney_hue_shift.md` | Full 6-band Abney hue shift with measured data | Medium — 3 bands currently uncited |
+| `research/R10_gamut_compression.md` | Perceptual smooth gamut compression replacing hard clamp | Medium — CLAUDE.md gate violation |
+| `research/R11_temporal_stability.md` | Adaptive temporal filtering for zone/chroma histories | Medium — pumping artifact in dynamic scenes |
