@@ -495,7 +495,8 @@ float4 SmoothZoneLevelsPS(float4 pos : SV_Position,
 {
     float4 current = tex2D(CreativeZoneLevelsSamp, uv);
     float4 prev    = tex2D(ZoneHistorySamp, uv);
-    float  speed   = (prev.r < 0.001) ? 1.0 : (ZONE_LERP_SPEED / 100.0);
+    float  base    = ZONE_LERP_SPEED / 100.0;
+    float  speed   = saturate(base * (1.0 + 10.0 * abs(current.r - prev.r)));
     return lerp(prev, current, speed);
 }
 
@@ -531,9 +532,11 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
     float stddev = sqrt(var);
 
     float4 prev    = tex2D(ChromaHistory, float2((band_idx + 0.5) / 8.0, 0.5 / 4.0));
-    float new_mean = lerp(prev.r, mean,   LERP_SPEED / 100.0);
-    float new_std  = lerp(prev.g, stddev, LERP_SPEED / 100.0);
-    float new_wsum = lerp(prev.b, sum_w,  LERP_SPEED / 100.0);
+    float delta_c  = abs(mean - prev.r);
+    float speed_c  = saturate(LERP_SPEED / 100.0 * (1.0 + 10.0 * delta_c));
+    float new_mean = lerp(prev.r, mean,   speed_c);
+    float new_std  = lerp(prev.g, stddev, speed_c);
+    float new_wsum = lerp(prev.b, sum_w,  speed_c);
 
     return float4(new_mean, new_std, new_wsum, 1.0);
 }

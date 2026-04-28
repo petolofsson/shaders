@@ -297,7 +297,7 @@ float3 FilmCurve(float3 x, float p25, float p50, float p75)
 {
     float knee    = lerp(0.90, 0.80, saturate((p75 - 0.60) / 0.30));
     float width   = 1.0 - knee;
-    float stevens = lerp(0.85, 1.15, saturate((p50 - 0.10) / 0.50));
+    float stevens = (1.48 + sqrt(max(p50, 0.0))) / 2.03;
     float factor  = 0.05 / (width * width) * stevens;
     float knee_toe = lerp(0.15, 0.25, saturate((0.40 - p25) / 0.30));
     float3 above = max(x - knee,      0.0);
@@ -431,7 +431,11 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float  C   = length(lab.yz);
     float  h   = OklabHueNorm(lab.y, lab.z);
 
-    float hunt_scale = lerp(0.7, 1.3, saturate((perc.g - 0.15) / 0.50));
+    float la         = max(perc.g, 0.001);
+    float k          = 1.0 / (5.0 * la + 1.0);
+    float k4         = k * k * k * k;
+    float fl         = 0.2 * k4 * (5.0 * la) + 0.1 * (1.0 - k4) * (1.0 - k4) * pow(5.0 * la, 0.333);
+    float hunt_scale = pow(max(fl, 1e-6), 0.25) / 0.5912;
     float chroma_str = saturate(CHROMA_STRENGTH / 100.0 * hunt_scale);
 
     float new_C = 0.0, total_w = 0.0, green_w = 0.0;
@@ -452,9 +456,11 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float  C_safe = max(C, 1e-6);
     float2 ab_s   = ab_in * (final_C / C_safe);
 
-    float abney  = (-HueBandWeight(h, BAND_BLUE)   * 0.08
-                   - HueBandWeight(h, BAND_CYAN)   * 0.05
-                   + HueBandWeight(h, BAND_YELLOW) * 0.05) * final_C;
+    float abney  = (+HueBandWeight(h, BAND_RED)     * 0.06
+                   + HueBandWeight(h, BAND_YELLOW)  * 0.05
+                   - HueBandWeight(h, BAND_CYAN)    * 0.08
+                   - HueBandWeight(h, BAND_BLUE)    * 0.04
+                   - HueBandWeight(h, BAND_MAGENTA) * 0.03) * final_C;
     float dtheta = -(GREEN_HUE_COOL * 2.0 * 3.14159265) * green_w * final_C + abney;
     float cos_dt = 1.0 - dtheta * dtheta * 0.5;
     float sin_dt = dtheta;
@@ -474,12 +480,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
     float3 chroma_rgb = OklabToRGB(float3(density_L, f_oka, f_okb));
     float  rmax       = max(chroma_rgb.r, max(chroma_rgb.g, chroma_rgb.b));
-    if (rmax > 1.0)
-    {
-        float L_grey = dot(chroma_rgb, float3(0.2126, 0.7152, 0.0722));
-        float gclip  = (1.0 - L_grey) / max(rmax - L_grey, 0.001);
-        chroma_rgb   = L_grey + gclip * (chroma_rgb - L_grey);
-    }
+    float  L_grey     = dot(chroma_rgb, float3(0.2126, 0.7152, 0.0722));
+    float  gclip      = saturate((1.0 - L_grey) / max(rmax - L_grey, 0.001));
+    chroma_rgb        = L_grey + gclip * (chroma_rgb - L_grey);
     lin = saturate(chroma_rgb);
 
     // ── 4. FILM GRADE ─────────────────────────────────────────────────────────
