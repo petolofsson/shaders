@@ -10,7 +10,13 @@
       "Bash(git *)",
       "Bash(xargs sed -i 's/olofssonian_chroma_contrast/olofssonian_chroma_lift/g; *)",
       "WebFetch(domain:research.nvidia.com)",
-      "Bash(grep -v \"^$\")"
+      "Bash(grep -v \"^$\")",
+      "mcp__brave-search__brave_web_search",
+      "WebFetch(domain:arxiv.org)",
+      "WebFetch(domain:people.csail.mit.edu)",
+      "WebFetch(domain:stackoverflow.com)",
+      "WebFetch(domain:reshade.me)",
+      "WebFetch(domain:developer.nvidia.com)"
     ]
   }
 }

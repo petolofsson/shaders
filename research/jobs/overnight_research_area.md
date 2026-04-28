@@ -1,3 +1,11 @@
+## Naming convention
+Output files go in `/research/` named `R{next}N_{YYYY-MM-DD}_{topic}.md`.
+`N` marks a nightly run (single combined doc, no separate job spec).
+Check `research/COMPLETED.md` for the next available number.
+Formal jobs (separate spec + findings) use `R{number}_{topic}.md` with no `N`.
+
+---
+
 **Role:** Technical Research Lead & Shader Architect (AI Agent Mode)
 **Task:** Use the **Brave Search MCP** to perform an autonomous literature review, auditing my shader stack against 2024–2026 research to find non-obvious mathematical improvements.
 
