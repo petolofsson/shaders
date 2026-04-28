@@ -8,8 +8,19 @@
 | R02 | Zone median accuracy | Implemented |
 | R03 | Zone S-curve shape | Implemented |
 | R04 | FilmCurve / zone interaction | Implemented |
-| R05 | Rank-based zone contrast | Pending implementation |
+| R05 | Rank-based zone contrast | Implemented |
 | R07 | Shadow lift redesign | Implemented |
+
+---
+
+## R05 — Rank-based Zone Contrast (2026-04-29)
+**Files:** `research/R05_rank_based_zone_contrast.md` (spec), `research/R05_rank_based_zone_contrast_findings.md`
+**Implemented:** All findings
+- `grade.fx`: declared `CreativeZoneHistTex` (shared 32×16 R16F, matches corrective.fx declaration)
+- Stage 2: 32-bin CDF walk — `r05_cdf += bv * saturate(luma*32 - b)` over unrolled loop, normalized by total weight
+- Rank-based S-curve `dt_rank = rank - 0.5` blended with median S-curve via `RANK_CONTRAST_STRENGTH`; IQR scaling retained
+- `creative_values.fx`: added `RANK_CONTRAST_STRENGTH 30` knob (0=pure median S-curve, 100=CDF equalization)
+- Key advantage: immune to asymmetric zone distributions and outlier bias that shifts zone_median
 
 ---
 

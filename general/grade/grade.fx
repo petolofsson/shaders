@@ -262,6 +262,17 @@ sampler2D ZoneHistorySamp
     MagFilter = LINEAR;
 };
 
+// Per-zone 32-bin luma histogram (shared from corrective.fx ComputeZoneHistogram)
+texture2D CreativeZoneHistTex { Width = 32; Height = 16; Format = R16F; MipLevels = 1; };
+sampler2D CreativeZoneHistSamp
+{
+    Texture   = CreativeZoneHistTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
 // 1/8-res low-freq base (from creative_render_chain ComputeLowFreq, luma in .a)
 texture2D CreativeLowFreqTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 1; };
 sampler2D CreativeLowFreqSamp
@@ -464,6 +475,20 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float dt          = luma - zone_median;
     float bent        = dt + (ZONE_STRENGTH / 100.0) * iqr_scale * dt * (1.0 - saturate(abs(dt)));
     float new_luma    = saturate(zone_median + bent);
+
+    // R05: rank-based zone contrast — CDF position replaces median displacement
+    int   r05_zone = int(uv.y * 4) * 4 + int(uv.x * 4);
+    float r05_row  = (float(r05_zone) + 0.5) / 16.0;
+    float r05_cdf  = 0.0, r05_tot = 0.0;
+    [unroll] for (int r05_b = 0; r05_b < 32; r05_b++) {
+        float bv = tex2D(CreativeZoneHistSamp, float2((float(r05_b) + 0.5) / 32.0, r05_row)).r;
+        r05_cdf += bv * saturate(luma * 32.0 - float(r05_b));
+        r05_tot += bv;
+    }
+    float r05_rank  = r05_cdf / max(r05_tot, 0.001);
+    float dt_rank   = r05_rank - 0.5;
+    float bent_rank = dt_rank + (ZONE_STRENGTH / 100.0) * iqr_scale * dt_rank * (1.0 - saturate(abs(dt_rank)));
+    new_luma = lerp(new_luma, saturate(zone_median + bent_rank), RANK_CONTRAST_STRENGTH / 100.0);
 
     // R18: zone luminance normalization — pulls zone medians toward global key (Reinhard local operator)
     float r18_str  = SPATIAL_NORM_STRENGTH / 100.0 * 0.4;
