@@ -15,7 +15,7 @@
 //   the scope's pre-correction panel.
 
 #define SCOPE_BINS  128
-#define SCOPE_S      16
+#define SCOPE_S      8
 #define HUE_BINS     64
 #define HUE_OFFSET  130
 
@@ -55,7 +55,7 @@ float4 ScopeCapturePS(float4 pos : SV_Position,
     if (pos.y < 1.0 && int(pos.x) <= SCOPE_BINS)
     {
         // Sample grid once — used for both histogram and mean
-        float samples[256];
+        float samples[64];
         float mean = 0.0;
         [loop]
         for (int sy = 0; sy < SCOPE_S; sy++)

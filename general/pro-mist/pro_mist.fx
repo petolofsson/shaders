@@ -1,34 +1,18 @@
 // pro_mist.fx — Black Pro-Mist diffusion filter
 //
-// Simulates optical softening of a Black Pro-Mist glass filter:
-// highlights scatter into surroundings without bilateral suppression.
-// Bright pixels contribute more to the scatter (luminance-weighted),
-// making highlight bleed a feature, not an artefact.
-//
-// Two passes:
-//   Pass 1: Luminance-weighted horizontal 9-tap Gaussian → DiffuseTex
-//   Pass 2: Luminance-weighted vertical 9-tap Gaussian + composite → BackBuffer
-//
-// Contrast adaptation reads iqr from shared PercTex (no separate CDF walk).
+// Single-pass. Uses CreativeLowFreqTex (1/8-res, written by corrective.fx — free)
+// as the scatter source. Additive chromatic composite, scene-adaptive from PercTex.
 //
 // Shared texture contract:
-//   PercTex { Width=1; Height=1; Format=RGBA16F } — written by frame_analysis
+//   PercTex { Width=1; Height=1; Format=RGBA16F } — written by analysis_frame
 //   r=p25, g=p50, b=p75, a=iqr
+//   CreativeLowFreqTex { Width=BW/8; Height=BH/8; Format=RGBA16F } — written by corrective.fx
+//   rgb=full colour, a=luma
 
+#include "debug_text.fxh"
 #include "creative_values.fx"
 
-#define LUM_BOOST         3.5    // extra scatter weight per unit source luminance
-#define DIFFUSE_LUMA_LO   0.55   // gate: below this luma effect fades to zero
-#define DIFFUSE_LUMA_HI   0.65   // gate: above this luma full effect
-#define DIFFUSE_LUMA_CAP  0.95   // gate: fades back toward clip
-
-#define GW0 0.2270
-#define GW1 0.1945
-#define GW2 0.1216
-#define GW3 0.0540
-#define GW4 0.0162
-
-// ─── Shared percentile cache ───────────────────────────────────────────────
+// ─── Shared textures ───────────────────────────────────────────────────────
 
 texture2D PercTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
 sampler2D PercSamp
@@ -40,22 +24,22 @@ sampler2D PercSamp
     MagFilter = POINT;
 };
 
-// ─── Textures ─────────────────────────────────────────────────────────────
-
-texture2D BackBufferTex : COLOR;
-sampler2D BackBuffer
+texture2D CreativeLowFreqTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 3; };
+sampler2D CreativeLowFreqSamp
 {
-    Texture   = BackBufferTex;
+    Texture   = CreativeLowFreqTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = LINEAR;
     MagFilter = LINEAR;
 };
 
-texture2D DiffuseTex { Width = BUFFER_WIDTH; Height = BUFFER_HEIGHT; Format = RGBA16F; MipLevels = 1; };
-sampler2D DiffuseSamp
+// ─── Textures ─────────────────────────────────────────────────────────────
+
+texture2D BackBufferTex : COLOR;
+sampler2D BackBuffer
 {
-    Texture   = DiffuseTex;
+    Texture   = BackBufferTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = LINEAR;
@@ -75,96 +59,48 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 
 float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
-// ─── Pass 1 — Luminance-weighted horizontal scatter ───────────────────────
+// ─── Pass — Scatter composite ─────────────────────────────────────────────
 
-float4 DiffuseHPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
-{
-    float  r   = DIFFUSE_RADIUS / 4.0;
-    float3 acc = tex2Dlod(BackBuffer, float4(uv, 0, 0)).rgb * GW0;
-    float  w   = GW0;
-
-    float3 tp1 = tex2Dlod(BackBuffer, float4(uv + float2(r,     0), 0, 0)).rgb;
-    float3 tn1 = tex2Dlod(BackBuffer, float4(uv - float2(r,     0), 0, 0)).rgb;
-    float3 tp2 = tex2Dlod(BackBuffer, float4(uv + float2(r*2.0, 0), 0, 0)).rgb;
-    float3 tn2 = tex2Dlod(BackBuffer, float4(uv - float2(r*2.0, 0), 0, 0)).rgb;
-    float3 tp3 = tex2Dlod(BackBuffer, float4(uv + float2(r*3.0, 0), 0, 0)).rgb;
-    float3 tn3 = tex2Dlod(BackBuffer, float4(uv - float2(r*3.0, 0), 0, 0)).rgb;
-    float3 tp4 = tex2Dlod(BackBuffer, float4(uv + float2(r*4.0, 0), 0, 0)).rgb;
-    float3 tn4 = tex2Dlod(BackBuffer, float4(uv - float2(r*4.0, 0), 0, 0)).rgb;
-
-    float wp1 = GW1*(1.0+Luma(tp1)*LUM_BOOST); float wn1 = GW1*(1.0+Luma(tn1)*LUM_BOOST);
-    float wp2 = GW2*(1.0+Luma(tp2)*LUM_BOOST); float wn2 = GW2*(1.0+Luma(tn2)*LUM_BOOST);
-    float wp3 = GW3*(1.0+Luma(tp3)*LUM_BOOST); float wn3 = GW3*(1.0+Luma(tn3)*LUM_BOOST);
-    float wp4 = GW4*(1.0+Luma(tp4)*LUM_BOOST); float wn4 = GW4*(1.0+Luma(tn4)*LUM_BOOST);
-
-    acc += tp1*wp1 + tn1*wn1 + tp2*wp2 + tn2*wn2
-         + tp3*wp3 + tn3*wn3 + tp4*wp4 + tn4*wn4;
-    w   += wp1+wn1 + wp2+wn2 + wp3+wn3 + wp4+wn4;
-
-    return float4(acc / w, 1.0);
-}
-
-// ─── Pass 2 — Luminance-weighted vertical scatter + composite ─────────────
-
-float4 DiffuseVPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float4 base = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return base;
 
-    float  r   = DIFFUSE_RADIUS / 4.0;
-    float3 acc = tex2Dlod(DiffuseSamp, float4(uv, 0, 0)).rgb * GW0;
-    float  w   = GW0;
+    float3 diffused = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 0)).rgb;
 
-    float3 tp1 = tex2Dlod(DiffuseSamp, float4(uv + float2(0, r),     0, 0)).rgb;
-    float3 tn1 = tex2Dlod(DiffuseSamp, float4(uv - float2(0, r),     0, 0)).rgb;
-    float3 tp2 = tex2Dlod(DiffuseSamp, float4(uv + float2(0, r*2.0), 0, 0)).rgb;
-    float3 tn2 = tex2Dlod(DiffuseSamp, float4(uv - float2(0, r*2.0), 0, 0)).rgb;
-    float3 tp3 = tex2Dlod(DiffuseSamp, float4(uv + float2(0, r*3.0), 0, 0)).rgb;
-    float3 tn3 = tex2Dlod(DiffuseSamp, float4(uv - float2(0, r*3.0), 0, 0)).rgb;
-    float3 tp4 = tex2Dlod(DiffuseSamp, float4(uv + float2(0, r*4.0), 0, 0)).rgb;
-    float3 tn4 = tex2Dlod(DiffuseSamp, float4(uv - float2(0, r*4.0), 0, 0)).rgb;
+    float4 perc      = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
+    float  p75       = perc.b;
+    float  iqr       = perc.a;
+    float  adapt_str = 0.36 * lerp(0.7, 1.3, saturate(iqr / 0.5));
 
-    float wp1 = GW1*(1.0+Luma(tp1)*LUM_BOOST); float wn1 = GW1*(1.0+Luma(tn1)*LUM_BOOST);
-    float wp2 = GW2*(1.0+Luma(tp2)*LUM_BOOST); float wn2 = GW2*(1.0+Luma(tn2)*LUM_BOOST);
-    float wp3 = GW3*(1.0+Luma(tp3)*LUM_BOOST); float wn3 = GW3*(1.0+Luma(tn3)*LUM_BOOST);
-    float wp4 = GW4*(1.0+Luma(tp4)*LUM_BOOST); float wn4 = GW4*(1.0+Luma(tn4)*LUM_BOOST);
+    float  luma_in   = Luma(base.rgb);
+    float  gate_lo   = saturate(p75 - 0.12);
+    float  gate_hi   = saturate(p75 + 0.06);
+    float  luma_gate = smoothstep(gate_lo, gate_hi, luma_in)
+                     * (1.0 - smoothstep(0.96, 1.0, luma_in));
 
-    acc += tp1*wp1 + tn1*wn1 + tp2*wp2 + tn2*wn2
-         + tp3*wp3 + tn3*wn3 + tp4*wp4 + tn4*wn4;
-    w   += wp1+wn1 + wp2+wn2 + wp3+wn3 + wp4+wn4;
-    float3 diffused = acc / w;
+    // Additive chromatic composite — red scatters most (film layer physics: R deepest)
+    float3 scatter_delta = max(0.0, diffused - base.rgb);
+    float3 result = base.rgb + scatter_delta * float3(1.15, 1.00, 0.75) * adapt_str * luma_gate;
 
-    float luma_in   = Luma(base.rgb);
-    float luma_gate = smoothstep(DIFFUSE_LUMA_LO, DIFFUSE_LUMA_HI, luma_in)
-                    * (1.0 - smoothstep(DIFFUSE_LUMA_CAP, 1.0, luma_in));
-
-    float iqr       = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0)).a;
-    float adapt_str = DIFFUSE_STRENGTH * lerp(0.7, 1.3, saturate(iqr / 0.5));
-
-    // Debug indicator — magenta (slot 4)
-    if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 22) && pos.x < float(BUFFER_WIDTH - 10))
-        return float4(0.9, 0.1, 0.9, 1.0);
-
-    float3 result = lerp(base.rgb, diffused, adapt_str * luma_gate);
+    // Clarity: Laplacian residual, bell-weighted to midtones
     float3 detail = base.rgb - diffused;
     float  bell   = luma_in * (1.0 - luma_in) * 4.0;
-    result       += (CLARITY_STRENGTH / 100.0) * detail * bell;
-    return float4(saturate(result), base.a);
+    result       += adapt_str * 1.10 * detail * bell;
+
+    float4 out_col = float4(saturate(result), base.a);
+    out_col = DrawLabel(out_col, pos, 270.0, 58.0,
+                        55u, 80u, 77u, 83u, float3(0.9, 0.1, 0.9)); // 7PMS
+    return out_col;
 }
 
 // ─── Technique ────────────────────────────────────────────────────────────
 
 technique ProMist
 {
-    pass DiffuseH
+    pass
     {
         VertexShader = PostProcessVS;
-        PixelShader  = DiffuseHPS;
-        RenderTarget = DiffuseTex;
-    }
-    pass DiffuseV
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = DiffuseVPS;
+        PixelShader  = ProMistPS;
     }
 }
