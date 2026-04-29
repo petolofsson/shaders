@@ -145,7 +145,11 @@ float4 DiffuseVPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     if (pos.y >= 10 && pos.y < 22 && pos.x >= float(BUFFER_WIDTH - 22) && pos.x < float(BUFFER_WIDTH - 10))
         return float4(0.9, 0.1, 0.9, 1.0);
 
-    return float4(lerp(base.rgb, diffused, adapt_str * luma_gate), base.a);
+    float3 result = lerp(base.rgb, diffused, adapt_str * luma_gate);
+    float3 detail = base.rgb - diffused;
+    float  bell   = luma_in * (1.0 - luma_in) * 4.0;
+    result       += (CLARITY_STRENGTH / 100.0) * detail * bell;
+    return float4(saturate(result), base.a);
 }
 
 // ─── Technique ────────────────────────────────────────────────────────────

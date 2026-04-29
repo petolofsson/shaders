@@ -62,6 +62,10 @@
 #define HUE_SHIFT_AMOUNT   0.0
 #define HUE_SHIFT_WIDTH    0.1
 #define TINT_ADAPT_SCALE   0.00
+#define CURVE_R_KNEE_OFFSET  0.000
+#define CURVE_B_KNEE_OFFSET  0.000
+#define CURVE_R_TOE_OFFSET   0.000
+#define CURVE_B_TOE_OFFSET   0.000
 
 #elif PRESET == 1
 #define WHITE_R          0.99
@@ -94,6 +98,10 @@
 #define HUE_SHIFT_AMOUNT   0.0
 #define HUE_SHIFT_WIDTH    0.1
 #define TINT_ADAPT_SCALE   0.15
+#define CURVE_R_KNEE_OFFSET -0.003
+#define CURVE_B_KNEE_OFFSET +0.002
+#define CURVE_R_TOE_OFFSET   0.000
+#define CURVE_B_TOE_OFFSET   0.000
 
 #elif PRESET == 2
 #define WHITE_R          0.97
@@ -126,6 +134,10 @@
 #define HUE_SHIFT_AMOUNT  -0.025
 #define HUE_SHIFT_WIDTH    0.15
 #define TINT_ADAPT_SCALE   0.35
+#define CURVE_R_KNEE_OFFSET -0.008
+#define CURVE_B_KNEE_OFFSET +0.005
+#define CURVE_R_TOE_OFFSET  +0.004
+#define CURVE_B_TOE_OFFSET  -0.003
 
 #elif PRESET == 3
 #define WHITE_R          0.97
@@ -158,6 +170,10 @@
 #define HUE_SHIFT_AMOUNT   0.015
 #define HUE_SHIFT_WIDTH    0.12
 #define TINT_ADAPT_SCALE   0.25
+#define CURVE_R_KNEE_OFFSET -0.005
+#define CURVE_B_KNEE_OFFSET +0.003
+#define CURVE_R_TOE_OFFSET  +0.002
+#define CURVE_B_TOE_OFFSET  -0.002
 
 #elif PRESET == 4
 #define WHITE_R          0.96
@@ -190,6 +206,10 @@
 #define HUE_SHIFT_AMOUNT   0.055
 #define HUE_SHIFT_WIDTH    0.12
 #define TINT_ADAPT_SCALE   0.10
+#define CURVE_R_KNEE_OFFSET -0.003
+#define CURVE_B_KNEE_OFFSET +0.002
+#define CURVE_R_TOE_OFFSET  +0.001
+#define CURVE_B_TOE_OFFSET  -0.001
 
 #elif PRESET == 5
 #define WHITE_R          0.97
@@ -222,6 +242,10 @@
 #define HUE_SHIFT_AMOUNT  -0.035
 #define HUE_SHIFT_WIDTH    0.18
 #define TINT_ADAPT_SCALE   0.40
+#define CURVE_R_KNEE_OFFSET -0.010
+#define CURVE_B_KNEE_OFFSET +0.006
+#define CURVE_R_TOE_OFFSET  +0.005
+#define CURVE_B_TOE_OFFSET  -0.004
 #endif
 
 // ─── Film matrix gate ──────────────────────────────────────────────────────
@@ -310,15 +334,24 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 
 float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
-float3 FilmCurve(float3 x, float p25, float p50, float p75, float spread)
+float3 FilmCurve(float3 x, float p25, float p50, float p75, float spread,
+                 float r_knee_off, float b_knee_off, float r_toe_off, float b_toe_off)
 {
-    float knee    = lerp(0.90, 0.80, saturate((p75 - 0.60) / 0.30));
-    float width   = 1.0 - knee;
-    float stevens = (1.48 + sqrt(max(p50, 0.0))) / 2.03;
-    float factor  = 0.05 / (width * width) * stevens * spread;
+    float knee     = lerp(0.90, 0.80, saturate((p75 - 0.60) / 0.30));
+    float width    = 1.0 - knee;
+    float stevens  = (1.48 + sqrt(max(p50, 0.0))) / 2.03;
+    float factor   = 0.05 / (width * width) * stevens * spread;
     float knee_toe = lerp(0.15, 0.25, saturate((0.40 - p25) / 0.30));
-    float3 above = max(x - knee,      0.0);
-    float3 below = max(knee_toe - x,  0.0);
+
+    float knee_r = clamp(knee + r_knee_off, 0.70, 0.95);
+    float knee_g = knee;
+    float knee_b = clamp(knee + b_knee_off, 0.70, 0.95);
+    float ktoe_r = clamp(knee_toe + r_toe_off, 0.08, 0.35);
+    float ktoe_g = knee_toe;
+    float ktoe_b = clamp(knee_toe + b_toe_off, 0.08, 0.35);
+
+    float3 above = max(x - float3(knee_r, knee_g, knee_b), 0.0);
+    float3 below = max(float3(ktoe_r, ktoe_g, ktoe_b) - x, 0.0);
     return x - factor * above * above
                + (0.03 / (knee_toe * knee_toe)) * below * below;
 }
@@ -462,8 +495,25 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float spread_scale = lerp(0.7, 1.1, smoothstep(0.08, 0.25, zone_std));
 
     // ── 1. CORRECTIVE: EXPOSURE + FilmCurve ──────────────────────────────────
-    float3 lin = FilmCurve(pow(max(col.rgb, 0.0), EXPOSURE), eff_p25, zone_log_key, eff_p75, spread_scale);
+    float3 lin = FilmCurve(pow(max(col.rgb, 0.0), EXPOSURE), eff_p25, zone_log_key, eff_p75, spread_scale,
+                           CURVE_R_KNEE_OFFSET, CURVE_B_KNEE_OFFSET, CURVE_R_TOE_OFFSET, CURVE_B_TOE_OFFSET);
     lin = lerp(col.rgb, lin, CORRECTIVE_STRENGTH / 100.0);
+
+    // ── R19: 3-way color corrector — temp/tint per region, linear light ──────
+    {
+        float r19_luma = Luma(lin);
+        float r19_sh   = saturate(1.0 - r19_luma / 0.35);
+        float r19_hl   = saturate((r19_luma - 0.65) / 0.35);
+        float r19_mid  = 1.0 - r19_sh - r19_hl;
+
+        float r19_scale = 0.030 / 100.0;
+
+        float3 r19_sh_delta  = float3(+SHADOW_TEMP    + SHADOW_TINT    * 0.5, -SHADOW_TINT,    -SHADOW_TEMP    + SHADOW_TINT    * 0.5) * r19_scale;
+        float3 r19_mid_delta = float3(+MID_TEMP       + MID_TINT       * 0.5, -MID_TINT,       -MID_TEMP       + MID_TINT       * 0.5) * r19_scale;
+        float3 r19_hl_delta  = float3(+HIGHLIGHT_TEMP + HIGHLIGHT_TINT * 0.5, -HIGHLIGHT_TINT, -HIGHLIGHT_TEMP + HIGHLIGHT_TINT * 0.5) * r19_scale;
+
+        lin = saturate(lin + r19_sh_delta * r19_sh + r19_mid_delta * r19_mid + r19_hl_delta * r19_hl);
+    }
 
     // ── 2. TONAL: Zone contrast + Clarity + Shadow lift ───────────────────────
     float3 lin_pre_tonal = lin;
@@ -476,19 +526,6 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float bent        = dt + (ZONE_STRENGTH / 100.0) * iqr_scale * dt * (1.0 - saturate(abs(dt)));
     float new_luma    = saturate(zone_median + bent);
 
-    // R05: rank-based zone contrast — CDF position replaces median displacement
-    int   r05_zone = int(uv.y * 4) * 4 + int(uv.x * 4);
-    float r05_row  = (float(r05_zone) + 0.5) / 16.0;
-    float r05_cdf  = 0.0, r05_tot = 0.0;
-    [unroll] for (int r05_b = 0; r05_b < 32; r05_b++) {
-        float bv = tex2D(CreativeZoneHistSamp, float2((float(r05_b) + 0.5) / 32.0, r05_row)).r;
-        r05_cdf += bv * saturate(luma * 32.0 - float(r05_b));
-        r05_tot += bv;
-    }
-    float r05_rank  = r05_cdf / max(r05_tot, 0.001);
-    float dt_rank   = r05_rank - 0.5;
-    float bent_rank = dt_rank + (ZONE_STRENGTH / 100.0) * iqr_scale * dt_rank * (1.0 - saturate(abs(dt_rank)));
-    new_luma = lerp(new_luma, saturate(zone_median + bent_rank), RANK_CONTRAST_STRENGTH / 100.0);
 
     // R18: zone luminance normalization — pulls zone medians toward global key (Reinhard local operator)
     float r18_str  = SPATIAL_NORM_STRENGTH / 100.0 * 0.4;

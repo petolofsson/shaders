@@ -16,7 +16,15 @@
       "WebFetch(domain:people.csail.mit.edu)",
       "WebFetch(domain:stackoverflow.com)",
       "WebFetch(domain:reshade.me)",
-      "WebFetch(domain:developer.nvidia.com)"
+      "WebFetch(domain:developer.nvidia.com)",
+      "WebFetch(domain:markfairchild.org)",
+      "WebFetch(domain:www.researchgate.net)",
+      "WebFetch(domain:en.wikipedia.org)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.acescentral.com)",
+      "WebFetch(domain:bottosson.github.io)",
+      "WebFetch(domain:64.github.io)",
+      "WebFetch(domain:www.cl.cam.ac.uk)"
     ]
   }
 }

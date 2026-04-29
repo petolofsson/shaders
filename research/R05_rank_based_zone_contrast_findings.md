@@ -62,6 +62,18 @@ The concept is sound and buildable with modest changes:
 - Retain IQR scaling — multiply rank-based displacement by `iqr_scale` as now
 - Expose `RANK_CONTRAST_STRENGTH` in `creative_values.fx`; blend with current output or with identity
 
+---
+
+## Implementation outcome — REJECTED (2026-04-29)
+
+Implemented, bugfixed (rank-space / luma-space type error; unsaturated negative lerp), and evaluated in Arc Raiders. Result: overall image darkening and a grayish cast at any non-zero strength. No perceptual improvement over `ZONE_STRENGTH` alone.
+
+Root cause is inherent to histogram equalization: in Arc Raiders' typical zone histograms (dense darks/mids, sparse highlights), equalization always compresses highlights toward the zone median and expands the dense shadow mass — reading as darker and flatter, not as increased contrast.
+
+`ZONE_STRENGTH`'s S-curve approach is strictly better for this content: it amplifies existing contrast rather than redistributing the histogram. The rank approach would theoretically help zones with pathologically asymmetric distributions, but Arc Raiders does not exhibit that problem at a perceptually relevant scale.
+
+**Decision:** removed from `grade.fx` and `creative_values.fx`. Do not revisit unless a specific scene pathology is identified where `ZONE_STRENGTH` demonstrably misfires.
+
 ## Bimodal zone claim — scrutiny
 
 The paper states rank handles bimodal zones better. This is partially true but subtler than
