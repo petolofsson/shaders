@@ -2,10 +2,9 @@
 #include "debug_text.fxh"
 //
 // Eliminates 3 inter-pass VRAM read-write cycles by running in registers:
-//   1. EXPOSURE gamma + scene-adaptive FilmCurve  (was corrective_render_chain P2)
-//   2. Zone contrast S-curve + Clarity + Shadow lift  (was creative_render_chain P5)
-//   3. Oklab chroma lift + Hunt + Abney + HK + density + gamut compress  (was chroma_lift P2)
-//   4. Film stock grade — log matrix + zone tints + sat rolloff
+//   1. EXPOSURE gamma + scene-adaptive FilmCurve (per-channel knee/toe from creative_values)
+//   2. Zone contrast S-curve (auto) + Clarity + Shadow lift
+//   3. Oklab chroma lift + H-K + Abney + density + gamut compress + R21/R22
 //
 // Reads from CorrectiveSrcTex (snapshot by corrective_render_chain CopyToSrc).
 // All history textures (ZoneHistoryTex, ChromaHistoryTex, PercTex, CreativeLowFreqTex)
@@ -25,234 +24,6 @@
 #define BAND_BLUE       0.735
 #define BAND_MAGENTA    0.913
 
-// ─── Tinting ranges ────────────────────────────────────────────────────────
-#define TOE_RANGE       30
-#define SHADOW_RANGE    18
-#define HIGHLIGHT_START 65
-
-// ─── Preset values ─────────────────────────────────────────────────────────
-#if PRESET == 0
-#define WHITE_R          0.993
-#define WHITE_G          0.993
-#define WHITE_B          0.993
-#define FILM_RG          0.0
-#define FILM_RB          0.0
-#define FILM_GR          0.0
-#define FILM_GB          0.0
-#define FILM_BR          0.0
-#define FILM_BG          0.0
-#define TOE_TINT_R       0.0
-#define TOE_TINT_G       0.0
-#define TOE_TINT_B       0.0
-#define BLACK_LIFT_R     0.003
-#define BLACK_LIFT_G     0.003
-#define BLACK_LIFT_B     0.003
-#define SHADOW_TINT_R    0.0
-#define SHADOW_TINT_G    0.0
-#define SHADOW_TINT_B    0.0
-#define HIGHLIGHT_TINT_R 0.0
-#define HIGHLIGHT_TINT_G 0.0
-#define HIGHLIGHT_TINT_B 0.0
-#define GRADE_R          1.0
-#define GRADE_G          1.0
-#define GRADE_B          1.0
-#define SAT_ROLLOFF_FACTOR 6.0
-#define SAT_ROLLOFF_MAX    0.25
-#define HUE_SHIFT_CENTER   0.5
-#define HUE_SHIFT_AMOUNT   0.0
-#define HUE_SHIFT_WIDTH    0.1
-#define TINT_ADAPT_SCALE   0.00
-#define CURVE_R_KNEE_OFFSET  0.000
-#define CURVE_B_KNEE_OFFSET  0.000
-#define CURVE_R_TOE_OFFSET   0.000
-#define CURVE_B_TOE_OFFSET   0.000
-
-#elif PRESET == 1
-#define WHITE_R          0.99
-#define WHITE_G          0.98
-#define WHITE_B          0.98
-#define FILM_RG          0.018
-#define FILM_RB          0.005
-#define FILM_GR          0.010
-#define FILM_GB          0.015
-#define FILM_BR          0.005
-#define FILM_BG          0.018
-#define TOE_TINT_R      -0.008
-#define TOE_TINT_G      -0.004
-#define TOE_TINT_B       0.008
-#define BLACK_LIFT_R     0.004
-#define BLACK_LIFT_G     0.008
-#define BLACK_LIFT_B     0.012
-#define SHADOW_TINT_R    0.002
-#define SHADOW_TINT_G    0.003
-#define SHADOW_TINT_B    0.015
-#define HIGHLIGHT_TINT_R 0.04
-#define HIGHLIGHT_TINT_G 0.02
-#define HIGHLIGHT_TINT_B -0.02
-#define GRADE_R          1.00
-#define GRADE_G          1.00
-#define GRADE_B          1.00
-#define SAT_ROLLOFF_FACTOR 4.0
-#define SAT_ROLLOFF_MAX    0.5
-#define HUE_SHIFT_CENTER   0.5
-#define HUE_SHIFT_AMOUNT   0.0
-#define HUE_SHIFT_WIDTH    0.1
-#define TINT_ADAPT_SCALE   0.15
-#define CURVE_R_KNEE_OFFSET -0.003
-#define CURVE_B_KNEE_OFFSET +0.002
-#define CURVE_R_TOE_OFFSET   0.000
-#define CURVE_B_TOE_OFFSET   0.000
-
-#elif PRESET == 2
-#define WHITE_R          0.97
-#define WHITE_G          0.95
-#define WHITE_B          0.93
-#define FILM_RG          0.057
-#define FILM_RB          0.013
-#define FILM_GR          0.031
-#define FILM_GB          0.043
-#define FILM_BR          0.013
-#define FILM_BG          0.040
-#define TOE_TINT_R      -0.028
-#define TOE_TINT_G      -0.014
-#define TOE_TINT_B       0.020
-#define BLACK_LIFT_R     0.008
-#define BLACK_LIFT_G     0.025
-#define BLACK_LIFT_B     0.035
-#define SHADOW_TINT_R    0.005
-#define SHADOW_TINT_G    0.008
-#define SHADOW_TINT_B    0.050
-#define HIGHLIGHT_TINT_R 0.18
-#define HIGHLIGHT_TINT_G 0.06
-#define HIGHLIGHT_TINT_B -0.08
-#define GRADE_R          0.996
-#define GRADE_G          1.015
-#define GRADE_B          1.00
-#define SAT_ROLLOFF_FACTOR 2.0
-#define SAT_ROLLOFF_MAX    0.5
-#define HUE_SHIFT_CENTER   0.667
-#define HUE_SHIFT_AMOUNT  -0.025
-#define HUE_SHIFT_WIDTH    0.15
-#define TINT_ADAPT_SCALE   0.35
-#define CURVE_R_KNEE_OFFSET -0.008
-#define CURVE_B_KNEE_OFFSET +0.005
-#define CURVE_R_TOE_OFFSET  +0.004
-#define CURVE_B_TOE_OFFSET  -0.003
-
-#elif PRESET == 3
-#define WHITE_R          0.97
-#define WHITE_G          0.96
-#define WHITE_B          0.95
-#define FILM_RG          0.038
-#define FILM_RB          0.009
-#define FILM_GR          0.020
-#define FILM_GB          0.028
-#define FILM_BR          0.009
-#define FILM_BG          0.032
-#define TOE_TINT_R      -0.015
-#define TOE_TINT_G      -0.008
-#define TOE_TINT_B       0.015
-#define BLACK_LIFT_R     0.005
-#define BLACK_LIFT_G     0.015
-#define BLACK_LIFT_B     0.022
-#define SHADOW_TINT_R    0.003
-#define SHADOW_TINT_G    0.005
-#define SHADOW_TINT_B    0.030
-#define HIGHLIGHT_TINT_R 0.12
-#define HIGHLIGHT_TINT_G 0.05
-#define HIGHLIGHT_TINT_B -0.06
-#define GRADE_R          0.998
-#define GRADE_G          1.008
-#define GRADE_B          1.00
-#define SAT_ROLLOFF_FACTOR 3.0
-#define SAT_ROLLOFF_MAX    0.5
-#define HUE_SHIFT_CENTER   0.167
-#define HUE_SHIFT_AMOUNT   0.015
-#define HUE_SHIFT_WIDTH    0.12
-#define TINT_ADAPT_SCALE   0.25
-#define CURVE_R_KNEE_OFFSET -0.005
-#define CURVE_B_KNEE_OFFSET +0.003
-#define CURVE_R_TOE_OFFSET  +0.002
-#define CURVE_B_TOE_OFFSET  -0.002
-
-#elif PRESET == 4
-#define WHITE_R          0.96
-#define WHITE_G          0.96
-#define WHITE_B          0.95
-#define FILM_RG          0.030
-#define FILM_RB          0.010
-#define FILM_GR          0.018
-#define FILM_GB          0.055
-#define FILM_BR          0.015
-#define FILM_BG          0.075
-#define TOE_TINT_R      -0.008
-#define TOE_TINT_G       0.005
-#define TOE_TINT_B       0.018
-#define BLACK_LIFT_R     0.004
-#define BLACK_LIFT_G     0.018
-#define BLACK_LIFT_B     0.018
-#define SHADOW_TINT_R    0.002
-#define SHADOW_TINT_G    0.010
-#define SHADOW_TINT_B    0.035
-#define HIGHLIGHT_TINT_R 0.02
-#define HIGHLIGHT_TINT_G 0.04
-#define HIGHLIGHT_TINT_B -0.05
-#define GRADE_R          0.993
-#define GRADE_G          1.012
-#define GRADE_B          1.005
-#define SAT_ROLLOFF_FACTOR 8.0
-#define SAT_ROLLOFF_MAX    0.5
-#define HUE_SHIFT_CENTER   0.0
-#define HUE_SHIFT_AMOUNT   0.055
-#define HUE_SHIFT_WIDTH    0.12
-#define TINT_ADAPT_SCALE   0.10
-#define CURVE_R_KNEE_OFFSET -0.003
-#define CURVE_B_KNEE_OFFSET +0.002
-#define CURVE_R_TOE_OFFSET  +0.001
-#define CURVE_B_TOE_OFFSET  -0.001
-
-#elif PRESET == 5
-#define WHITE_R          0.97
-#define WHITE_G          0.94
-#define WHITE_B          0.91
-#define FILM_RG          0.070
-#define FILM_RB          0.016
-#define FILM_GR          0.038
-#define FILM_GB          0.050
-#define FILM_BR          0.016
-#define FILM_BG          0.080
-#define TOE_TINT_R      -0.040
-#define TOE_TINT_G      -0.020
-#define TOE_TINT_B       0.030
-#define BLACK_LIFT_R     0.012
-#define BLACK_LIFT_G     0.030
-#define BLACK_LIFT_B     0.045
-#define SHADOW_TINT_R    0.008
-#define SHADOW_TINT_G    0.010
-#define SHADOW_TINT_B    0.065
-#define HIGHLIGHT_TINT_R 0.24
-#define HIGHLIGHT_TINT_G 0.08
-#define HIGHLIGHT_TINT_B -0.12
-#define GRADE_R          0.993
-#define GRADE_G          1.018
-#define GRADE_B          1.00
-#define SAT_ROLLOFF_FACTOR 1.5
-#define SAT_ROLLOFF_MAX    0.5
-#define HUE_SHIFT_CENTER   0.667
-#define HUE_SHIFT_AMOUNT  -0.035
-#define HUE_SHIFT_WIDTH    0.18
-#define TINT_ADAPT_SCALE   0.40
-#define CURVE_R_KNEE_OFFSET -0.010
-#define CURVE_B_KNEE_OFFSET +0.006
-#define CURVE_R_TOE_OFFSET  +0.005
-#define CURVE_B_TOE_OFFSET  -0.004
-#endif
-
-// ─── Film matrix gate ──────────────────────────────────────────────────────
-#define FILM_CHROMA_LO  0.08
-#define FILM_CHROMA_HI  0.18
-#define FILM_LUMA_LO    0.05
-#define FILM_LUMA_HI    0.90
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
@@ -420,25 +191,6 @@ float GetBandCenter(int b)
     return BAND_MAGENTA;
 }
 
-float3 RGBtoHSV(float3 c)
-{
-    float4 K = float4(0.0, -1.0/3.0, 2.0/3.0, -1.0);
-    float4 p = lerp(float4(c.bg, K.wz), float4(c.gb, K.xy), step(c.b, c.g));
-    float4 q = lerp(float4(p.xyw, c.r), float4(c.r, p.yzx), step(p.x, c.r));
-    float  d = q.x - min(q.w, q.y);
-    float  e = 1.0e-10;
-    return float3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
-}
-
-float3 HSVtoRGB(float3 c)
-{
-    float4 K = float4(1.0, 2.0/3.0, 1.0/3.0, 3.0);
-    float3 p = abs(frac(c.xxx + K.xyz) * 6.0 - K.www);
-    return c.z * lerp(K.xxx, saturate(p - K.xxx), c.y);
-}
-
-float3 LogEncode(float3 x) { return log2(max(x, 0.0001) / 0.18) / 12.0 + 0.5; }
-float3 LogDecode(float3 x) { return max(0.18 * exp2((x - 0.5) * 12.0), 0.0); }
 
 // ─── ColorTransform pixel shader ───────────────────────────────────────────
 
@@ -493,10 +245,11 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
                         r16_z12*r16_z12+r16_z13*r16_z13+r16_z14*r16_z14+r16_z15*r16_z15) * 0.0625;
     float zone_std     = sqrt(max(r16_sqmean - r16_mean * r16_mean, 0.0));
     float spread_scale = lerp(0.7, 1.1, smoothstep(0.08, 0.25, zone_std));
+    float zone_str     = lerp(0.30, 0.18, smoothstep(0.08, 0.25, zone_std));
 
     // ── 1. CORRECTIVE: EXPOSURE + FilmCurve ──────────────────────────────────
     float3 lin = FilmCurve(pow(max(col.rgb, 0.0), EXPOSURE), eff_p25, zone_log_key, eff_p75, spread_scale,
-                           CURVE_R_KNEE_OFFSET, CURVE_B_KNEE_OFFSET, CURVE_R_TOE_OFFSET, CURVE_B_TOE_OFFSET);
+                           CURVE_R_KNEE, CURVE_B_KNEE, CURVE_R_TOE, CURVE_B_TOE);
     lin = lerp(col.rgb, lin, CORRECTIVE_STRENGTH / 100.0);
 
     // ── R19: 3-way color corrector — temp/tint per region, linear light ──────
@@ -523,7 +276,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float zone_iqr    = zone_lvl.b - zone_lvl.g;
     float iqr_scale   = smoothstep(0.0, 0.25, zone_iqr);
     float dt          = luma - zone_median;
-    float bent        = dt + (ZONE_STRENGTH / 100.0) * iqr_scale * dt * (1.0 - saturate(abs(dt)));
+    float bent        = dt + zone_str * iqr_scale * dt * (1.0 - saturate(abs(dt)));
     float new_luma    = saturate(zone_median + bent);
 
 
@@ -549,6 +302,19 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float  C   = length(lab.yz);
     float  h   = OklabHueNorm(lab.y, lab.z);
 
+    // R22: saturation by luminance — baked Munsell calibration (shadow 20%, highlight 25%)
+    C *= saturate(1.0 - 0.20 * saturate(1.0 - lab.x / 0.25)
+                      - 0.25 * saturate((lab.x - 0.75) / 0.25));
+
+    // R21: per-band hue rotation — compute h_out from original h before chroma lift
+    float r21_delta = ROT_RED    * HueBandWeight(h, BAND_RED)
+                    + ROT_YELLOW * HueBandWeight(h, BAND_YELLOW)
+                    + ROT_GREEN  * HueBandWeight(h, BAND_GREEN)
+                    + ROT_CYAN   * HueBandWeight(h, BAND_CYAN)
+                    + ROT_BLUE   * HueBandWeight(h, BAND_BLUE)
+                    + ROT_MAG    * HueBandWeight(h, BAND_MAGENTA);
+    float h_out = frac(h + r21_delta * 0.10);
+
     float la         = max(perc.g, 0.001);
     float k          = 1.0 / (5.0 * la + 1.0);
     float k4         = k * k * k * k;
@@ -569,16 +335,19 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float lifted_C = (total_w > 0.001) ? new_C / total_w : C;
     float final_C  = max(lifted_C, C) * (1.0 + abs(detail) * (CLARITY_STRENGTH / 100.0) * 0.25);
 
-    // Vector-space (a,b) reconstruction — no atan2 needed for output direction
-    float2 ab_in  = float2(lab.y, lab.z);
+    // Vector-space (a,b) reconstruction — rotate original direction by R21 delta
+    float r21_cos, r21_sin;
+    sincos(r21_delta * (0.10 * 6.28318), r21_sin, r21_cos);
+    float2 ab_in  = float2(lab.y * r21_cos - lab.z * r21_sin,
+                           lab.y * r21_sin + lab.z * r21_cos);
     float  C_safe = max(C, 1e-6);
     float2 ab_s   = ab_in * (final_C / C_safe);
 
-    float abney  = (+HueBandWeight(h, BAND_RED)     * 0.06
-                   + HueBandWeight(h, BAND_YELLOW)  * 0.05
-                   - HueBandWeight(h, BAND_CYAN)    * 0.08
-                   - HueBandWeight(h, BAND_BLUE)    * 0.04
-                   - HueBandWeight(h, BAND_MAGENTA) * 0.03) * final_C;
+    float abney  = (+HueBandWeight(h_out, BAND_RED)     * 0.06
+                   + HueBandWeight(h_out, BAND_YELLOW)  * 0.05
+                   - HueBandWeight(h_out, BAND_CYAN)    * 0.08
+                   - HueBandWeight(h_out, BAND_BLUE)    * 0.04
+                   - HueBandWeight(h_out, BAND_MAGENTA) * 0.03) * final_C;
     float dtheta = -(GREEN_HUE_COOL * 2.0 * 3.14159265) * green_w * final_C + abney;
     float cos_dt = 1.0 - dtheta * dtheta * 0.5;
     float sin_dt = dtheta;
@@ -587,9 +356,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
     // Hellwig 2022: hue-dependent H-K correction, C^0.587 (R15)
     float sh, ch;
-    sincos(h * 6.28318, sh, ch);
+    sincos(h_out * 6.28318, sh, ch);
     float f_hk     = -0.160 * ch + 0.132 * (ch*ch - sh*sh) - 0.405 * sh + 0.080 * (2.0*sh*ch) + 0.792;
-    float hk_boost = 1.0 + (HK_STRENGTH / 100.0) * f_hk * pow(final_C, 0.587);
+    float hk_boost = 1.0 + 0.25 * f_hk * pow(final_C, 0.587);
     float final_L  = saturate(lab.x / lerp(1.0, hk_boost, smoothstep(0.0, 0.35, lab.x)));
 
     // Gamut-distance density: headroom limits darkening near the sRGB boundary
@@ -606,108 +375,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     chroma_rgb        = L_grey + gclip * (chroma_rgb - L_grey);
     lin = saturate(chroma_rgb);
 
-    // ── 4. FILM GRADE ─────────────────────────────────────────────────────────
-    float3 grade_in = lin;
-
-    float3 log_in = LogEncode(grade_in);
-    float3 film_log;
-    film_log.r = log_in.r * (1.0 - FILM_RG - FILM_RB) + log_in.g * FILM_RG + log_in.b * FILM_RB;
-    film_log.g = log_in.r * FILM_GR + log_in.g * (1.0 - FILM_GR - FILM_GB) + log_in.b * FILM_GB;
-    film_log.b = log_in.r * FILM_BR + log_in.g * FILM_BG + log_in.b * (1.0 - FILM_BR - FILM_BG);
-
-    float fm_luma   = Luma(grade_in);
-    float fm_max    = max(grade_in.r, max(grade_in.g, grade_in.b));
-    float fm_min    = min(grade_in.r, min(grade_in.g, grade_in.b));
-    float fm_chroma = (fm_max - fm_min) / max(fm_max, 0.001);
-    float fm_gate   = smoothstep(FILM_CHROMA_LO, FILM_CHROMA_HI, fm_chroma)
-                    * smoothstep(FILM_LUMA_LO,   FILM_LUMA_HI,   fm_luma);
-    float3 film_lin = LogDecode(lerp(log_in, film_log, fm_gate));
-
-    float3 S1 = sqrt(max(film_lin, 0.0));
-    float3 S2 = sqrt(S1);
-    float3 S3 = sqrt(S2);
-    float3 result = saturate(0.662002687 * S1 + 0.684122060 * S2 - 0.323583601 * S3 - 0.0225411470 * film_lin);
-    float  result_luma = Luma(result);
-
-    // R17: exposure-adaptive tint balance — cross-over shifts with scene key (Reinhard zone V = 0.18)
-    float r17_stops    = log2(max(zone_log_key, 0.001) / 0.18);
-    float r17_hl_boost = 1.0 + TINT_ADAPT_SCALE * saturate( r17_stops);
-    float r17_sh_boost = 1.0 + TINT_ADAPT_SCALE * saturate(-r17_stops);
-
-    // Toe tint
-    float tint_base = 1.0 - smoothstep(0.0, TOE_RANGE / 100.0, result_luma);
-    float toe_bell  = tint_base * (1.0 - tint_base) * 4.0;
-    float tt_max    = max(result.r, max(result.g, result.b));
-    float tt_min    = min(result.r, min(result.g, result.b));
-    float tt_sat    = (tt_max > 0.001) ? (tt_max - tt_min) / tt_max : 0.0;
-    float tt_gate   = smoothstep(0.14, 0.27, tt_sat);
-    result.r += TOE_TINT_R * toe_bell * tt_gate * r17_sh_boost;
-    result.g += TOE_TINT_G * toe_bell * tt_gate * r17_sh_boost;
-    result.b += TOE_TINT_B * toe_bell * tt_gate * r17_sh_boost;
-    result = saturate(result);
-
-    // Black lift
-    float black_w = 1.0 - smoothstep(0.0, 0.10, result_luma);
-    result += float3(BLACK_LIFT_R, BLACK_LIFT_G, BLACK_LIFT_B) * black_w;
-    result = saturate(result);
-
-    // Shadow tint
-    float st_max   = max(result.r, max(result.g, result.b));
-    float st_min   = min(result.r, min(result.g, result.b));
-    float st_sat   = (st_max > 0.001) ? (st_max - st_min) / st_max : 0.0;
-    float st_gate  = smoothstep(0.08, 0.22, st_sat);
-    float g_shadow = result_luma * (1.0 - smoothstep(0.0, SHADOW_RANGE / 100.0, result_luma)) * st_gate;
-    result = saturate(result + float3(SHADOW_TINT_R, SHADOW_TINT_G, SHADOW_TINT_B) * g_shadow * r17_sh_boost);
-
-    // Highlight lift
-    float hl_t        = smoothstep(HIGHLIGHT_START / 100.0, 1.0, result_luma);
-    float highlight_w = hl_t * hl_t * (1.0 - result_luma) / max(1.0 - HIGHLIGHT_START / 100.0, 0.001);
-    result += float3(HIGHLIGHT_TINT_R, HIGHLIGHT_TINT_G, HIGHLIGHT_TINT_B) * highlight_w * r17_hl_boost;
-    result = saturate(result);
-
-    // Luma-neutral midtone cast
-    float luma_pre = Luma(result);
-    result *= float3(GRADE_R, GRADE_G, GRADE_B);
-    result *= luma_pre / max(Luma(result), 0.001);
-
-    // White point
-    result += (float3(WHITE_R, WHITE_G, WHITE_B) - 1.0) * result * result;
-
-    // Per-hue rotation
-    {
-        float3 hsv     = RGBtoHSV(result);
-        float  hue_dist = abs(hsv.x - HUE_SHIFT_CENTER);
-        hue_dist        = min(hue_dist, 1.0 - hue_dist);
-        float  hue_w    = smoothstep(HUE_SHIFT_WIDTH, 0.0, hue_dist) * hsv.y;
-        hsv.x           = frac(hsv.x + HUE_SHIFT_AMOUNT * hue_w);
-        result          = HSVtoRGB(hsv);
-    }
-
-    // Luminance-dependent sat rolloff
-    {
-        float rl      = Luma(result);
-        float rolloff = pow(max(rl, 0.0), SAT_ROLLOFF_FACTOR);
-        result        = lerp(result, float3(rl, rl, rl), rolloff * SAT_ROLLOFF_MAX);
-    }
-
-    result = result * (result * (result * 0.305306011 + 0.682171111) + 0.012522878);
-
-    if (CREATIVE_SATURATION != 1.0)
-    {
-        float cs_lum = Luma(result);
-        result = saturate(cs_lum + (result - cs_lum) * CREATIVE_SATURATION);
-    }
-    if (CREATIVE_CONTRAST != 1.0)
-    {
-        float cc_luma = Luma(result);
-        float cc_t    = saturate(cc_luma / 0.36);
-        float cc_s    = cc_t * cc_t * (3.0 - 2.0 * cc_t) * 0.36;
-        result = saturate(result * (lerp(cc_luma, cc_s, CREATIVE_CONTRAST - 1.0) / max(cc_luma, 0.001)));
-    }
-
-    result = lerp(grade_in, result, GRADE_STRENGTH / 100.0);
-
-    float4 pixel = float4(saturate(result), col.a);
+    float4 pixel = float4(lin, col.a);
     return DrawLabel(pixel, pos, 270.0, 50.0,
                      54u, 71u, 82u, 65u, float3(0.2, 0.50, 1.0)); // 6GRA
 }
