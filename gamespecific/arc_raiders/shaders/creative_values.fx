@@ -30,7 +30,7 @@
 //   auto_clarity  = lerp(35, 17, stevens_att*0.6 + (1-spread_att)*0.4)  [p50 + IQR]
 //   shadow_lift   = lerp(20, 5, smoothstep(0.04, 0.28, p25))
 //   chroma_str    = lerp(24, 12, smoothstep(0.05, 0.20, mean_chroma))
-//   density_str   = lerp(38, 55, smoothstep(0.05, 0.20, mean_chroma))
+//   density_str   = lerp(44, 60, smoothstep(0.05, 0.20, mean_chroma))
 //   auto_hal      = lerp(0.0, 0.22, smoothstep(0.55, 0.85, p75))
 
 // ── FILM CURVE CHARACTER ──────────────────────────────────────────────────────
