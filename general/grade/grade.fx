@@ -281,7 +281,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
 
     // R18: zone luminance normalization — pulls zone medians toward global key (Reinhard local operator)
-    float r18_str  = SPATIAL_NORM_STRENGTH / 100.0 * 0.4;
+    float r18_str  = lerp(10.0, 30.0, smoothstep(0.08, 0.25, zone_std)) / 100.0 * 0.4;
     float r18_norm = pow(max(zone_log_key, 0.001) / max(zone_median, 0.001), r18_str);
     new_luma = saturate(new_luma * r18_norm);
 

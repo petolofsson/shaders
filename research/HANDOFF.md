@@ -15,7 +15,7 @@ Chain: `analysis_frame → analysis_scope_pre → corrective → grade → pro_m
 |-------|------|--------------|
 | 1 | CORRECTIVE | `pow(rgb, EXPOSURE)` + FilmCurve (zone-informed, per-channel knee/toe) |
 | 1.5 | 3-WAY CORRECTOR | R19: temp/tint per shadow/mid/highlight region (primary grade) |
-| 2 | TONAL | Zone S-curve (auto-strength from zone_std) + Clarity + Shadow lift |
+| 2 | TONAL | Zone S-curve (auto-strength from zone_std) + Spatial norm (auto from zone_std) + Clarity + Shadow lift |
 | 3 | CHROMA | Oklab: R22 sat-by-luma → R21 hue rotation → chroma lift + HK (baked 0.25) + Abney + density + gamut compress |
 
 Stage 4 (FILM GRADE) was removed last session — dead code at GRADE_STRENGTH=0.
@@ -31,14 +31,13 @@ Analysis textures written by `corrective.fx` before grade.fx runs:
 
 ## All knobs (`creative_values.fx` — the ONLY tuning surface)
 
-24 knobs total. Same as previous session — no knobs added or removed this session.
+23 knobs total. SPATIAL_NORM_STRENGTH removed — now fully automated.
 
 ```
 EXPOSURE            1.04
 SHADOW_TEMP          -20 / SHADOW_TINT 0
 MID_TEMP               4 / MID_TINT    0
 HIGHLIGHT_TEMP        30 / HIGHLIGHT_TINT -5
-SPATIAL_NORM_STRENGTH  20
 CLARITY_STRENGTH       35
 SHADOW_LIFT            15
 DENSITY_STRENGTH       45
@@ -49,6 +48,35 @@ ROT_RED 0.25 / ROT_YELLOW -0.05 / ROT_GREEN 0.20
 ROT_CYAN 0.15 / ROT_BLUE -0.12 / ROT_MAG -0.08
 CORRECTIVE_STRENGTH 100 / TONAL_STRENGTH 100
 ```
+
+**Automated (no knob):**
+- Zone S-curve strength — `lerp(0.30, 0.18, smoothstep(0.08, 0.25, zone_std))`
+- Spatial normalization — `lerp(10, 30, smoothstep(0.08, 0.25, zone_std))` (complementary direction)
+
+---
+
+## This session (2026-04-30)
+
+### SPATIAL_NORM_STRENGTH automated (R24N)
+`SPATIAL_NORM_STRENGTH` removed from `creative_values.fx` (both arc_raiders and gzw).
+`grade.fx:284` now computes strength directly from `zone_std`:
+```hlsl
+float r18_str = lerp(10.0, 30.0, smoothstep(0.08, 0.25, zone_std)) / 100.0 * 0.4;
+```
+Runs in the complementary direction to the existing `zone_str` automation — contrasty
+scenes get stronger normalization while getting a gentler S-curve, preventing
+double-amplification of large zone differences. 23 knobs remain.
+
+### Nightly job fixes
+- All three triggers: added `git config user.email/name` + `git push origin HEAD:alpha`
+- Stability audit + Automation research: added `git checkout alpha` at job start (jobs
+  were running on `main` branch — wrong codebase)
+- Automation research: added Brave curl + arxiv search pattern
+
+### Research filed
+- `R24N_2026-04-30_Nightly_Automation_Research.md` — 5-knob automation formulas
+  (SHADOW_LIFT and SPATIAL_NORM ready; DENSITY+CHROMA need mean_chroma signal via
+  ChromaHistoryTex weighted average; CLARITY deferred — IQR proxy, pumping risk)
 
 ---
 

@@ -21,15 +21,10 @@
 #define HIGHLIGHT_TINT  -5
 
 // ── ZONE CONTRAST ────────────────────────────────────────────────────────────
-// Zone S-curve depth is automatic: driven by zone_std (spread of the 16 spatial
-// zone medians). Flat scenes get stronger contrast (~0.30), contrasty scenes
-// get less (~0.18). Higher EXPOSURE lifts pixels into the midtone range where
-// the S-curve is most active, so overall contrast still responds to EXPOSURE.
-
-// SPATIAL_NORM_STRENGTH pulls zone medians toward the global scene key after
-// the S-curve — dark zones lift slightly, bright zones compress slightly.
-// Keep modest; at 20 the effect is subtle balancing.
-#define SPATIAL_NORM_STRENGTH 20
+// Zone S-curve depth and spatial normalization are both automatic: driven by
+// zone_std (spread of the 16 spatial zone medians). Flat scenes get stronger
+// contrast (~0.30) and lighter normalization; contrasty scenes get less contrast
+// (~0.18) and stronger normalization. No user knobs.
 
 // CLARITY adds local midtone contrast at pixel scale — finer-grained than zones.
 // It stacks on top of zone work. Keep modest: above 35 it starts to feel
