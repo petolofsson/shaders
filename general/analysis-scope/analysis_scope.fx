@@ -149,7 +149,7 @@ float4 ScopePS(float4 pos : SV_Position,
         return col; // pixels 130+: passthrough (reserved for future stage means)
     }
 
-    col = DrawLabel(col, pos, 270.0, 66.0,
+    col = DrawLabel(col, pos.xy, 270.0, 66.0,
                     56u, 83u, 67u, 79u, float3(0.0, 0.80, 1.0)); // 8SCO
 
     float x0 = SCOPE_X;

@@ -376,7 +376,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     lin = saturate(chroma_rgb);
 
     float4 pixel = float4(lin, col.a);
-    return DrawLabel(pixel, pos, 270.0, 50.0,
+    return DrawLabel(pixel, pos.xy, 270.0, 50.0,
                      54u, 71u, 82u, 65u, float3(0.2, 0.50, 1.0)); // 6GRA
 }
 

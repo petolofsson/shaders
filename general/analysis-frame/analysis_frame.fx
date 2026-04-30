@@ -64,7 +64,7 @@ sampler2D Downsample
     MagFilter = LINEAR;
 };
 
-texture2D LumHistRawTex { Width = HIST_BINS; Height = 1; Format = R32F; MipLevels = 1; };
+texture2D LumHistRawTex { Width = HIST_BINS; Height = 1; Format = R16F; MipLevels = 1; };
 sampler2D LumHistRaw
 {
     Texture   = LumHistRawTex;
@@ -74,7 +74,7 @@ sampler2D LumHistRaw
     MagFilter = POINT;
 };
 
-texture2D SatHistRawTex { Width = HIST_BINS; Height = 6; Format = R32F; MipLevels = 1; };
+texture2D SatHistRawTex { Width = HIST_BINS; Height = 6; Format = R16F; MipLevels = 1; };
 sampler2D SatHistRaw
 {
     Texture   = SatHistRawTex;
@@ -86,7 +86,7 @@ sampler2D SatHistRaw
 
 // Shared smoothed textures — re-declared with identical descriptors in
 // olofssonian_zone_contrast.fx and olofssonian_chroma_lift.fx
-texture2D LumHistTex { Width = HIST_BINS; Height = 1; Format = R32F; MipLevels = 1; };
+texture2D LumHistTex { Width = HIST_BINS; Height = 1; Format = R16F; MipLevels = 1; };
 sampler2D LumHist
 {
     Texture   = LumHistTex;
@@ -96,7 +96,7 @@ sampler2D LumHist
     MagFilter = POINT;
 };
 
-texture2D SatHistTex { Width = HIST_BINS; Height = 6; Format = R32F; MipLevels = 1; };
+texture2D SatHistTex { Width = HIST_BINS; Height = 6; Format = R16F; MipLevels = 1; };
 sampler2D SatHist
 {
     Texture   = SatHistTex;
@@ -228,7 +228,7 @@ float4 DebugOverlayPS(float4 pos : SV_Position,
                       float2 uv  : TEXCOORD0) : SV_Target
 {
     float4 c = tex2D(BackBuffer, uv);
-    return DrawLabel(c, pos, 270.0, 10.0,
+    return DrawLabel(c, pos.xy, 270.0, 10.0,
                      49u, 65u, 78u, 76u, float3(1.0, 0.95, 0.0)); // 1ANL
 }
 

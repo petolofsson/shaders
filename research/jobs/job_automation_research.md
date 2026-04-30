@@ -1,7 +1,9 @@
 ## Nightly Job B — Automation & Knob Reduction Research
 
 **Schedule:** 04:00 daily  
-**Output:** `/home/pol/code/shaders/research/nightly_automation_{YYYY-MM-DD}.md`  
+**Output:** `/home/pol/code/shaders/research/R{next}N_{YYYY-MM-DD}_Nightly_Automation_Research.md`  
+where `{next}` = one more than the highest R-number found in `ls research/R*N_*.md` (e.g. if R25N exists, use R26N).  
+**Branch:** commit and push output file to `alpha`.  
 **Do not modify any source files.**
 
 ---
@@ -27,12 +29,14 @@ The pipeline has 24 user-facing knobs. The goal is to reduce this to ~9 **artist
 - `ROT_RED`, `ROT_YELLOW`, `ROT_GREEN`, `ROT_CYAN`, `ROT_BLUE`, `ROT_MAG` — hue rotation intent (6 knobs)
 - `CORRECTIVE_STRENGTH`, `TONAL_STRENGTH` — stage gates, not tuning knobs
 
-**Candidates for automation** (5 knobs, scene-descriptive):
+**Candidates for automation** (4 knobs, scene-descriptive):
 - `CLARITY_STRENGTH 35`
 - `SHADOW_LIFT 15`
 - `DENSITY_STRENGTH 45`
 - `CHROMA_STRENGTH 40`
-- `SPATIAL_NORM_STRENGTH 20`
+
+**Already automated (do not re-research):**
+- `SPATIAL_NORM_STRENGTH` — done; driven by `zone_std` in grade.fx Stage 2
 
 **Analysis data already available** (written by corrective.fx before grade.fx runs):
 - `PercTex` 1×1 RGBA16F — global p25 (.r), p50 (.g), p75 (.b) of luma
@@ -72,8 +76,6 @@ For each of the 5 candidate knobs, derive a psychophysically grounded target fun
 
 **CHROMA_STRENGTH:** Per-hue saturation bend. High average scene saturation means less bend is needed. Low average saturation (desaturated scenes — fog, overcast) may benefit from more bend. Derive from ChromaHistoryTex mean chroma, inverse to DENSITY logic.
 
-**SPATIAL_NORM_STRENGTH:** Pulls zone medians toward the global key. Already partially automated (zone_std drives zone S-curve strength). SPATIAL_NORM should also track zone_std: high zone_std (contrasty scene) = strong spatial normalisation needed; low zone_std (flat scene) = less useful. Derive from zone_std, same signal as existing zone_str automation.
-
 #### Stevens + Hunt connection
 
 R11 (Stevens + Hunt, researched but not coded) is directly relevant here. Stevens effect: apparent contrast increases with adaptation luminance — a brighter scene looks more contrasty even at the same physical contrast ratio. Hunt effect: saturation appears higher at higher luminance. These are psychophysical arguments for making CLARITY and CHROMA functions of `PercTex.g` (global p50 / scene key). Include Stevens + Hunt in the Brave Search and assess whether they should anchor the CLARITY and CHROMA automation formulas.
@@ -103,9 +105,6 @@ R11 (Stevens + Hunt, researched but not coded) is directly relevant here. Steven
 ## CHROMA_STRENGTH
 ...
 
-## SPATIAL_NORM_STRENGTH
-...
-
 ## Stevens + Hunt as automation anchor
 {assessment — should p50 drive CLARITY and CHROMA? What does the literature say?}
 
@@ -116,4 +115,16 @@ R11 (Stevens + Hunt, researched but not coded) is directly relevant here. Steven
 
 ## Brave Search findings
 {list papers found, with title, authors, year, and 2-sentence relevance summary}
+```
+
+---
+
+### After writing the output file
+
+```bash
+cd /home/pol/code/shaders
+git checkout alpha
+git add research/R*N_*_Nightly_Automation_Research.md
+git commit -m "nightly: automation research {YYYY-MM-DD}"
+git push origin alpha
 ```

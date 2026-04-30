@@ -4,6 +4,34 @@ Session history extracted from HANDOFF.md. Most recent first.
 
 ---
 
+## 2026-04-30 (session 2)
+
+### Nightly job spec fixes
+- Output naming: both jobs now use `R{next}N_{YYYY-MM-DD}_{topic}.md` convention
+- Both jobs commit and push output to `alpha` branch
+- `SPATIAL_NORM_STRENGTH` removed from automation job candidates (already done)
+
+### Stability audit — R25N (local, alpha branch)
+- Previous R25N (nightly run on wrong branch) deleted and re-run locally
+- No CRASH or CORRUPT findings on actual alpha codebase
+- Register pressure: `ColorTransformPS` ~129 scalars, at 128-scalar spilling threshold
+- All BackBuffer row-0 guards correct; all EMA coefficients in range; R19–R22 safe
+
+### Shader fixes (from R25N findings)
+- X3206 warnings suppressed: all 8 `DrawLabel` call sites now pass `pos.xy` (was `pos`)
+  — analysis_frame.fx, analysis_scope_pre.fx, analysis_scope.fx, corrective.fx (×3),
+    grade.fx, pro_mist.fx
+- Histogram textures: LumHistRaw, SatHistRaw, LumHist, SatHist — R32F → R16F
+  in analysis_frame.fx (values are [0,1] fractions; R32F was unnecessary)
+
+### Research filed
+- `R25N_2026-04-30_Nightly_Stability_Audit.md` — full stability audit on alpha
+- `R26N_2026-04-30_Register_Pressure_Research_Proposal.md` — research proposal:
+  does `[unroll]` loop restructure of 16 zone reads actually reduce SPIR-V register
+  pressure, or is it compiler-dependent? Pending execution next session.
+
+---
+
 ## 2026-04-30
 
 ### SPATIAL_NORM_STRENGTH automated

@@ -89,7 +89,7 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     result       += adapt_str * 1.10 * detail * bell;
 
     float4 out_col = float4(saturate(result), base.a);
-    out_col = DrawLabel(out_col, pos, 270.0, 58.0,
+    out_col = DrawLabel(out_col, pos.xy, 270.0, 58.0,
                         55u, 80u, 77u, 83u, float3(0.9, 0.1, 0.9)); // 7PMS
     return out_col;
 }
