@@ -81,7 +81,7 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
     // Additive chromatic composite — red scatters most (film layer physics: R deepest)
     float3 scatter_delta = max(0.0, diffused - base.rgb);
-    float3 result = base.rgb + scatter_delta * float3(1.15, 1.00, 0.75) * adapt_str * luma_gate;
+    float3 result = base.rgb + scatter_delta * float3(1.05, 1.00, 0.92) * adapt_str * luma_gate;
 
     // Clarity: Laplacian residual, bell-weighted to midtones
     float3 detail = base.rgb - diffused;
