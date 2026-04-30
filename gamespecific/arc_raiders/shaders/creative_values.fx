@@ -27,10 +27,10 @@
 // (~0.18) and stronger normalization. No user knobs.
 
 // Clarity, shadow lift, density, chroma, and halation are all automated:
-//   auto_clarity  = lerp(42, 20, stevens_att*0.6 + (1-spread_att)*0.4)  [p50 + IQR]
+//   auto_clarity  = lerp(35, 17, stevens_att*0.6 + (1-spread_att)*0.4)  [p50 + IQR]
 //   shadow_lift   = lerp(20, 5, smoothstep(0.04, 0.28, p25))
-//   chroma_str    = lerp(55, 30, smoothstep(0.05, 0.20, mean_chroma))
-//   density_str   = lerp(35, 52, smoothstep(0.05, 0.20, mean_chroma))
+//   chroma_str    = lerp(45, 24, smoothstep(0.05, 0.20, mean_chroma))
+//   density_str   = lerp(28, 44, smoothstep(0.05, 0.20, mean_chroma))
 //   auto_hal      = lerp(0.0, 0.22, smoothstep(0.55, 0.85, p75))
 
 // ── FILM CURVE CHARACTER ──────────────────────────────────────────────────────
@@ -54,6 +54,15 @@
 #define ROT_CYAN    0.15   // cyans → deep blue
 #define ROT_BLUE   -0.12   // sky → cerulean
 #define ROT_MAG    -0.08   // magentas → violet
+
+// ── RETINAL VIGNETTE ─────────────────────────────────────────────────────────
+// Peripheral luminance darkening (SCE) + chroma desaturation (Purkinje shift).
+// VIGN_STRENGTH: max corner darkening. 0 = off. Scales with scene brightness.
+// VIGN_RADIUS:   Gaussian σ in aspect-corrected UV. Larger = wider bright centre.
+// VIGN_CHROMA:   max corner chroma reduction. 0 = luma-only. Scales with darkness.
+#define VIGN_STRENGTH  0.28
+#define VIGN_RADIUS    0.40
+#define VIGN_CHROMA    0.15
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.

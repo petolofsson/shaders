@@ -1,36 +1,23 @@
-// retinal_vignette.fx — Eccentricity-dependent chroma falloff
+// retinal_vignette.fx — Peripheral luminance and chroma falloff
 //
-// Simulates how cone density drops from the fovea to the periphery:
-// the further from screen centre, the less chromatic the signal.
-// No darkening — purely a chroma reduction toward grey.
+// Two complementary retinal effects on the same Gaussian radial mask:
 //
-// Operates in OKLab: L (lightness) preserved exactly, chroma axes (a, b)
-// scaled toward zero. This avoids the luminance shifts that HSV desaturation
-// introduces.
+//   1. SCE luminance falloff — Gaussian darkening toward periphery.
+//      Stiles-Crawford effect: photopic, driven by p50. Absent in dark scenes.
 //
-// Falloff: power curve starting just outside the foveal zone (central 5%
-// of the half-diagonal, calibrated for 27" @ 65cm). Aspect-ratio corrected
-// so the boundary is circular, not oval.
+//   2. Purkinje chroma falloff — Oklab chroma reduction toward periphery.
+//      Rod dominance: rods carry no colour. Enhanced in dark/mesopic scenes.
 //
-// Purkinje adaptation: dark scenes drive stronger peripheral achromacy —
-// rod vision dominates in scotopic conditions, pushing the periphery toward
-// monochrome. Reads scene p50 from shared PercTex.
-//
-// Position in chain: last — retinal desaturation is post-receptor/neural,
-// applied after all optical effects (pro_mist, veil).
-//
-// One pass — analytical, no intermediate textures.
+// Both effects are multiplicative or subtractive on chroma — cannot exceed
+// input, cannot clip. SDR safe by construction.
 //
 // Shared texture contract:
-//   PercTex { Width=1; Height=1; Format=RGBA16F } — written by frame_analysis
+//   PercTex { Width=1; Height=1; Format=RGBA16F } — written by analysis_frame
 //   r=p25, g=p50, b=p75, a=iqr
 
 #include "creative_values.fx"
 
-#define RETINAL_FOVEAL  0.05   // inner radius (fraction of half-diagonal) with no effect
-#define RETINAL_MAX     0.65   // physics limit: max chroma reduction at corners
-
-// ─── Shared percentile cache ───────────────────────────────────────────────
+// ─── Shared textures ──────────────────────────────────────────────────────
 
 texture2D PercTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
 sampler2D PercSamp
@@ -41,8 +28,6 @@ sampler2D PercSamp
     MinFilter = POINT;
     MagFilter = POINT;
 };
-
-// ─── Textures ─────────────────────────────────────────────────────────────
 
 texture2D BackBufferTex : COLOR;
 sampler2D BackBuffer
@@ -65,7 +50,7 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
     pos  = float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
 }
 
-// ─── OKLab (linear RGB ↔ perceptual colour space) ─────────────────────────
+// ─── Oklab ────────────────────────────────────────────────────────────────
 
 float3 RGBtoOKLab(float3 c)
 {
@@ -101,45 +86,43 @@ float3 OKLabtoRGB(float3 lab)
     );
 }
 
-// ─── Pass 1 — Retinal chroma falloff ──────────────────────────────────────
+// ─── Pass ─────────────────────────────────────────────────────────────────
 
 float4 RetinalVignettePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float4 col = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return col;
 
-    // Aspect-corrected distance so falloff is circular
-    float  aspect   = float(BUFFER_WIDTH) / float(BUFFER_HEIGHT);
-    float2 centered = (uv - 0.5) * float2(aspect, 1.0);
-    float  dist     = length(centered);
-    float  corner   = length(float2(0.5 * aspect, 0.5));
+    float4 perc = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
 
-    // Normalise: 0 at centre, 1 at corners; then subtract foveal dead-zone
-    float norm = dist / corner;
-    float ecc  = saturate((norm - RETINAL_FOVEAL) / (1.0 - RETINAL_FOVEAL));
+    // Aspect-corrected Gaussian: 1 at centre, falls toward corners
+    float2 uv_c  = (uv - 0.5) * float2(float(BUFFER_WIDTH) / float(BUFFER_HEIGHT), 1.0);
+    float  r2    = dot(uv_c, uv_c);
+    float  gauss = exp(-r2 / (VIGN_RADIUS * VIGN_RADIUS));
 
-    // Power curve — RETINAL_FALLOFF < 1 = slow centre / fast edge (physiological)
-    float mask = pow(ecc, RETINAL_FALLOFF);
+    // ── 1. SCE luminance darkening ─────────────────────────────────────────
+    // Photopic only: absent in dark scenes (smoothstep 0.10–0.45 on p50)
+    float sc_att  = smoothstep(0.10, 0.45, perc.g);
+    float vweight = lerp(1.0 - VIGN_STRENGTH, 1.0, gauss);
+    vweight       = lerp(1.0, vweight, sc_att);     // dark scenes → identity
+    float3 rgb    = col.rgb * vweight;              // multiplicative — cannot clip
 
-    // Purkinje shift: dark scenes → stronger peripheral achromacy
-    float lum_p50  = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0)).g;
-    float purkinje = lerp(1.0, 1.3, 1.0 - saturate(lum_p50 / 0.25));
+    // ── 2. Purkinje chroma falloff ─────────────────────────────────────────
+    // Rod dominance in periphery. Enhanced in dark/mesopic (Purkinje shift).
+    float purkinje  = lerp(1.0, 1.3, 1.0 - saturate(perc.g / 0.25));
+    float chroma_r  = saturate((1.0 - gauss) * VIGN_CHROMA * purkinje);
+    float3 lab      = RGBtoOKLab(rgb);
+    lab.yz         *= 1.0 - chroma_r;              // scale chroma, preserve L
+    rgb             = saturate(OKLabtoRGB(lab));
 
-    float reduction = saturate(mask * RETINAL_MAX * (RETINAL_STRENGTH / 100.0) * purkinje);
-
-    // Scale OKLab chroma toward zero, leave L untouched
-    float3 lab = RGBtoOKLab(col.rgb);
-    lab.y     *= 1.0 - reduction;
-    lab.z     *= 1.0 - reduction;
-
-    return float4(saturate(OKLabtoRGB(lab)), col.a);
+    return float4(rgb, col.a);
 }
 
 // ─── Technique ────────────────────────────────────────────────────────────
 
 technique RetinalVignette
 {
-    pass Apply
+    pass
     {
         VertexShader = PostProcessVS;
         PixelShader  = RetinalVignettePS;
