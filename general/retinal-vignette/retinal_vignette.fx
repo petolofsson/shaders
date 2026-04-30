@@ -58,9 +58,9 @@ float3 RGBtoOKLab(float3 c)
     float m = 0.2119034982*c.r + 0.6806995451*c.g + 0.1073969566*c.b;
     float s = 0.0883024619*c.r + 0.2817188376*c.g + 0.6299787005*c.b;
 
-    l = pow(abs(l) + 1e-6, 1.0/3.0) * sign(l);
-    m = pow(abs(m) + 1e-6, 1.0/3.0) * sign(m);
-    s = pow(abs(s) + 1e-6, 1.0/3.0) * sign(s);
+    l = pow(l + 1e-6, 0.333333);
+    m = pow(m + 1e-6, 0.333333);
+    s = pow(s + 1e-6, 0.333333);
 
     return float3(
          0.2104542553*l + 0.7936177850*m - 0.0040720468*s,
@@ -101,18 +101,16 @@ float4 RetinalVignettePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_T
     float  gauss = exp(-r2 / (VIGN_RADIUS * VIGN_RADIUS));
 
     // ── 1. SCE luminance darkening ─────────────────────────────────────────
-    // Photopic only: absent in dark scenes (smoothstep 0.10–0.45 on p50)
-    float sc_att  = smoothstep(0.10, 0.45, perc.g);
+    float sc_att  = smoothstep(0.04, 0.30, perc.g);
     float vweight = lerp(1.0 - VIGN_STRENGTH, 1.0, gauss);
     vweight       = lerp(1.0, vweight, sc_att);     // dark scenes → identity
-    float3 rgb    = col.rgb * vweight;              // multiplicative — cannot clip
+    float3 rgb    = col.rgb * vweight;
 
     // ── 2. Purkinje chroma falloff ─────────────────────────────────────────
-    // Rod dominance in periphery. Enhanced in dark/mesopic (Purkinje shift).
     float purkinje  = lerp(1.0, 1.3, 1.0 - saturate(perc.g / 0.25));
     float chroma_r  = saturate((1.0 - gauss) * VIGN_CHROMA * purkinje);
     float3 lab      = RGBtoOKLab(rgb);
-    lab.yz         *= 1.0 - chroma_r;              // scale chroma, preserve L
+    lab.yz         *= 1.0 - chroma_r;  // scale chroma axes, L untouched
     rgb             = saturate(OKLabtoRGB(lab));
 
     return float4(rgb, col.a);

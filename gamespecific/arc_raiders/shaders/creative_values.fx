@@ -60,9 +60,9 @@
 // VIGN_STRENGTH: max corner darkening. 0 = off. Scales with scene brightness.
 // VIGN_RADIUS:   Gaussian σ in aspect-corrected UV. Larger = wider bright centre.
 // VIGN_CHROMA:   max corner chroma reduction. 0 = luma-only. Scales with darkness.
-#define VIGN_STRENGTH  0.28
+#define VIGN_STRENGTH  0.55
 #define VIGN_RADIUS    0.40
-#define VIGN_CHROMA    0.15
+#define VIGN_CHROMA    0.35
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.
