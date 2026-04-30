@@ -6,7 +6,7 @@ vkBasalt auto-linearizes the sRGB swapchain. HDR must be OFF in-game.
 
 ## Active chain (`arc_raiders.conf`)
 ```
-analysis_frame : analysis_scope_pre : corrective : grade : analysis_scope
+analysis_frame : analysis_scope_pre : corrective : grade : pro_mist : analysis_scope
 ```
 
 ## Silent-failure gotchas — verify before every shader edit
@@ -60,9 +60,8 @@ Reads from BackBuffer (post-corrective). Analysis textures (ZoneHistoryTex,
 ChromaHistoryTex, PercTex, CreativeLowFreqTex) written by earlier passes in corrective.fx.
 
 1. **CORRECTIVE** — `pow(rgb, EXPOSURE)` + FilmCurve (PercTex p25/p50/p75)
-2. **TONAL** — Zone S-curve (ZoneHistoryTex) + Clarity + Shadow lift
+2. **TONAL** — Zone S-curve + Spatial norm (both auto from zone_std) + Clarity + Shadow lift
 3. **CHROMA** — Oklab chroma lift + HK + Abney + density (gate-free, no outer C gate)
-4. **FILM GRADE** — log matrix per preset + zone tints + sat rolloff
 
 ## Debug
 
