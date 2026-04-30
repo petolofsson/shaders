@@ -273,7 +273,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float g               = sd / (sd + 0.04);
     float stevens_att     = smoothstep(0.35, 0.65, perc.g);
     float spread_att      = smoothstep(0.04, 0.20, perc.b - perc.r);
-    float auto_clarity    = lerp(42.0, 20.0, saturate(stevens_att * 0.6 + (1.0 - spread_att) * 0.4));
+    float auto_clarity    = lerp(35.0, 17.0, saturate(stevens_att * 0.6 + (1.0 - spread_att) * 0.4));
     new_luma = saturate(new_luma + detail * (auto_clarity / 100.0) * g * clarity_mask);
 
     float shadow_lift = lerp(20.0, 5.0, smoothstep(0.04, 0.28, perc.r));
@@ -316,8 +316,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     }
     float mean_chroma  = cm_t / max(cm_w, 0.001);
     float chroma_adapt = smoothstep(0.05, 0.20, mean_chroma);
-    float chroma_str   = saturate(lerp(55.0, 30.0, chroma_adapt) / 100.0 * hunt_scale);
-    float density_str  = lerp(35.0, 52.0, chroma_adapt);
+    float chroma_str   = saturate(lerp(28.0, 14.0, chroma_adapt) / 100.0 * hunt_scale);
+    float density_str  = lerp(38.0, 55.0, chroma_adapt);
 
     float new_C = 0.0, total_w = 0.0, green_w = 0.0;
     [unroll] for (int band = 0; band < 6; band++)
