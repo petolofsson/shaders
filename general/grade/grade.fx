@@ -261,13 +261,20 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float D1              = luma - illum_s0;
     float D2              = illum_s0 - illum_s1;
     float D3              = illum_s1 - illum_s2;
-    float detail          = D1 * 0.50 + D2 * 0.30 + D3 * 0.20;
+    // R43: energy-normalised wavelet packet weights — adapts per-pixel to local signal content
+    float e1              = D1 * D1;
+    float e2              = D2 * D2;
+    float e3              = D3 * D3;
+    float e_sum           = max(e1 + e2 + e3, 1e-6);
+    float detail          = D1 * (e1 / e_sum) + D2 * (e2 / e_sum) + D3 * (e3 / e_sum);
     float clarity_mask    = smoothstep(0.0, 0.2, luma) * (1.0 - smoothstep(0.6, 0.9, luma));
-    float bell            = 1.0 / (1.0 + detail * detail / 0.0144);
+    // R44: Naka-Rushton signal-dependent gain — suppresses noise floor, passes real texture
+    float sd              = sqrt(abs(detail));
+    float g               = sd / (sd + 0.04);
     float stevens_att     = smoothstep(0.35, 0.65, perc.g);
     float spread_att      = smoothstep(0.04, 0.20, perc.b - perc.r);
     float auto_clarity    = lerp(42.0, 20.0, saturate(stevens_att * 0.6 + (1.0 - spread_att) * 0.4));
-    new_luma = saturate(new_luma + detail * (auto_clarity / 100.0) * bell * clarity_mask);
+    new_luma = saturate(new_luma + detail * (auto_clarity / 100.0) * g * clarity_mask);
 
     float shadow_lift = lerp(20.0, 5.0, smoothstep(0.04, 0.28, perc.r));
     float lift_w      = new_luma * smoothstep(0.4, 0.0, new_luma);
