@@ -237,7 +237,10 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float4 zone_lvl   = tex2D(ZoneHistorySamp, uv);
     float zone_median = zone_lvl.r;
     float zone_iqr    = zone_lvl.b - zone_lvl.g;
-    float iqr_scale   = smoothstep(0.0, 0.25, zone_iqr);
+    // R33: CLAHE-inspired clip limit — bounds S-curve slope; tightens when Retinex is engaged
+    float clahe_slope = lerp(1.40, 1.15, smoothstep(0.04, 0.25, zone_std));
+    float iqr_scale   = min(smoothstep(0.0, 0.25, zone_iqr),
+                            (clahe_slope - 1.0) / max(zone_str, 0.001));
     float dt          = luma - zone_median;
     float bent        = dt + zone_str * iqr_scale * dt * (1.0 - saturate(abs(dt)));
     float new_luma    = saturate(zone_median + bent);
@@ -263,8 +266,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float bell            = 1.0 / (1.0 + detail * detail / 0.0144);
     new_luma = saturate(new_luma + detail * (CLARITY_STRENGTH / 100.0) * bell * clarity_mask);
 
-    float lift_w = new_luma * smoothstep(0.4, 0.0, new_luma);
-    new_luma     = saturate(new_luma + (SHADOW_LIFT / 100.0) * 0.75 * lift_w);
+    float shadow_lift = lerp(20.0, 5.0, smoothstep(0.04, 0.28, perc.r));
+    float lift_w      = new_luma * smoothstep(0.4, 0.0, new_luma);
+    new_luma          = saturate(new_luma + (shadow_lift / 100.0) * 0.75 * lift_w);
     lin          = saturate(lin * (new_luma / max(luma, 0.001)));
     lin = lerp(lin_pre_tonal, lin, TONAL_STRENGTH / 100.0);
 
@@ -291,7 +295,19 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float k4         = k * k * k * k;
     float fl         = 0.2 * k4 * (5.0 * la) + 0.1 * (1.0 - k4) * (1.0 - k4) * pow(5.0 * la, 0.333);
     float hunt_scale = pow(max(fl, 1e-6), 0.25) / 0.5912;
-    float chroma_str = saturate(CHROMA_STRENGTH / 100.0 * hunt_scale);
+
+    // R36: mean_chroma → adaptive chroma and density strengths
+    float cm_t = 0.0, cm_w = 0.0;
+    [unroll] for (int bi = 0; bi < 6; bi++)
+    {
+        float4 bs = tex2D(ChromaHistory, float2((bi + 0.5) / 8.0, 0.5 / 4.0));
+        cm_t += bs.r * bs.b;
+        cm_w += bs.b;
+    }
+    float mean_chroma  = cm_t / max(cm_w, 0.001);
+    float chroma_adapt = smoothstep(0.05, 0.20, mean_chroma);
+    float chroma_str   = saturate(lerp(55.0, 30.0, chroma_adapt) / 100.0 * hunt_scale);
+    float density_str  = lerp(35.0, 52.0, chroma_adapt);
 
     float new_C = 0.0, total_w = 0.0, green_w = 0.0;
     [unroll] for (int band = 0; band < 6; band++)
@@ -337,7 +353,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float  rmax_probe = max(rgb_probe.r, max(rgb_probe.g, rgb_probe.b));
     float  headroom   = saturate(1.0 - rmax_probe);
     float  delta_C    = max(final_C - C, 0.0);
-    float  density_L  = saturate(final_L - delta_C * headroom * (DENSITY_STRENGTH / 100.0));
+    float  density_L  = saturate(final_L - delta_C * headroom * (density_str / 100.0));
 
     float3 chroma_rgb = OklabToRGB(float3(density_L, f_oka, f_okb));
     float  rmax       = max(chroma_rgb.r, max(chroma_rgb.g, chroma_rgb.b));

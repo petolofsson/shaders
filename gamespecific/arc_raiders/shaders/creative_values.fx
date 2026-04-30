@@ -31,21 +31,16 @@
 // sharpened rather than film-like.
 #define CLARITY_STRENGTH     35
 
-// SHADOW_LIFT raises the toe. Interacts with EXPOSURE: lowering EXPOSURE already
-// lifts shadows upward through the gamma; SHADOW_LIFT then pushes the toe further.
-// If blacks feel milky lower one or both. At 15 the lift is gentle and film-like.
-#define SHADOW_LIFT          15
+// Shadow lift, density, and chroma strength are now automated:
+//   shadow_lift   = lerp(20, 5, smoothstep(0.04, 0.28, p25))
+//   chroma_str    = lerp(55, 30, smoothstep(0.05, 0.20, mean_chroma))
+//   density_str   = lerp(35, 52, smoothstep(0.05, 0.20, mean_chroma))
+
 // ── CHROMA ───────────────────────────────────────────────────────────────────
-// DENSITY compacts chroma first, CHROMA bends what remains per hue.
-// Lower DENSITY = more chroma. H-K brightness correction (Hellwig 2022,
-// baked at 0.25) and saturation-by-luminance rolloff run automatically.
-//
-// DENSITY_STRENGTH — subtractive dye density (film-like colour compaction).
-//   Desaturates uniformly before other chroma work. The "film stock body" feel.
-// CHROMA_STRENGTH — per-hue saturation bend after density.
-//   Positive bends all hues more vibrant; negative mutes.
-#define DENSITY_STRENGTH   45
-#define CHROMA_STRENGTH    40
+// HALATION_STR — warm glow from bright highlights (film emulsion scatter).
+// Red scatters widest, blue narrowest — warm orange bloom by construction.
+// 0.0 = off, 0.18 = subtle film look, 0.35 = pronounced.
+#define HALATION_STR       0.18
 
 // ── FILM CURVE CHARACTER ──────────────────────────────────────────────────────
 // Per-channel knee and toe offsets for the FilmCurve (Stage 1). These encode the
