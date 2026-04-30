@@ -89,14 +89,7 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     result       += adapt_str * 1.10 * detail * bell;
 
     // R37: film halation — warm glow from highlights (chromatic emulsion scatter)
-    float3 halo_r    = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 2)).rgb;
-    float3 halo_g    = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 1)).rgb;
-    float  p75_gate  = max(perc.b, 0.55);
-    float  halo_gate = smoothstep(p75_gate, p75_gate + 0.15, luma_in);
-    float3 scatter_h = float3(halo_r.r, halo_g.g, diffused.b);
-    float3 delta_h   = max(0.0, scatter_h - base.rgb);
-    float auto_hal   = lerp(0.0, 0.22, smoothstep(0.55, 0.85, perc.b));
-    result          += delta_h * float3(1.20, 0.60, 0.25) * auto_hal * halo_gate;
+    // halation removed for testing
 
     float4 out_col = float4(saturate(result), base.a);
     out_col = DrawLabel(out_col, pos.xy, 270.0, 58.0,
