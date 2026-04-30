@@ -201,49 +201,12 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
     float4 perc = tex2D(PercSamp, float2(0.5, 0.5));
 
-    // ── R16: zone geometric mean key + min/max anchors + spread scale ─────────
-    float r16_z0  = tex2D(ZoneHistorySamp, float2(0.125, 0.125)).r;
-    float r16_z1  = tex2D(ZoneHistorySamp, float2(0.375, 0.125)).r;
-    float r16_z2  = tex2D(ZoneHistorySamp, float2(0.625, 0.125)).r;
-    float r16_z3  = tex2D(ZoneHistorySamp, float2(0.875, 0.125)).r;
-    float r16_z4  = tex2D(ZoneHistorySamp, float2(0.125, 0.375)).r;
-    float r16_z5  = tex2D(ZoneHistorySamp, float2(0.375, 0.375)).r;
-    float r16_z6  = tex2D(ZoneHistorySamp, float2(0.625, 0.375)).r;
-    float r16_z7  = tex2D(ZoneHistorySamp, float2(0.875, 0.375)).r;
-    float r16_z8  = tex2D(ZoneHistorySamp, float2(0.125, 0.625)).r;
-    float r16_z9  = tex2D(ZoneHistorySamp, float2(0.375, 0.625)).r;
-    float r16_z10 = tex2D(ZoneHistorySamp, float2(0.625, 0.625)).r;
-    float r16_z11 = tex2D(ZoneHistorySamp, float2(0.875, 0.625)).r;
-    float r16_z12 = tex2D(ZoneHistorySamp, float2(0.125, 0.875)).r;
-    float r16_z13 = tex2D(ZoneHistorySamp, float2(0.375, 0.875)).r;
-    float r16_z14 = tex2D(ZoneHistorySamp, float2(0.625, 0.875)).r;
-    float r16_z15 = tex2D(ZoneHistorySamp, float2(0.875, 0.875)).r;
-
-    // F1: log-average (geometric mean) — spatially-unbiased scene key (Reinhard 2002)
-    float r16_logsum = log(0.001+r16_z0)  + log(0.001+r16_z1)  + log(0.001+r16_z2)  + log(0.001+r16_z3)
-                     + log(0.001+r16_z4)  + log(0.001+r16_z5)  + log(0.001+r16_z6)  + log(0.001+r16_z7)
-                     + log(0.001+r16_z8)  + log(0.001+r16_z9)  + log(0.001+r16_z10) + log(0.001+r16_z11)
-                     + log(0.001+r16_z12) + log(0.001+r16_z13) + log(0.001+r16_z14) + log(0.001+r16_z15);
-    float zone_log_key = exp(r16_logsum * 0.0625);
-
-    // F2: zone min/max — structural anchors (40% blend with histogram p25/p75)
-    float r16_zmin = min(min(min(min(min(min(min(min(
-        min(min(min(min(min(min(min(r16_z0,r16_z1),r16_z2),r16_z3),r16_z4),r16_z5),r16_z6),r16_z7),
-        r16_z8),r16_z9),r16_z10),r16_z11),r16_z12),r16_z13),r16_z14),r16_z15);
-    float r16_zmax = max(max(max(max(max(max(max(max(
-        max(max(max(max(max(max(max(r16_z0,r16_z1),r16_z2),r16_z3),r16_z4),r16_z5),r16_z6),r16_z7),
-        r16_z8),r16_z9),r16_z10),r16_z11),r16_z12),r16_z13),r16_z14),r16_z15);
-    float eff_p25 = lerp(perc.r, r16_zmin, 0.4);
-    float eff_p75 = lerp(perc.b, r16_zmax, 0.4);
-
-    // F3: zone std dev — spread-adaptive factor scale (0.7 compact → 1.1 high contrast)
-    float r16_mean   = (r16_z0+r16_z1+r16_z2+r16_z3+r16_z4+r16_z5+r16_z6+r16_z7+
-                        r16_z8+r16_z9+r16_z10+r16_z11+r16_z12+r16_z13+r16_z14+r16_z15) * 0.0625;
-    float r16_sqmean = (r16_z0*r16_z0+r16_z1*r16_z1+r16_z2*r16_z2+r16_z3*r16_z3+
-                        r16_z4*r16_z4+r16_z5*r16_z5+r16_z6*r16_z6+r16_z7*r16_z7+
-                        r16_z8*r16_z8+r16_z9*r16_z9+r16_z10*r16_z10+r16_z11*r16_z11+
-                        r16_z12*r16_z12+r16_z13*r16_z13+r16_z14*r16_z14+r16_z15*r16_z15) * 0.0625;
-    float zone_std     = sqrt(max(r16_sqmean - r16_mean * r16_mean, 0.0));
+    // R32: zone global stats — pre-computed in UpdateHistoryPS, stored in ChromaHistoryTex col 6
+    float4 zstats      = tex2D(ChromaHistory, float2(6.5 / 8.0, 0.5 / 4.0));
+    float zone_log_key = zstats.r;
+    float zone_std     = zstats.g;
+    float eff_p25      = lerp(perc.r, zstats.b, 0.4);
+    float eff_p75      = lerp(perc.b, zstats.a, 0.4);
     float spread_scale = lerp(0.7, 1.1, smoothstep(0.08, 0.25, zone_std));
     float zone_str     = lerp(0.30, 0.18, smoothstep(0.08, 0.25, zone_std));
 
@@ -280,14 +243,22 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float new_luma    = saturate(zone_median + bent);
 
 
-    // R18: zone luminance normalization — pulls zone medians toward global key (Reinhard local operator)
+    // R29: Multi-Scale Retinex — pixel-local illumination/reflectance separation
     float r18_str  = lerp(10.0, 30.0, smoothstep(0.08, 0.25, zone_std)) / 100.0 * 0.4;
-    float r18_norm = pow(max(zone_log_key, 0.001) / max(zone_median, 0.001), r18_str);
-    new_luma = saturate(new_luma * r18_norm);
+    float illum_s0 = max(tex2D(CreativeLowFreqSamp, uv).a, 0.001);
+    float illum_s1 = max(tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 1)).a, 0.001);
+    float illum_s2 = max(tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 2)).a, 0.001);
+    float luma_s   = max(new_luma, 0.001);
+    float log_R    = 0.20 * log(luma_s / illum_s0)
+                   + 0.30 * log(luma_s / illum_s1)
+                   + 0.50 * log(luma_s / illum_s2);
+    float retinex_luma = saturate(exp(log_R + log(max(zone_log_key, 0.001))));
+    new_luma = lerp(new_luma, retinex_luma, smoothstep(0.04, 0.25, zone_std));
 
-    float low_luma_fine   = tex2D(CreativeLowFreqSamp, uv).a;
-    float low_luma_coarse = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 2)).a;
-    float detail          = lerp(luma - low_luma_fine, low_luma_fine - low_luma_coarse, 0.6);
+    float D1              = luma - illum_s0;
+    float D2              = illum_s0 - illum_s1;
+    float D3              = illum_s1 - illum_s2;
+    float detail          = D1 * 0.50 + D2 * 0.30 + D3 * 0.20;
     float clarity_mask    = smoothstep(0.0, 0.2, luma) * (1.0 - smoothstep(0.6, 0.9, luma));
     float bell            = 1.0 / (1.0 + detail * detail / 0.0144);
     new_luma = saturate(new_luma + detail * (CLARITY_STRENGTH / 100.0) * bell * clarity_mask);

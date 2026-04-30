@@ -4,6 +4,85 @@ Session history extracted from HANDOFF.md. Most recent first.
 
 ---
 
+## 2026-04-30 (session 5)
+
+### R29 — Multi-Scale Retinex implemented (`grade.fx`)
+Replaced R18 zone-normalization (4×4 step function) with pixel-local Multi-Scale Retinex
+using `CreativeLowFreqTex` mip levels 0/1/2 (already computed free by corrective Pass 1):
+```hlsl
+float log_R = 0.20 * log(luma_s / illum_s0)
+            + 0.30 * log(luma_s / illum_s1)
+            + 0.50 * log(luma_s / illum_s2);
+float retinex_luma = saturate(exp(log_R + log(max(zone_log_key, 0.001))));
+new_luma = lerp(new_luma, retinex_luma, smoothstep(0.04, 0.25, zone_std));
+```
+Coarse-biased weights (0.20/0.30/0.50) from research findings. Blend fully automated via
+`zone_std` — flat scenes get no correction, contrasty scenes get full correction.
+Mip 1 tap is shared with the R30 wavelet clarity block (no redundant reads).
+
+### R28 — Kalman temporal filter implemented (`corrective.fx`)
+Replaced heuristic adaptive EMA (`1 + 10 * abs(delta)`) in both history passes:
+- `SmoothZoneLevelsPS`: Kalman on zone median (.r), EMA K_inf=0.095 on p25/p75
+- `UpdateHistoryPS`: Kalman on chroma mean (.r), EMA K_inf=0.095 on std/wsum
+- Kalman P (error variance) stored in `.a` channel of both history textures
+- Cold-start: P initialized to 1.0 → K≈1 → immediate lock-on; converges in ~10 frames
+- `ZONE_LERP_SPEED` and `LERP_SPEED` defines retired; replaced by `KALMAN_Q=0.0001`,
+  `KALMAN_R=0.01`, `KALMAN_K_INF=0.095`
+
+### R30 — Wavelet clarity implemented (`grade.fx`)
+Replaced 2-level Laplacian pyramid with 3-band Haar decomposition:
+```hlsl
+float D1 = luma - illum_s0;       // fine:   full-res → 1/8-res
+float D2 = illum_s0 - illum_s1;   // mid:    1/8-res  → 1/16-res
+float D3 = illum_s1 - illum_s2;   // coarse: 1/16-res → 1/32-res
+float detail = D1 * 0.50 + D2 * 0.30 + D3 * 0.20;
+```
+Eliminates the empirical `lerp(..., 0.6)` blend. Each band is orthogonal; weights from
+satellite imagery literature (fine-biased: 0.50/0.30/0.20). No extra texture taps —
+illum_s1 (mip 1) shared with R29 Retinex.
+
+### R31 — Nyquist sampling analysis (no change)
+Research confirmed: 8 samples/frame + Kalman α=0.095 ≈ 160 effective accumulated samples
+(p95 accuracy). 16 zones slightly above Reinhard (8) / Ansel Adams (11) reference but
+harmless. Current design is theoretically justified.
+
+### R32 — Zone stats pre-computed in ChromaHistoryTex col 6 (`corrective.fx`, `grade.fx`)
+`UpdateHistoryPS` now handles `band_idx == 6` as a zone-stats gather:
+- Reads all 16 zone medians from `ZoneHistoryTex`
+- Writes `float4(zone_log_key, zone_std, zmin, zmax)` to ChromaHistoryTex column 6, row 0
+`grade.fx ColorTransformPS` replaces the 16-tap zone gather + 16 `log()` calls with 1 read
+from `ChromaHistory` column 6. Eliminates ~33M `log()` calls/frame at 1080p.
+Uses free pixels in an existing texture — no new textures, no new passes.
+
+### Pro_mist strength reduced
+`adapt_str` base: `0.36 → 0.09` (÷4). IQR-adaptive range now 0.063–0.117.
+
+### Alpha highway extension — reverted
+Attempted BackBuffer alpha as data channel for zone stats — discarded. Game framebuffer
+alpha at row y=0 is not stable between frames. R32 via ChromaHistoryTex is the clean solution.
+
+---
+
+## 2026-04-30 (session 4)
+
+### Lateral domain research — nightly job restructured
+`job_general_research.md` rewritten from scratch. New approach:
+- 7-domain weekly rotation (radio astronomy, seismic, medical imaging, remote sensing,
+  telecoms, climate science, sonar) determined from ISO week number
+- Math-first search terms — never search "shader", "game", "rendering"
+- Every finding assessed against 6 pipeline mathematical problems
+- HIGH PRIORITY flag for High visual impact + Low/Medium GPU cost findings
+
+### New proposals filed
+- `R28_2026-04-30_Kalman_Temporal_History.md` — replace adaptive EMA heuristic in
+  SmoothZoneLevels + UpdateHistory with scalar Kalman filter; P stored in unused .a
+  channel; zero new passes
+- `R29_2026-04-30_Retinex_Illumination.md` — replace R18 zone normalization with
+  Multi-Scale Retinex using CreativeLowFreqTex mip levels 0/1/2 (already computed);
+  pixel-local illumination estimate vs. current 4×4 zone step function
+
+---
+
 ## 2026-04-30 (session 3)
 
 ### Naming convention unified — RXX_DATE_TITLE.md

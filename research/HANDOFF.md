@@ -28,10 +28,10 @@ Analysis textures written by `corrective.fx` before `grade.fx` runs:
 
 | Texture | Size | Format | Layout |
 |---------|------|--------|--------|
-| `ZoneHistoryTex` | 4×4 | RGBA16F | per zone: .r=smoothed median, .g=p25, .b=p75 |
+| `ZoneHistoryTex` | 4×4 | RGBA16F | per zone: .r=smoothed median, .g=p25, .b=p75, .a=Kalman P |
 | `CreativeZoneHistTex` | 32×16 | R16F | 32-bin luma histogram per zone |
-| `PercTex` | 1×1 | RGBA16F | .r=p25, .g=p50, .b=p75 (global luma) |
-| `ChromaHistoryTex` | 8×4 | RGBA16F | x=0..5 (6 hue bands), row y=0 only: .r=mean C, .g=std C, .b=wsum, .a=1 |
+| `PercTex` | 1×1 | RGBA16F | .r=p25, .g=p50, .b=p75, .a=iqr (global luma) |
+| `ChromaHistoryTex` | 8×4 | RGBA16F | x=0..5: .r=mean C, .g=std C, .b=wsum, .a=Kalman P — x=6: .r=zone_log_key, .g=zone_std, .b=zmin, .a=zmax |
 | `CreativeLowFreqTex` | BW/8×BH/8 | RGBA16F | 1/8-res base image; luma in .a, MipLevels=3 |
 
 ---
@@ -64,6 +64,7 @@ CORRECTIVE_STRENGTH 100 / TONAL_STRENGTH 100
 
 **Automated (no knob — universal, game-agnostic by construction):**
 - Zone S-curve strength — `lerp(0.30, 0.18, smoothstep(0.08, 0.25, zone_std))`
+- Retinex blend — `smoothstep(0.04, 0.25, zone_std)` — flat scenes: no correction; contrasty: full
 - Spatial normalization — `lerp(10, 30, smoothstep(0.08, 0.25, zone_std))` (complementary)
 
 ---
@@ -114,7 +115,7 @@ minimize taps, reuse existing textures. Additional passes in heavy scenes risk
 
 **pro_mist — must stay single-pass:** A two-pass Gaussian version crashed Arc Raiders
 intermittently (UE5 frame budget). `DiffuseTex` and `DiffuseHPS` were removed. If the
-effect is too subtle, increase `adapt_str` base (0.36 in `pro_mist.fx`) — not a knob.
+effect is too subtle, increase `adapt_str` base (currently `0.09` in `pro_mist.fx`) — not a knob.
 The `adapt_str` calibration (`lerp(0.7, 1.3, saturate(iqr / 0.5))`) is Arc Raiders-specific.
 
 **Inactive effects (available in arc_raiders.conf):**
@@ -129,13 +130,31 @@ The `adapt_str` calibration (`lerp(0.7, 1.3, saturate(iqr / 0.5))`) is Arc Raide
 
 ## Research queue
 
+**R28 complete — Kalman temporal filter:** Replaces EMA in SmoothZoneLevelsPS +
+UpdateHistoryPS. P stored in .a of both history textures. Q=0.0001, R=0.01, K_inf=0.095.
+
+**R29 complete — Multi-Scale Retinex:** Replaces R18 zone normalization. Pixel-local
+illumination separation using CreativeLowFreqTex mips 0/1/2. Coarse-biased weights
+(0.20/0.30/0.50). Blend auto-driven by zone_std.
+
+**R30 complete — Wavelet clarity:** 3-band Haar decomposition (D1/D2/D3) replaces
+2-level Laplacian. Weights 0.50/0.30/0.20. Mip 1 shared with R29.
+
+**R31 complete — Nyquist sampling:** No change. 8 samples + Kalman accumulation ≈ p95.
+16 zones above literature reference but sound.
+
+**R32 complete — Zone stats pre-computation:** ChromaHistoryTex col 6 stores
+zone_log_key/zone_std/zmin/zmax. grade.fx reads 1 tap instead of 16-tap gather.
+
 **R27 complete — data highway integrity audit:** All active BB-writing passes have guards.
-Two open items in scope display only (no color-grade impact): `analysis_frame` DebugOverlay
-missing guard (latent risk), and pixel-129 post-mean smoothing broken (game content as
-prior). See `R27_2026-04-30_Data_Highway_Integrity_Audit_findings.md`.
+Two open items in scope display only: `analysis_frame` DebugOverlay missing guard (latent),
+and pixel-129 smoothing broken (removed in R27 fix B).
 
 **R11 pending:** Stevens + Hunt — researched, not coded. Low ROI until automation
-knobs are validated. Relevant as a secondary trim on CLARITY and CHROMA (≤20% weight).
+knobs are validated. Relevant as secondary trim on CLARITY and CHROMA (≤20% weight).
+
+**Next:** CLAHE-inspired clip limit on zone S-curve (natural Retinex complement per
+MDPI 2024), Kalman for PercTex (analysis_frame.fx EMA), register pressure re-audit.
 
 **Nightly jobs (04:00 local):** output to `R{next}_{YYYY-MM-DD}_{topic}.md`, push to `alpha`.
 - `Shader Research — Nightly` — domain-rotation literature search (Brave + arxiv)

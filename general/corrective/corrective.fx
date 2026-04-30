@@ -14,8 +14,9 @@
 
 #include "creative_values.fx"
 
-#define ZONE_LERP_SPEED  8
-#define LERP_SPEED       8
+#define KALMAN_Q     0.0001  // process noise: expected frame-to-frame variance
+#define KALMAN_R     0.01    // measurement noise: estimator variance
+#define KALMAN_K_INF 0.095   // steady-state gain for secondary channels
 #define BAND_WIDTH       8
 #define MIN_WEIGHT       1.0
 #define SAT_THRESHOLD    2
@@ -250,9 +251,19 @@ float4 SmoothZoneLevelsPS(float4 pos : SV_Position,
 {
     float4 current = tex2D(CreativeZoneLevelsSamp, uv);
     float4 prev    = tex2D(ZoneHistorySamp, uv);
-    float  base    = ZONE_LERP_SPEED / 100.0;
-    float  speed   = saturate(base * (1.0 + 10.0 * abs(current.r - prev.r)));
-    return lerp(prev, current, speed);
+
+    // Kalman: zone median (.r) — P in .a, cold-start when uninitialized
+    float P_prev = (prev.a < 0.001) ? 1.0 : prev.a;
+    float P_pred = P_prev + KALMAN_Q;
+    float K      = P_pred / (P_pred + KALMAN_R);
+    float median = prev.r + K * (current.r - prev.r);
+    float P_new  = (1.0 - K) * P_pred;
+
+    // EMA: p25/p75 — steady-state gain
+    float p25 = lerp(prev.g, current.g, KALMAN_K_INF);
+    float p75 = lerp(prev.b, current.b, KALMAN_K_INF);
+
+    return float4(median, p25, p75, P_new);
 }
 
 // ─── Pass 5 — per-band chroma stats ────────────────────────────────────────
@@ -261,7 +272,28 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
                        float2 uv  : TEXCOORD0) : SV_Target
 {
     int band_idx = int(pos.x);
-    if (pos.y >= 1.0 || band_idx >= 6) return float4(0, 0, 0, 0);
+    if (pos.y >= 1.0 || band_idx >= 7) return float4(0, 0, 0, 0);
+
+    // Column 6: zone global stats (zone_log_key, zone_std, zmin, zmax) — free pixel, no chroma work
+    if (band_idx == 6)
+    {
+        float lk = 0.0, m = 0.0, m2 = 0.0, zmin = 1.0, zmax = 0.0;
+        [unroll] for (int zy = 0; zy < 4; zy++)
+        [unroll] for (int zx = 0; zx < 4; zx++)
+        {
+            float zm = tex2Dlod(ZoneHistorySamp,
+                float4((zx + 0.5) / 4.0, (zy + 0.5) / 4.0, 0, 0)).r;
+            lk  += log(max(zm, 0.001));
+            m   += zm;
+            m2  += zm * zm;
+            zmin = min(zmin, zm);
+            zmax = max(zmax, zm);
+        }
+        float zavg = m * 0.0625;
+        return float4(exp(lk * 0.0625),
+                      sqrt(max(m2 * 0.0625 - zavg * zavg, 0.0)),
+                      zmin, zmax);
+    }
 
     uint  base_idx = uint(FRAME_COUNT * 8) % 256u;
     float sum_w    = 0.0;
@@ -288,13 +320,19 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
     float stddev = sqrt(var);
 
     float4 prev    = tex2D(ChromaHistory, float2((band_idx + 0.5) / 8.0, 0.5 / 4.0));
-    float delta_c  = abs(mean - prev.r);
-    float speed_c  = saturate(LERP_SPEED / 100.0 * (1.0 + 10.0 * delta_c));
-    float new_mean = lerp(prev.r, mean,   speed_c);
-    float new_std  = lerp(prev.g, stddev, speed_c);
-    float new_wsum = lerp(prev.b, sum_w,  speed_c);
 
-    return float4(new_mean, new_std, new_wsum, 1.0);
+    // Kalman: chroma mean (.r) — P in .a, cold-start when uninitialized
+    float P_prev   = (prev.a < 0.001) ? 1.0 : prev.a;
+    float P_pred   = P_prev + KALMAN_Q;
+    float K        = P_pred / (P_pred + KALMAN_R);
+    float new_mean = prev.r + K * (mean - prev.r);
+    float P_new    = (1.0 - K) * P_pred;
+
+    // EMA: std and wsum — steady-state gain
+    float new_std  = lerp(prev.g, stddev, KALMAN_K_INF);
+    float new_wsum = lerp(prev.b, sum_w,  KALMAN_K_INF);
+
+    return float4(new_mean, new_std, new_wsum, P_new);
 }
 
 // ─── Pass 6 — Passthrough ──────────────────────────────────────────────────

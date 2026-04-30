@@ -71,7 +71,7 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float4 perc      = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
     float  p75       = perc.b;
     float  iqr       = perc.a;
-    float  adapt_str = 0.36 * lerp(0.7, 1.3, saturate(iqr / 0.5));
+    float  adapt_str = 0.09 * lerp(0.7, 1.3, saturate(iqr / 0.5));
 
     float  luma_in   = Luma(base.rgb);
     float  gate_lo   = saturate(p75 - 0.12);
