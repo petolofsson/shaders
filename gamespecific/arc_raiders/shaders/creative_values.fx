@@ -17,7 +17,7 @@
 #define SHADOW_TINT      0
 #define MID_TEMP         0
 #define MID_TINT         0
-#define HIGHLIGHT_TEMP   0
+#define HIGHLIGHT_TEMP  -20
 #define HIGHLIGHT_TINT   0
 
 // ── ZONE CONTRAST ────────────────────────────────────────────────────────────
