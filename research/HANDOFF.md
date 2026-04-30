@@ -71,7 +71,7 @@ CORRECTIVE_STRENGTH 100 / TONAL_STRENGTH 100
 ## Automation pipeline
 
 Goal: reduce 23 knobs to ~9 artistic knobs by automating scene-descriptive ones.
-See `R24N_2026-04-30_Nightly_Automation_Research.md` for full formula derivations.
+See `R24_2026-04-30_Nightly_Automation_Research.md` for full formula derivations.
 
 | Knob | Status | Signal | Notes |
 |------|--------|--------|-------|
@@ -129,16 +129,15 @@ The `adapt_str` calibration (`lerp(0.7, 1.3, saturate(iqr / 0.5))`) is Arc Raide
 
 ## Research queue
 
-**R26N pending — register pressure research:** Does restructuring the 16 individually-named
-zone reads in `ColorTransformPS` into a `[unroll]` accumulation loop actually reduce
-SPIR-V register pressure, or does the compiler's SSA expansion nullify the benefit?
-Proposal at `R26N_2026-04-30_Register_Pressure_Research_Proposal.md`. Run Brave search
-next session before implementing.
+**R27 complete — data highway integrity audit:** All active BB-writing passes have guards.
+Two open items in scope display only (no color-grade impact): `analysis_frame` DebugOverlay
+missing guard (latent risk), and pixel-129 post-mean smoothing broken (game content as
+prior). See `R27_2026-04-30_Data_Highway_Integrity_Audit_findings.md`.
 
 **R11 pending:** Stevens + Hunt — researched, not coded. Low ROI until automation
 knobs are validated. Relevant as a secondary trim on CLARITY and CHROMA (≤20% weight).
 
-**Nightly jobs (04:00 local):** output to `R{next}N_{YYYY-MM-DD}_{topic}.md`, push to `alpha`.
+**Nightly jobs (04:00 local):** output to `R{next}_{YYYY-MM-DD}_{topic}.md`, push to `alpha`.
 - `Shader Research — Nightly` — domain-rotation literature search (Brave + arxiv)
 - `Shader Automation Research` — knob-reduction formula derivation (Brave + arxiv)
 - `Shader System Stability Audit` — register pressure, unsafe math, row guard audit

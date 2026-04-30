@@ -26,7 +26,6 @@
 #define SCOPE_AMP  1.5
 #define SCOPE_S    8
 #define SCOPE_BINS 128
-#define SCOPE_LERP 4.3
 #define SCOPE_HSB   20
 #define SCOPE_HS     4
 #define SCOPE_HAMP 2.0
@@ -62,8 +61,6 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
     uv.y = (id == 1) ? 2.0 : 0.0;
     pos  = float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
 }
-
-uniform float frametime < source = "frametime"; >;
 
 float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
@@ -128,7 +125,7 @@ float4 ScopePS(float4 pos : SV_Position,
         if (int(pos.x) <= SCOPE_BINS)
             return tex2D(BackBuffer, float2(uv.x, 1.5 / float(BUFFER_HEIGHT)));
 
-        // Pixel 129: compute + store smoothed post-correction mean
+        // Pixel 129: live post-correction mean (no cross-frame smoothing — vkBasalt has no BB persistence)
         if (int(pos.x) == SCOPE_BINS + 1)
         {
             float live = 0.0;
@@ -139,11 +136,7 @@ float4 ScopePS(float4 pos : SV_Position,
                 live += Luma(tex2Dlod(BackBuffer,
                     float4((mx + 0.5) / float(SCOPE_S), (my + 0.5) / float(SCOPE_S), 0, 0)).rgb);
             live /= float(SCOPE_S * SCOPE_S);
-            float dv   = 0.5 / float(BUFFER_HEIGHT);
-            float prev = tex2Dlod(BackBuffer,
-                float4((float(SCOPE_BINS + 1) + 0.5) / float(BUFFER_WIDTH), dv, 0, 0)).r;
-            float s = lerp(prev, live, (SCOPE_LERP / 100.0) * (frametime / 10.0));
-            return float4(s, s, s, 1.0);
+            return float4(live, live, live, 1.0);
         }
 
         return col; // pixels 130+: passthrough (reserved for future stage means)

@@ -228,6 +228,7 @@ float4 DebugOverlayPS(float4 pos : SV_Position,
                       float2 uv  : TEXCOORD0) : SV_Target
 {
     float4 c = tex2D(BackBuffer, uv);
+    if (pos.y < 1.0) return c;  // data highway
     return DrawLabel(c, pos.xy, 270.0, 10.0,
                      49u, 65u, 78u, 76u, float3(1.0, 0.95, 0.0)); // 1ANL
 }

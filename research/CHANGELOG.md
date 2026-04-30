@@ -4,6 +4,27 @@ Session history extracted from HANDOFF.md. Most recent first.
 
 ---
 
+## 2026-04-30 (session 3)
+
+### Naming convention unified — RXX_DATE_TITLE.md
+All research documents now follow `RXX_DATE_TITLE.md` regardless of origin (CLI or nightly job).
+The `N` suffix is retired. Renamed all files in `research/`:
+- R01–R07: date `2026-04-27` added
+- R08N–R10N, R23N–R27N: `N` stripped; dates already present
+- R11–R22: date `2026-04-28` added
+Job files updated: output paths, `ls` glob, git add patterns.
+`overnight_research_area.md` renamed to `job_general_research.md`.
+
+### R27 — Data highway integrity audit
+Static code audit of all BackBuffer-writing passes in the active chain. Confirmed:
+all active BB-writing passes after `analysis_scope_pre` have the row-y=0 guard.
+Two open items (scope display only, no color-grade impact):
+1. `analysis_frame` DebugOverlay missing guard — latent risk if chain order changes
+2. Pixel-129 post-mean smoothing broken — `analysis_scope` reads game content as prior
+   (vkBasalt confirmed no cross-frame BackBuffer persistence via source review)
+
+---
+
 ## 2026-04-30 (session 2)
 
 ### Nightly job spec fixes
@@ -25,8 +46,8 @@ Session history extracted from HANDOFF.md. Most recent first.
   in analysis_frame.fx (values are [0,1] fractions; R32F was unnecessary)
 
 ### Research filed
-- `R25N_2026-04-30_Nightly_Stability_Audit.md` — full stability audit on alpha
-- `R26N_2026-04-30_Register_Pressure_Research_Proposal.md` — research proposal:
+- `R25_2026-04-30_Nightly_Stability_Audit.md` — full stability audit on alpha
+- `R26_2026-04-30_Register_Pressure_Research_Proposal.md` — research proposal:
   does `[unroll]` loop restructure of 16 zone reads actually reduce SPIR-V register
   pressure, or is it compiler-dependent? Pending execution next session.
 
@@ -51,7 +72,7 @@ normalization while getting a gentler S-curve, preventing double-amplification.
 - Automation research: Brave curl + arxiv search pattern added
 
 ### Research filed
-- `R24N_2026-04-30_Nightly_Automation_Research.md` — 5-knob automation formulas
+- `R24_2026-04-30_Nightly_Automation_Research.md` — 5-knob automation formulas
 
 ---
 

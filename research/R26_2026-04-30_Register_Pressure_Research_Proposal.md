@@ -1,8 +1,8 @@
-# Research Proposal — R26N: SPIR-V Register Pressure & Loop Restructuring
+# Research Proposal — R26: SPIR-V Register Pressure & Loop Restructuring
 
 **Date:** 2026-04-30  
 **Status:** Proposal — pending approval before search execution  
-**Triggered by:** R25N stability audit finding (~129 scalar registers in ColorTransformPS,
+**Triggered by:** R25 stability audit finding (~129 scalar registers in ColorTransformPS,
 128-scalar spilling threshold)
 
 ---
@@ -81,7 +81,7 @@ sum to `[unroll]` loop accumulation change the result? Specifically under SPIR-V
 
 ## Expected output
 
-`R26N_2026-04-30_Register_Pressure_Research.md` — replacing this proposal file, containing:
+`R26_2026-04-30_Register_Pressure_Research.md` — replacing this proposal file, containing:
 
 1. **DXC verdict** — what the compiler actually emits for `[unroll]` accumulation vs named vars
 2. **Driver-specific behaviour** — AMD / NVIDIA / Intel differences
@@ -95,4 +95,4 @@ sum to `[unroll]` loop accumulation change the result? Specifically under SPIR-V
 ## Scope constraint
 
 No source file changes. Documentation only.  
-Do not re-research zone automation (covered by R24N) or stability math correctness (R25N).
+Do not re-research zone automation (covered by R24N) or stability math correctness (R25).

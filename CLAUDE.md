@@ -31,6 +31,8 @@ analysis_frame : analysis_scope_pre : corrective : grade : pro_mist : analysis_s
 - **Plan before coding.** For any non-trivial edit: state which lines/approach will change
   and wait for a nod before writing code.
 - **Strict scope.** Only change what was asked. No opportunistic cleanup of surrounding code.
+- **Research naming:** `RXX_YYYY-MM-DD_title.md` (+ `_findings.md`). No N suffix — applies
+  to CLI sessions and nightly jobs alike. Next number: `ls research/R*.md | tail -1`.
 
 ## Non-negotiable rules
 

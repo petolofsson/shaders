@@ -1,8 +1,7 @@
 ## Naming convention
-Output files go in `/research/` named `R{next}N_{YYYY-MM-DD}_{topic}.md`.
-`N` marks a nightly run (single combined doc, no separate job spec).
-Check `research/COMPLETED.md` for the next available number.
-Formal jobs (separate spec + findings) use `R{number}_{topic}.md` with no `N`.
+Output files go in `/research/` named `R{next}_{YYYY-MM-DD}_{topic}.md`.
+All research documents use this format — CLI sessions and scheduled jobs alike.
+Check `ls research/R*.md` to find the next available number.
 
 ---
 
