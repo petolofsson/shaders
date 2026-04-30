@@ -20,8 +20,10 @@
 #define DS_H          18
 #define HIST_BINS     64
 #define LERP_SPEED     4.3
-#define KALMAN_Q_PERC  0.00005
-#define KALMAN_R_PERC  0.005
+#define KALMAN_Q_PERC_MIN  0.00005
+#define KALMAN_Q_PERC_MAX  0.05
+#define KALMAN_R_PERC      0.005
+#define VFF_E_SIGMA_PERC   0.06
 #define SAT_THRESHOLD 4         // 0–100; minimum saturation to include in histogram
 #define BAND_WIDTH    0.15
 
@@ -293,14 +295,16 @@ float4 CDFWalkPS(float4 pos : SV_Position,
         lk75 = saturate(lk75 + at75);
     }
 
-    // R34: Kalman filter on percentile outputs — P in .a (replaces IQR sentinel)
-    float4 prev   = tex2D(PercSamp, float2(0.5, 0.5));
-    float  P      = (prev.a < 0.001) ? 1.0 : prev.a;
-    float  P_pred = P + KALMAN_Q_PERC;
-    float  K      = P_pred / (P_pred + KALMAN_R_PERC);
-    float  P_new  = (1.0 - K) * P_pred;
+    // R34+R39: VFF Kalman on percentile outputs — P in .a (replaces IQR sentinel)
+    float4 prev    = tex2D(PercSamp, float2(0.5, 0.5));
+    float  P       = (prev.a < 0.001) ? 1.0 : prev.a;
+    float  e_p50   = p50 - prev.g;
+    float  Q_vff_p = lerp(KALMAN_Q_PERC_MIN, KALMAN_Q_PERC_MAX, smoothstep(0.0, VFF_E_SIGMA_PERC, abs(e_p50)));
+    float  P_pred  = P + Q_vff_p;
+    float  K       = P_pred / (P_pred + KALMAN_R_PERC);
+    float  P_new   = (1.0 - K) * P_pred;
     return float4(prev.r + K * (p25 - prev.r),
-                  prev.g + K * (p50 - prev.g),
+                  prev.g + K * e_p50,
                   prev.b + K * (p75 - prev.b),
                   P_new);
 }

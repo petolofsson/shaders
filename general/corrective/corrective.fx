@@ -14,9 +14,12 @@
 
 #include "creative_values.fx"
 
-#define KALMAN_Q     0.0001  // process noise: expected frame-to-frame variance
-#define KALMAN_R     0.01    // measurement noise: estimator variance
-#define KALMAN_K_INF 0.095   // steady-state gain for secondary channels
+#define KALMAN_Q_MIN     0.0001   // process noise: steady-state (scene stable)
+#define KALMAN_Q_MAX     0.10     // process noise: scene cut (K rises to ~0.91)
+#define VFF_E_SIGMA      0.08     // innovation scale for luma — triggers ramp at 0.08 luma units
+#define VFF_E_SIGMA_CHROMA 0.04   // innovation scale for chroma — Oklab a/b magnitudes are smaller
+#define KALMAN_R         0.01     // measurement noise
+#define KALMAN_K_INF     0.095    // steady-state gain for secondary channels (EMA)
 #define BAND_WIDTH       8
 #define MIN_WEIGHT       1.0
 #define SAT_THRESHOLD    2
@@ -252,11 +255,13 @@ float4 SmoothZoneLevelsPS(float4 pos : SV_Position,
     float4 current = tex2D(CreativeZoneLevelsSamp, uv);
     float4 prev    = tex2D(ZoneHistorySamp, uv);
 
-    // Kalman: zone median (.r) — P in .a, cold-start when uninitialized
+    // R39: VFF Kalman — zone median (.r), P in .a, cold-start when uninitialized
     float P_prev = (prev.a < 0.001) ? 1.0 : prev.a;
-    float P_pred = P_prev + KALMAN_Q;
+    float e_zone = current.r - prev.r;
+    float Q_vff  = lerp(KALMAN_Q_MIN, KALMAN_Q_MAX, smoothstep(0.0, VFF_E_SIGMA, abs(e_zone)));
+    float P_pred = P_prev + Q_vff;
     float K      = P_pred / (P_pred + KALMAN_R);
-    float median = prev.r + K * (current.r - prev.r);
+    float median = prev.r + K * e_zone;
     float P_new  = (1.0 - K) * P_pred;
 
     // EMA: p25/p75 — steady-state gain
@@ -321,11 +326,13 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
 
     float4 prev    = tex2D(ChromaHistory, float2((band_idx + 0.5) / 8.0, 0.5 / 4.0));
 
-    // Kalman: chroma mean (.r) — P in .a, cold-start when uninitialized
+    // R39: VFF Kalman — chroma mean (.r), P in .a, cold-start when uninitialized
     float P_prev   = (prev.a < 0.001) ? 1.0 : prev.a;
-    float P_pred   = P_prev + KALMAN_Q;
+    float e_chroma = mean - prev.r;
+    float Q_vff_c  = lerp(KALMAN_Q_MIN, KALMAN_Q_MAX, smoothstep(0.0, VFF_E_SIGMA_CHROMA, abs(e_chroma)));
+    float P_pred   = P_prev + Q_vff_c;
     float K        = P_pred / (P_pred + KALMAN_R);
-    float new_mean = prev.r + K * (mean - prev.r);
+    float new_mean = prev.r + K * e_chroma;
     float P_new    = (1.0 - K) * P_pred;
 
     // EMA: std and wsum — steady-state gain
