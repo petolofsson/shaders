@@ -95,7 +95,8 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float  halo_gate = smoothstep(p75_gate, p75_gate + 0.15, luma_in);
     float3 scatter_h = float3(halo_r.r, halo_g.g, diffused.b);
     float3 delta_h   = max(0.0, scatter_h - base.rgb);
-    result          += delta_h * float3(1.20, 0.60, 0.25) * HALATION_STR * halo_gate;
+    float auto_hal   = lerp(0.0, 0.22, smoothstep(0.55, 0.85, perc.b));
+    result          += delta_h * float3(1.20, 0.60, 0.25) * auto_hal * halo_gate;
 
     float4 out_col = float4(saturate(result), base.a);
     out_col = DrawLabel(out_col, pos.xy, 270.0, 58.0,

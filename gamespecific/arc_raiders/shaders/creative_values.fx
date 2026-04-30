@@ -26,21 +26,12 @@
 // contrast (~0.30) and lighter normalization; contrasty scenes get less contrast
 // (~0.18) and stronger normalization. No user knobs.
 
-// CLARITY adds local midtone contrast at pixel scale — finer-grained than zones.
-// It stacks on top of zone work. Keep modest: above 35 it starts to feel
-// sharpened rather than film-like.
-#define CLARITY_STRENGTH     35
-
-// Shadow lift, density, and chroma strength are now automated:
+// Clarity, shadow lift, density, chroma, and halation are all automated:
+//   auto_clarity  = lerp(42, 20, stevens_att*0.6 + (1-spread_att)*0.4)  [p50 + IQR]
 //   shadow_lift   = lerp(20, 5, smoothstep(0.04, 0.28, p25))
 //   chroma_str    = lerp(55, 30, smoothstep(0.05, 0.20, mean_chroma))
 //   density_str   = lerp(35, 52, smoothstep(0.05, 0.20, mean_chroma))
-
-// ── CHROMA ───────────────────────────────────────────────────────────────────
-// HALATION_STR — warm glow from bright highlights (film emulsion scatter).
-// Red scatters widest, blue narrowest — warm orange bloom by construction.
-// 0.0 = off, 0.18 = subtle film look, 0.35 = pronounced.
-#define HALATION_STR       0.18
+//   auto_hal      = lerp(0.0, 0.22, smoothstep(0.55, 0.85, p75))
 
 // ── FILM CURVE CHARACTER ──────────────────────────────────────────────────────
 // Per-channel knee and toe offsets for the FilmCurve (Stage 1). These encode the

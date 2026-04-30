@@ -264,7 +264,10 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float detail          = D1 * 0.50 + D2 * 0.30 + D3 * 0.20;
     float clarity_mask    = smoothstep(0.0, 0.2, luma) * (1.0 - smoothstep(0.6, 0.9, luma));
     float bell            = 1.0 / (1.0 + detail * detail / 0.0144);
-    new_luma = saturate(new_luma + detail * (CLARITY_STRENGTH / 100.0) * bell * clarity_mask);
+    float stevens_att     = smoothstep(0.35, 0.65, perc.g);
+    float spread_att      = smoothstep(0.04, 0.20, perc.b - perc.r);
+    float auto_clarity    = lerp(42.0, 20.0, saturate(stevens_att * 0.6 + (1.0 - spread_att) * 0.4));
+    new_luma = saturate(new_luma + detail * (auto_clarity / 100.0) * bell * clarity_mask);
 
     float shadow_lift = lerp(20.0, 5.0, smoothstep(0.04, 0.28, perc.r));
     float lift_w      = new_luma * smoothstep(0.4, 0.0, new_luma);
@@ -320,7 +323,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     }
     // max(lifted, C) — lift-only; identity limit at C = 0 by construction
     float lifted_C = (total_w > 0.001) ? new_C / total_w : C;
-    float final_C  = max(lifted_C, C) * (1.0 + abs(detail) * (CLARITY_STRENGTH / 100.0) * 0.25);
+    float final_C  = max(lifted_C, C) * (1.0 + abs(detail) * (auto_clarity / 100.0) * 0.25);
 
     // Vector-space (a,b) reconstruction — rotate original direction by R21 delta
     float r21_cos, r21_sin;
