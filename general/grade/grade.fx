@@ -296,12 +296,16 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
 
     // R29: Multi-Scale Retinex — pixel-local illumination/reflectance separation
-    float illum_s0 = max(tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 1)).a, 0.001);
-    float log_R    = log2(max(new_luma, 0.001) / illum_s0);
+    float illum_s0  = max(tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 1)).a, 0.001);
+    float illum_s2  = max(tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 2)).a, 0.001);
+    float local_var = abs(illum_s0 - illum_s2);
+    float log_R     = log2(max(new_luma, 0.001) / illum_s0);
     new_luma = lerp(new_luma, saturate(exp2(log_R + log2(max(zone_log_key, 0.001)))), 0.75 * smoothstep(0.04, 0.25, zone_std));
 
     float local_range_att = 1.0 - smoothstep(0.20, 0.50, zone_iqr);
-    float shadow_lift     = SHADOW_LIFT * 25.19 * exp(-5.776 * illum_s0) * local_range_att;
+    float texture_att     = 1.0 - smoothstep(0.005, 0.030, local_var);
+    float detail_protect  = smoothstep(-0.5, 0.0, log_R);
+    float shadow_lift     = SHADOW_LIFT * (0.149169 / (illum_s0 * illum_s0 + 0.003)) * local_range_att * texture_att * detail_protect;
     float lift_w      = new_luma * smoothstep(0.30, 0.0, new_luma);
     new_luma          = saturate(new_luma + (shadow_lift / 100.0) * 0.75 * lift_w);
     lin          = saturate(lin * (new_luma / max(luma, 0.001)));

@@ -5,7 +5,7 @@
 
 uint _FP(uint ch)
 {
-    if (ch == 56u) return 34287u; // 8
+    if (ch == 56u) return 31727u; // 8
     if (ch == 49u) return 29842u; // 1
     if (ch == 50u) return 31183u; // 2
     if (ch == 51u) return 29647u; // 3
