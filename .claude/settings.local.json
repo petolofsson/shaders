@@ -24,7 +24,10 @@
       "WebFetch(domain:docs.acescentral.com)",
       "WebFetch(domain:bottosson.github.io)",
       "WebFetch(domain:64.github.io)",
-      "WebFetch(domain:www.cl.cam.ac.uk)"
+      "WebFetch(domain:www.cl.cam.ac.uk)",
+      "Bash(awk -F: '{print $1}')",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:dicomp.arri.de)"
     ]
   }
 }

@@ -6,7 +6,7 @@
 // below "sees". Raising this (>1.0) darkens; lowering (<1.0) brightens.
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune
 // the contrast/chroma knobs beneath.
-#define EXPOSURE            1.15
+#define EXPOSURE            1.10
 
 // ── 3-WAY COLOR CORRECTOR ────────────────────────────────────────────────────
 // Runs after EXPOSURE and FilmCurve, before zone contrast. Primary color grade.
@@ -68,7 +68,7 @@
 
 // ── SHADOW LIFT ───────────────────────────────────────────────────────────────
 // Scales the adaptive shadow lift. 1.0 = calibrated default. 0 = disabled.
-#define SHADOW_LIFT  1.6
+#define SHADOW_LIFT  1.7
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.
