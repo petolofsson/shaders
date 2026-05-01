@@ -95,6 +95,39 @@ sampler2D ChromaHistory
     MagFilter = POINT;
 };
 
+// Global scene percentiles — r=p25, g=p50, b=p75, a=iqr (written by analysis_frame)
+texture2D PercTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+sampler2D PercSamp
+{
+    Texture   = PercTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
+// R46: highlight-restricted warm bias EMA — read by grade + pro_mist
+texture2D WarmBiasTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+sampler2D WarmBiasSamp
+{
+    Texture   = WarmBiasTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
+// R47: shadow-restricted warm bias EMA — read by grade
+texture2D ShadowBiasTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+sampler2D ShadowBiasSamp
+{
+    Texture   = ShadowBiasTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
 // ─── Vertex shader ─────────────────────────────────────────────────────────
 
 void PostProcessVS(in  uint   id  : SV_VertexID,
@@ -116,9 +149,9 @@ float3 RGBtoOklab(float3 rgb)
     float m = dot(rgb, float3(0.2119034982, 0.6806995451, 0.1073969566));
     float s = dot(rgb, float3(0.0883024619, 0.2817188376, 0.6299787005));
 
-    l = sign(l) * pow(abs(l), 1.0 / 3.0);
-    m = sign(m) * pow(abs(m), 1.0 / 3.0);
-    s = sign(s) * pow(abs(s), 1.0 / 3.0);
+    l = pow(l, 1.0 / 3.0);
+    m = pow(m, 1.0 / 3.0);
+    s = pow(s, 1.0 / 3.0);
 
     return float3(
         dot(float3(l, m, s), float3( 0.2104542553,  0.7936177850, -0.0040720468)),
@@ -342,7 +375,59 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
     return float4(new_mean, new_std, new_wsum, P_new);
 }
 
-// ─── Pass 6 — Passthrough ──────────────────────────────────────────────────
+// ─── Pass 6 — R46: highlight warm bias ────────────────────────────────────
+
+float4 WarmBiasPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    float p75     = tex2Dlod(PercSamp,     float4(0.5, 0.5, 0, 0)).b;
+    float prev_wb = tex2Dlod(WarmBiasSamp, float4(0.5, 0.5, 0, 0)).r;
+
+    float sum_r = 0.0, sum_b = 0.0, sum_w = 0.0;
+    [unroll] for (int sy = 0; sy < 8; sy++)
+    [unroll] for (int sx = 0; sx < 8; sx++)
+    {
+        float2 uv_s = float2((sx + 0.5) / 8.0, (sy + 0.5) / 8.0);
+        float4 s    = tex2Dlod(CreativeLowFreqSamp, float4(uv_s, 0, 0));
+        float  wt   = step(p75, s.a);
+        sum_r += s.r * wt;
+        sum_b += s.b * wt;
+        sum_w += wt;
+    }
+
+    float mean_r    = sum_r / max(sum_w, 1.0);
+    float mean_b    = sum_b / max(sum_w, 1.0);
+    float wb_curr   = (mean_r - mean_b) / max(mean_r + mean_b, 0.001);
+    float wb_smooth = lerp(prev_wb, wb_curr, KALMAN_K_INF);
+    return float4(wb_smooth, 0.0, 0.0, 1.0);
+}
+
+// ─── Pass 7 — R47: shadow warm bias ───────────────────────────────────────
+
+float4 ShadowBiasPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    float p25      = tex2Dlod(PercSamp,      float4(0.5, 0.5, 0, 0)).r;
+    float prev_sb  = tex2Dlod(ShadowBiasSamp, float4(0.5, 0.5, 0, 0)).r;
+
+    float sum_r = 0.0, sum_b = 0.0, sum_w = 0.0;
+    [unroll] for (int sy = 0; sy < 8; sy++)
+    [unroll] for (int sx = 0; sx < 8; sx++)
+    {
+        float2 uv_s = float2((sx + 0.5) / 8.0, (sy + 0.5) / 8.0);
+        float4 s    = tex2Dlod(CreativeLowFreqSamp, float4(uv_s, 0, 0));
+        float  wt   = step(s.a, p25);
+        sum_r += s.r * wt;
+        sum_b += s.b * wt;
+        sum_w += wt;
+    }
+
+    float mean_r    = sum_r / max(sum_w, 1.0);
+    float mean_b    = sum_b / max(sum_w, 1.0);
+    float sb_curr   = (mean_r - mean_b) / max(mean_r + mean_b, 0.001);
+    float sb_smooth = lerp(prev_sb, sb_curr, KALMAN_K_INF);
+    return float4(sb_smooth, 0.0, 0.0, 1.0);
+}
+
+// ─── Pass 8 — Passthrough ──────────────────────────────────────────────────
 
 float4 PassthroughPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
@@ -390,6 +475,18 @@ technique Corrective
         VertexShader = PostProcessVS;
         PixelShader  = UpdateHistoryPS;
         RenderTarget = ChromaHistoryTex;
+    }
+    pass WarmBias
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = WarmBiasPS;
+        RenderTarget = WarmBiasTex;
+    }
+    pass ShadowBias
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = ShadowBiasPS;
+        RenderTarget = ShadowBiasTex;
     }
     pass Passthrough
     {

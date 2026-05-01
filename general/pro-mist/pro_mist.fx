@@ -34,6 +34,28 @@ sampler2D CreativeLowFreqSamp
     MagFilter = LINEAR;
 };
 
+// R46: highlight warm bias EMA (written by corrective.fx WarmBias pass)
+texture2D WarmBiasTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+sampler2D WarmBiasSamp
+{
+    Texture   = WarmBiasTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
+// Zone global stats — col 6 of ChromaHistoryTex: r=log_key, g=zone_std, b=zmin, a=zmax
+texture2D ChromaHistoryTex { Width = 8; Height = 4; Format = RGBA16F; MipLevels = 1; };
+sampler2D ChromaHistSamp
+{
+    Texture   = ChromaHistoryTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
 // ─── Textures ─────────────────────────────────────────────────────────────
 
 texture2D BackBufferTex : COLOR;
@@ -71,7 +93,7 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float4 perc      = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
     float  p75       = perc.b;
     float  iqr       = perc.b - perc.r;
-    float  adapt_str = 0.09 * lerp(0.7, 1.3, saturate(iqr / 0.5));
+    float  adapt_str = MIST_STRENGTH * 0.09 * lerp(0.7, 1.3, saturate(iqr / 0.5));
 
     float  luma_in   = Luma(base.rgb);
     float  gate_lo   = saturate(p75 - 0.12);
@@ -79,9 +101,14 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float  luma_gate = smoothstep(gate_lo, gate_hi, luma_in)
                      * (1.0 - smoothstep(0.96, 1.0, luma_in));
 
+    // R46: adapt scatter weights to scene warmth — warm scene → neutral scatter
+    float  warm_bias = tex2Dlod(WarmBiasSamp, float4(0.5, 0.5, 0, 0)).r;
+    float  scatter_r = lerp(1.05, 1.00, smoothstep(0.02, 0.12,  warm_bias));
+    float  scatter_b = lerp(0.92, 1.00, smoothstep(0.02, 0.12,  warm_bias));
+
     // Additive chromatic composite — red scatters most (film layer physics: R deepest)
     float3 scatter_delta = max(0.0, diffused - base.rgb);
-    float3 result = base.rgb + scatter_delta * float3(1.05, 1.00, 0.92) * adapt_str * luma_gate;
+    float3 result = base.rgb + scatter_delta * float3(scatter_r, 1.00, scatter_b) * adapt_str * luma_gate;
 
     // Clarity: Laplacian residual, bell-weighted to midtones
     float3 detail = base.rgb - diffused;
@@ -96,7 +123,10 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float3 scatter_h = float3(halo_r.r, halo_g.g, diffused.b);
     float3 delta_h   = max(0.0, scatter_h - base.rgb);
     float auto_hal   = lerp(0.0, 0.22, smoothstep(0.55, 0.85, perc.b));
-    result          += delta_h * float3(1.20, 0.60, 0.25) * auto_hal * halo_gate;
+    // R46: adapt halation chromatic weights to scene warmth — warm scene → less red bleed
+    float  hal_r     = lerp(1.20, 1.00, smoothstep(0.02, 0.12, warm_bias));
+    float  hal_b     = lerp(0.25, 0.50, smoothstep(0.02, 0.12, warm_bias));
+    result          += delta_h * float3(hal_r, 0.60, hal_b) * auto_hal * halo_gate;
 
     float4 out_col = float4(saturate(result), base.a);
     out_col = DrawLabel(out_col, pos.xy, 270.0, 58.0,

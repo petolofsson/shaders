@@ -6,7 +6,7 @@
 // below "sees". Raising this (>1.0) darkens; lowering (<1.0) brightens.
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune
 // the contrast/chroma knobs beneath.
-#define EXPOSURE            1.00
+#define EXPOSURE            1.15
 
 // ── 3-WAY COLOR CORRECTOR ────────────────────────────────────────────────────
 // Runs after EXPOSURE and FilmCurve, before zone contrast. Primary color grade.
@@ -17,21 +17,19 @@
 #define SHADOW_TINT      0
 #define MID_TEMP         0
 #define MID_TINT         0
-#define HIGHLIGHT_TEMP  -20
+#define HIGHLIGHT_TEMP   0
 #define HIGHLIGHT_TINT   0
 
 // ── ZONE CONTRAST ────────────────────────────────────────────────────────────
-// Zone S-curve depth and spatial normalization are both automatic: driven by
-// zone_std (spread of the 16 spatial zone medians). Flat scenes get stronger
-// contrast (~0.30) and lighter normalization; contrasty scenes get less contrast
-// (~0.18) and stronger normalization. No user knobs.
+// Scales the adaptive zone S-curve strength. 1.0 = calibrated default.
+// Adaptive range is ~0.16–0.26 × ZONE_STRENGTH, driven by zone_std + scene key.
+// 0 = flat image. Above 1.5 = aggressive crushing.
+#define ZONE_STRENGTH  1.0
 
-// Clarity, shadow lift, density, chroma, and halation are all automated:
-//   auto_clarity  = lerp(35, 17, stevens_att*0.6 + (1-spread_att)*0.4)  [p50 + IQR]
-//   shadow_lift   = lerp(20, 5, smoothstep(0.04, 0.28, p25))
-//   chroma_str    = lerp(24, 12, smoothstep(0.05, 0.20, mean_chroma))
-//   density_str   = lerp(44, 60, smoothstep(0.05, 0.20, mean_chroma))
-//   auto_hal      = lerp(0.0, 0.22, smoothstep(0.55, 0.85, p75))
+// ── CHROMA ────────────────────────────────────────────────────────────────────
+// Scales the adaptive chroma lift strength. 1.0 = calibrated default.
+// Adaptive base is ~0.085 × hunt_scale × CHROMA_STRENGTH. 0 = no lift. Above 1.5 = oversaturation.
+#define CHROMA_STRENGTH  0.9
 
 // ── FILM CURVE CHARACTER ──────────────────────────────────────────────────────
 // Per-channel knee and toe offsets for the FilmCurve (Stage 1). These encode the
@@ -63,6 +61,14 @@
 #define VIGN_STRENGTH  0.00
 #define VIGN_RADIUS    0.40
 #define VIGN_CHROMA    0.00
+
+// ── PRO MIST ──────────────────────────────────────────────────────────────────
+// Overall scatter strength scalar. 1.0 = calibrated default (~9% base). 0 = off.
+#define MIST_STRENGTH  0.40
+
+// ── SHADOW LIFT ───────────────────────────────────────────────────────────────
+// Scales the adaptive shadow lift. 1.0 = calibrated default. 0 = disabled.
+#define SHADOW_LIFT  1.6
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.

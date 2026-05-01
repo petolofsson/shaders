@@ -244,7 +244,7 @@ float4 LumHistSmoothPS(float4 pos : SV_Position,
 {
     float raw  = tex2D(LumHistRaw, uv).r;
     float prev = tex2D(LumHist,    uv).r;
-    return float4(lerp(prev, raw, (LERP_SPEED / 100.0) * (frametime / 10.0)), 0.0, 0.0, 1.0);
+    return float4(lerp(prev, raw, saturate((LERP_SPEED / 100.0) * (frametime / 10.0))), 0.0, 0.0, 1.0);
 }
 
 // ─── Pass 6 — Smooth saturation histogram ──────────────────────────────────
@@ -254,7 +254,7 @@ float4 SatHistSmoothPS(float4 pos : SV_Position,
 {
     float raw  = tex2D(SatHistRaw, uv).r;
     float prev = tex2D(SatHist,    uv).r;
-    return float4(lerp(prev, raw, (LERP_SPEED / 100.0) * (frametime / 10.0)), 0.0, 0.0, 1.0);
+    return float4(lerp(prev, raw, saturate((LERP_SPEED / 100.0) * (frametime / 10.0))), 0.0, 0.0, 1.0);
 }
 
 // ─── Pass 7 — CDF walk → 1×1 percentile cache ─────────────────────────────
