@@ -12,19 +12,28 @@ supplies its own `creative_values.fx` and conf. Arc Raiders is the primary test 
 
 Chain (defined per game in conf):
 ```
-analysis_frame → analysis_scope_pre → corrective → grade → analysis_scope
+analysis_frame → analysis_scope_pre → corrective → grade → pro_mist → analysis_scope
 ```
 
 `grade.fx` is one MegaPass (`ColorTransformPS`) — all color work in registers:
 
 | Stage | Name | What it does |
 |-------|------|--------------|
+| 0 | FILM RANGE | R54: `col × (CEILING−FLOOR) + FLOOR` — camera signal floor/ceiling before EXPOSURE |
 | 1 | CORRECTIVE | `pow(rgb, EXPOSURE)` + FilmCurve (zone-informed, per-channel H&D knee/toe) |
-| 1.5 | PRINT STOCK | Kodak 2383 approximation: black lift, steeper toe, mid desaturation, warm cast |
-| 1.6 | DYE ABSORPTION | R50 dominant-channel soft attenuation on saturated pixels |
+| 1.5 | PRINT STOCK | Kodak 2383: black lift, steeper toe, mid desaturation, warm cast |
+| 1.6 | DYE ABSORPTION | R50: dominant-channel soft attenuation on saturated pixels |
 | 1.7 | 3-WAY CORRECTOR | Temp/tint per shadow/mid/highlight region (primary grade) |
 | 2 | TONAL | Zone S-curve (lum_att × zone_std auto) + CLAHE clip + Retinex (LOD 1) + Shadow lift |
 | 3 | CHROMA | Purkinje shift → sat-by-luma → hue rotation → chroma lift + HK + Abney + density + gamut compress |
+| 3.5 | HALATION | R56: tight chromatic scatter from specular highlights — R(mip1) > G(mip0), B=0 |
+| OUT | DITHER | ±0.5/255 screen-space noise — converts 8-bit BackBuffer quantization to imperceptible noise |
+
+`pro_mist.fx` runs after `grade.fx` as a separate effect (single-pass, re-enabled R55):
+
+| Stage | Name | What it does |
+|-------|------|--------------|
+| — | MIST | Bidirectional scatter from CreativeLowFreqTex (mip blend 0+1, IQR-driven radius) |
 
 Analysis textures written by `corrective.fx` before `grade.fx` runs:
 
@@ -41,19 +50,23 @@ Analysis textures written by `corrective.fx` before `grade.fx` runs:
 
 ## Knobs
 
-25 user-facing knobs. **Values below are Arc Raiders tuning.**
+30 user-facing knobs. **Values below are Arc Raiders tuning.**
 
 ```
-EXPOSURE            1.00
+EXPOSURE            1.03
+FILM_FLOOR          0.005
+FILM_CEILING        0.95
+
 PRINT_STOCK         0.20
+HAL_STRENGTH        0.35
 
 SHADOW_TEMP          0 / SHADOW_TINT 0
 MID_TEMP             0 / MID_TINT    0
 HIGHLIGHT_TEMP       0 / HIGHLIGHT_TINT 0
 
 ZONE_STRENGTH        1.0
-SHADOW_LIFT          2.0
-PURKINJE_STRENGTH    1.1
+SHADOW_LIFT          1.7
+PURKINJE_STRENGTH    1.3
 CHROMA_STRENGTH      0.9
 
 CURVE_R_KNEE        0.000 / CURVE_B_KNEE 0.000
@@ -63,7 +76,10 @@ ROT_RED 0.00 / ROT_YELLOW 0.00 / ROT_GREEN 0.00
 ROT_CYAN 0.00 / ROT_BLUE 0.00 / ROT_MAG 0.00
 
 CORRECTIVE_STRENGTH 100 / TONAL_STRENGTH 100
-MIST_STRENGTH 0.40 (pro_mist not in active chain)
+MIST_STRENGTH 0.25
+
+VIGN_STRENGTH 0.00 / VIGN_RADIUS 0.40 / VIGN_CHROMA 0.00  (retinal_vignette not in chain)
+VEIL_STRENGTH 0.00                                          (veil not in chain)
 ```
 
 **Automated (no knob):**
@@ -98,18 +114,18 @@ Goal: reduce knobs by automating scene-descriptive ones. All viable automation c
 vkBasalt runs. Every new pass must justify its cost. Additional passes in heavy scenes risk
 `VK_ERROR_DEVICE_LOST`.
 
-**pro_mist — must stay single-pass.** Two-pass version crashed Arc Raiders intermittently.
-`DiffuseTex` and `DiffuseHPS` removed. Not in active chain — `MIST_STRENGTH` knob preserved.
+**pro_mist — must stay single-pass.** Two-pass version caused `VK_ERROR_DEVICE_LOST`.
+`DiffuseTex` and `DiffuseHPS` removed. R55 rework (2026-05-01): bidirectional scatter,
+multi-scale mip blend, clarity boost removed, halation removed (→ R56 in grade.fx).
+Now back in the active chain. Output dithered.
 
-**Inactive effects (available in arc_raiders.conf):**
-- `veil` — atmospheric depth haze
-- `retinal_vignette` — natural optical vignetting
+**Inactive effects (available in arc_raiders.conf — not in effects line):**
+- `veil` — atmospheric depth haze. Use for games without volumetric fog. Skip for Arc
+  Raiders — Lumen handles atmospheric depth natively.
+- `retinal_vignette` — natural optical vignetting. Use for games without a built-in
+  vignette. Skip for Arc Raiders — engine vignette already present.
 
-**Not yet built:**
-- Halation — film emulsion scatter, localized to brightest highlights
-- Chromatic aberration
-- **R54** — camera signal floor/ceiling (black lift ~7.3% + white ceiling, ARRI-style).
-  Previously in `inverse_grade` (pulled). Proposal: two-line remap before EXPOSURE in `ColorTransformPS`.
+**Not yet built:** nothing. Chain is feature-complete as of 2026-05-01.
 
 ---
 
@@ -123,11 +139,15 @@ vkBasalt runs. Every new pass must justify its cost. Additional passes in heavy 
 
 **R51 complete** — print stock emulsion (Kodak 2383 approximation). `PRINT_STOCK 0.20`.
 
-**R52 complete** — Purkinje shift in deep shadows. `PURKINJE_STRENGTH 1.1`.
+**R52 complete** — Purkinje shift in deep shadows. `PURKINJE_STRENGTH 1.3`.
 
 **R53 complete** — scene-change Kalman reset. SceneCutTex 1×1; fires on hard cuts only.
 
-**R54 next** — camera signal floor/ceiling. Simple remap, no new pass.
+**R54 complete** — camera signal floor/ceiling. `FILM_FLOOR 0.005`, `FILM_CEILING 0.95`. Remap before EXPOSURE in `ColorTransformPS`.
+
+**R55 complete** — pro_mist rework. Bidirectional scatter, mip 0+1 blend (IQR-driven), clarity boost removed, R37 halation removed (→ R56), output dithered. `MIST_STRENGTH 0.25`. Re-enabled in chain.
+
+**R56 complete** — film halation. Tight chromatic scatter inside `ColorTransformPS` end of Stage 3. R(mip1) > G(mip0), B=0. Gate: smoothstep(0.80, 0.95, luma). `HAL_STRENGTH 0.35`. Self-regulating against game bloom.
 
 **Nightly jobs (04:00 local):** output to `R{next}_{YYYY-MM-DD}_{topic}.md`, push to `alpha`.
 - `Shader Research — Nightly` — domain-rotation literature search
@@ -138,4 +158,4 @@ vkBasalt runs. Every new pass must justify its cost. Additional passes in heavy 
 
 ## Active branch
 
-`alpha` — last committed 2026-05-01.
+`alpha` — v1.0 stable committed 2026-05-01.

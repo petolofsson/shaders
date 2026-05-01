@@ -223,6 +223,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float4 col = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return col;  // data highway
 
+    // R54: camera signal floor/ceiling — compress raw pixel into [FILM_FLOOR, FILM_CEILING]
+    col.rgb = col.rgb * (FILM_CEILING - FILM_FLOOR) + FILM_FLOOR;
+
     float4 perc = tex2D(PercSamp, float2(0.5, 0.5));
 
     // R32: zone global stats — pre-computed in UpdateHistoryPS, stored in ChromaHistoryTex col 6
@@ -402,6 +405,24 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float  gclip      = saturate((1.0 - L_grey) / max(rmax - L_grey, 0.001));
     chroma_rgb        = L_grey + gclip * (chroma_rgb - L_grey);
     lin = saturate(chroma_rgb);
+
+    // R56: film halation — tight chromatic emulsion scatter, red-dominant (red dye layer deepest)
+    {
+        float3 hal_r    = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 1)).rgb;  // mip 1 — red spreads most
+        float3 hal_g    = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 0)).rgb;  // mip 0 — green tighter
+        float  hal_luma = dot(lin, float3(0.2126, 0.7152, 0.0722));
+        float  hal_gate = smoothstep(0.80, 0.95, hal_luma);
+        float3 hal_delta = float3(
+            max(0.0, hal_r.r - lin.r),  // red: wide scatter
+            max(0.0, hal_g.g - lin.g),  // green: tight scatter
+            0.0                          // blue: none — film physics
+        );
+        lin = saturate(lin + hal_delta * float3(1.2, 0.45, 0.0) * hal_gate * HAL_STRENGTH);
+    }
+
+    // dither: break 8-bit BackBuffer quantization — converts banding to imperceptible noise
+    float dither = frac(sin(dot(pos.xy, float2(127.1, 311.7))) * 43758.5453) - 0.5;
+    lin += dither * (1.0 / 255.0);
 
     return DrawLabel(float4(lin, col.a), pos.xy, 270.0, 50.0,
                      54u, 71u, 82u, 65u, float3(0.2, 0.50, 1.0)); // 6GRA

@@ -1,7 +1,7 @@
 # R48 — Luminance-Adapted Zone Contrast
 
 **Date:** 2026-05-01
-**Status:** Implemented — pending validation
+**Status:** Implemented
 
 ---
 

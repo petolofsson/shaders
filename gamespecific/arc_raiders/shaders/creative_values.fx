@@ -6,7 +6,17 @@
 // below "sees". Raising this (>1.0) darkens; lowering (<1.0) brightens.
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune
 // the contrast/chroma knobs beneath.
-#define EXPOSURE            1.00
+#define EXPOSURE            1.03
+
+// ── CAMERA SIGNAL RANGE ───────────────────────────────────────────────────────
+// Remaps the raw pixel into [FILM_FLOOR, FILM_CEILING] before EXPOSURE runs.
+// FILM_FLOOR: black pedestal — prevents absolute digital black. 0 = off.
+//   0.005 matches actual linear-light value at the ARRI LogC3 black point.
+// FILM_CEILING: white headroom — pulls true white below clip before EXPOSURE.
+//   0.95 matches ARRI LogC3 usable ceiling (~91-92% of full scale).
+// Both at defaults (0 / 1) = passthrough (identity).
+#define FILM_FLOOR    0.005
+#define FILM_CEILING  0.95
 
 // ── 3-WAY COLOR CORRECTOR ────────────────────────────────────────────────────
 // Runs after EXPOSURE and FilmCurve, before zone contrast. Primary color grade.
@@ -49,6 +59,13 @@
 // behaviour). 1 = full 2383. 0.35 = recommended starting point.
 #define PRINT_STOCK  0.20
 
+// ── HALATION ──────────────────────────────────────────────────────────────────
+// Film emulsion scatter from specular highlights — tight red fringe around
+// brightest sources (luma > 0.80). Red scatters most (deepest dye layer),
+// green tighter, blue none. Fires inside game bloom radius, not on top of it.
+// 0 = off. 0.35 = calibrated default. 1.0 = Ektachrome-style aggressive.
+#define HAL_STRENGTH  0.35
+
 // ── HUE ROTATION ─────────────────────────────────────────────────────────────
 // Per-band rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
 // (Red→Yellow, Green→Cyan, Blue→Magenta). Default 0.0 = passthrough.
@@ -61,6 +78,7 @@
 
 // ── RETINAL VIGNETTE ─────────────────────────────────────────────────────────
 // Peripheral luminance darkening (SCE) + chroma desaturation (Purkinje shift).
+// Use for games with no built-in vignette. Skip if the game already has one.
 // VIGN_STRENGTH: max corner darkening. 0 = off. Scales with scene brightness.
 // VIGN_RADIUS:   Gaussian σ in aspect-corrected UV. Larger = wider bright centre.
 // VIGN_CHROMA:   max corner chroma reduction. 0 = luma-only. Scales with darkness.
@@ -68,19 +86,27 @@
 #define VIGN_RADIUS    0.40
 #define VIGN_CHROMA    0.00
 
+// ── VEIL ──────────────────────────────────────────────────────────────────────
+// Veiling glare: additive luminance lift simulating intraocular scatter and lens
+// reflections. Restores the contrast floor of real optical viewing.
+// Use for games with no volumetric fog or atmospheric depth. Skip if the game
+// has its own volumetric/fog system (it will compete).
+// VEIL_STRENGTH: glare as % of scene median luminance. 0 = off. 3–8 = subtle.
+#define VEIL_STRENGTH  0.00
+
 // ── PRO MIST ──────────────────────────────────────────────────────────────────
 // Overall scatter strength scalar. 1.0 = calibrated default (~9% base). 0 = off.
-#define MIST_STRENGTH  0.40
+#define MIST_STRENGTH  0.25
 
 // ── SHADOW LIFT ───────────────────────────────────────────────────────────────
 // Scales the adaptive shadow lift. 1.0 = calibrated default. 0 = disabled.
-#define SHADOW_LIFT  2.0
+#define SHADOW_LIFT  1.7
 
 // ── PURKINJE SHIFT ────────────────────────────────────────────────────────────
 // Rod-vision blue-green hue bias in deep shadows (luma < 0.12). Physiologically
 // correct — Cao et al. 2008, implemented in Ghost of Tsushima. Neutrals unaffected
 // (C=0 → zero shift). 1.0 = calibrated default. 0 = off.
-#define PURKINJE_STRENGTH  1.1
+#define PURKINJE_STRENGTH  1.3
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.

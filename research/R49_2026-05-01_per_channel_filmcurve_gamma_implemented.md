@@ -1,7 +1,7 @@
 # R49 — Per-Channel FilmCurve Shoulder/Toe Gamma
 
 **Date:** 2026-05-01
-**Status:** Implemented — pending validation
+**Status:** Implemented
 
 ---
 

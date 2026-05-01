@@ -27,7 +27,12 @@
       "WebFetch(domain:www.cl.cam.ac.uk)",
       "Bash(awk -F: '{print $1}')",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "WebFetch(domain:dicomp.arri.de)"
+      "WebFetch(domain:dicomp.arri.de)",
+      "WebFetch(domain:www.arri.com)",
+      "WebFetch(domain:pro.sony)",
+      "WebFetch(domain:docs.red.com)",
+      "WebFetch(domain:www.color.io)",
+      "WebFetch(domain:www.dehancer.com)"
     ]
   }
 }
