@@ -6,7 +6,7 @@
 // below "sees". Raising this (>1.0) darkens; lowering (<1.0) brightens.
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune
 // the contrast/chroma knobs beneath.
-#define EXPOSURE            1.10
+#define EXPOSURE            1.00
 
 // ── 3-WAY COLOR CORRECTOR ────────────────────────────────────────────────────
 // Runs after EXPOSURE and FilmCurve, before zone contrast. Primary color grade.
@@ -43,6 +43,12 @@
 #define CURVE_R_TOE    0.000
 #define CURVE_B_TOE    0.000
 
+// ── PRINT STOCK ───────────────────────────────────────────────────────────────
+// Kodak 2383 print emulsion on top of FilmCurve: lifts blacks, compresses
+// highlights, desaturates mids ~15%, adds warm shadow cast. 0 = off (current
+// behaviour). 1 = full 2383. 0.35 = recommended starting point.
+#define PRINT_STOCK  0.20
+
 // ── HUE ROTATION ─────────────────────────────────────────────────────────────
 // Per-band rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
 // (Red→Yellow, Green→Cyan, Blue→Magenta). Default 0.0 = passthrough.
@@ -68,7 +74,13 @@
 
 // ── SHADOW LIFT ───────────────────────────────────────────────────────────────
 // Scales the adaptive shadow lift. 1.0 = calibrated default. 0 = disabled.
-#define SHADOW_LIFT  1.7
+#define SHADOW_LIFT  2.0
+
+// ── PURKINJE SHIFT ────────────────────────────────────────────────────────────
+// Rod-vision blue-green hue bias in deep shadows (luma < 0.12). Physiologically
+// correct — Cao et al. 2008, implemented in Ghost of Tsushima. Neutrals unaffected
+// (C=0 → zero shift). 1.0 = calibrated default. 0 = off.
+#define PURKINJE_STRENGTH  1.1
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.

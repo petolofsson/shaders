@@ -1,7 +1,7 @@
 # R53 — Scene-Change Kalman Reset
 
 **Date:** 2026-05-01
-**Status:** Proposal
+**Status:** Implemented
 
 ---
 

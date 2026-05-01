@@ -241,6 +241,21 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
                            CURVE_R_KNEE, CURVE_B_KNEE, CURVE_R_TOE, CURVE_B_TOE);
     lin = lerp(col.rgb, lin, CORRECTIVE_STRENGTH / 100.0);
 
+    // ── R51: print stock emulsion — Kodak 2383 characteristic curve approximation ──
+    {
+        float3 ps      = lin * (1.0 - 0.025) + 0.025;
+        float3 toe     = ps * ps * 3.2;
+        float3 shoulder = 1.0 - (1.0 - ps) * (1.0 - ps) * 1.8;
+        ps = lerp(toe, shoulder, smoothstep(0.0, 0.5, ps));
+        float luma_ps = dot(ps, float3(0.2126, 0.7152, 0.0722));
+        float desat_w = 0.15 * (1.0 - smoothstep(0.0, 0.3, luma_ps))
+                              * (1.0 - smoothstep(0.6, 1.0, luma_ps));
+        ps = lerp(ps, luma_ps.xxx, desat_w);
+        ps.r += 0.012 * (1.0 - ps.r);
+        ps.b -= 0.008 * (1.0 - ps.b);
+        lin = lerp(lin, saturate(ps), PRINT_STOCK);
+    }
+
     // ── R50: dye secondary absorption — dominant-channel soft attenuation ─────
     {
         float lin_min   = min(lin.r, min(lin.g, lin.b));
@@ -293,6 +308,13 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float3 lab = RGBtoOklab(lin);
     float  C   = length(lab.yz);
     float  h   = OklabHueNorm(lab.y, lab.z);
+
+    // ── R52: Purkinje shift — rod-vision blue-green bias in deep shadows ───────
+    {
+        float scotopic_w = 1.0 - smoothstep(0.0, 0.12, new_luma);
+        lab.z -= 0.018 * scotopic_w * C * PURKINJE_STRENGTH;
+        C = length(lab.yz);
+    }
 
     // R22: saturation by luminance — baked Munsell calibration (shadow 20%, highlight 25%)
     C *= saturate(1.0 - 0.20 * saturate(1.0 - lab.x / 0.25)

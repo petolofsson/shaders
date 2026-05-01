@@ -110,12 +110,24 @@ sampler2D SatHist
     MagFilter = POINT;
 };
 
-// Shared percentile cache — r=p25, g=p50, b=p75, a=iqr
-// Written here, read by inverse_grade and corrective_render_chain
+// Shared percentile cache — r=p25, g=p50, b=p75, a=P (Kalman variance)
+// Written here, read by corrective_render_chain and grade
 texture2D PercTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
 sampler2D PercSamp
 {
     Texture   = PercTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
+// R53: scene-cut signal — r=scene_cut [0,1], g=p50 from last frame (for delta)
+// Written here, read by corrective passes to override Kalman gain
+texture2D SceneCutTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+sampler2D SceneCutSamp
+{
+    Texture   = SceneCutTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = POINT;
@@ -309,6 +321,16 @@ float4 CDFWalkPS(float4 pos : SV_Position,
                   P_new);
 }
 
+// ─── Pass 8 — R53: scene-cut detection ────────────────────────────────────
+
+float4 SceneCutPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    float p50_now  = tex2Dlod(PercSamp,    float4(0.5, 0.5, 0, 0)).g;
+    float p50_prev = tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0)).g;
+    float scene_cut = smoothstep(0.10, 0.25, abs(p50_now - p50_prev));
+    return float4(scene_cut, p50_now, 0.0, 1.0);
+}
+
 // ─── Technique ─────────────────────────────────────────────────────────────
 
 technique FrameAnalysis
@@ -353,5 +375,11 @@ technique FrameAnalysis
         VertexShader = PostProcessVS;
         PixelShader  = CDFWalkPS;
         RenderTarget = PercTex;
+    }
+    pass SceneCut
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = SceneCutPS;
+        RenderTarget = SceneCutTex;
     }
 }

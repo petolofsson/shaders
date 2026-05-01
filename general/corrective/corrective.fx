@@ -95,11 +95,22 @@ sampler2D ChromaHistory
     MagFilter = POINT;
 };
 
-// Global scene percentiles — r=p25, g=p50, b=p75, a=iqr (written by analysis_frame)
+// Global scene percentiles — r=p25, g=p50, b=p75, a=P (written by analysis_frame)
 texture2D PercTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
 sampler2D PercSamp
 {
     Texture   = PercTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
+// R53: scene-cut signal — r=scene_cut [0,1] (written by analysis_frame SceneCut pass)
+texture2D SceneCutTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+sampler2D SceneCutSamp
+{
+    Texture   = SceneCutTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = POINT;
@@ -294,12 +305,16 @@ float4 SmoothZoneLevelsPS(float4 pos : SV_Position,
     float Q_vff  = lerp(KALMAN_Q_MIN, KALMAN_Q_MAX, smoothstep(0.0, VFF_E_SIGMA, abs(e_zone)));
     float P_pred = P_prev + Q_vff;
     float K      = P_pred / (P_pred + KALMAN_R);
+    // R53: scene-cut override — spike K toward 1.0 on hard cuts
+    float scene_cut = tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0)).r;
+    K = lerp(K, 1.0, scene_cut);
     float median = prev.r + K * e_zone;
     float P_new  = (1.0 - K) * P_pred;
 
     // EMA: p25/p75 — steady-state gain
-    float p25 = lerp(prev.g, current.g, KALMAN_K_INF);
-    float p75 = lerp(prev.b, current.b, KALMAN_K_INF);
+    float k_ema = lerp(KALMAN_K_INF, 1.0, scene_cut);
+    float p25 = lerp(prev.g, current.g, k_ema);
+    float p75 = lerp(prev.b, current.b, k_ema);
 
     return float4(median, p25, p75, P_new);
 }
@@ -365,12 +380,16 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
     float Q_vff_c  = lerp(KALMAN_Q_MIN, KALMAN_Q_MAX, smoothstep(0.0, VFF_E_SIGMA_CHROMA, abs(e_chroma)));
     float P_pred   = P_prev + Q_vff_c;
     float K        = P_pred / (P_pred + KALMAN_R);
+    // R53: scene-cut override — spike K toward 1.0 on hard cuts
+    float scene_cut = tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0)).r;
+    K = lerp(K, 1.0, scene_cut);
     float new_mean = prev.r + K * e_chroma;
     float P_new    = (1.0 - K) * P_pred;
 
     // EMA: std and wsum — steady-state gain
-    float new_std  = lerp(prev.g, stddev, KALMAN_K_INF);
-    float new_wsum = lerp(prev.b, sum_w,  KALMAN_K_INF);
+    float k_ema    = lerp(KALMAN_K_INF, 1.0, scene_cut);
+    float new_std  = lerp(prev.g, stddev, k_ema);
+    float new_wsum = lerp(prev.b, sum_w,  k_ema);
 
     return float4(new_mean, new_std, new_wsum, P_new);
 }

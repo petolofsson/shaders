@@ -1,7 +1,7 @@
 # R52 — Purkinje Shift in Deep Shadows
 
 **Date:** 2026-05-01
-**Status:** Proposal
+**Status:** Implemented
 
 ---
 
