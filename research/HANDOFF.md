@@ -24,7 +24,7 @@ analysis_frame → analysis_scope_pre → corrective → grade → pro_mist → 
 | 1.5 | PRINT STOCK | Kodak 2383: black lift, steeper toe, mid desaturation, warm cast |
 | 1.6 | DYE ABSORPTION | R50: dominant-channel soft attenuation on saturated pixels |
 | 1.7 | 3-WAY CORRECTOR | Temp/tint per shadow/mid/highlight region (primary grade) |
-| 2 | TONAL | Zone S-curve (lum_att × zone_std auto) + CLAHE clip + Retinex (LOD 1) + Shadow lift |
+| 2 | TONAL | Zone S-curve (lum_att × zone_std auto) + CLAHE clip + Retinex (LOD 1) + Shadow lift (R60 context_lift) — applied as Oklab L-only scale (chroma-stable) |
 | 3 | CHROMA | Purkinje shift → sat-by-luma → hue rotation → chroma lift + HK + Abney + density + gamut compress |
 | 3.5 | HALATION | R56: tight chromatic scatter from specular highlights — R(mip1) > G(mip0), B=0 |
 | OUT | DITHER | ±0.5/255 screen-space noise — converts 8-bit BackBuffer quantization to imperceptible noise |
@@ -43,14 +43,14 @@ Analysis textures written by `corrective.fx` before `grade.fx` runs:
 | `CreativeZoneHistTex` | 32×16 | R16F | 32-bin luma histogram per zone |
 | `PercTex` | 1×1 | RGBA16F | .r=p25, .g=p50, .b=p75, .a=Kalman P (global luma) |
 | `SceneCutTex` | 1×1 | RGBA16F | .r=scene_cut [0,1], .g=p50 prev frame |
-| `ChromaHistoryTex` | 8×4 | RGBA16F | x=0..5: .r=mean C, .g=std C, .b=wsum, .a=Kalman P — x=6: .r=zone_log_key, .g=zone_std, .b=zmin, .a=zmax |
+| `ChromaHistoryTex` | 8×4 | RGBA16F | x=0..5: .r=mean C, .g=std C, .b=wsum, .a=Kalman P — x=6: .r=zone_log_key, .g=zone_std, .b=zmin, .a=zmax — x=7: .r=slow_key (R60 EMA, K=0.003) |
 | `CreativeLowFreqTex` | BW/8×BH/8 | RGBA16F | 1/8-res base image; luma in .a, MipLevels=3 |
 
 ---
 
 ## Knobs
 
-30 user-facing knobs. **Values below are Arc Raiders tuning.**
+28 user-facing knobs. **Values below are Arc Raiders tuning.**
 
 ```
 EXPOSURE            1.03
@@ -65,9 +65,7 @@ MID_TEMP             0 / MID_TINT    0
 HIGHLIGHT_TEMP       0 / HIGHLIGHT_TINT 0
 
 ZONE_STRENGTH        1.0
-SHADOW_LIFT          1.7
 PURKINJE_STRENGTH    1.3
-CHROMA_STRENGTH      0.9
 
 CURVE_R_KNEE        0.000 / CURVE_B_KNEE 0.000
 CURVE_R_TOE         0.000 / CURVE_B_TOE  0.000
@@ -86,7 +84,8 @@ VEIL_STRENGTH 0.00                                          (veil not in chain)
 - Zone S-curve strength — `lerp(0.26, 0.16, smoothstep(0.08, 0.25, zone_std)) * lerp(1.10, 0.93, lum_att)`
 - Retinex blend — `0.75 * smoothstep(0.04, 0.25, zone_std)`
 - Spatial normalization — `lerp(10, 30, smoothstep(0.08, 0.25, zone_std))`
-- Chroma/density strengths — driven by mean_chroma from ChromaHistoryTex
+- Shadow lift strength — `lerp(1.50, 0.45, smoothstep(0.03, 0.22, perc.r))` × context_lift (R60)
+- Chroma/density strengths — driven by mean_chroma from ChromaHistoryTex (R63)
 - Scene-cut Kalman gain — `lerp(K, 1.0, scene_cut)` from SceneCutTex
 
 ---
@@ -125,7 +124,7 @@ Now back in the active chain. Output dithered.
 - `retinal_vignette` — natural optical vignetting. Use for games without a built-in
   vignette. Skip for Arc Raiders — engine vignette already present.
 
-**Not yet built:** nothing. Chain is feature-complete as of 2026-05-01.
+**Not yet built:** nothing. Chain is feature-complete as of 2026-05-02.
 
 ---
 
@@ -149,6 +148,16 @@ Now back in the active chain. Output dithered.
 
 **R56 complete** — film halation. Tight chromatic scatter inside `ColorTransformPS` end of Stage 3. R(mip1) > G(mip0), B=0. Gate: smoothstep(0.80, 0.95, luma). `HAL_STRENGTH 0.35`. Self-regulating against game bloom.
 
+**R57–R59 complete** — shadow lift spatial attenuators: local range, texture, detail protect gates. Replaced fixed SHADOW_LIFT with auto formula.
+
+**R60 complete** — temporal context shadow lift. Slow ambient EMA (K=0.003, ~5.5 s to 63%) stored in ChromaHistoryTex x=7. `context_lift = exp2(log2(slow_key/zone_log_key) × 0.4)` — boosts lift on dark entry, suppresses on bright re-entry. Also: chroma-stable tonal — tonal luma ratio applied as Oklab L scale (r^(1/3)) instead of RGB proportional scale; prevents zone S-curve from contaminating chroma.
+
+**R61–R62 complete** — zero-error performance optimizations: CSE smoothstep, tex dedup, vectorised cbrt, Retinex algebraic collapse, FilmCurve scalar hoisting, log2/exp2 hygiene, h_out band weight cache. Actual VGPRs measured: **60 (no spill, 24 subgroups/SIMD)**.
+
+**R63 complete** — automation: SHADOW_LIFT and CHROMA_STRENGTH removed as manual knobs, replaced by scene-adaptive formulas.
+
+**HELMLAB complete** — 2-harmonic Fourier hue correction after `OklabHueNorm`. Corrects 8.9× blue-cyan non-uniformity. `h_perc = frac(h + (0.008·sin(θ) + 0.004·sin(2θ)) / 2π)`.
+
 **Nightly jobs (04:00 local):** output to `R{next}_{YYYY-MM-DD}_{topic}.md`, push to `alpha`.
 - `Shader Research — Nightly` — domain-rotation literature search
 - `Shader Automation Research` — knob-reduction formula derivation
@@ -158,4 +167,4 @@ Now back in the active chain. Output dithered.
 
 ## Active branch
 
-`alpha` — v1.0 stable committed 2026-05-01.
+`alpha` — 2026-05-02 session: R60 temporal context shadow lift, chroma-stable tonal, HELMLAB, R61–R63 automation + optimisations.

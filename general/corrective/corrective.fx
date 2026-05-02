@@ -324,7 +324,7 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
                        float2 uv  : TEXCOORD0) : SV_Target
 {
     int band_idx = int(pos.x);
-    if (pos.y >= 1.0 || band_idx >= 7) return float4(0, 0, 0, 0);
+    if (pos.y >= 1.0 || band_idx >= 8) return float4(0, 0, 0, 0);
 
     // Column 6: zone global stats (zone_log_key, zone_std, zmin, zmax) — free pixel, no chroma work
     if (band_idx == 6)
@@ -335,16 +335,25 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
         {
             float zm = tex2Dlod(ZoneHistorySamp,
                 float4((zx + 0.5) / 4.0, (zy + 0.5) / 4.0, 0, 0)).r;
-            lk  += log(max(zm, 0.001));
+            lk  += log2(max(zm, 0.001));
             m   += zm;
             m2  += zm * zm;
             zmin = min(zmin, zm);
             zmax = max(zmax, zm);
         }
         float zavg = m * 0.0625;
-        return float4(exp(lk * 0.0625),
+        return float4(exp2(lk * 0.0625),
                       sqrt(max(m2 * 0.0625 - zavg * zavg, 0.0)),
                       zmin, zmax);
+    }
+
+    // Column 7: slow ambient key — long time constant EMA for temporal context (R60)
+    if (band_idx == 7)
+    {
+        float zone_log_key = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
+        float prev_slow    = tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
+        if (prev_slow < 0.001) prev_slow = zone_log_key;
+        return float4(lerp(prev_slow, zone_log_key, 0.003), 0, 0, 0);
     }
 
     uint  base_idx = uint(FRAME_COUNT * 8) % 256u;

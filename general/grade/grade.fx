@@ -127,28 +127,17 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 
 float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
-float3 FilmCurve(float3 x, float p25, float p50, float p75, float spread,
-                 float r_knee_off, float b_knee_off, float r_toe_off, float b_toe_off)
+float3 FilmCurveApply(float3 x,
+                      float knee_r, float knee_g, float knee_b,
+                      float ktoe_r, float ktoe_g, float ktoe_b,
+                      float factor, float toe_fac)
 {
-    float knee     = lerp(0.90, 0.80, saturate((p75 - 0.60) / 0.30));
-    float width    = 1.0 - knee;
-    float stevens  = (1.48 + sqrt(max(p50, 0.0))) / 2.03;
-    float factor   = 0.05 / (width * width) * stevens * spread;
-    float knee_toe = lerp(0.15, 0.25, saturate((0.40 - p25) / 0.30));
-
-    float knee_r = clamp(knee + r_knee_off, 0.70, 0.95);
-    float knee_g = knee;
-    float knee_b = clamp(knee + b_knee_off, 0.70, 0.95);
-    float ktoe_r = clamp(knee_toe + r_toe_off, 0.08, 0.35);
-    float ktoe_g = knee_toe;
-    float ktoe_b = clamp(knee_toe + b_toe_off, 0.08, 0.35);
-
     float3 above      = max(x - float3(knee_r, knee_g, knee_b), 0.0);
     float3 below      = max(float3(ktoe_r, ktoe_g, ktoe_b) - x, 0.0);
     float3 shoulder_w = float3(0.91, 1.00, 1.06);
     float3 toe_w      = float3(0.95, 1.00, 1.04);
     return x - factor * shoulder_w * above * above
-               + (0.03 / (knee_toe * knee_toe)) * toe_w * below * below;
+               + toe_fac * toe_w * below * below;
 }
 
 float3 RGBtoOklab(float3 rgb)
@@ -241,8 +230,21 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
                        * lerp(1.10, 0.93, lum_att) * ZONE_STRENGTH;
 
     // ── 1. CORRECTIVE: EXPOSURE + FilmCurve ──────────────────────────────────
-    float3 lin = FilmCurve(pow(max(col.rgb, 0.0), EXPOSURE), eff_p25, zone_log_key, eff_p75, spread_scale,
-                           CURVE_R_KNEE, CURVE_B_KNEE, CURVE_R_TOE, CURVE_B_TOE);
+    // Frame-constant FilmCurve coefficients — hoisted out of per-pixel path (R62 OPT-2)
+    float fc_knee     = lerp(0.90, 0.80, saturate((eff_p75 - 0.60) / 0.30));
+    float fc_width    = 1.0 - fc_knee;
+    float fc_stevens  = (1.48 + sqrt(max(zone_log_key, 0.0))) / 2.03;
+    float fc_factor   = 0.05 / (fc_width * fc_width) * fc_stevens * spread_scale;
+    float fc_knee_toe = lerp(0.15, 0.25, saturate((0.40 - eff_p25) / 0.30));
+    float fc_knee_r   = clamp(fc_knee + CURVE_R_KNEE, 0.70, 0.95);
+    float fc_knee_b   = clamp(fc_knee + CURVE_B_KNEE, 0.70, 0.95);
+    float fc_ktoe_r   = clamp(fc_knee_toe + CURVE_R_TOE, 0.08, 0.35);
+    float fc_ktoe_b   = clamp(fc_knee_toe + CURVE_B_TOE, 0.08, 0.35);
+    float fc_toe_fac  = 0.03 / (fc_knee_toe * fc_knee_toe);
+    float3 lin = FilmCurveApply(pow(max(col.rgb, 0.0), EXPOSURE),
+                                fc_knee_r, fc_knee, fc_knee_b,
+                                fc_ktoe_r, fc_knee_toe, fc_ktoe_b,
+                                fc_factor, fc_toe_fac);
     lin = lerp(col.rgb, lin, CORRECTIVE_STRENGTH / 100.0);
 
     // ── R51: print stock emulsion — Kodak 2383 characteristic curve approximation ──
@@ -301,17 +303,26 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float illum_s0  = max(lf_mip1.a, 0.001);
     float illum_s2  = max(tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 2)).a, 0.001);
     float local_var = abs(illum_s0 - illum_s2);
-    float log_R     = log2(max(new_luma, 0.001) / illum_s0);
-    new_luma = lerp(new_luma, saturate(exp2(log_R + log2(max(zone_log_key, 0.001)))), 0.75 * ss_04_25);
+    float nl_safe   = max(new_luma, 0.001);
+    float log_R     = log2(nl_safe / illum_s0);
+    float zk_safe   = max(zone_log_key, 0.001);
+    new_luma = lerp(new_luma, saturate(nl_safe * zk_safe / illum_s0), 0.75 * ss_04_25);
 
     float local_range_att = 1.0 - smoothstep(0.20, 0.50, zone_iqr);
     float texture_att     = 1.0 - smoothstep(0.005, 0.030, local_var);
     float detail_protect  = smoothstep(-0.5, 0.0, log_R);
+    // R60: temporal context — slow ambient key boosts lift during dark transitions, suppresses on re-entry
+    float slow_key     = max(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0.001);
+    float context_lift = exp2(log2(slow_key / zk_safe) * 0.4);
     float shadow_lift_str = lerp(1.50, 0.45, smoothstep(0.03, 0.22, perc.r));
-    float shadow_lift     = shadow_lift_str * (0.149169 / (illum_s0 * illum_s0 + 0.003)) * local_range_att * texture_att * detail_protect;
+    float shadow_lift     = shadow_lift_str * (0.149169 / (illum_s0 * illum_s0 + 0.003)) * local_range_att * texture_att * detail_protect * context_lift;
     float lift_w      = new_luma * smoothstep(0.30, 0.0, new_luma);
     new_luma          = saturate(new_luma + (shadow_lift / 100.0) * 0.75 * lift_w);
-    lin          = saturate(lin * (new_luma / max(luma, 0.001)));
+    // R62 Finding 3: chroma-stable tonal — apply luma ratio in Oklab L to prevent zone S-curve from shifting chroma
+    float3 lab_t  = RGBtoOklab(saturate(lin));
+    float r_tonal = new_luma / max(luma, 0.001);
+    lab_t.x = saturate(lab_t.x * exp2(log2(max(r_tonal, 1e-10)) * (1.0 / 3.0)));
+    lin = saturate(OklabToRGB(lab_t));
     lin = lerp(lin_pre_tonal, lin, TONAL_STRENGTH / 100.0);
 
     // ── 3. CHROMA: Oklab chroma lift ──────────────────────────────────────────
@@ -342,6 +353,12 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
                     + ROT_BLUE   * HueBandWeight(h_perc, BAND_BLUE)
                     + ROT_MAG    * HueBandWeight(h_perc, BAND_MAGENTA);
     float h_out = frac(h_perc + r21_delta * 0.10);
+    float hw_o0 = HueBandWeight(h_out, BAND_RED);
+    float hw_o1 = HueBandWeight(h_out, BAND_YELLOW);
+    float hw_o2 = HueBandWeight(h_out, BAND_GREEN);
+    float hw_o3 = HueBandWeight(h_out, BAND_CYAN);
+    float hw_o4 = HueBandWeight(h_out, BAND_BLUE);
+    float hw_o5 = HueBandWeight(h_out, BAND_MAGENTA);
 
     float la         = max(zone_log_key, 0.001);
     float k          = 1.0 / (5.0 * la + 1.0);
@@ -362,7 +379,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         cm_w += hist_cache[bi].b;
     }
     float mean_chroma  = cm_t / max(cm_w, 0.001);
-    float chroma_exp  = exp(-3.47 * mean_chroma);
+    float chroma_exp  = exp2(-5.006152 * mean_chroma);
     float chroma_mc_t   = smoothstep(0.05, 0.25, mean_chroma);
     float chroma_p50_t  = smoothstep(0.15, 0.55, perc.g);
     float chroma_drive  = saturate(chroma_mc_t + 0.35 * chroma_p50_t);
@@ -379,7 +396,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // max(lifted, C) — lift-only; identity limit at C = 0 by construction
     float lifted_C = (total_w > 0.001) ? new_C / total_w : C;
     float final_C  = max(lifted_C, C);
-    green_w = HueBandWeight(h_out, BAND_GREEN);
+    green_w = hw_o2;
 
     // Vector-space (a,b) reconstruction — rotate original direction by R21 delta
     float r21_cos, r21_sin;
@@ -389,11 +406,11 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float  C_safe = max(C, 1e-6);
     float2 ab_s   = ab_in * (final_C / C_safe);
 
-    float abney  = (+HueBandWeight(h_out, BAND_RED)     * 0.06
-                   - HueBandWeight(h_out, BAND_YELLOW)  * 0.05
-                   - HueBandWeight(h_out, BAND_CYAN)    * 0.08
-                   + HueBandWeight(h_out, BAND_BLUE)    * 0.04
-                   + HueBandWeight(h_out, BAND_MAGENTA) * 0.03) * final_C;
+    float abney  = (+hw_o0 * 0.06
+                   - hw_o1 * 0.05
+                   - hw_o3 * 0.08
+                   + hw_o4 * 0.04
+                   + hw_o5 * 0.03) * final_C;
     float dtheta = +(GREEN_HUE_COOL * 2.0 * 3.14159265) * green_w * final_C + abney;
     float cos_dt = 1.0 - dtheta * dtheta * 0.5;
     float sin_dt = dtheta;
