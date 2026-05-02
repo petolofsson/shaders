@@ -307,7 +307,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float local_range_att = 1.0 - smoothstep(0.20, 0.50, zone_iqr);
     float texture_att     = 1.0 - smoothstep(0.005, 0.030, local_var);
     float detail_protect  = smoothstep(-0.5, 0.0, log_R);
-    float shadow_lift     = SHADOW_LIFT * (0.149169 / (illum_s0 * illum_s0 + 0.003)) * local_range_att * texture_att * detail_protect;
+    float shadow_lift_str = lerp(1.30, 0.45, smoothstep(0.03, 0.22, perc.r));
+    float shadow_lift     = shadow_lift_str * (0.149169 / (illum_s0 * illum_s0 + 0.003)) * local_range_att * texture_att * detail_protect;
     float lift_w      = new_luma * smoothstep(0.30, 0.0, new_luma);
     new_luma          = saturate(new_luma + (shadow_lift / 100.0) * 0.75 * lift_w);
     lin          = saturate(lin * (new_luma / max(luma, 0.001)));
@@ -358,7 +359,10 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     }
     float mean_chroma  = cm_t / max(cm_w, 0.001);
     float chroma_exp  = exp(-3.47 * mean_chroma);
-    float chroma_str  = saturate(0.085 * chroma_exp * hunt_scale * CHROMA_STRENGTH);
+    float chroma_mc_t   = smoothstep(0.05, 0.25, mean_chroma);
+    float chroma_p50_t  = smoothstep(0.15, 0.55, perc.g);
+    float chroma_drive  = saturate(chroma_mc_t + 0.35 * chroma_p50_t);
+    float chroma_str    = saturate(0.085 * chroma_exp * hunt_scale * lerp(1.25, 0.60, chroma_drive));
     float density_str = 62.0 - 20.0 * chroma_exp;
 
     float new_C = 0.0, total_w = 0.0, green_w = 0.0;

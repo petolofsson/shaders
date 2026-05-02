@@ -36,11 +36,6 @@
 // 0 = flat image. Above 1.5 = aggressive crushing.
 #define ZONE_STRENGTH  1.35
 
-// ── CHROMA ────────────────────────────────────────────────────────────────────
-// Scales the adaptive chroma lift strength. 1.0 = calibrated default.
-// Adaptive base is ~0.085 × hunt_scale × CHROMA_STRENGTH. 0 = no lift. Above 1.5 = oversaturation.
-#define CHROMA_STRENGTH  0.95
-
 // ── FILM CURVE CHARACTER ──────────────────────────────────────────────────────
 // Per-channel knee and toe offsets for the FilmCurve (Stage 1). These encode the
 // physical dye-layer cross-over character of different film stocks: red compresses
@@ -97,10 +92,6 @@
 // ── PRO MIST ──────────────────────────────────────────────────────────────────
 // Overall scatter strength scalar. 1.0 = calibrated default (~9% base). 0 = off.
 #define MIST_STRENGTH  0.22
-
-// ── SHADOW LIFT ───────────────────────────────────────────────────────────────
-// Scales the adaptive shadow lift. 1.0 = calibrated default. 0 = disabled.
-#define SHADOW_LIFT  1.5
 
 // ── PURKINJE SHIFT ────────────────────────────────────────────────────────────
 // Rod-vision blue-green hue bias in deep shadows (luma < 0.12). Physiologically
