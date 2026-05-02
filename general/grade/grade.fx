@@ -318,6 +318,10 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float3 lab = RGBtoOklab(lin);
     float  C   = length(lab.yz);
     float  h   = OklabHueNorm(lab.y, lab.z);
+    // HELMLAB: 2-harmonic Fourier correction aligns Oklab hue toward perceptual hue.
+    // Corrects 8.9× non-uniformity in blue-cyan band (HELMLAB 2026, arxiv 2602.23010).
+    float  h_theta = h * 6.28318;
+    float  h_perc  = frac(h + (0.008 * sin(h_theta) + 0.004 * sin(2.0 * h_theta)) / 6.28318);
 
     // ── R52: Purkinje shift — rod-vision blue-green bias in deep shadows ───────
     {
@@ -331,13 +335,13 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
                       - 0.25 * saturate((lab.x - 0.75) / 0.25));
 
     // R21: per-band hue rotation — compute h_out from original h before chroma lift
-    float r21_delta = ROT_RED    * HueBandWeight(h, BAND_RED)
-                    + ROT_YELLOW * HueBandWeight(h, BAND_YELLOW)
-                    + ROT_GREEN  * HueBandWeight(h, BAND_GREEN)
-                    + ROT_CYAN   * HueBandWeight(h, BAND_CYAN)
-                    + ROT_BLUE   * HueBandWeight(h, BAND_BLUE)
-                    + ROT_MAG    * HueBandWeight(h, BAND_MAGENTA);
-    float h_out = frac(h + r21_delta * 0.10);
+    float r21_delta = ROT_RED    * HueBandWeight(h_perc, BAND_RED)
+                    + ROT_YELLOW * HueBandWeight(h_perc, BAND_YELLOW)
+                    + ROT_GREEN  * HueBandWeight(h_perc, BAND_GREEN)
+                    + ROT_CYAN   * HueBandWeight(h_perc, BAND_CYAN)
+                    + ROT_BLUE   * HueBandWeight(h_perc, BAND_BLUE)
+                    + ROT_MAG    * HueBandWeight(h_perc, BAND_MAGENTA);
+    float h_out = frac(h_perc + r21_delta * 0.10);
 
     float la         = max(zone_log_key, 0.001);
     float k          = 1.0 / (5.0 * la + 1.0);
@@ -368,7 +372,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float new_C = 0.0, total_w = 0.0, green_w = 0.0;
     [unroll] for (int band = 0; band < 6; band++)
     {
-        float w = HueBandWeight(h, GetBandCenter(band));
+        float w = HueBandWeight(h_perc, GetBandCenter(band));
         new_C   += PivotedSCurve(C, hist_cache[band].r, chroma_str) * w;
         total_w += w;
     }
