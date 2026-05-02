@@ -156,9 +156,8 @@ float3 RGBtoOklab(float3 rgb)
     float l = dot(rgb, float3(0.4122214708, 0.5363325363, 0.0514459929));
     float m = dot(rgb, float3(0.2119034982, 0.6806995451, 0.1073969566));
     float s = dot(rgb, float3(0.0883024619, 0.2817188376, 0.6299787005));
-    l = pow(l, 1.0 / 3.0);
-    m = pow(m, 1.0 / 3.0);
-    s = pow(s, 1.0 / 3.0);
+    float3 lms_cbrt = exp2(log2(max(float3(l, m, s), 1e-10)) * (1.0 / 3.0));
+    l = lms_cbrt.x; m = lms_cbrt.y; s = lms_cbrt.z;
     return float3(
         dot(float3(l, m, s), float3( 0.2104542553,  0.7936177850, -0.0040720468)),
         dot(float3(l, m, s), float3( 1.9779984951, -2.4285922050,  0.4505937099)),
@@ -234,9 +233,11 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float zone_std     = zstats.g;
     float eff_p25      = lerp(perc.r, zstats.b, 0.4);
     float eff_p75      = lerp(perc.b, zstats.a, 0.4);
-    float spread_scale = lerp(0.7, 1.1, smoothstep(0.08, 0.25, zone_std));
+    float ss_08_25     = smoothstep(0.08, 0.25, zone_std);
+    float ss_04_25     = smoothstep(0.04, 0.25, zone_std);
+    float spread_scale = lerp(0.7, 1.1, ss_08_25);
     float lum_att      = smoothstep(0.10, 0.40, zone_log_key);
-    float zone_str     = lerp(0.26, 0.16, smoothstep(0.08, 0.25, zone_std))
+    float zone_str     = lerp(0.26, 0.16, ss_08_25)
                        * lerp(1.10, 0.93, lum_att) * ZONE_STRENGTH;
 
     // ── 1. CORRECTIVE: EXPOSURE + FilmCurve ──────────────────────────────────
@@ -289,18 +290,19 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float zone_median = zone_lvl.r;
     float zone_iqr    = zone_lvl.b - zone_lvl.g;
     // R33: CLAHE-inspired clip limit — bounds S-curve slope; tightens when Retinex is engaged
-    float clahe_slope = lerp(1.32, 1.12, smoothstep(0.04, 0.25, zone_std));
+    float clahe_slope = lerp(1.32, 1.12, ss_04_25);
     float iqr_scale   = min(smoothstep(0.0, 0.25, zone_iqr),
                             (clahe_slope - 1.0) / max(zone_str, 0.001));
     float new_luma    = saturate(zone_median + (luma - zone_median) * (1.0 + zone_str * iqr_scale * (1.0 - saturate(abs(luma - zone_median)))));
 
 
     // R29: Multi-Scale Retinex — pixel-local illumination/reflectance separation
-    float illum_s0  = max(tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 1)).a, 0.001);
+    float4 lf_mip1  = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 1));
+    float illum_s0  = max(lf_mip1.a, 0.001);
     float illum_s2  = max(tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 2)).a, 0.001);
     float local_var = abs(illum_s0 - illum_s2);
     float log_R     = log2(max(new_luma, 0.001) / illum_s0);
-    new_luma = lerp(new_luma, saturate(exp2(log_R + log2(max(zone_log_key, 0.001)))), 0.75 * smoothstep(0.04, 0.25, zone_std));
+    new_luma = lerp(new_luma, saturate(exp2(log_R + log2(max(zone_log_key, 0.001)))), 0.75 * ss_04_25);
 
     float local_range_att = 1.0 - smoothstep(0.20, 0.50, zone_iqr);
     float texture_att     = 1.0 - smoothstep(0.005, 0.030, local_var);
@@ -412,7 +414,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
     // R56: film halation — tight chromatic emulsion scatter, red-dominant (red dye layer deepest)
     {
-        float3 hal_r    = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 1)).rgb;  // mip 1 — red spreads most
+        float3 hal_r    = lf_mip1.rgb;  // mip 1 — red spreads most (hoisted, shared with Retinex read)
         float3 hal_g    = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 0)).rgb;  // mip 0 — green tighter
         float  hal_luma = dot(lin, float3(0.2126, 0.7152, 0.0722));
         float  hal_gate = smoothstep(0.80, 0.95, hal_luma);

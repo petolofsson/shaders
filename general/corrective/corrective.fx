@@ -160,9 +160,8 @@ float3 RGBtoOklab(float3 rgb)
     float m = dot(rgb, float3(0.2119034982, 0.6806995451, 0.1073969566));
     float s = dot(rgb, float3(0.0883024619, 0.2817188376, 0.6299787005));
 
-    l = pow(l, 1.0 / 3.0);
-    m = pow(m, 1.0 / 3.0);
-    s = pow(s, 1.0 / 3.0);
+    float3 lms_cbrt = exp2(log2(max(float3(l, m, s), 1e-10)) * (1.0 / 3.0));
+    l = lms_cbrt.x; m = lms_cbrt.y; s = lms_cbrt.z;
 
     return float3(
         dot(float3(l, m, s), float3( 0.2104542553,  0.7936177850, -0.0040720468)),
