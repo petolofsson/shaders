@@ -307,7 +307,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float local_range_att = 1.0 - smoothstep(0.20, 0.50, zone_iqr);
     float texture_att     = 1.0 - smoothstep(0.005, 0.030, local_var);
     float detail_protect  = smoothstep(-0.5, 0.0, log_R);
-    float shadow_lift_str = lerp(1.30, 0.45, smoothstep(0.03, 0.22, perc.r));
+    float shadow_lift_str = lerp(1.50, 0.45, smoothstep(0.03, 0.22, perc.r));
     float shadow_lift     = shadow_lift_str * (0.149169 / (illum_s0 * illum_s0 + 0.003)) * local_range_att * texture_att * detail_protect;
     float lift_w      = new_luma * smoothstep(0.30, 0.0, new_luma);
     new_luma          = saturate(new_luma + (shadow_lift / 100.0) * 0.75 * lift_w);
