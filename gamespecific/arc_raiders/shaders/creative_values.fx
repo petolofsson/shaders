@@ -6,7 +6,7 @@
 // below "sees". Raising this (>1.0) darkens; lowering (<1.0) brightens.
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune
 // the contrast/chroma knobs beneath.
-#define EXPOSURE            1.03
+#define EXPOSURE            1.00
 
 // ── CAMERA SIGNAL RANGE ───────────────────────────────────────────────────────
 // Remaps the raw pixel into [FILM_FLOOR, FILM_CEILING] before EXPOSURE runs.
@@ -15,8 +15,8 @@
 // FILM_CEILING: white headroom — pulls true white below clip before EXPOSURE.
 //   0.95 matches ARRI LogC3 usable ceiling (~91-92% of full scale).
 // Both at defaults (0 / 1) = passthrough (identity).
-#define FILM_FLOOR    0.005
-#define FILM_CEILING  0.95
+#define FILM_FLOOR    0.000
+#define FILM_CEILING  1.00
 
 // ── 3-WAY COLOR CORRECTOR ────────────────────────────────────────────────────
 // Runs after EXPOSURE and FilmCurve, before zone contrast. Primary color grade.

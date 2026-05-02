@@ -112,6 +112,17 @@ sampler2D ShadowBiasSamp
     MagFilter = POINT;
 };
 
+// R53: scene-cut signal (written by analysis_frame, read here for R66 gate)
+texture2D SceneCutTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+sampler2D SceneCutSamp
+{
+    Texture   = SceneCutTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
 // ─── Vertex shader ─────────────────────────────────────────────────────────
 
 void PostProcessVS(in  uint   id  : SV_VertexID,
@@ -278,7 +289,13 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         float r19_hl   = saturate((r19_luma - 0.65) / 0.35);
         float r19_mid  = 1.0 - r19_sh - r19_hl;
 
-        float3 r19_sh_delta  = float3(+SHADOW_TEMP    + SHADOW_TINT    * 0.5, -SHADOW_TINT,    -SHADOW_TEMP    + SHADOW_TINT    * 0.5) * 0.0003;
+        // R47: scene-adaptive shadow temperature — gated by zone_std to exclude UI frames
+        float shadow_bias  = tex2Dlod(ShadowBiasSamp, float4(0.5, 0.5, 0, 0)).r;
+        float r47_gate     = smoothstep(0.06, 0.15, zone_std);
+        float sh_temp_auto = clamp(lerp(0.0, -20.0, smoothstep(0.02, 0.12,  shadow_bias))
+                                 + lerp(0.0, +15.0, smoothstep(0.02, 0.10, -shadow_bias)),
+                                   -22.0, 18.0) * r47_gate;
+        float3 r19_sh_delta  = float3(+(SHADOW_TEMP + sh_temp_auto) + SHADOW_TINT * 0.5, -SHADOW_TINT, -(SHADOW_TEMP + sh_temp_auto) + SHADOW_TINT * 0.5) * 0.0003;
         float3 r19_mid_delta = float3(+MID_TEMP       + MID_TINT       * 0.5, -MID_TINT,       -MID_TEMP       + MID_TINT       * 0.5) * 0.0003;
         float3 r19_hl_delta  = float3(+HIGHLIGHT_TEMP + HIGHLIGHT_TINT * 0.5, -HIGHLIGHT_TINT, -HIGHLIGHT_TEMP + HIGHLIGHT_TINT * 0.5) * 0.0003;
 
@@ -307,6 +324,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float log_R     = log2(nl_safe / illum_s0);
     float zk_safe   = max(zone_log_key, 0.001);
     new_luma = lerp(new_luma, saturate(nl_safe * zk_safe / illum_s0), 0.75 * ss_04_25);
+    // R72: reflectance-based local contrast — Retinex log_R is illumination-free detail signal.
+    float clarity_gate = smoothstep(0.06, 0.25, new_luma);
+    new_luma = saturate(new_luma + 0.10 * log_R * clarity_gate * (1.0 - new_luma));
 
     float local_range_att = 1.0 - smoothstep(0.20, 0.50, zone_iqr);
     float texture_att     = 1.0 - smoothstep(0.005, 0.030, local_var);
@@ -322,6 +342,23 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float3 lab_t  = RGBtoOklab(saturate(lin));
     float r_tonal = new_luma / max(luma, 0.001);
     lab_t.x = saturate(lab_t.x * exp2(log2(max(r_tonal, 1e-10)) * (1.0 / 3.0)));
+    // R65: couple a/b to L — maintains C/L (Oklab saturation) during shadow lift
+    float r65_ab = exp2(log2(max(r_tonal, 1e-5)) * 0.333);
+    float r65_sw = smoothstep(0.30, 0.0, lab_t.x);
+    lab_t.y = lab_t.y * lerp(1.0, r65_ab, r65_sw);
+    lab_t.z = lab_t.z * lerp(1.0, r65_ab, r65_sw);
+    // R66: ambient shadow tint — inject scene-ambient hue into achromatic lifted shadows.
+    // Normalise illum_s2 RGB to extract hue direction at 18% gray (decouples from local luma).
+    {
+        float3 illum_s2_rgb = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 2.0)).rgb;
+        float3 illum_norm   = illum_s2_rgb / max(Luma(illum_s2_rgb), 0.001);
+        float3 lab_amb      = RGBtoOklab(illum_norm * 0.18);
+        float  scene_cut    = tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0)).r;
+        float  achrom_w     = 1.0 - smoothstep(0.0, 0.05, length(lab_t.yz));
+        float  r66_w        = r65_sw * achrom_w * (1.0 - scene_cut) * 0.4;
+        lab_t.y = lerp(lab_t.y, lab_amb.y, r66_w);
+        lab_t.z = lerp(lab_t.z, lab_amb.z, r66_w);
+    }
     lin = saturate(OklabToRGB(lab_t));
     lin = lerp(lin_pre_tonal, lin, TONAL_STRENGTH / 100.0);
 
@@ -341,9 +378,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         C = length(lab.yz);
     }
 
-    // R22: saturation by luminance — baked Munsell calibration (shadow 20%, highlight 25%)
+    // R22: saturation by luminance — baked Munsell calibration (shadow 20%, highlight 45%)
     C *= saturate(1.0 - 0.20 * saturate(1.0 - lab.x / 0.25)
-                      - 0.25 * saturate((lab.x - 0.75) / 0.25));
+                      - 0.45 * saturate((lab.x - 0.75) / 0.25));
 
     // R21: per-band hue rotation — compute h_out from original h before chroma lift
     float r21_delta = ROT_RED    * HueBandWeight(h_perc, BAND_RED)
@@ -352,6 +389,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
                     + ROT_CYAN   * HueBandWeight(h_perc, BAND_CYAN)
                     + ROT_BLUE   * HueBandWeight(h_perc, BAND_BLUE)
                     + ROT_MAG    * HueBandWeight(h_perc, BAND_MAGENTA);
+    // R75: hue-by-luminance — cool shadows, warm highlights (2383 tonal character)
+    r21_delta += lerp(-0.003, +0.003, lab.x);
     float h_out = frac(h_perc + r21_delta * 0.10);
     float hw_o0 = HueBandWeight(h_out, BAND_RED);
     float hw_o1 = HueBandWeight(h_out, BAND_YELLOW);
@@ -385,6 +424,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float chroma_drive  = saturate(chroma_mc_t + 0.35 * chroma_p50_t);
     float chroma_str    = saturate(0.085 * chroma_exp * hunt_scale * lerp(1.25, 0.60, chroma_drive));
     float density_str = 62.0 - 20.0 * chroma_exp;
+    // R68A: spatial chroma modulation — attenuate in textured regions, full in flat.
+    chroma_str *= lerp(1.0, 0.65, smoothstep(0.02, 0.08, local_var));
 
     float new_C = 0.0, total_w = 0.0, green_w = 0.0;
     [unroll] for (int band = 0; band < 6; band++)
@@ -395,7 +436,13 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     }
     // max(lifted, C) — lift-only; identity limit at C = 0 by construction
     float lifted_C = (total_w > 0.001) ? new_C / total_w : C;
-    float final_C  = max(lifted_C, C);
+    // R71: vibrance — attenuate lift delta on already-saturated pixels.
+    float vib_mask = saturate(1.0 - C / 0.22);
+    float vib_C    = C + max(lifted_C - C, 0.0) * vib_mask;
+    // R73: memory color protection — per-band chroma ceiling (sky/foliage/skin).
+    float C_ceil   = hw_o0 * 0.28 + hw_o1 * 0.22 + hw_o2 * 0.16
+                   + hw_o3 * 0.18 + hw_o4 * 0.26 + hw_o5 * 0.22;
+    float final_C  = min(vib_C, max(C_ceil, C));
     green_w = hw_o2;
 
     // Vector-space (a,b) reconstruction — rotate original direction by R21 delta
@@ -406,10 +453,11 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float  C_safe = max(C, 1e-6);
     float2 ab_s   = ab_in * (final_C / C_safe);
 
-    float abney  = (+hw_o0 * 0.06
-                   - hw_o1 * 0.05
-                   - hw_o3 * 0.08
-                   + hw_o4 * 0.04
+    float abney  = (+hw_o0 * 0.06    // RED     — shifts toward yellow
+                   - hw_o1 * 0.05    // YELLOW  — shifts toward red
+                   + hw_o2 * 0.02    // GREEN   — shifts toward yellow-green (R69)
+                   - hw_o3 * 0.08    // CYAN    — shifts toward yellow-green
+                   + hw_o4 * 0.04    // BLUE    — shifts toward purple
                    + hw_o5 * 0.03) * final_C;
     float dtheta = +(GREEN_HUE_COOL * 2.0 * 3.14159265) * green_w * final_C + abney;
     float cos_dt = 1.0 - dtheta * dtheta * 0.5;
@@ -430,6 +478,11 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float  delta_C    = max(final_C - C, 0.0);
     float  density_L  = saturate(final_L - delta_C * headroom * (density_str / 100.0));
 
+    // R68B: gamut pre-knee — Reinhard soft chroma rolloff in last 12% of headroom.
+    float ck_near = max(0.0, 0.12 - headroom) / 0.12;
+    float ck_fac  = 1.0 - 0.18 * ck_near / (1.0 + ck_near);
+    f_oka *= ck_fac;
+    f_okb *= ck_fac;
     float3 chroma_rgb = OklabToRGB(float3(density_L, f_oka, f_okb));
     float  rmax       = max(chroma_rgb.r, max(chroma_rgb.g, chroma_rgb.b));
     float  L_grey     = density_L * density_L * density_L;
