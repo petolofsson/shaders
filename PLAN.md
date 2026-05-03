@@ -415,8 +415,15 @@ and produce chroma and hue errors that compound through every subsequent stage.
 **Targets:** New — not tracked in existing novelty scores
 
 **Problem:**
-Arc Raiders uses UE5's ACES Filmic tone mapper. The UE5 implementation is the Hill
-modified ACES approximation:
+The pipeline is game-agnostic — different games apply different tone mappers (or none)
+before vkBasalt sees the frame. R86 must never assume a specific mapper is present.
+The design requirement: detect which tone mapper was applied from display-referred
+statistics already in PercTex / CreativeZoneHistTex, apply the correct inverse only
+when confidence is high, and fall back to identity otherwise. The result must be
+perceptually neutral on games that do not use ACES.
+
+Arc Raiders (UE5) is the primary validation case — it is known to use the Hill 2016
+ACES approximation:
 
 ```hlsl
 // UE5 ACES approx (Hill 2016)
@@ -432,11 +439,12 @@ which is exactly what the display-referred SDR output provides.
 
 **Approach:**
 
-1. **Confirm tone mapper identity** — The ACES coefficients produce a characteristic
-   neutral-gray response curve. From PercTex p25/p50/p75 and a few quantiles from the
-   histogram, fit the rational function coefficients and compare against known presets
-   (UE5 ACES, Reinhard, GTOneCurve). Arc Raiders is known UE5, so this is validation
-   rather than discovery.
+1. **Identify tone mapper from scene statistics** — The ACES coefficients produce a
+   characteristic histogram shape (p75/p50 shoulder ratio, p25/p50 toe ratio, zone
+   histogram overflow pattern) that distinguishes it from Reinhard, Hable/Uncharted2,
+   AgX, and linear/no-TMO. Compute a per-frame confidence score; apply the analytic
+   inverse only when `aces_conf > 0.7`. Below 0.3, pass through as identity. Arc Raiders
+   is the known-good validation case; GZW must score low and receive no modification.
 
 2. **Derive analytical inverse** — For the rational form `y = (ax²+bx)/(cx²+dx+e)`,
    rearrange to quadratic: `(cy-a)x² + (dy-b)x + ey = 0`. Solve for `x` (taking the
@@ -467,10 +475,10 @@ The combination of: stat-driven parameter confirmation → analytical inverse �
 
 **Research deliverables:**
 
-- Verify UE5 ACES coefficient fingerprint in Arc Raiders from p-value analysis
+- Validate ACES confidence score on Arc Raiders (should score high) and GZW (should score low / identity)
 - Derive the HLSL inverse and validate it with forward(inverse(x)) ≈ x across [0.01, 0.99]
 - Characterise ACES hue distortions at different luminance/chroma combinations
-- Prototype in `unused/` — do NOT integrate until validated end-to-end
+- Prototype in `unused/` — do NOT integrate until validated end-to-end on both games
 - Write findings doc before touching any live shader
 
 **Risk factors:**
@@ -491,7 +499,7 @@ changes without a validated prototype in `unused/`.
 If R86 succeeds, the Stage 0 input block gains a new first step:
 
 ```
-[BackBuffer] → ACES⁻¹ (R86) → EXPOSURE → CAT16 (R76A) → VIEWING_SURROUND (R76B)
+[BackBuffer] → TMO⁻¹ (R86, confidence-gated) → EXPOSURE → CAT16 (R76A) → VIEWING_SURROUND (R76B)
 ```
 
 Stages 1–Output then operate on approximately scene-linear values.
