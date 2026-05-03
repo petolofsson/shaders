@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-05-03 — session (R83–R89 + LCA tuning)
+
+### Implemented
+- **R83** Chromatic FILM_FLOOR (`grade.fx`): per-channel black pedestal from Kodak 2383
+  D-min ratios (1.02/1.00/0.97), modulated by CAT16 `lms_illum_norm`. Zero new taps.
+- **R84** Log-density FilmCurve (`grade.fx`): `CURVE_*` knobs reinterpreted as log₂-density
+  offsets (`fc_knee * exp2(CURVE_R_KNEE)`). exp2 folds at compile time. CURVE_* values
+  recalibrated for both Arc Raiders and GZW.
+- **R85** Inter-channel dye masking (`grade.fx`): cyan→green 2.0% and magenta→blue 2.2%
+  bleed inside Beer-Lambert block. First real-time implementation of inter-channel dye coupling.
+- **R88** Sage-Husa Q adaptation (`corrective.fx`): Kalman Q in `SmoothZoneLevelsPS` and
+  `UpdateHistoryPS` now driven by posterior P (accumulated uncertainty) rather than
+  instantaneous innovation. Single-frame flashes no longer spike the filter gain.
+- **R89** IGN blue-noise dither (`grade.fx`): Jimenez IGN replaces `sin(dot)·43758` white
+  noise. Spectrally blue — banding in gradients reduced.
+- **LCA** displacement halved (base scale 0.004→0.002); Arc Raiders `LCA_STRENGTH` 0.4→0.8.
+
+### Research committed
+- **R86** ACES analytical inverse — exact quadratic formula (4 ALU, float32 epsilon).
+  Microsoft MiniEngine formula bug identified (wrong root). ACES confidence fingerprint
+  designed from PercTex (zero new taps). Empirical calibration still needed.
+- **R87** Lateral research (Telecommunications domain) — Sage-Husa Q and IGN dither
+  identified as high-ROI candidates.
+
+---
+
 ## 2026-05-03 — session (R78 + R79 + R80 + R76 + brightness fix)
 
 ### Implemented

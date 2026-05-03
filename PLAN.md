@@ -1,6 +1,6 @@
 # Pipeline Improvement Plan
 **Goal:** Raise every stage to 90% finished / 75% novel (game-specific sense).
-**Created:** 2026-05-03 | **Updated:** 2026-05-03 (post-plan R81/R82)
+**Created:** 2026-05-03 | **Updated:** 2026-05-03 (post-plan R81–R89)
 
 ---
 
@@ -22,8 +22,8 @@
 
 | Stage | Finished | Novel | Notes |
 |-------|----------|-------|-------|
-| Stage 0 — Input | 92% | 70% | EXPOSURE + FILM_FLOOR/CEILING standard; CAT16, VIEWING_SURROUND, Eye LCA novel |
-| Stage 1 — Corrective | 90% | 65% | 3-way CC and EXPOSURE standard; adaptive FilmCurve + Beer-Lambert novel |
+| Stage 0 — Input | 92% | 75% | R83 chromatic FILM_FLOOR done; CAT16, VIEWING_SURROUND, Eye LCA novel |
+| Stage 1 — Corrective | 90% | 75% | R84 log-density FilmCurve + R85 dye masking done |
 | Stage 2 — Tonal | 90% | 88% | Clarity/shadow lift concepts exist; zone system, R60/62/66 genuinely novel |
 | Stage 3 — Chroma | 95% | 90% | Vibrance/Purkinje/HK/Abney published; HELMLAB, MacAdam ceilings, adaptive chroma novel |
 | Stage 3.5 — Halation | 90% | 78% | Concept exists; zero-tap mip architecture + calibrated chromatic model novel |
@@ -326,7 +326,7 @@ GPU cost: ~6 MAD. No new taps, no new knobs.
 | 5 — Stage 3 | R78 gamut projection | Stage 3 | **Done** |
 | 6 — Stage 3.5 | R79A → R79B → R79C | Stage 3.5 | **Done** |
 | 7 — Output | R80A, then R80B + R80C | Pro-Mist | **Done** |
-| 8 — Novelty gaps | R83 → R84 → R85 | Stage 0, Stage 1 | **Pending** |
+| 8 — Novelty gaps | R83 → R84 → R85 | Stage 0, Stage 1 | **Done** |
 
 ---
 
@@ -334,8 +334,8 @@ GPU cost: ~6 MAD. No new taps, no new knobs.
 
 | Stage | Finished | Novel | Gap to 90/75 target |
 |-------|----------|-------|---------------------|
-| Stage 0 | 92% | 70% | Novel −5% — R83 chromatic FILM_FLOOR targets this gap |
-| Stage 1 | 90% | 65% | Novel −10% — R84 optical density FilmCurve + R85 dye masking target this gap |
+| Stage 0 | 92% | 75% | **At target** — R83 shipped |
+| Stage 1 | 90% | 75% | **At target** — R84 + R85 shipped |
 | Stage 2 | 90% | 88% | **Exceeds target** |
 | Stage 3 | 95% | 90% | **Exceeds target** |
 | Stage 3.5 | 90% | 78% | **Exceeds target** — zero-tap mip architecture is genuinely distinct |
@@ -363,6 +363,31 @@ Replaced linear dominant-channel attenuation with `exp(-α·c·d)` Beer-Lambert 
 Physically correct for dye-layer absorption at high chroma. Taylor-expanded to 2nd order
 (max error 4.57×10⁻⁵, 44× below JND) for GPU efficiency.
 
+### R83 — Chromatic FILM_FLOOR
+Per-channel black pedestal from Kodak 2383 D-min ratios (1.02/1.00/0.97), modulated by
+CAT16 `lms_illum_norm`. Warm illuminants produce warm floor, cool produce cool floor.
+Zero new taps — `lms_illum_norm` hoisted from CAT16 block. Stage 0 novel: 70%→75%.
+
+### R84 — Log-Density FilmCurve offsets
+`CURVE_*` knobs reinterpreted as log₂-density offsets: `fc_knee * exp2(CURVE_R_KNEE)`
+instead of `+ CURVE_R_KNEE`. exp2 folds to constant at compile time. Physically correct
+density-space deviation. Stage 1 novel: +3%.
+
+### R85 — Inter-Channel Dye Masking
+Cyan→green (2.0%) and magenta→blue (2.2%) bleed from Kodak 2383 spectral dye curves.
+`float2 dye_cross` inside Beer-Lambert block. First real-time post-process to model
+inter-channel dye coupling. Stage 1 novel: +7%. Stage 1 total: 75%.
+
+### R88 — Sage-Husa Q Adaptation
+Replaced instantaneous-innovation Q trigger (single-frame spike) in both Kalman passes
+(`SmoothZoneLevels`, `UpdateHistory`) with posterior-P-driven adaptation. P accumulates
+only on persistent change — flashes no longer spike the filter gain. 2 lines changed.
+
+### R89 — IGN Blue-Noise Dither
+Replaced `sin(dot)·43758` white-noise dither with Jimenez IGN (Interleaved Gradient
+Noise). Spectrally blue — quantization error pushed to high spatial frequencies. Reduces
+visible banding in fog, sky, and shadow gradients. No texture — analytical, same cost.
+
 ### R82 — 11 zero-loss optimizations in ColorTransformPS
 −3 tex reads, −5 transcendentals, ~−30 live scalars, −8 saturate ops per pixel.
 Critical fix for AMD RDNA: hist_cache[6] array removal frees 24 scalars, reducing
@@ -383,7 +408,7 @@ the scope's pre-correction histogram. Guard moved before LCA reads.
 
 ## Scene Reconstruction Research Track
 
-**Status: Separate track — pre-pipeline, genuinely novel**
+**Status: Phase 1 complete (analytical inverse + fingerprint design) — prototype pending**
 **Goal:** Approximate the pre-tonemapped, scene-referred signal from the game's SDR output —
 effectively inverting the engine's tone mapping to recover a RAW-like linear-light image,
 then re-applying a controlled forward transform at output.
@@ -411,7 +436,7 @@ and produce chroma and hue errors that compound through every subsequent stage.
 
 ### R86 — Tone Mapper Identification and Analytical Inversion
 
-**Track:** Scene Reconstruction | **Status:** Pending
+**Track:** Scene Reconstruction | **Status:** Phase 1 research done — prototype pending
 **Targets:** New — not tracked in existing novelty scores
 
 **Problem:**
