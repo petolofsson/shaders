@@ -1,14 +1,13 @@
-# Handoff — 2026-05-03
+# Handoff — 2026-05-04
 
 ## Current branch
-`alpha` — HEAD `427820e`
-Clean working tree. Pushed to origin.
+`alpha` — active development. Last commit to be created this session.
 
 ---
 
 ## Pipeline state
 
-All phases of the original plan are complete. Every stage is at or above target:
+All original plan phases complete. R86 prototype now running in Arc Raiders chain.
 
 | Stage | Finished | Novel |
 |-------|----------|-------|
@@ -23,31 +22,54 @@ All phases of the original plan are complete. Every stage is at or above target:
 
 ## What shipped this session
 
-- **R83** Chromatic FILM_FLOOR — per-channel black pedestal from illuminant chromaticity
-- **R84** Log-density FilmCurve — `CURVE_*` as log₂-density offsets, exp2 folds at compile time
-- **R85** Inter-channel dye masking — cyan→green 2%, magenta→blue 2.2% in Beer-Lambert block
-- **R86** Research (Angle 0) — exact ACES analytical inverse (4 ALU, float32 epsilon), confidence fingerprint designed
-- **R87** Lateral research (Telecomms) — Sage-Husa Q adaptation + IGN dither identified
-- **R88** Sage-Husa Q — P-driven Kalman Q in both corrective passes, no spike misfires
-- **R89** IGN dither — blue-noise-like, analytical, replaces white-noise sin hash
-- **LCA** displacement halved (0.004→0.002); Arc Raiders strength adjusted to 0.8 to compensate
+- **R86 prototype** — `inverse_grade_aces.fx` running in Arc Raiders chain
+  - Analytical ACES inverse + per-hue Oklab correction
+  - Scene normalization via p75 highway read
+  - Confidence gate: `blend = ACES_BLEND * aces_conf`
+  - `ACES_BLEND = 0.30` in `creative_values.fx`
+- **Data highway extended** — analysis_frame encodes PercTex→highway at x=194-196
+- **aces_debug.fx** — live confidence overlay + 3-column p25/p50/p75 diagnostic display
+- **tools/aces_calib.py** — screenshot-based calibration tool
+- **Arc Raiders chain** — `aces_debug` reordered before `analysis_scope`
+- **GZW tuning** — various knob adjustments (see CHANGELOG)
 
 ---
 
-## R86 — Scene Reconstruction (next big track)
+## R86 — active prototype
 
-**What's done:** Analytical ACES inverse derived and validated (R86 research file). Exact quadratic formula. ACES confidence fingerprint designed using existing PercTex (zero new taps).
+**Chain:** `analysis_frame : inverse_grade_aces : analysis_scope_pre : corrective : grade : pro_mist : aces_debug : analysis_scope`
 
-**What's needed before prototype:**
-1. Empirically read actual `PercTex` p25/p50/p75/IQR values from Arc Raiders and GZW using the debug overlay or `/tmp/vkbasalt.log`. Confirm Arc Raiders scores `aces_conf > 0.7`, GZW scores `< 0.3`.
-2. Research ACES hue distortions (Angle 1 — not yet run). Red→orange push, cyan→blue shift, yellow highlight desaturation. Need magnitude in Oklab degrees per hue band.
-3. Once both: write prototype to `unused/general/inverse-grade/inverse_grade_aces.fx`. Do NOT touch live `grade.fx` until validated on both games.
+**Key files:**
+- `unused/general/inverse-grade/inverse_grade_aces.fx` — the inversion shader
+- `unused/general/inverse-grade/aces_debug.fx` — debug overlay
+- `general/analysis-frame/analysis_frame.fx` — highway encoding (DebugOverlay, x=194-196)
+- `gamespecific/arc_raiders/shaders/creative_values.fx` — `ACES_BLEND 0.30`
+- `tools/aces_calib.py` — calibration tool
 
-**Key research file:** `research/R86_2026-05-03_R86_Scene_Reconstruction.md`
+**Current state:** Running. Inversion is applied (visually confirmed). Debug box
+currently shows red in outdoor scenes despite valid chain order.
+
+**Open diagnostic:** Debug box shows aces_conf ≈ 0 in bright outdoor scenes.
+The box bottom half now shows 3 columns (p25=red, p50=green, p75=blue) so the
+next screenshot will reveal what values are actually being read from the highway.
+
+If bottom columns are near-black → PercTex is zero (CDFWalk not populating, or
+highway write broken). If columns show values but conf=0 → formula issue:
+`shadow_rat = p25/p50 >= 0.72` AND `highs_norm >= 3.0` simultaneously.
+
+**To investigate:**
+1. Take screenshot in bright outdoor scene
+2. Crop box bottom-half, measure column brightness
+3. Compute conf manually: `iqr=p75-p25`, `highs_norm=(1-p75)/iqr`, `shadow_rat=p25/p50`
+4. If all zeros → test-write constant 0.5 to highway in DebugOverlay to isolate
 
 ---
 
-## No known regressions
+## Known state
 
-No brightness issues, no white screens, no compile errors.
-Debug log: `/tmp/vkbasalt.log` — check first for any SPIR-V issues.
+- `LCA_STRENGTH = 0.0` in Arc Raiders `creative_values.fx` (disabled for R86 validation)
+- `ACES_BLEND = 0.30` in Arc Raiders `creative_values.fx`
+- GZW: exposure 1.0, floor/ceiling 0/1, zone_strength 1.35, print_stock 0.30
+- No known compile errors or visual regressions
+
+Debug log: `/tmp/vkbasalt.log` — check first for SPIR-V issues.

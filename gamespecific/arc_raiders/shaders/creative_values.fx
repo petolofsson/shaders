@@ -113,7 +113,14 @@
 // Longitudinal chromatic aberration of the human eye: blue focuses short, red
 // focuses long. Simulates the natural per-channel fringe that real-world optics
 // produce. 0 = off. 0.5 = subtle (~1.2D). 1.0 = full physiological LCA (~2.4D).
-#define LCA_STRENGTH  0.8
+#define LCA_STRENGTH  0.0
+
+// ── ACES INVERSE (R86) ───────────────────────────────────────────────────────
+// Inverts UE5 Hill 2016 ACES tonemapper before our grade pipeline. Use only
+// for games confirmed to use ACES (Arc Raiders: yes). 0 = off. 1.0 = full.
+// 0.25 is a conservative starting point — highlights clip above ~0.85 without
+// scene normalization, so keep low until validated.
+#define ACES_BLEND  0.30
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.

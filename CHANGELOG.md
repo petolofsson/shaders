@@ -1,5 +1,42 @@
 # Changelog
 
+## 2026-05-04 — session (R86 prototype)
+
+### Implemented
+- **R86 prototype** — `inverse_grade_aces.fx` + `aces_debug.fx` in Arc Raiders chain.
+  - Analytical ACES inverse (quadratic formula, 4 ALU) + per-hue Oklab correction.
+  - Scene normalization: `scene_ceil = max(ACESInverse(p75), 1.0)` prevents highlight
+    clipping. Only activates for high-exposure scenes where p75 > ~0.85.
+  - Confidence gate: `blend = ACES_BLEND * aces_conf`. Direct multiplication — no
+    smoothstep threshold, no flicker at boundaries.
+  - `ACES_BLEND` knob in `creative_values.fx` (Arc Raiders). Current value: 0.30.
+  - `LCA_STRENGTH` set to 0.0 (Arc Raiders) — disabling for R86 validation.
+- **Data highway extension** — `analysis_frame.fx` DebugOverlay now encodes PercTex
+  p25/p50/p75 into BackBuffer at y=0, x=194/195/196. Proven cross-effect sharing
+  mechanism (PercTex `pooled = true` silently ignored by vkBasalt — confirmed dead end).
+- **`tools/aces_calib.py`** — calibration tool. Periodic screenshots, reads highway
+  pixels, computes ACESConfidence in Python, tracks stability.
+- **`aces_debug.fx`** — live debug overlay. Box top-right corner: red→green confidence.
+  Bottom half: three columns showing raw p25/p50/p75 from highway (diagnostic mode).
+- **Arc Raiders chain reordered** — `aces_debug` moved before `analysis_scope` so it
+  reads highway before scope visualization overwrites x=194-196.
+- **GZW tuning** — exposure 0.80→1.00, floor/ceiling reset to 0/1, zone_strength 1.30→1.35,
+  film curve values tightened, print_stock 0.50→0.30.
+
+### Key findings
+- `pooled = true` ignored by vkBasalt. BackBuffer data highway is the only cross-effect
+  sharing mechanism.
+- `bright_gate` removed from ACESConfidence — caused false negatives in hazy outdoor
+  scenes. `highs_norm` already handles truly dark scenes.
+- smoothstep blend gate replaced with direct `conf * ACES_BLEND` multiplication to
+  eliminate flicker.
+
+### Open
+- Debug box shows red in bright outdoor scenes. 3-column p25/p50/p75 diagnostic added.
+  Root cause not yet confirmed (PercTex values vs. formula vs. highway encoding).
+
+---
+
 ## 2026-05-03 — session (R83–R89 + LCA tuning)
 
 ### Implemented

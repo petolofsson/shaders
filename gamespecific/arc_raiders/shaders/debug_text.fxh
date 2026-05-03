@@ -27,6 +27,9 @@ uint _FP(uint ch)
     if (ch == 82u) return 23470u; // R
     if (ch == 83u) return 25251u; // S
     if (ch == 90u) return 30863u; // Z
+    if (ch == 48u) return 31599u; // 0
+    if (ch == 57u) return  5103u; // 9
+    if (ch == 46u) return  8192u; // .
     return 0u;
 }
 
@@ -45,4 +48,15 @@ float4 DrawLabel(float4 col, float2 pos, float x0, float y0,
     if ((bits >> (2u - cx)) & 1u)
         return float4(tint, 1.0);
     return col;
+}
+
+// Draw float [0,1] as "X.XX" (4 chars, 15px wide). Requires glyphs '0','9','.'.
+float4 DrawFloat(float4 col, float2 pos, float x0, float y0, float v, float3 tint)
+{
+    float sv  = saturate(v);
+    uint  tens = uint(sv * 10.0);
+    uint  c0   = (tens >= 10u) ? 49u : 48u;
+    uint  d1   = tens % 10u + 48u;
+    uint  d2   = uint(sv * 100.0) % 10u + 48u;
+    return DrawLabel(col, pos, x0, y0, c0, 46u, d1, d2, tint);
 }

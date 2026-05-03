@@ -244,7 +244,17 @@ float4 DebugOverlayPS(float4 pos : SV_Position,
                       float2 uv  : TEXCOORD0) : SV_Target
 {
     float4 c = tex2D(BackBuffer, uv);
-    if (pos.y < 1.0) return c;  // data highway
+    if (pos.y < 1.0) {
+        // Encode PercTex into highway at x=194,195,196 (beyond scope_pre's x=0..193).
+        // Reads previous frame's PercTex (CDFWalk runs after this pass) — one-frame
+        // delay is fine; Kalman smoothing keeps values stable.
+        int xi = int(pos.x);
+        float4 perc = tex2D(PercSamp, float2(0.5, 0.5));
+        if (xi == 194) return float4(perc.r, 0.0, 0.0, 1.0);
+        if (xi == 195) return float4(perc.g, 0.0, 0.0, 1.0);
+        if (xi == 196) return float4(perc.b, 0.0, 0.0, 1.0);
+        return c;
+    }
     return DrawLabel(c, pos.xy, 270.0, 10.0,
                      49u, 65u, 78u, 76u, float3(1.0, 0.95, 0.0)); // 1ANL
 }

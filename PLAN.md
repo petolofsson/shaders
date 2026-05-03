@@ -1,6 +1,6 @@
 # Pipeline Improvement Plan
 **Goal:** Raise every stage to 90% finished / 75% novel (game-specific sense).
-**Created:** 2026-05-03 | **Updated:** 2026-05-03 (post-plan R81–R89)
+**Created:** 2026-05-03 | **Updated:** 2026-05-04 (R86 prototype)
 
 ---
 
@@ -436,7 +436,7 @@ and produce chroma and hue errors that compound through every subsequent stage.
 
 ### R86 — Tone Mapper Identification and Analytical Inversion
 
-**Track:** Scene Reconstruction | **Status:** Phase 1 research done — prototype pending
+**Track:** Scene Reconstruction | **Status:** Prototype running in Arc Raiders (2026-05-04)
 **Targets:** New — not tracked in existing novelty scores
 
 **Problem:**
