@@ -361,7 +361,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float shadow_lift_str = lerp(1.50, 0.45, smoothstep(0.03, 0.22, perc.r));
     float shadow_lift     = shadow_lift_str * (0.149169 / (illum_s0 * illum_s0 + 0.003)) * local_range_att * texture_att * detail_protect * context_lift;
     float lift_w      = new_luma * smoothstep(0.30, 0.0, new_luma);
-    new_luma          = saturate(new_luma + (shadow_lift / 100.0) * 0.75 * lift_w);
+    new_luma          = saturate(new_luma + (shadow_lift / 100.0) * 0.75 * lift_w * SHADOW_LIFT_STRENGTH);
     // R62 Finding 3: chroma-stable tonal — apply luma ratio in Oklab L to prevent zone S-curve from shifting chroma
     float3 lab_t  = RGBtoOklab(saturate(lin));
     float r_tonal = new_luma / max(luma, 0.001);

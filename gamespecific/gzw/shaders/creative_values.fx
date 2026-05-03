@@ -6,7 +6,7 @@
 // below "sees". Raising this (>1.0) darkens; lowering (<1.0) brightens.
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune
 // the contrast/chroma knobs beneath.
-#define EXPOSURE            1.00
+#define EXPOSURE            0.95
 
 // ── CAMERA SIGNAL RANGE ───────────────────────────────────────────────────────
 // Remaps the raw pixel into [FILM_FLOOR, FILM_CEILING] before EXPOSURE runs.
@@ -34,7 +34,12 @@
 // Scales the adaptive zone S-curve strength. 1.0 = calibrated default.
 // Adaptive range is ~0.16–0.26 × ZONE_STRENGTH, driven by zone_std + scene key.
 // 0 = flat image. Above 1.5 = aggressive crushing.
-#define ZONE_STRENGTH  1.35
+#define ZONE_STRENGTH  1.2
+
+// ── SHADOW LIFT ───────────────────────────────────────────────────────────────
+// Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
+// Raise for dark games with poor visibility, lower if lift feels too aggressive.
+#define SHADOW_LIFT_STRENGTH  1.1
 
 // ── FILM CURVE CHARACTER ──────────────────────────────────────────────────────
 // Per-channel knee and toe offsets for the FilmCurve (Stage 1). These encode the
@@ -52,7 +57,7 @@
 // Kodak 2383 print emulsion on top of FilmCurve: lifts blacks, compresses
 // highlights, desaturates mids ~15%, adds warm shadow cast. 0 = off (current
 // behaviour). 1 = full 2383. 0.35 = recommended starting point.
-#define PRINT_STOCK  0.30
+#define PRINT_STOCK  0.35
 
 // ── HALATION ──────────────────────────────────────────────────────────────────
 // Film emulsion scatter from specular highlights — tight red fringe around
@@ -98,6 +103,17 @@
 // correct — Cao et al. 2008, implemented in Ghost of Tsushima. Neutrals unaffected
 // (C=0 → zero shift). 1.0 = calibrated default. 0 = off.
 #define PURKINJE_STRENGTH  2.0
+
+// ── VIEWING SURROUND ─────────────────────────────────────────────────────────
+// CIECAM02 surround compensation (R76B). Corrects perceived contrast for dark-room
+// viewing. 1.0 = off. dim→dark (gaming/desktop): 1.123. average→dark: 1.314.
+#define VIEWING_SURROUND  1.123
+
+// ── EYE LCA ───────────────────────────────────────────────────────────────────
+// Longitudinal chromatic aberration of the human eye: blue focuses short, red
+// focuses long. Simulates the natural per-channel fringe that real-world optics
+// produce. 0 = off. 0.5 = subtle (~1.2D). 1.0 = full physiological LCA (~2.4D).
+#define LCA_STRENGTH  0.4
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.

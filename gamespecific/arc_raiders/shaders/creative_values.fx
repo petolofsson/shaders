@@ -36,6 +36,11 @@
 // 0 = flat image. Above 1.5 = aggressive crushing.
 #define ZONE_STRENGTH  1.1
 
+// ── SHADOW LIFT ───────────────────────────────────────────────────────────────
+// Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
+// Raise for dark games with poor visibility, lower if lift feels too aggressive.
+#define SHADOW_LIFT_STRENGTH  1.0
+
 // ── FILM CURVE CHARACTER ──────────────────────────────────────────────────────
 // Per-channel knee and toe offsets for the FilmCurve (Stage 1). These encode the
 // physical dye-layer cross-over character of different film stocks: red compresses
@@ -108,7 +113,7 @@
 // Longitudinal chromatic aberration of the human eye: blue focuses short, red
 // focuses long. Simulates the natural per-channel fringe that real-world optics
 // produce. 0 = off. 0.5 = subtle (~1.2D). 1.0 = full physiological LCA (~2.4D).
-#define LCA_STRENGTH  0.0
+#define LCA_STRENGTH  0.4
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.
