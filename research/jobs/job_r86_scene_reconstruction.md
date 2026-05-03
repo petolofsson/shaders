@@ -57,6 +57,9 @@ Compute `(current_hour // 6) % 3` to select the focus for this run.
 
 #### Step 3 — Search (5–8 queries minimum)
 
+**Session (CronCreate):** use `mcp__brave-search__brave_web_search` tool directly for all queries.
+**RemoteTrigger (Routine):** use curl with `X-Subscription-Token: BSACEZYg3d8q_TVrE-KKqerTXe-h1nA`.
+
 **Angle 0 — Inverse tone mapping / HDR reconstruction:**
 - `"inverse tone mapping" "ACES" analytical closed-form 2022 2023 2024 2025`
 - `"SDR to HDR" "tone curve inversion" real-time display 2024 2025`
