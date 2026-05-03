@@ -222,7 +222,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float4 col = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return col;  // data highway
     // R81A: eye LCA — blue samples outward, red samples inward (radially from centre)
-    float2 lca_off = (uv - 0.5) * LCA_STRENGTH * 0.004;
+    float2 lca_off = (uv - 0.5) * LCA_STRENGTH * 0.002;
     col.r          = tex2D(BackBuffer, uv - lca_off).r;
     col.b          = tex2D(BackBuffer, uv + lca_off).b;
 

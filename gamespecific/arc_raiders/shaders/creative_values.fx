@@ -113,7 +113,7 @@
 // Longitudinal chromatic aberration of the human eye: blue focuses short, red
 // focuses long. Simulates the natural per-channel fringe that real-world optics
 // produce. 0 = off. 0.5 = subtle (~1.2D). 1.0 = full physiological LCA (~2.4D).
-#define LCA_STRENGTH  0.4
+#define LCA_STRENGTH  0.8
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.
