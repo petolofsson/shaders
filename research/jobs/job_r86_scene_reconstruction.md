@@ -1,10 +1,13 @@
 ## Job D — R86 Scene Reconstruction Research
 
 **Schedule:** 4× per day (07, 07+6h, 07+12h, 07+18h)
-**Output:** `/home/pol/code/shaders/research/R{next}_{YYYY-MM-DD}_R86_Scene_Reconstruction.md`
-where `{next}` = one more than the highest R-number found after running:
-`git -C /home/pol/code/shaders fetch origin alpha && git -C /home/pol/code/shaders checkout alpha`
-then `ls /home/pol/code/shaders/research/R*.md | grep -oP 'R\K[0-9]+' | sort -n | tail -1`
+**Output:** `/home/pol/code/shaders/research/R86/run{n:02d}_{YYYY-MM-DD}_angle{a}_{angle_name}.md`
+where `{n}` = number of existing files in `research/R86/` + 1 (after checking out alpha),
+`{a}` = angle number (0/1/2), `{angle_name}` = inverse / hue_correction / fingerprinting.
+
+Compute run number after checking out alpha:
+`git -C /home/pol/code/shaders fetch origin alpha && git -C /home/pol/code/shaders checkout alpha && git -C /home/pol/code/shaders pull origin alpha`
+then: `ls /home/pol/code/shaders/research/R86/run*.md 2>/dev/null | wc -l`  → add 1.
 **Branch:** commit and push output file to `alpha`.
 **Do not modify any source files.**
 
@@ -140,7 +143,7 @@ correction offsets, following the same structure as the existing `ROT_*` knobs i
 ### Output format
 
 ```markdown
-# R86 Scene Reconstruction Research — {angle name} — {YYYY-MM-DD HH:MM}
+# R86 Scene Reconstruction — Run {n:02d} — {angle name} — {YYYY-MM-DD HH:MM}
 
 ## Run angle
 {which angle was selected and why}
@@ -180,7 +183,7 @@ cd /home/pol/code/shaders
 git fetch origin alpha
 git checkout alpha
 git pull origin alpha
-git add research/R*_*_R86_Scene_Reconstruction.md
-git commit -m "nightly: R86 scene reconstruction research {angle} {YYYY-MM-DD}"
+git add research/R86/run*.md
+git commit -m "nightly: R86 scene reconstruction run{n:02d} angle{a} {YYYY-MM-DD}"
 git push origin alpha
 ```
