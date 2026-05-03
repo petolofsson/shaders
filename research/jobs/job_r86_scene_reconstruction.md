@@ -22,11 +22,18 @@ then `ls /home/pol/code/shaders/research/R*.md | grep -oP 'R\K[0-9]+' | sort -n 
 
 ### Background
 
-Arc Raiders (UE5) applies ACES Filmic tone mapping before the vkBasalt chain sees the frame.
-The goal of R86 is to invert that tone mapping analytically, enabling every downstream stage
-to operate on approximately scene-referred (linear-light) values rather than display-referred
-values. The existing `unused/inverse_grade.fx` uses a blind S-curve inverse that does not
-correct ACES hue distortions and has no knowledge of the actual tone mapper used.
+**The pipeline is game-agnostic.** Different games apply different tone mappers before
+vkBasalt sees the frame — or none at all. R86 must never assume ACES is present.
+The design requirement is:
+
+> Detect which tone mapper (if any) was applied from display-referred statistics already
+> available in PercTex / CreativeZoneHistTex. Apply the appropriate per-pixel inverse
+> only when confidence is high. Fall back to identity when the tone mapper cannot be
+> identified. The result must be perceptually neutral on games that do not use ACES.
+
+Arc Raiders (UE5) is the primary test platform because it is known to apply the Hill 2016
+ACES rational function. GZW (Grey Zone Warfare) uses a different pipeline and must
+pass through R86 unchanged.
 
 **The UE5 ACES approximation (Hill 2016) is a rational function:**
 ```
@@ -36,6 +43,12 @@ The analytical inverse is derivable via the quadratic formula. The hue distortio
 (red/magenta → orange push, cyan → blue, yellow highlight desaturation) are measurable
 deviations from a neutral Oklab hue trajectory.
 
+**Other common tone mappers to be aware of:**
+- Reinhard: `x / (x + 1)` — monotone, no hue distortion, lighter shoulder than ACES
+- Hable/Uncharted2: piecewise rational, similar shoulder to ACES but different coefficients
+- AgX (Blender/modern UE5 option): perceptually uniform, very different histogram signature
+- Linear / no TMO: passthrough — p75/p50 ratio close to 1.0
+
 **Three research angles to cover in each run — rotate focus across runs:**
 
 | Run mod 3 | Focus |
@@ -43,6 +56,9 @@ deviations from a neutral Oklab hue trajectory.
 | 0 | Inverse tone mapping literature — HDR reconstruction from SDR |
 | 1 | ACES hue distortion characterisation and correction methods |
 | 2 | Tone mapper identification / fingerprinting from scene statistics |
+
+**All angles must keep the game-agnostic constraint in view.** Angle 2 (fingerprinting)
+is the prerequisite that makes angles 0 and 1 safe to deploy across games.
 
 Determine which angle to take: `(current_hour // 6) % 3`.
 
