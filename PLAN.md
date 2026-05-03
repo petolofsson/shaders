@@ -1,21 +1,35 @@
 # Pipeline Improvement Plan
 **Goal:** Raise every stage to 90% finished / 75% novel (game-specific sense).
-**Date:** 2026-05-03
+**Created:** 2026-05-03 | **Updated:** 2026-05-03
 
 ---
 
-## Current state
+## Phase status
 
-| Stage | Finished | Novel | Finished gap | Novel gap |
-|-------|----------|-------|-------------|-----------|
-| Stage 0 — Input | 80% | 20% | +10% | **+55%** |
-| Stage 1 — Corrective | 78% | 72% | +12% | +3% |
-| Stage 2 — Tonal | 87% | 93% | +3% | — |
-| Stage 3 — Chroma | 82% | 96% | +8% | — |
-| Stage 3.5 — Halation | 68% | 55% | **+22%** | +20% |
-| Output — Pro-Mist | 72% | 48% | +18% | +27% |
+| Phase | Status | Notes |
+|-------|--------|-------|
+| 1 — Research | **Done** | R74–R80 all researched, findings docs committed |
+| 2 — Quick code | **Done** | R74, R75, R47 shipped in `50c1cc4` |
+| 3 — Stage 0 | **Blocked** | R76A/B caused all-white screen; reverted. See HANDOFF.md |
+| 4 — Stage 2 | Ready | R77 findings: no code changes needed |
+| 5 — Stage 3 | Ready | R78 constant-hue gamut projection |
+| 6 — Stage 3.5 | Ready | R79A/B/C halation |
+| 7 — Output | Ready | R80A/B/C Pro-Mist |
 
-Stage 2 and Stage 3 novelty already exceed 75% — no novel work needed there.
+---
+
+## Current state (after Phase 2)
+
+| Stage | Finished | Novel | Remaining gap |
+|-------|----------|-------|--------------|
+| Stage 0 — Input | 80% | 20% | Phase 3 blocked |
+| Stage 1 — Corrective | 90% | 75% | **Done** |
+| Stage 2 — Tonal | 90% | 93% | **Done** |
+| Stage 3 — Chroma | 90% | 96% | **Done** |
+| Stage 3.5 — Halation | 68% | 55% | Phase 6 pending |
+| Output — Pro-Mist | 72% | 48% | Phase 7 pending |
+
+Stage 1/2/3 targets reached. Stage 0 blocked on R76 debug.
 
 ---
 
@@ -212,19 +226,18 @@ visual validation. Validate against Arc Raiders and GZW. Enable if no seaming ar
 
 ## Execution order
 
-| Phase | Items | Stages | Dependency |
-|-------|-------|--------|-----------|
-| 1 — Research | R74, R75, R76A/B, R77, R78, R79A–C, R80A–C | All | Parallel where independent |
-| 2 — Quick code | R74, R75, R47 enable | Stage 1, 3 | After Phase 1 findings |
-| 3 — Stage 0 | R76A (CAT16), then R76B (surround) | Stage 0 | R76A before R76B |
-| 4 — Stage 2 | R77 calibration | Stage 2 | Parameter-only, may be zero code |
-| 5 — Stage 3 | R78 gamut projection | Stage 3 | Replaces gclip |
-| 6 — Stage 3.5 | R79A → R79B → R79C | Stage 3.5 | Sequential |
-| 7 — Output | R80A, then R80B + R80C | Pro-Mist | R80B/C independent |
+| Phase | Items | Stages | Status |
+|-------|-------|--------|--------|
+| 1 — Research | R74–R80 | All | **Done** |
+| 2 — Quick code | R74, R75, R47 | Stage 1, 3 | **Done** |
+| 3 — Stage 0 | R76A (CAT16), R76B (surround) | Stage 0 | **Blocked — white screen** |
+| 4 — Stage 2 | R77 calibration | Stage 2 | **Skip — no code changes needed** |
+| 5 — Stage 3 | R78 gamut projection | Stage 3 | Ready |
+| 6 — Stage 3.5 | R79A → R79B → R79C | Stage 3.5 | Ready |
+| 7 — Output | R80A, then R80B + R80C | Pro-Mist | Ready |
 
-**R76 is highest-risk.** CAT16 requires the mip 2 illuminant estimate to be reliable
-across diverse scenes. Research must validate this before any code is written — a poor
-illuminant estimate would degrade Stage 0 rather than improve it.
+**R76 blocked.** White screen on load after R76A insertion. See HANDOFF.md for
+root cause analysis. Phases 5–7 are fully independent and can proceed in parallel.
 
 ---
 
