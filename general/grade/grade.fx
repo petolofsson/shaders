@@ -219,7 +219,11 @@ float GetBandCenter(int b)
 
 float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    float4 col = tex2D(BackBuffer, uv);
+    // R81A: eye LCA — blue samples outward, red samples inward (radially from centre)
+    float2 lca_off = (uv - 0.5) * LCA_STRENGTH * 0.004;
+    float4 col     = tex2D(BackBuffer, uv);
+    col.r          = tex2D(BackBuffer, uv - lca_off).r;
+    col.b          = tex2D(BackBuffer, uv + lca_off).b;
     if (pos.y < 1.0) return col;  // data highway
 
     // R54: camera signal floor/ceiling — compress raw pixel into [FILM_FLOOR, FILM_CEILING]
@@ -300,7 +304,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         float sat_proxy = max(lin.r, max(lin.g, lin.b)) - lin_min;
         float ramp      = smoothstep(0.0, 0.25, sat_proxy);
         float3 dom_mask = saturate((lin - lin_min) / max(sat_proxy, 0.001));
-        lin = saturate(lin - 0.06 * dom_mask * sat_proxy * ramp);
+        // R81C: Beer-Lambert — exp(−α·c·d) is physically correct at high chroma
+        float3 bl_abs = dom_mask * sat_proxy * ramp;
+        lin = saturate(lin * exp(-0.065 * bl_abs));
     }
 
     // ── R19: 3-way color corrector — temp/tint per region, linear light ──────
@@ -458,8 +464,10 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float vib_mask = saturate(1.0 - C / 0.22);
     float vib_C    = C + max(lifted_C - C, 0.0) * vib_mask;
     // R73: memory color protection — per-band chroma ceiling (sky/foliage/skin).
-    float C_ceil   = hw_o0 * 0.28 + hw_o1 * 0.22 + hw_o2 * 0.16
-                   + hw_o3 * 0.18 + hw_o4 * 0.26 + hw_o5 * 0.22;
+    // R81B: MacAdam-calibrated ceilings — blue/cyan tightened (smallest discrimination
+    // ellipses), yellow relaxed (largest ellipses).
+    float C_ceil   = hw_o0 * 0.28 + hw_o1 * 0.24 + hw_o2 * 0.16
+                   + hw_o3 * 0.15 + hw_o4 * 0.19 + hw_o5 * 0.22;
     float final_C  = min(vib_C, max(C_ceil, C));
     green_w = hw_o2;
 
