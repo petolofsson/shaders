@@ -96,6 +96,12 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float  p75       = perc.b;
     float  iqr       = perc.b - perc.r;
     float  adapt_str = MIST_STRENGTH * 0.09 * lerp(0.7, 1.3, saturate(iqr / 0.5));
+    // R80B: scene-key adaptive — dark scenes get more mist, bright exteriors less
+    float zone_log_key   = tex2Dlod(ChromaHistSamp, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
+    float mist_key_scale = lerp(1.30, 0.80, smoothstep(0.05, 0.25, zone_log_key));
+    // R80C: aperture proxy — low EXPOSURE (wide aperture equivalent) → more scatter
+    float mist_ap_scale  = lerp(1.10, 0.90, saturate((EXPOSURE - 0.70) / 0.60));
+    adapt_str *= mist_key_scale * mist_ap_scale;
 
     float  scene_softness = smoothstep(0.1, 0.4, iqr);
     float3 diffused       = lerp(diffuse0, diffuse1, scene_softness * 0.35);
@@ -113,7 +119,8 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
     // R55: bidirectional scatter — Pro-Mist reduces contrast (not purely additive glow)
     float3 scatter_delta = (diffused - base.rgb) * adapt_str * luma_gate;
-    float3 result = base.rgb + scatter_delta * float3(scatter_r, 1.00, scatter_b);
+    // R80A: warm scatter bias — practical lights are warm; scatter inherits their colour
+    float3 result = base.rgb + scatter_delta * float3(scatter_r * 1.05, 1.00, scatter_b * 0.92);
 
     float dither = frac(sin(dot(pos.xy, float2(127.1, 311.7))) * 43758.5453) - 0.5;
     result += dither * (1.0 / 255.0);

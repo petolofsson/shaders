@@ -225,6 +225,27 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // R54: camera signal floor/ceiling — compress raw pixel into [FILM_FLOOR, FILM_CEILING]
     col.rgb = col.rgb * (FILM_CEILING - FILM_FLOOR) + FILM_FLOOR;
 
+    // R76A: CAT16 chromatic adaptation — normalise scene illuminant toward D65
+    {
+        const float3x3 M_fwd = float3x3(0.302825, 0.602279, 0.070428,
+                                         0.153818, 0.777214, 0.085341,
+                                         0.027974, 0.147911, 0.908874);
+        const float3x3 M_bwd = float3x3( 5.4459, -4.2155, -0.0242,
+                                         -1.0784,  2.1456, -0.1184,
+                                          0.0078, -0.2191,  1.1200);
+        const float3 lms_d65 = float3(0.9756, 1.0165, 1.0849);
+        float3 illum_rgb  = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 2.0)).rgb;
+        float3 illum_norm = illum_rgb / max(Luma(illum_rgb), 0.001);
+        float3 lms_illum  = mul(M_fwd, illum_norm);
+        float3 gain      = clamp(lms_d65 / max(lms_illum, 0.001), 0.5, 2.0);
+        float3 lms_px    = mul(M_fwd, col.rgb) * gain;
+        float3 cat16     = mul(M_bwd, lms_px);
+        cat16            = cat16 * (Luma(col.rgb) / max(Luma(cat16), 0.001));
+        col.rgb          = lerp(col.rgb, saturate(cat16), 0.60);
+    }
+    // R76B: CIECAM02 surround compensation
+    col.rgb = pow(max(col.rgb, 0.0), VIEWING_SURROUND);
+
     float4 perc = tex2D(PercSamp, float2(0.5, 0.5));
 
     // R32: zone global stats — pre-computed in UpdateHistoryPS, stored in ChromaHistoryTex col 6
@@ -324,9 +345,6 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float log_R     = log2(nl_safe / illum_s0);
     float zk_safe   = max(zone_log_key, 0.001);
     new_luma = lerp(new_luma, saturate(nl_safe * zk_safe / illum_s0), 0.75 * ss_04_25);
-    // R72: reflectance-based local contrast — Retinex log_R is illumination-free detail signal.
-    float clarity_gate = smoothstep(0.06, 0.25, new_luma);
-    new_luma = saturate(new_luma + 0.10 * log_R * clarity_gate * (1.0 - new_luma));
 
     float local_range_att = 1.0 - smoothstep(0.20, 0.50, zone_iqr);
     float texture_att     = 1.0 - smoothstep(0.005, 0.030, local_var);
@@ -483,23 +501,25 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float ck_fac  = 1.0 - 0.18 * ck_near / (1.0 + ck_near);
     f_oka *= ck_fac;
     f_okb *= ck_fac;
-    float3 chroma_rgb = OklabToRGB(float3(density_L, f_oka, f_okb));
-    float  rmax       = max(chroma_rgb.r, max(chroma_rgb.g, chroma_rgb.b));
+    // R78: constant-hue gamut projection — gclip applied in Oklab ab space, not RGB.
+    // rmax_probe from existing rgb_probe; conservative (slightly over-compresses).
+    float  rmax_probe = max(rgb_probe.r, max(rgb_probe.g, rgb_probe.b));
     float  L_grey     = density_L * density_L * density_L;
-    float  gclip      = saturate((1.0 - L_grey) / max(rmax - L_grey, 0.001));
-    chroma_rgb        = L_grey + gclip * (chroma_rgb - L_grey);
+    float  gclip_ok   = saturate((1.0 - L_grey) / max(rmax_probe - L_grey, 0.001));
+    float3 chroma_rgb = OklabToRGB(float3(density_L, f_oka * gclip_ok, f_okb * gclip_ok));
     lin = saturate(chroma_rgb);
 
-    // R56: film halation — tight chromatic emulsion scatter, red-dominant (red dye layer deepest)
+    // R79: halation dual-PSF + softened gate + warm wing bias
     {
-        float3 hal_r    = lf_mip1.rgb;  // mip 1 — red spreads most (hoisted, shared with Retinex read)
-        float3 hal_g    = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 0)).rgb;  // mip 0 — green tighter
-        float  hal_luma = dot(lin, float3(0.2126, 0.7152, 0.0722));
-        float  hal_gate = smoothstep(0.80, 0.95, hal_luma);
-        float3 hal_delta = float3(
-            max(0.0, hal_r.r - lin.r),  // red: wide scatter
-            max(0.0, hal_g.g - lin.g),  // green: tight scatter
-            0.0                          // blue: none — film physics
+        float3 hal_core_r = lf_mip1.rgb;                                            // red core: mip 1 (hoisted, shared with Retinex)
+        float3 hal_core_g = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 0)).rgb;   // green core: mip 0
+        float3 hal_wing   = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 2)).rgb;   // extended wing: mip 2
+        float  hal_luma   = dot(lin, float3(0.2126, 0.7152, 0.0722));
+        float  hal_gate   = smoothstep(0.70, 0.90, hal_luma);  // R79A: softer onset
+        float3 hal_delta  = float3(
+            max(0.0, lerp(hal_core_r, hal_wing, 0.30).r - lin.r),  // red: core + full wing
+            max(0.0, lerp(hal_core_g, hal_wing, 0.20).g - lin.g),  // green: core + less wing (warm bias)
+            0.0                                                      // blue: none — anti-halation
         );
         lin = saturate(lin + hal_delta * float3(1.2, 0.45, 0.0) * hal_gate * HAL_STRENGTH);
     }

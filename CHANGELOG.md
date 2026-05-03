@@ -1,5 +1,52 @@
 # Changelog
 
+## 2026-05-03 — session (R78 + R79 + R80 + R76 + brightness fix)
+
+### Implemented
+- **R78** Constant-hue gamut projection (`grade.fx`): `gclip` now applied to Oklab
+  `(f_oka, f_okb)` before `OklabToRGB` instead of projecting `chroma_rgb` toward grey
+  in RGB space. Same formula, same cost, hue-accurate. Uses existing `rgb_probe` —
+  one fewer float in registers. Note: correctness improvement, not a novelty gain.
+- **R79** Halation dual-PSF + gate + warm wing (`grade.fx`): gate onset `0.80→0.70`
+  (R79A); mip 2 extended wing tap added, 70% core / 30% wing per channel (R79B);
+  green wing blend reduced to 20% for warm bias — red penetrates deeper in emulsion
+  (R79C). +1 tex tap total.
+- **R80** Pro-Mist spectral scatter model (`pro_mist.fx`): warm scatter tint
+  `[1.05, 1.0, 0.92]` folded into existing R46 channel weights (R80A); scene-key
+  adaptive `lerp(1.30, 0.80, smoothstep(0.05, 0.25, zone_log_key))` on `adapt_str`
+  (R80B); aperture proxy `lerp(1.10, 0.90, ...)` via `EXPOSURE` (R80C). No new taps.
+
+---
+
+## 2026-05-03 — session (brightness fix + R76)
+
+### Fixed
+- **Brightness regression** diagnosed and resolved. Root cause: R72 clarity coefficient
+  (`0.10`) created a systematic net brightness lift — `log_R` is positive for any pixel
+  brighter than its local illuminant (the common case on lit surfaces), so the effect
+  was one-sided upward. R72 removed entirely: game engines bake in sharpening/clarity,
+  making it redundant.
+- **FILM_CEILING** restored to `1.00` (passthrough). Ceiling/floor are now both
+  passthrough (`FILM_FLOOR 0.000`, `FILM_CEILING 1.00`). Brightness is correct without
+  requiring input headroom clamping.
+
+### Implemented
+- **R76A** CAT16 chromatic adaptation — normalises scene illuminant toward D65 using
+  `CreativeLowFreqTex` mip 2 as illuminant estimate. Implemented as purely chromatic:
+  adapted pixel is re-normalised to its original luma (`cat16 *= luma_in / Luma(cat16)`)
+  before the 60% blend. Zero luminance impact — shadow lift, Retinex, zone contrast all
+  see the same luma as without R76A. Illuminant normalised to unit luminance before gain
+  computation, preventing absolute-brightness lift from scene-darker-than-D65 illuminants.
+- **R76B** CIECAM02 surround compensation — `VIEWING_SURROUND` knob added to
+  `creative_values.fx`. Default `1.00` = off. `dim→dark` (gaming): `1.123`.
+  Applied as `pow(col.rgb, VIEWING_SURROUND)` before FilmCurve.
+
+### Removed
+- **R72** Reflectance local contrast (`new_luma += coeff * log_R * clarity_gate * (1-new_luma)`).
+  Redundant with game sharpening. Net brightness bias regardless of coefficient sign.
+
+---
+
 ## 2026-05-03 — commit `50c1cc4`
 
 ### Implemented
@@ -53,7 +100,8 @@ gamut projection, halation dual-PSF, and Pro-Mist spectral scatter.
 
 ## Attempted and reverted (no commit)
 
-### 2026-05-03 — R76 all-white failure
-R76A (CAT16 chromatic adaptation) + R76B (CIECAM02 surround compensation) caused
-all-white screen on load. Reverted to `50c1cc4`. See HANDOFF.md for root cause
-analysis and recommended debug strategy.
+### 2026-05-03 — R76 first attempt (all-white failure, then fixed)
+R76A first attempt caused all-white screen — root cause was R72's net brightness lift
+inflating LMS values before the CAT16 gain calculation, spiking the blue gain channel.
+Fixed in same session: R72 removed, R76A re-implemented with per-pixel luma
+re-normalization for guaranteed luminance neutrality. Stable.

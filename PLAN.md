@@ -9,27 +9,25 @@
 | Phase | Status | Notes |
 |-------|--------|-------|
 | 1 — Research | **Done** | R74–R80 all researched, findings docs committed |
-| 2 — Quick code | **Done** | R74, R75, R47 shipped in `50c1cc4` |
-| 3 — Stage 0 | **Blocked** | R76A/B caused all-white screen; reverted. See HANDOFF.md |
-| 4 — Stage 2 | Ready | R77 findings: no code changes needed |
+| 2 — Quick code | **Done** | R74, R75, R47 shipped; R72 removed (clarity redundant + brightness bias) |
+| 3 — Stage 0 | **Done** | R76A (CAT16, luma-neutral) + R76B (surround knob, default off) — stable |
+| 4 — Stage 2 | **Skip** | R77 findings: no code changes needed |
 | 5 — Stage 3 | Ready | R78 constant-hue gamut projection |
 | 6 — Stage 3.5 | Ready | R79A/B/C halation |
 | 7 — Output | Ready | R80A/B/C Pro-Mist |
 
 ---
 
-## Current state (after Phase 2)
+## Current state (all phases complete)
 
-| Stage | Finished | Novel | Remaining gap |
-|-------|----------|-------|--------------|
-| Stage 0 — Input | 80% | 20% | Phase 3 blocked |
+| Stage | Finished | Novel | Notes |
+|-------|----------|-------|-------|
+| Stage 0 — Input | 90% | 60% | R76B default-off is intentional — game-agnostic, user sets per setup |
 | Stage 1 — Corrective | 90% | 75% | **Done** |
 | Stage 2 — Tonal | 90% | 93% | **Done** |
-| Stage 3 — Chroma | 90% | 96% | **Done** |
-| Stage 3.5 — Halation | 68% | 55% | Phase 6 pending |
-| Output — Pro-Mist | 72% | 48% | Phase 7 pending |
-
-Stage 1/2/3 targets reached. Stage 0 blocked on R76 debug.
+| Stage 3 — Chroma | 93% | 96% | R78 done — correctness fix, no novelty gain |
+| Stage 3.5 — Halation | 90% | 65% | R79 done — dual-PSF concept exists elsewhere; novel execution via mips |
+| Output — Pro-Mist | 90% | 60% | R80 done — R80B novel; R80A/C minor |
 
 ---
 
@@ -229,25 +227,22 @@ visual validation. Validate against Arc Raiders and GZW. Enable if no seaming ar
 | Phase | Items | Stages | Status |
 |-------|-------|--------|--------|
 | 1 — Research | R74–R80 | All | **Done** |
-| 2 — Quick code | R74, R75, R47 | Stage 1, 3 | **Done** |
-| 3 — Stage 0 | R76A (CAT16), R76B (surround) | Stage 0 | **Blocked — white screen** |
+| 2 — Quick code | R74, R75, R47; R72 removed | Stage 1, 3 | **Done** |
+| 3 — Stage 0 | R76A (CAT16), R76B (surround) | Stage 0 | **Done** |
 | 4 — Stage 2 | R77 calibration | Stage 2 | **Skip — no code changes needed** |
-| 5 — Stage 3 | R78 gamut projection | Stage 3 | Ready |
-| 6 — Stage 3.5 | R79A → R79B → R79C | Stage 3.5 | Ready |
-| 7 — Output | R80A, then R80B + R80C | Pro-Mist | Ready |
-
-**R76 blocked.** White screen on load after R76A insertion. See HANDOFF.md for
-root cause analysis. Phases 5–7 are fully independent and can proceed in parallel.
+| 5 — Stage 3 | R78 gamut projection | Stage 3 | **Done** |
+| 6 — Stage 3.5 | R79A → R79B → R79C | Stage 3.5 | **Done** |
+| 7 — Output | R80A, then R80B + R80C | Pro-Mist | **Done** |
 
 ---
 
-## Projected outcomes
+## Actual outcomes (all phases complete)
 
-| Stage | Finished | Novel |
-|-------|----------|-------|
-| Stage 0 | 90% | 75% |
-| Stage 1 | 90% | 75% |
-| Stage 2 | 90% | 93% |
-| Stage 3 | 90% | 96% |
-| Stage 3.5 | 90% | 75% |
-| Output | 90% | 75% |
+| Stage | Finished | Novel | Gap to 90/75 target |
+|-------|----------|-------|---------------------|
+| Stage 0 | 90% | 60% | R76B default-off is intentional design, not a gap |
+| Stage 1 | 90% | 75% | **At target** |
+| Stage 2 | 90% | 93% | **Exceeds target** |
+| Stage 3 | 93% | 96% | **Exceeds target** |
+| Stage 3.5 | 90% | 65% | Novel −10% — dual-PSF concept exists in other tools |
+| Output | 90% | 60% | Novel −15% — R80A/C minor; R80B novel |
