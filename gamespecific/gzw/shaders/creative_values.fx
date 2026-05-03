@@ -48,10 +48,10 @@
 // Default values match ARRI ALEXA latitude. Range approximately ±0.015.
 // R knee < 0 = red compresses earlier (film-like warm shadows).
 // B knee > 0 = blue compresses later (open highlights). B toe < 0 = cool toe.
-#define CURVE_R_KNEE  -0.010
-#define CURVE_B_KNEE  +0.008
-#define CURVE_R_TOE   +0.002
-#define CURVE_B_TOE   -0.006
+#define CURVE_R_KNEE  -0.0171
+#define CURVE_B_KNEE  +0.0135
+#define CURVE_R_TOE   +0.0144
+#define CURVE_B_TOE   -0.0439
 
 // ── PRINT STOCK ───────────────────────────────────────────────────────────────
 // Kodak 2383 print emulsion on top of FilmCurve: lifts blacks, compresses
@@ -92,7 +92,7 @@
 // Use for games with no volumetric fog or atmospheric depth. Skip if the game
 // has its own volumetric/fog system (it will compete).
 // VEIL_STRENGTH: glare as % of scene median luminance. 0 = off. 3–8 = subtle.
-#define VEIL_STRENGTH  0.00
+#define VEIL_STRENGTH  4
 
 // ── PRO MIST ──────────────────────────────────────────────────────────────────
 // Overall scatter strength scalar. 1.0 = calibrated default (~9% base). 0 = off.
@@ -102,7 +102,7 @@
 // Rod-vision blue-green hue bias in deep shadows (luma < 0.12). Physiologically
 // correct — Cao et al. 2008, implemented in Ghost of Tsushima. Neutrals unaffected
 // (C=0 → zero shift). 1.0 = calibrated default. 0 = off.
-#define PURKINJE_STRENGTH  2.0
+#define PURKINJE_STRENGTH  1.5
 
 // ── VIEWING SURROUND ─────────────────────────────────────────────────────────
 // CIECAM02 surround compensation (R76B). Corrects perceived contrast for dark-room
@@ -113,7 +113,7 @@
 // Longitudinal chromatic aberration of the human eye: blue focuses short, red
 // focuses long. Simulates the natural per-channel fringe that real-world optics
 // produce. 0 = off. 0.5 = subtle (~1.2D). 1.0 = full physiological LCA (~2.4D).
-#define LCA_STRENGTH  0.3
+#define LCA_STRENGTH  0.0
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.

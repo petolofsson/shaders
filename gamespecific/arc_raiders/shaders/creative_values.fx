@@ -48,10 +48,10 @@
 // Default values match ARRI ALEXA latitude. Range approximately ±0.015.
 // R knee < 0 = red compresses earlier (film-like warm shadows).
 // B knee > 0 = blue compresses later (open highlights). B toe < 0 = cool toe.
-#define CURVE_R_KNEE  -0.006
-#define CURVE_B_KNEE  +0.005
-#define CURVE_R_TOE    0.000
-#define CURVE_B_TOE   -0.003
+#define CURVE_R_KNEE  -0.0102
+#define CURVE_B_KNEE  +0.0085
+#define CURVE_R_TOE    0.0000
+#define CURVE_B_TOE   -0.0218
 
 // ── PRINT STOCK ───────────────────────────────────────────────────────────────
 // Kodak 2383 print emulsion on top of FilmCurve: lifts blacks, compresses

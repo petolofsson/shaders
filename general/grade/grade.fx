@@ -274,10 +274,11 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float fc_stevens  = (1.48 + sqrt(max(zone_log_key, 0.0))) / 2.03;
     float fc_factor   = 0.05 / ((1.0 - fc_knee) * (1.0 - fc_knee)) * fc_stevens * spread_scale;
     float fc_knee_toe = lerp(0.15, 0.25, saturate((0.40 - eff_p25) / 0.30));
-    float fc_knee_r   = clamp(fc_knee + CURVE_R_KNEE, 0.70, 0.95);
-    float fc_knee_b   = clamp(fc_knee + CURVE_B_KNEE, 0.70, 0.95);
-    float fc_ktoe_r   = clamp(fc_knee_toe + CURVE_R_TOE, 0.08, 0.35);
-    float fc_ktoe_b   = clamp(fc_knee_toe + CURVE_B_TOE, 0.08, 0.35);
+    // R84: CURVE_* are log-density offsets — exp2 folds to constant at compile time
+    float fc_knee_r   = clamp(fc_knee     * exp2(CURVE_R_KNEE), 0.70, 0.95);
+    float fc_knee_b   = clamp(fc_knee     * exp2(CURVE_B_KNEE), 0.70, 0.95);
+    float fc_ktoe_r   = clamp(fc_knee_toe * exp2(CURVE_R_TOE),  0.08, 0.35);
+    float fc_ktoe_b   = clamp(fc_knee_toe * exp2(CURVE_B_TOE),  0.08, 0.35);
     float fc_toe_fac  = 0.03 / (fc_knee_toe * fc_knee_toe);
     float3 lin = FilmCurveApply(pow(max(col.rgb, 0.0), EXPOSURE),
                                 fc_knee_r, fc_knee, fc_knee_b,
