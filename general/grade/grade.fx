@@ -200,7 +200,7 @@ float HueBandWeight(float hue, float center)
 float PivotedSCurve(float x, float m, float strength)
 {
     float t    = x - m;
-    float bent = t + strength * t * (1.0 - saturate(abs(t)));
+    float bent = t + strength * t * (1.0 - abs(t));
     return saturate(m + bent);
 }
 
@@ -229,6 +229,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // R54: camera signal floor/ceiling — compress raw pixel into [FILM_FLOOR, FILM_CEILING]
     col.rgb = col.rgb * (FILM_CEILING - FILM_FLOOR) + FILM_FLOOR;
 
+    float4 lf_mip2 = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 2));  // OPT-1: hoisted — used by CAT16, Retinex, ambient tint, halation
     // R76A: CAT16 chromatic adaptation — normalise scene illuminant toward D65
     {
         const float3x3 M_fwd = float3x3(0.302825, 0.602279, 0.070428,
@@ -238,7 +239,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
                                          -1.0784,  2.1456, -0.1184,
                                           0.0078, -0.2191,  1.1200);
         const float3 lms_d65 = float3(0.9756, 1.0165, 1.0849);
-        float3 illum_rgb  = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 2.0)).rgb;
+        float3 illum_rgb  = lf_mip2.rgb;
         float3 illum_norm = illum_rgb / max(Luma(illum_rgb), 0.001);
         float3 lms_illum  = mul(M_fwd, illum_norm);
         float3 gain      = clamp(lms_d65 / max(lms_illum, 0.001), 0.5, 2.0);
@@ -268,9 +269,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // ── 1. CORRECTIVE: EXPOSURE + FilmCurve ──────────────────────────────────
     // Frame-constant FilmCurve coefficients — hoisted out of per-pixel path (R62 OPT-2)
     float fc_knee     = lerp(0.90, 0.80, saturate((eff_p75 - 0.60) / 0.30));
-    float fc_width    = 1.0 - fc_knee;
     float fc_stevens  = (1.48 + sqrt(max(zone_log_key, 0.0))) / 2.03;
-    float fc_factor   = 0.05 / (fc_width * fc_width) * fc_stevens * spread_scale;
+    float fc_factor   = 0.05 / ((1.0 - fc_knee) * (1.0 - fc_knee)) * fc_stevens * spread_scale;
     float fc_knee_toe = lerp(0.15, 0.25, saturate((0.40 - eff_p25) / 0.30));
     float fc_knee_r   = clamp(fc_knee + CURVE_R_KNEE, 0.70, 0.95);
     float fc_knee_b   = clamp(fc_knee + CURVE_B_KNEE, 0.70, 0.95);
@@ -306,7 +306,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         float3 dom_mask = saturate((lin - lin_min) / max(sat_proxy, 0.001));
         // R81C: Beer-Lambert — exp(−α·c·d) is physically correct at high chroma
         float3 bl_abs = dom_mask * sat_proxy * ramp;
-        lin = saturate(lin * exp(-0.065 * bl_abs));
+        float3 bl_x   = 0.065 * bl_abs;
+        lin = saturate(lin * (1.0 - bl_x + bl_x * bl_x * 0.5));
     }
 
     // ── R19: 3-way color corrector — temp/tint per region, linear light ──────
@@ -339,13 +340,13 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float clahe_slope = lerp(1.32, 1.12, ss_04_25);
     float iqr_scale   = min(smoothstep(0.0, 0.25, zone_iqr),
                             (clahe_slope - 1.0) / max(zone_str, 0.001));
-    float new_luma    = saturate(zone_median + (luma - zone_median) * (1.0 + zone_str * iqr_scale * (1.0 - saturate(abs(luma - zone_median)))));
+    float new_luma    = saturate(zone_median + (luma - zone_median) * (1.0 + zone_str * iqr_scale * (1.0 - abs(luma - zone_median))));
 
 
     // R29: Multi-Scale Retinex — pixel-local illumination/reflectance separation
     float4 lf_mip1  = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 1));
     float illum_s0  = max(lf_mip1.a, 0.001);
-    float illum_s2  = max(tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 2)).a, 0.001);
+    float illum_s2  = max(lf_mip2.a, 0.001);
     float local_var = abs(illum_s0 - illum_s2);
     float nl_safe   = max(new_luma, 0.001);
     float log_R     = log2(nl_safe / illum_s0);
@@ -365,16 +366,17 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // R62 Finding 3: chroma-stable tonal — apply luma ratio in Oklab L to prevent zone S-curve from shifting chroma
     float3 lab_t  = RGBtoOklab(saturate(lin));
     float r_tonal = new_luma / max(luma, 0.001);
-    lab_t.x = saturate(lab_t.x * exp2(log2(max(r_tonal, 1e-10)) * (1.0 / 3.0)));
+    float cbrt_r  = exp2(log2(max(r_tonal, 1e-10)) * (1.0 / 3.0));
+    lab_t.x = saturate(lab_t.x * cbrt_r);
     // R65: couple a/b to L — maintains C/L (Oklab saturation) during shadow lift
-    float r65_ab = exp2(log2(max(r_tonal, 1e-5)) * 0.333);
+    float r65_ab = cbrt_r;
     float r65_sw = smoothstep(0.30, 0.0, lab_t.x);
     lab_t.y = lab_t.y * lerp(1.0, r65_ab, r65_sw);
     lab_t.z = lab_t.z * lerp(1.0, r65_ab, r65_sw);
     // R66: ambient shadow tint — inject scene-ambient hue into achromatic lifted shadows.
     // Normalise illum_s2 RGB to extract hue direction at 18% gray (decouples from local luma).
     {
-        float3 illum_s2_rgb = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 2.0)).rgb;
+        float3 illum_s2_rgb = lf_mip2.rgb;
         float3 illum_norm   = illum_s2_rgb / max(Luma(illum_s2_rgb), 0.001);
         float3 lab_amb      = RGBtoOklab(illum_norm * 0.18);
         float  scene_cut    = tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0)).r;
@@ -393,7 +395,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // HELMLAB: 2-harmonic Fourier correction aligns Oklab hue toward perceptual hue.
     // Corrects 8.9× non-uniformity in blue-cyan band (HELMLAB 2026, arxiv 2602.23010).
     float  h_theta = h * 6.28318;
-    float  h_perc  = frac(h + (0.008 * sin(h_theta) + 0.004 * sin(2.0 * h_theta)) / 6.28318);
+    float  sh_h, ch_h;
+    sincos(h_theta, sh_h, ch_h);
+    float  h_perc  = frac(h + (sh_h * (0.008 + 0.008 * ch_h)) / 6.28318);
 
     // ── R52: Purkinje shift — rod-vision blue-green bias in deep shadows ───────
     {
@@ -403,8 +407,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     }
 
     // R22: saturation by luminance — baked Munsell calibration (shadow 20%, highlight 45%)
-    C *= saturate(1.0 - 0.20 * saturate(1.0 - lab.x / 0.25)
-                      - 0.45 * saturate((lab.x - 0.75) / 0.25));
+    C *= (1.0 - 0.20 * saturate(1.0 - lab.x / 0.25)
+             - 0.45 * saturate((lab.x - 0.75) / 0.25));
 
     // R21: per-band hue rotation — compute h_out from original h before chroma lift
     float r21_delta = ROT_RED    * HueBandWeight(h_perc, BAND_RED)
@@ -423,23 +427,20 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float hw_o4 = HueBandWeight(h_out, BAND_BLUE);
     float hw_o5 = HueBandWeight(h_out, BAND_MAGENTA);
 
-    float la         = max(zone_log_key, 0.001);
-    float k          = 1.0 / (5.0 * la + 1.0);
-    float k2         = k * k;
-    float k4         = k2 * k2;
-    float fla        = 5.0 * la;
-    float one_mk4    = 1.0 - k4;
-    float fl         = k4 * la + 0.1 * one_mk4 * one_mk4 * pow(fla, 1.0 / 3.0);
-    float hunt_scale = sqrt(sqrt(max(fl, 1e-6))) / 0.5912;
+    float _k    = 1.0 / (5.0 * zone_log_key + 1.0);
+    float _k4   = _k * _k; _k4 *= _k4;
+    float _omk4 = 1.0 - _k4;
+    float hunt_scale = sqrt(sqrt(max(
+        _k4 * zone_log_key + 0.1 * _omk4 * _omk4 * pow(5.0 * zone_log_key, 1.0 / 3.0),
+        1e-6))) / 0.5912;
 
     // R36: mean_chroma → adaptive chroma and density strengths
-    float4 hist_cache[6];
     float cm_t = 0.0, cm_w = 0.0;
     [unroll] for (int bi = 0; bi < 6; bi++)
     {
-        hist_cache[bi] = tex2D(ChromaHistory, float2((bi + 0.5) / 8.0, 0.5 / 4.0));
-        cm_t += hist_cache[bi].r * hist_cache[bi].b;
-        cm_w += hist_cache[bi].b;
+        float4 hc = tex2D(ChromaHistory, float2((bi + 0.5) / 8.0, 0.5 / 4.0));
+        cm_t += hc.r * hc.b;
+        cm_w += hc.b;
     }
     float mean_chroma  = cm_t / max(cm_w, 0.001);
     float chroma_exp  = exp2(-5.006152 * mean_chroma);
@@ -451,11 +452,12 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // R68A: spatial chroma modulation — attenuate in textured regions, full in flat.
     chroma_str *= lerp(1.0, 0.65, smoothstep(0.02, 0.08, local_var));
 
-    float new_C = 0.0, total_w = 0.0, green_w = 0.0;
+    float new_C = 0.0, total_w = 0.0;
     [unroll] for (int band = 0; band < 6; band++)
     {
+        float pivot = tex2D(ChromaHistory, float2((band + 0.5) / 8.0, 0.5 / 4.0)).r;
         float w = HueBandWeight(h_perc, GetBandCenter(band));
-        new_C   += PivotedSCurve(C, hist_cache[band].r, chroma_str) * w;
+        new_C   += PivotedSCurve(C, pivot, chroma_str) * w;
         total_w += w;
     }
     // max(lifted, C) — lift-only; identity limit at C = 0 by construction
@@ -469,7 +471,6 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float C_ceil   = hw_o0 * 0.28 + hw_o1 * 0.24 + hw_o2 * 0.16
                    + hw_o3 * 0.15 + hw_o4 * 0.19 + hw_o5 * 0.22;
     float final_C  = min(vib_C, max(C_ceil, C));
-    green_w = hw_o2;
 
     // Vector-space (a,b) reconstruction — rotate original direction by R21 delta
     float r21_cos, r21_sin;
@@ -485,7 +486,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
                    - hw_o3 * 0.08    // CYAN    — shifts toward yellow-green
                    + hw_o4 * 0.04    // BLUE    — shifts toward purple
                    + hw_o5 * 0.03) * final_C;
-    float dtheta = +(GREEN_HUE_COOL * 2.0 * 3.14159265) * green_w * final_C + abney;
+    float dtheta = +(GREEN_HUE_COOL * 2.0 * 3.14159265) * hw_o2 * final_C + abney;
     float cos_dt = 1.0 - dtheta * dtheta * 0.5;
     float sin_dt = dtheta;
     float f_oka  = ab_s.x * cos_dt - ab_s.y * sin_dt;
@@ -521,7 +522,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     {
         float3 hal_core_r = lf_mip1.rgb;                                            // red core: mip 1 (hoisted, shared with Retinex)
         float3 hal_core_g = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 0)).rgb;   // green core: mip 0
-        float3 hal_wing   = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 2)).rgb;   // extended wing: mip 2
+        float3 hal_wing   = lf_mip2.rgb;                                            // extended wing: mip 2
         float  hal_luma   = dot(lin, float3(0.2126, 0.7152, 0.0722));
         float  hal_gate   = smoothstep(0.70, 0.90, hal_luma);  // R79A: softer onset
         float3 hal_delta  = float3(
