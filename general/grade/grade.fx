@@ -310,6 +310,12 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         float3 bl_abs = dom_mask * sat_proxy * ramp;
         float3 bl_x   = 0.065 * bl_abs;
         lin = saturate(lin * (1.0 - bl_x + bl_x * bl_x * 0.5));
+        // R85: inter-channel dye coupling — Kodak 2383 spectral dye density curves
+        // cyan dye (red-record) ~2.0% bleed into green; magenta (green-record) ~2.2% into blue
+        float2 dye_cross = float2(dom_mask.r * sat_proxy * ramp * 0.020,
+                                  dom_mask.g * sat_proxy * ramp * 0.022);
+        lin.g = saturate(lin.g * (1.0 - dye_cross.x));
+        lin.b = saturate(lin.b * (1.0 - dye_cross.y));
     }
 
     // ── R19: 3-way color corrector — temp/tint per region, linear light ──────
