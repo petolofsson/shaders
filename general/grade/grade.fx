@@ -226,11 +226,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     col.r          = tex2D(BackBuffer, uv - lca_off).r;
     col.b          = tex2D(BackBuffer, uv + lca_off).b;
 
-    // R54: camera signal floor/ceiling — compress raw pixel into [FILM_FLOOR, FILM_CEILING]
-    col.rgb = col.rgb * (FILM_CEILING - FILM_FLOOR) + FILM_FLOOR;
-
     float4 lf_mip2 = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 2));  // OPT-1: hoisted — used by CAT16, Retinex, ambient tint, halation
     // R76A: CAT16 chromatic adaptation — normalise scene illuminant toward D65
+    float3 lms_illum_norm;  // lifted for R83 chromatic floor
     {
         const float3x3 M_fwd = float3x3(0.302825, 0.602279, 0.070428,
                                          0.153818, 0.777214, 0.085341,
@@ -242,6 +240,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         float3 illum_rgb  = lf_mip2.rgb;
         float3 illum_norm = illum_rgb / max(Luma(illum_rgb), 0.001);
         float3 lms_illum  = mul(M_fwd, illum_norm);
+        lms_illum_norm    = lms_illum / max(lms_illum.g, 0.001);
         float3 gain      = clamp(lms_d65 / max(lms_illum, 0.001), 0.5, 2.0);
         float3 lms_px    = mul(M_fwd, col.rgb) * gain;
         float3 cat16     = mul(M_bwd, lms_px);
@@ -250,6 +249,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     }
     // R76B: CIECAM02 surround compensation
     col.rgb = pow(max(col.rgb, 0.0), VIEWING_SURROUND);
+    // R54 + R83: camera signal floor/ceiling — chromatic pedestal from Kodak 2383 D-min + illuminant
+    float3 cfilm_floor = FILM_FLOOR * (lms_illum_norm * float3(1.02, 1.00, 0.97));
+    col.rgb = col.rgb * (FILM_CEILING - cfilm_floor) + cfilm_floor;
 
     float4 perc = tex2D(PercSamp, float2(0.5, 0.5));
 
