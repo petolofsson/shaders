@@ -2,7 +2,9 @@
 
 **Schedule:** 4× per day (07, 07+6h, 07+12h, 07+18h)
 **Output:** `/home/pol/code/shaders/research/R{next}_{YYYY-MM-DD}_R86_Scene_Reconstruction.md`
-where `{next}` = one more than the highest R-number found in `ls research/R*.md`.
+where `{next}` = one more than the highest R-number found after running:
+`git -C /home/pol/code/shaders fetch origin alpha && git -C /home/pol/code/shaders checkout alpha`
+then `ls /home/pol/code/shaders/research/R*.md | grep -oP 'R\K[0-9]+' | sort -n | tail -1`
 **Branch:** commit and push output file to `alpha`.
 **Do not modify any source files.**
 
@@ -159,7 +161,9 @@ correction offsets, following the same structure as the existing `ROT_*` knobs i
 
 ```bash
 cd /home/pol/code/shaders
+git fetch origin alpha
 git checkout alpha
+git pull origin alpha
 git add research/R*_*_R86_Scene_Reconstruction.md
 git commit -m "nightly: R86 scene reconstruction research {angle} {YYYY-MM-DD}"
 git push origin alpha
