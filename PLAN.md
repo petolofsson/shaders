@@ -1,6 +1,6 @@
 # Pipeline Improvement Plan
 **Goal:** Raise every stage to 90% finished / 75% novel (game-specific sense).
-**Created:** 2026-05-03 | **Updated:** 2026-05-03
+**Created:** 2026-05-03 | **Updated:** 2026-05-03 (post-plan R81/R82)
 
 ---
 
@@ -22,12 +22,12 @@
 
 | Stage | Finished | Novel | Notes |
 |-------|----------|-------|-------|
-| Stage 0 — Input | 90% | 60% | R76B default-off is intentional — game-agnostic, user sets per setup |
-| Stage 1 — Corrective | 90% | 75% | **Done** |
-| Stage 2 — Tonal | 90% | 93% | **Done** |
-| Stage 3 — Chroma | 93% | 96% | R78 done — correctness fix, no novelty gain |
-| Stage 3.5 — Halation | 90% | 65% | R79 done — dual-PSF concept exists elsewhere; novel execution via mips |
-| Output — Pro-Mist | 90% | 60% | R80 done — R80B novel; R80A/C minor |
+| Stage 0 — Input | 92% | 70% | EXPOSURE + FILM_FLOOR/CEILING standard; CAT16, VIEWING_SURROUND, Eye LCA novel |
+| Stage 1 — Corrective | 90% | 65% | 3-way CC and EXPOSURE standard; adaptive FilmCurve + Beer-Lambert novel |
+| Stage 2 — Tonal | 90% | 88% | Clarity/shadow lift concepts exist; zone system, R60/62/66 genuinely novel |
+| Stage 3 — Chroma | 95% | 90% | Vibrance/Purkinje/HK/Abney published; HELMLAB, MacAdam ceilings, adaptive chroma novel |
+| Stage 3.5 — Halation | 90% | 78% | Concept exists; zero-tap mip architecture + calibrated chromatic model novel |
+| Output — Pro-Mist | 90% | 72% | Base concept common; bidirectional scatter, zone_log_key adaptive, zero-tap novel |
 
 ---
 
@@ -222,6 +222,99 @@ visual validation. Validate against Arc Raiders and GZW. Enable if no seaming ar
 
 ---
 
+---
+
+## Novelty gap research (Stage 0 and Stage 1)
+
+### R83 — Chromatic FILM_FLOOR
+**Targets:** Stage 0 novel +5% → 75%
+
+FILM_FLOOR is currently a static scalar black pedestal — identical for all three channels.
+Real film has a per-channel base density (D-min): the unexposed emulsion base has a
+chromaticity that varies with the scene illuminant and the specific stock's chemical fog.
+The CAT16 illuminant estimate is already computed and available in `lf_mip2` (hoisted,
+zero new taps). The illuminant chromaticity provides the signal needed to derive a
+physically-motivated per-channel floor.
+
+Research: Derive the relationship between illuminant chromaticity (in LMS after CAT16
+forward transform) and the Kodak 2383 per-channel D-min values. Confirm the floor
+adjustment does not interact destructively with the CAT16 neutral already applied above it.
+Validate on warm and cool scene illuminants in Arc Raiders.
+
+Likely implementation (Stage 1, replaces the scalar `FILM_FLOOR` application):
+```hlsl
+// per-channel floor from illuminant chromaticity — CAT16 LMS already computed above
+float3 cfilm_floor = float3(FILM_FLOOR) * (lms_illum_norm * float3(1.02, 1.00, 0.97));
+col.rgb = col.rgb * (FILM_CEILING - cfilm_floor) + cfilm_floor;
+```
+
+GPU cost: 3 MAD. No new taps (lms_illum already in scope from CAT16 block).
+No new user knobs — FILM_FLOOR remains the single scalar control.
+
+---
+
+### R84 — Optical Density FilmCurve
+**Targets:** Stage 1 novel +5%
+
+The FilmCurve currently fits a sigmoid polynomial to the visible H&D curve shape in linear
+light. Real film H&D curves are defined in optical density units (D = −log₁₀(T)), where
+the actual characteristic curve is a natural sigmoid. Operating in linear light forces a
+higher-order polynomial to approximate what is a near-linear segment in log space.
+Reformulating the curve in log-density space gives a more physically accurate shoulder and
+toe, and the per-channel offsets (CURVE_R_KNEE etc.) become proper density deviations
+rather than empirical polynomial coefficients.
+
+Research: Map current CURVE_R/B KNEE/TOE values to equivalent D-log offsets. Derive the
+correct log-density sigmoid for Kodak 2383 from the published data sheet characteristic
+curves (available from Kodak/Kodak Alaris publications). Validate that the new curve
+produces equivalent or better results at the current knob values. Confirm no SPIR-V issue
+with log2/exp2 in this context (already used elsewhere).
+
+Likely implementation: replace `FilmCurvePS` scalar in `ColorTransformPS` Stage 1 with
+a log-density calculation that lifts the knee/toe into density space before converting
+back to linear. ~6 ALU replacing the current polynomial. Per-channel knee/toe offsets
+become density-space deltas — same knob names, reinterpreted units.
+
+GPU cost: ~4 ALU delta (log2 + exp2 already available). No new taps, no new knobs.
+
+---
+
+### R85 — Inter-Channel Dye Masking
+**Targets:** Stage 1 novel +5%
+
+R81C (Beer-Lambert) models intra-channel dye absorption: dominant-channel dye attenuates
+its own channel. In real colour negative film, the three dye layers (cyan/magenta/yellow)
+have spectral overlaps — the magenta dye (green record) absorbs slightly in blue; the cyan
+dye (red record) absorbs slightly in green. These inter-channel terms produce the
+characteristic warm shadow desaturation and cross-channel compression that makes film look
+different from digital.
+
+No other post-process implementation models this. The Kodak 2383 data sheet includes
+spectral dye density curves that can be used to derive approximate inter-channel coupling
+coefficients.
+
+Research: Read Kodak 2383 spectral dye density curves (available in published process
+documentation). Derive a 3×3 absorption matrix for the three dye layers at the operating
+density range (~0.1–1.8 D). Validate that inter-channel terms are small enough to remain
+perceptually subtle at normal exposure (dominant terms should remain dominant). Confirm no
+interaction with the existing Beer-Lambert dominant-channel term.
+
+Likely implementation (Stage 1, after R81C):
+```hlsl
+// inter-channel dye coupling: magenta bleeds into blue, cyan bleeds into green
+float3 dye_cross = float3(
+    0.0,
+    dom_mask.r * sat_proxy * ramp * 0.018,   // cyan dye → green bleed
+    dom_mask.g * sat_proxy * ramp * 0.022    // magenta dye → blue bleed
+);
+lin = saturate(lin * (1.0 - dye_cross));
+```
+Coefficients to be refined from spectral data.
+
+GPU cost: ~6 MAD. No new taps, no new knobs.
+
+---
+
 ## Execution order
 
 | Phase | Items | Stages | Status |
@@ -233,6 +326,7 @@ visual validation. Validate against Arc Raiders and GZW. Enable if no seaming ar
 | 5 — Stage 3 | R78 gamut projection | Stage 3 | **Done** |
 | 6 — Stage 3.5 | R79A → R79B → R79C | Stage 3.5 | **Done** |
 | 7 — Output | R80A, then R80B + R80C | Pro-Mist | **Done** |
+| 8 — Novelty gaps | R83 → R84 → R85 | Stage 0, Stage 1 | **Pending** |
 
 ---
 
@@ -240,9 +334,168 @@ visual validation. Validate against Arc Raiders and GZW. Enable if no seaming ar
 
 | Stage | Finished | Novel | Gap to 90/75 target |
 |-------|----------|-------|---------------------|
-| Stage 0 | 90% | 60% | R76B default-off is intentional design, not a gap |
-| Stage 1 | 90% | 75% | **At target** |
-| Stage 2 | 90% | 93% | **Exceeds target** |
-| Stage 3 | 93% | 96% | **Exceeds target** |
-| Stage 3.5 | 90% | 65% | Novel −10% — dual-PSF concept exists in other tools |
-| Output | 90% | 60% | Novel −15% — R80A/C minor; R80B novel |
+| Stage 0 | 92% | 70% | Novel −5% — R83 chromatic FILM_FLOOR targets this gap |
+| Stage 1 | 90% | 65% | Novel −10% — R84 optical density FilmCurve + R85 dye masking target this gap |
+| Stage 2 | 90% | 88% | **Exceeds target** |
+| Stage 3 | 95% | 90% | **Exceeds target** |
+| Stage 3.5 | 90% | 78% | **Exceeds target** — zero-tap mip architecture is genuinely distinct |
+| Output | 90% | 72% | Novel −3% — bidirectional + scene-adaptive lifts it close |
+
+---
+
+## Post-plan additions (2026-05-03)
+
+Shipped after the plan was written — not part of original scope.
+
+### R81A — Eye LCA (longitudinal chromatic aberration)
+Per-pixel radial channel separation modelling the human eye's focus-wavelength
+dispersion. Blue samples outward, red inward from screen centre. First physiologically-
+grounded LCA implementation for game post-process. `LCA_STRENGTH` knob (0 = off,
+0.4 = current both games).
+
+### R81B — MacAdam-calibrated chroma ceilings
+Per-hue chroma ceilings (R73 memory color) re-derived from MacAdam discrimination
+ellipses: blue/cyan tightened (smallest ellipses), yellow relaxed (largest). Physically-
+justified per-hue discrimination thresholds.
+
+### R81C — Beer-Lambert dye absorption
+Replaced linear dominant-channel attenuation with `exp(-α·c·d)` Beer-Lambert law.
+Physically correct for dye-layer absorption at high chroma. Taylor-expanded to 2nd order
+(max error 4.57×10⁻⁵, 44× below JND) for GPU efficiency.
+
+### R82 — 11 zero-loss optimizations in ColorTransformPS
+−3 tex reads, −5 transcendentals, ~−30 live scalars, −8 saturate ops per pixel.
+Critical fix for AMD RDNA: hist_cache[6] array removal frees 24 scalars, reducing
+register spill pressure. All changes exact or below JND threshold.
+See: `research/R82_2026-05-03_optimization_findings.md`
+
+### SHADOW_LIFT_STRENGTH knob
+Auto shadow lift was fully hidden. Exposed as user scalar (1.0 = calibrated default).
+Arc Raiders: 1.0. GZW: 1.1 (dark indoor environments need more lift).
+
+### GZW sync + LCA highway fix
+GZW `creative_values.fx` was missing `VIEWING_SURROUND` and `LCA_STRENGTH` — grade.fx
+failed to compile, causing black screen. Fixed.
+LCA was sampling shifted r/b channels before the data highway guard at y=0, corrupting
+the scope's pre-correction histogram. Guard moved before LCA reads.
+
+---
+
+## Scene Reconstruction Research Track
+
+**Status: Separate track — pre-pipeline, genuinely novel**
+**Goal:** Approximate the pre-tonemapped, scene-referred signal from the game's SDR output —
+effectively inverting the engine's tone mapping to recover a RAW-like linear-light image,
+then re-applying a controlled forward transform at output.
+
+If this works, every stage in the pipeline operates on scene-referred values rather than
+display-referred values. The entire grade becomes physically accurate rather than an
+empirical correction on top of an opaque game transform.
+
+### Why the existing approach is insufficient
+
+`unused/general/inverse-grade/inverse_grade.fx` exists but was pulled from GZW with
+"game tone curve is better." Its limitations:
+
+- Blind generic inverse S-curve — not derived from any specific engine tone mapper
+- Anchored only at p50, IQR-driven strength — no structural knowledge of shoulder/toe shape
+- Proportional chroma recovery only (`lab.yz *= lerp(1.0, expansion, 0.5)`) — cannot
+  correct the hue distortions ACES introduces (red/magenta → orange push is notorious)
+- No tone mapper identification — same inversion applied regardless of game engine
+- No forward re-apply — leaves the image in an uncontrolled luminance range
+
+The failure mode is predictable: a blind inverse S will over-expand the wrong tonal regions
+and produce chroma and hue errors that compound through every subsequent stage.
+
+---
+
+### R86 — Tone Mapper Identification and Analytical Inversion
+
+**Track:** Scene Reconstruction | **Status:** Pending
+**Targets:** New — not tracked in existing novelty scores
+
+**Problem:**
+Arc Raiders uses UE5's ACES Filmic tone mapper. The UE5 implementation is the Hill
+modified ACES approximation:
+
+```hlsl
+// UE5 ACES approx (Hill 2016)
+float3 ACESFilm(float3 x) {
+    float a = 2.51, b = 0.03, c = 2.43, d = 0.59, e = 0.14;
+    return saturate((x*(a*x+b))/(x*(c*x+d)+e));
+}
+```
+
+This is a rational function `f(x) = (ax²+bx) / (cx²+dx+e)` — it has an exact analytical
+inverse via the quadratic formula. Crucially, the inverse only exists in the range [0,1],
+which is exactly what the display-referred SDR output provides.
+
+**Approach:**
+
+1. **Confirm tone mapper identity** — The ACES coefficients produce a characteristic
+   neutral-gray response curve. From PercTex p25/p50/p75 and a few quantiles from the
+   histogram, fit the rational function coefficients and compare against known presets
+   (UE5 ACES, Reinhard, GTOneCurve). Arc Raiders is known UE5, so this is validation
+   rather than discovery.
+
+2. **Derive analytical inverse** — For the rational form `y = (ax²+bx)/(cx²+dx+e)`,
+   rearrange to quadratic: `(cy-a)x² + (dy-b)x + ey = 0`. Solve for `x` (taking the
+   positive root). This is exact — no approximation error.
+
+3. **Exposure estimation** — The inverse maps [0,1] back to scene linear, but the actual
+   scene-linear range depends on the exposure going into the tone mapper. Use p99 of the
+   scene (available from the histogram) to anchor the inverse curve scale.
+
+4. **ACES hue shift correction** — ACES is notorious for a red/magenta→orange hue push,
+   a cyan→blue shift, and highlight desaturation of yellows. These are measurable as
+   deviations from neutral in Oklab hue at mid–high chroma. Derive per-hue correction
+   offsets from the known ACES spectral response and apply them in the Oklab LCh domain
+   after the luminance inversion.
+
+5. **Forward re-apply** — After the full pipeline runs on scene-referred values, apply a
+   controlled forward display transform at the very end. This replaces or subsumes the
+   current FilmCurve + PRINT_STOCK combination. The forward transform is the artist's
+   choice: ACES, filmic S, or the current polynomial.
+
+**Why this is novel:**
+
+No game post-process shader identifies and inverts the upstream tone mapper. ACES inversion
+is studied in VFX pipelines (for undoing bakes before re-compositing) but never in a
+real-time display shader that also feeds the inverted signal back to further grading stages.
+The combination of: stat-driven parameter confirmation → analytical inverse → hue correction
+→ scene-referred grading → controlled forward output is entirely new in this context.
+
+**Research deliverables:**
+
+- Verify UE5 ACES coefficient fingerprint in Arc Raiders from p-value analysis
+- Derive the HLSL inverse and validate it with forward(inverse(x)) ≈ x across [0.01, 0.99]
+- Characterise ACES hue distortions at different luminance/chroma combinations
+- Prototype in `unused/` — do NOT integrate until validated end-to-end
+- Write findings doc before touching any live shader
+
+**Risk factors:**
+
+- The game may apply post-ACES operations (UI compositing, sharpening) that break the
+  clean inverse. The scope guard at y=0 suggests at least one such transform exists.
+- GZW may use a different tone mapper (check with a parallel analysis pass later)
+- Exposure estimation from p99 is noisy if the scene contains specular spikes. The
+  histogram already filters extremes (p95 bin exists) — use p95 as a robust ceiling.
+
+**Scope:** Research-only until findings confirm the inverse is clean. No live shader
+changes without a validated prototype in `unused/`.
+
+---
+
+### How this fits the main pipeline
+
+If R86 succeeds, the Stage 0 input block gains a new first step:
+
+```
+[BackBuffer] → ACES⁻¹ (R86) → EXPOSURE → CAT16 (R76A) → VIEWING_SURROUND (R76B)
+```
+
+Stages 1–Output then operate on approximately scene-linear values.
+The final Output stage gains a forward display transform replacing/subsuming FilmCurve.
+
+This would push Stage 0 novelty from 70% to approximately 90% — and make every
+downstream stage more physically accurate as a side effect.
