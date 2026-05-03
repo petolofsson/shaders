@@ -301,7 +301,8 @@ float4 SmoothZoneLevelsPS(float4 pos : SV_Position,
     // R39: VFF Kalman — zone median (.r), P in .a, cold-start when uninitialized
     float P_prev = (prev.a < 0.001) ? 1.0 : prev.a;
     float e_zone = current.r - prev.r;
-    float Q_vff  = lerp(KALMAN_Q_MIN, KALMAN_Q_MAX, smoothstep(0.0, VFF_E_SIGMA, abs(e_zone)));
+    // R88: Sage-Husa Q — driven by posterior P, not instantaneous innovation spike
+    float Q_vff  = lerp(KALMAN_Q_MIN, KALMAN_Q_MAX, smoothstep(KALMAN_R * 0.5, KALMAN_R * 5.0, P_prev));
     float P_pred = P_prev + Q_vff;
     float K      = P_pred / (P_pred + KALMAN_R);
     // R53: scene-cut override — spike K toward 1.0 on hard cuts
@@ -385,7 +386,8 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
     // R39: VFF Kalman — chroma mean (.r), P in .a, cold-start when uninitialized
     float P_prev   = (prev.a < 0.001) ? 1.0 : prev.a;
     float e_chroma = mean - prev.r;
-    float Q_vff_c  = lerp(KALMAN_Q_MIN, KALMAN_Q_MAX, smoothstep(0.0, VFF_E_SIGMA_CHROMA, abs(e_chroma)));
+    // R88: Sage-Husa Q — driven by posterior P, not instantaneous innovation spike
+    float Q_vff_c  = lerp(KALMAN_Q_MIN, KALMAN_Q_MAX, smoothstep(KALMAN_R * 0.5, KALMAN_R * 5.0, P_prev));
     float P_pred   = P_prev + Q_vff_c;
     float K        = P_pred / (P_pred + KALMAN_R);
     // R53: scene-cut override — spike K toward 1.0 on hard cuts

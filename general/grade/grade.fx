@@ -543,7 +543,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     }
 
     // dither: break 8-bit BackBuffer quantization — converts banding to imperceptible noise
-    float dither = frac(sin(dot(pos.xy, float2(127.1, 311.7))) * 43758.5453) - 0.5;
+    // R89: IGN blue-noise dither (Jimenez 2016) — pushes quantization error to high freq
+    float dither = frac(52.9829189 * frac(dot(pos.xy, float2(0.06711056, 0.00583715)))) - 0.5;
     lin += dither * (1.0 / 255.0);
 
     return DrawLabel(float4(lin, col.a), pos.xy, 270.0, 50.0,
