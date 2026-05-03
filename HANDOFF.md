@@ -1,8 +1,44 @@
 # Handoff — 2026-05-03
 
 ## Current branch
-`alpha` — HEAD `50c1cc4`
+`alpha` — HEAD `052e91b`
 Clean working tree. Pushed to origin.
+
+---
+
+## FIRST PRIORITY: Brightness regression in current code
+
+**Symptom:** Major brightness issues observed after Phase 2 commit (`50c1cc4`).
+Screen appears significantly over-bright.
+
+**Primary suspects (investigate in this order):**
+
+1. **R72 clarity coefficient too strong** — `grade.fx` line 329:
+   ```hlsl
+   new_luma = saturate(new_luma + 0.10 * log_R * clarity_gate * (1.0 - new_luma));
+   ```
+   `log_R = log2(luma / illum_s0)` is positive for any pixel brighter than its local
+   illuminant — which is the majority of pixels on lit surfaces. The `0.10` coefficient
+   adds up to +10% luma to already-bright areas. Start by halving it to `0.05` and
+   see if the issue resolves. If still too bright, consider `0.025` or restricting to
+   shadow/midtone range only.
+
+2. **FILM_CEILING 0.95 → 1.00** — `creative_values.fx` line 19. The original 0.95
+   clamped true whites to 95% before EXPOSURE and FilmCurve, giving the shoulder room
+   to shape the top. At 1.00, peak values go straight into FilmCurve at full scale.
+   Restoring to 0.95 may resolve highlight clipping without touching shader code.
+
+3. **shadow_lift_str range widened** — The auto shadow lift max changed from 1.30 to
+   1.50 in a prior session. If combined with R72 clarity, midtones could be lifted
+   twice: once by shadow lift, again by log_R. Check whether disabling R72 (`0.0`
+   coefficient) and reverting FILM_CEILING to 0.95 together restores expected behaviour.
+
+**Recommended debug order:**
+1. Set `FILM_CEILING 0.95` in creative_values.fx — immediate, no recompile wait
+2. If still too bright: change R72 coefficient `0.10 → 0.05` in grade.fx line 329
+3. Compare before/after with screenshots to isolate the contribution
+
+---
 
 ## What happened this session
 
@@ -81,3 +117,15 @@ Phases 4–7 are independent of Phase 3 (R76) and can proceed while R76 is block
 
 ## Debug log
 `/tmp/vkbasalt.log` — always check this first for SPIR-V compile errors.
+
+---
+
+## Fresh session prompt
+
+> We're on branch `alpha`, HEAD `052e91b`. Read `HANDOFF.md` and `PLAN.md` before doing anything.
+>
+> **First task: diagnose and fix the brightness regression in the current code (`50c1cc4`).** There are major brightness issues visible in-game. The two primary suspects are documented in HANDOFF.md under "FIRST PRIORITY" — start with `FILM_CEILING` in `creative_values.fx` (quick test, no shader recompile), then check the R72 `log_R` clarity coefficient in `grade.fx` line 329 (`0.10` may be too strong).
+>
+> Do not touch R76 — it caused an all-white screen last session and is documented as blocked. Do not proceed to R78/R79/R80 until the brightness issue is resolved and confirmed stable.
+>
+> Once brightness is fixed and confirmed, the next planned work is **Phase 5 (R78)** — constant-hue gamut projection. Findings are in `research/R78_2026-05-03_constant_hue_gamut_projection_findings.md`. Plan the change (specific lines) and wait for a nod before writing code.
