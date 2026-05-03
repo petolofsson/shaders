@@ -38,12 +38,9 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 
 float ACESConfidence(float4 perc)
 {
-    float iqr         = max(perc.b - perc.r, 0.001);
-    float highs_norm  = max(1.0 - perc.b, 0.0) / iqr;
-    float shadow_rat  = perc.r / max(perc.g, 0.001);
-    return saturate(
-        smoothstep(3.0, 1.2, highs_norm) * 0.70 +
-        smoothstep(0.72, 0.52, shadow_rat) * 0.30);
+    float mid_score    = smoothstep(0.10, 0.22, perc.g) * smoothstep(0.72, 0.58, perc.g);
+    float spread_score = smoothstep(0.01, 0.08, max(perc.b - perc.r, 0.0));
+    return saturate(mid_score * 0.70 + spread_score * 0.30);
 }
 
 #define BOX_W   40

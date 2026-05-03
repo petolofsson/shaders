@@ -116,12 +116,9 @@ float3 ACESInverse3(float3 rgb)
 
 float ACESConfidence(float p25, float p50, float p75)
 {
-    float iqr        = max(p75 - p25, 0.001);
-    float highs_norm = max(1.0 - p75, 0.0) / iqr;
-    float shadow_rat = p25 / max(p50, 0.001);
-    return saturate(
-        smoothstep(3.0, 1.2, highs_norm) * 0.70 +
-        smoothstep(0.72, 0.52, shadow_rat) * 0.30);
+    float mid_score    = smoothstep(0.10, 0.22, p50) * smoothstep(0.72, 0.58, p50);
+    float spread_score = smoothstep(0.01, 0.08, max(p75 - p25, 0.0));
+    return saturate(mid_score * 0.70 + spread_score * 0.30);
 }
 
 // ─── R86 Angle 1: ACESHueCorrection ────────────────────────────────────────
