@@ -447,6 +447,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float density_str = 62.0 - 20.0 * chroma_exp;
     // R68A: spatial chroma modulation — attenuate in textured regions, full in flat.
     chroma_str *= lerp(1.0, 0.65, smoothstep(0.02, 0.08, local_var));
+    // R99: achromatic brake — reduce chroma lift when scene is predominantly colorless.
+    // Counteracts chroma_exp boost that otherwise over-pushes in near-monochrome scenes.
+    chroma_str *= lerp(1.0, 0.5, smoothstep(0.60, 0.90, ReadHWY(HWY_ACHROM_FRAC)));
 
     float new_C = 0.0, total_w = 0.0;
     [unroll] for (int band = 0; band < 6; band++)
@@ -521,7 +524,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         float3 hal_wing   = lf_mip2.rgb;                                            // extended wing: mip 2
         float  hal_luma   = dot(lin, float3(0.2126, 0.7152, 0.0722));
         // R93A/B: luminance-scaled wing blend + anti-halation OD ratio (red:green 2:1 from Kodak 2383)
-        float  hal_bright  = smoothstep(0.88, 1.0, hal_luma);
+        // R100: p90-adaptive threshold — wing fires on scene's own bright content, not absolute value.
+        float  hal_thresh  = max(ReadHWY(HWY_P90) * 0.90, 0.50);
+        float  hal_bright  = smoothstep(hal_thresh, 1.0, hal_luma);
         // R96: spectral warm-tilt on wing — anti-halation absorbs g/b on return path
         float3 hal_wing_w  = float3(hal_wing.r, hal_wing.g * 0.88, hal_wing.b * 0.75);
         // delta self-limits: zero where blur ≤ sharp (bright sources, uniform areas), positive only in halo zone
