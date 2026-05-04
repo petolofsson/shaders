@@ -1,4 +1,7 @@
 {
+  "env": {
+    "BRAVE_API_KEY": "BSAhLoPIl0zTKhhycZyXI3eHmxEVdAL"
+  },
   "permissions": {
     "allow": [
       "Bash(gh repo *)",
@@ -32,7 +35,9 @@
       "WebFetch(domain:pro.sony)",
       "WebFetch(domain:docs.red.com)",
       "WebFetch(domain:www.color.io)",
-      "WebFetch(domain:www.dehancer.com)"
+      "WebFetch(domain:www.dehancer.com)",
+      "Bash(sort -t/ -k1)",
+      "Bash(python3 -)"
     ]
   }
 }
