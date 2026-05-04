@@ -104,13 +104,9 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     adapt_str *= mist_key_scale * mist_ap_scale;
 
     float  scene_softness = smoothstep(0.1, 0.4, iqr);
-    float3 diffused       = lerp(diffuse0, diffuse1, scene_softness * 0.35);
-
-    float  luma_in   = Luma(base.rgb);
-    float  gate_lo   = saturate(p75);
-    float  gate_hi   = saturate(p75 + 0.18);
-    float  luma_gate = smoothstep(gate_lo, gate_hi, luma_in)
-                     * (1.0 - smoothstep(0.96, 1.0, luma_in));
+    // R91: Mie per-channel scatter — red draws wider (mip 1), blue tighter (mip 0)
+    float  g_blend        = scene_softness * 0.35;
+    float3 scatter_src    = float3(diffuse1.r, lerp(diffuse0.g, diffuse1.g, g_blend), diffuse0.b);
 
     // R46: adapt scatter weights to scene warmth — warm scene → neutral scatter
     float  warm_bias = tex2Dlod(WarmBiasSamp, float4(0.5, 0.5, 0, 0)).r;
@@ -118,11 +114,16 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float  scatter_b = lerp(0.92, 1.00, smoothstep(0.02, 0.12, warm_bias));
 
     // R55: bidirectional scatter — Pro-Mist reduces contrast (not purely additive glow)
-    float3 scatter_delta = (diffused - base.rgb) * adapt_str * luma_gate;
-    // R80A: warm scatter bias — practical lights are warm; scatter inherits their colour
-    float3 result = base.rgb + scatter_delta * float3(scatter_r * 1.05, 1.00, scatter_b * 0.92);
+    // Gate on blurred source luma: fires only near bright sources, not in uniform dark areas.
+    // This prevents the 1/8-res texture boundary from creating a visible disc in dark scenes.
+    float scatter_luma = dot(scatter_src, float3(0.2126, 0.7152, 0.0722));
+    float luma_gate    = smoothstep(0.08, 0.28, scatter_luma);
+    float3 scatter_delta = (scatter_src - base.rgb) * adapt_str * luma_gate;
+    // R46 already encodes warm bias (cool=1.05/0.92, warm=1.0/1.0) — use directly, no extra multiplier
+    float3 result = base.rgb + scatter_delta * float3(scatter_r, 1.00, scatter_b);
 
-    float dither = frac(sin(dot(pos.xy, float2(127.1, 311.7))) * 43758.5453) - 0.5;
+    // R92: IGN blue-noise dither (Jimenez 2016) — matches grade.fx
+    float dither = frac(52.9829189 * frac(dot(pos.xy, float2(0.06711056, 0.00583715)))) - 0.5;
     result += dither * (1.0 / 255.0);
 
     float4 out_col = float4(saturate(result), base.a);

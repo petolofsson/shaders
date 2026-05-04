@@ -6,7 +6,7 @@
 // below "sees". Raising this (>1.0) darkens; lowering (<1.0) brightens.
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune
 // the contrast/chroma knobs beneath.
-#define EXPOSURE            0.92
+#define EXPOSURE            0.85
 
 // ── CAMERA SIGNAL RANGE ───────────────────────────────────────────────────────
 // Remaps the raw pixel into [FILM_FLOOR, FILM_CEILING] before EXPOSURE runs.
@@ -23,10 +23,10 @@
 // TEMP: positive = warm (R up, B down), negative = cool. Range ±100.
 // TINT: positive = magenta (G down, R+B up slightly), negative = green. Range ±100.
 // All default to 0 — passthrough. No output change at defaults.
-#define SHADOW_TEMP     -5
+#define SHADOW_TEMP     -8
 #define SHADOW_TINT      0
-#define MID_TEMP         3
-#define MID_TINT         0
+#define MID_TEMP         5
+#define MID_TINT        +2
 #define HIGHLIGHT_TEMP  +6
 #define HIGHLIGHT_TINT   0
 
@@ -34,18 +34,18 @@
 // Scales the adaptive zone S-curve strength. 1.0 = calibrated default.
 // Adaptive range is ~0.16–0.26 × ZONE_STRENGTH, driven by zone_std + scene key.
 // 0 = flat image. Above 1.5 = aggressive crushing.
-#define ZONE_STRENGTH  1.2
+#define ZONE_STRENGTH  1.3
 
 // ── SHADOW LIFT ───────────────────────────────────────────────────────────────
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOW_LIFT_STRENGTH  1.3
+#define SHADOW_LIFT_STRENGTH  1.6
 
 // ── HUNT LOCALITY (R61) ───────────────────────────────────────────────────────
 // Per-pixel Hunt effect adaptation. 0 = global scene mean (current behaviour).
 // 0.35 = blend toward pixel-local luminance — highlights get more chroma boost,
 // shadows get less. CAM16 local-field specification.
-#define HUNT_LOCALITY  0.35
+#define HUNT_LOCALITY  0.20
 
 // ── FILM CURVE CHARACTER ──────────────────────────────────────────────────────
 // Per-channel knee and toe offsets for the FilmCurve (Stage 1). These encode the
@@ -56,29 +56,29 @@
 // B knee > 0 = blue compresses later (open highlights). B toe < 0 = cool toe.
 #define CURVE_R_KNEE  -0.0102
 #define CURVE_B_KNEE   0.0000
-#define CURVE_R_TOE   +0.0100
-#define CURVE_B_TOE   -0.0218
+#define CURVE_R_TOE   +0.010
+#define CURVE_B_TOE   -0.025
 
 // ── PRINT STOCK ───────────────────────────────────────────────────────────────
 // Kodak 2383 print emulsion on top of FilmCurve: lifts blacks, compresses
 // highlights, desaturates mids ~15%, adds warm shadow cast. 0 = off (current
 // behaviour). 1 = full 2383. 0.35 = recommended starting point.
-#define PRINT_STOCK  0.40
+#define PRINT_STOCK  0.50
 
 // ── HALATION ──────────────────────────────────────────────────────────────────
 // Film emulsion scatter from specular highlights — tight red fringe around
 // brightest sources (luma > 0.80). Red scatters most (deepest dye layer),
 // green tighter, blue none. Fires inside game bloom radius, not on top of it.
 // 0 = off. 0.35 = calibrated default. 1.0 = Ektachrome-style aggressive.
-#define HAL_STRENGTH  0.30
+#define HAL_STRENGTH  0.35
 
 // ── HUE ROTATION ─────────────────────────────────────────────────────────────
 // Per-band rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
 // (Red→Yellow, Green→Cyan, Blue→Magenta). Default 0.0 = passthrough.
-#define ROT_RED     +0.03
-#define ROT_YELLOW  -0.015
-#define ROT_GREEN   -0.02
-#define ROT_CYAN    +0.015
+#define ROT_RED     +0.04
+#define ROT_YELLOW  -0.025
+#define ROT_GREEN   -0.03
+#define ROT_CYAN    +0.025
 #define ROT_BLUE    -0.03
 #define ROT_MAG      0.00
 
@@ -97,12 +97,12 @@
 // reflections. Restores the contrast floor of real optical viewing.
 // Use for games with no volumetric fog or atmospheric depth. Skip if the game
 // has its own volumetric/fog system (it will compete).
-// VEIL_STRENGTH: glare as % of scene median luminance. 0 = off. 3–8 = subtle.
-#define VEIL_STRENGTH  0.00
+// VEIL_STRENGTH: glare as fraction of scene p75 luminance. 0 = off. 0.05 = subtle, 0.15 = heavy.
+#define VEIL_STRENGTH  0.50
 
 // ── PRO MIST ──────────────────────────────────────────────────────────────────
 // Overall scatter strength scalar. 1.0 = calibrated default (~9% base). 0 = off.
-#define MIST_STRENGTH  0.25
+#define MIST_STRENGTH  2.0
 
 // ── PURKINJE SHIFT ────────────────────────────────────────────────────────────
 // Rod-vision blue-green hue bias in deep shadows (luma < 0.12). Physiologically
@@ -124,9 +124,8 @@
 // ── INVERSE GRADE (R90) ───────────────────────────────────────────────────────
 // Adaptive inverse tone mapping. Expands display IQR toward the ACES-derived
 // 3.28-stop reference. Works on any S-curve tonemapper. 0 = off. 1.0 = full.
-// 0.60 is the recommended starting point. inverse_grade is currently pulled from
-// the GZW chain — add to gzw.conf effects line to activate.
-#define INVERSE_STRENGTH  0.50
+// 0.30 is the recommended starting point.
+#define INVERSE_STRENGTH  0.60
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.

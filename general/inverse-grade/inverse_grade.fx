@@ -19,6 +19,17 @@ sampler2D BackBuffer
     MagFilter = LINEAR;
 };
 
+// Identical descriptor to analysis_frame.fx — vkBasalt shares the texture
+texture2D MeanChromaTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+sampler2D MeanChromaSamp
+{
+    Texture   = MeanChromaTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
 void PostProcessVS(in  uint   id  : SV_VertexID,
                    out float4 pos : SV_Position,
                    out float2 uv  : TEXCOORD0)
@@ -70,8 +81,12 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     float C          = length(lab.yz);
     float c_weight   = saturate((C - 0.10) / 0.15);
 
-    lab.yz  *= lerp(1.0, slope, float(INVERSE_STRENGTH) * mid_weight * c_weight);
-    col.rgb  = saturate(OklabToRGB(lab));
+    float  mean_C  = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).r;
+    float  factor  = lerp(1.0, slope, float(INVERSE_STRENGTH) * mid_weight * c_weight);
+    float  new_C   = mean_C + (C - mean_C) * factor;
+    float2 dir     = lab.yz / max(C, 1e-5);
+    lab.yz         = dir * max(new_C, 0.0);
+    col.rgb        = saturate(OklabToRGB(lab));
     return col;
 }
 

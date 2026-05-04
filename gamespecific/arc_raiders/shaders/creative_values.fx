@@ -6,7 +6,7 @@
 // below "sees". Raising this (>1.0) darkens; lowering (<1.0) brightens.
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune
 // the contrast/chroma knobs beneath.
-#define EXPOSURE            0.88
+#define EXPOSURE            0.90
 
 // ── CAMERA SIGNAL RANGE ───────────────────────────────────────────────────────
 // Remaps the raw pixel into [FILM_FLOOR, FILM_CEILING] before EXPOSURE runs.
@@ -27,7 +27,7 @@
 #define SHADOW_TINT      0
 #define MID_TEMP         3
 #define MID_TINT         0
-#define HIGHLIGHT_TEMP  +6
+#define HIGHLIGHT_TEMP  +2
 #define HIGHLIGHT_TINT   0
 
 // ── ZONE CONTRAST ────────────────────────────────────────────────────────────
@@ -39,7 +39,7 @@
 // ── SHADOW LIFT ───────────────────────────────────────────────────────────────
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOW_LIFT_STRENGTH  1.5
+#define SHADOW_LIFT_STRENGTH  1.4
 
 // ── HUNT LOCALITY (R61) ───────────────────────────────────────────────────────
 // Per-pixel Hunt effect adaptation. 0 = global scene mean (current behaviour).
@@ -56,14 +56,14 @@
 // B knee > 0 = blue compresses later (open highlights). B toe < 0 = cool toe.
 #define CURVE_R_KNEE  -0.0102
 #define CURVE_B_KNEE   0.0000
-#define CURVE_R_TOE   +0.0100
+#define CURVE_R_TOE   +0.0050
 #define CURVE_B_TOE   -0.0218
 
 // ── PRINT STOCK ───────────────────────────────────────────────────────────────
 // Kodak 2383 print emulsion on top of FilmCurve: lifts blacks, compresses
 // highlights, desaturates mids ~15%, adds warm shadow cast. 0 = off (current
 // behaviour). 1 = full 2383. 0.35 = recommended starting point.
-#define PRINT_STOCK  0.40
+#define PRINT_STOCK  0.45
 
 // ── HALATION ──────────────────────────────────────────────────────────────────
 // Film emulsion scatter from specular highlights — tight red fringe around
@@ -97,8 +97,8 @@
 // reflections. Restores the contrast floor of real optical viewing.
 // Use for games with no volumetric fog or atmospheric depth. Skip if the game
 // has its own volumetric/fog system (it will compete).
-// VEIL_STRENGTH: glare as % of scene median luminance. 0 = off. 3–8 = subtle.
-#define VEIL_STRENGTH  1.00
+// VEIL_STRENGTH: glare as fraction of scene p75 luminance. 0 = off. 0.05 = subtle, 0.15 = heavy.
+#define VEIL_STRENGTH  0.05
 
 // ── PRO MIST ──────────────────────────────────────────────────────────────────
 // Overall scatter strength scalar. 1.0 = calibrated default (~9% base). 0 = off.
@@ -108,7 +108,7 @@
 // Rod-vision blue-green hue bias in deep shadows (luma < 0.12). Physiologically
 // correct — Cao et al. 2008, implemented in Ghost of Tsushima. Neutrals unaffected
 // (C=0 → zero shift). 1.0 = calibrated default. 0 = off.
-#define PURKINJE_STRENGTH  1.3
+#define PURKINJE_STRENGTH  1.2
 
 // ── VIEWING SURROUND ─────────────────────────────────────────────────────────
 // CIECAM02 surround compensation (R76B). Corrects perceived contrast for dark-room
@@ -124,8 +124,8 @@
 // ── INVERSE GRADE (R90) ───────────────────────────────────────────────────────
 // Adaptive inverse tone mapping. Expands display IQR toward the ACES-derived
 // 3.28-stop reference. Works on any S-curve tonemapper. 0 = off. 1.0 = full.
-// 0.60 is the recommended starting point for Arc Raiders.
-#define INVERSE_STRENGTH  0.50
+// 0.30 is the recommended starting point.
+#define INVERSE_STRENGTH  0.60
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.

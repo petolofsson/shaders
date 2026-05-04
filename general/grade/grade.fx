@@ -462,7 +462,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float chroma_mc_t   = smoothstep(0.05, 0.25, mean_chroma);
     float chroma_p50_t  = smoothstep(0.15, 0.55, perc.g);
     float chroma_drive  = saturate(chroma_mc_t + 0.35 * chroma_p50_t);
-    float chroma_str    = saturate(0.085 * chroma_exp * hunt_scale * lerp(1.25, 0.60, chroma_drive));
+    float chroma_str_base = 0.075;
+    float chroma_str    = saturate(chroma_str_base * chroma_exp * hunt_scale * lerp(1.25, 0.60, chroma_drive));
     float density_str = 62.0 - 20.0 * chroma_exp;
     // R68A: spatial chroma modulation — attenuate in textured regions, full in flat.
     chroma_str *= lerp(1.0, 0.65, smoothstep(0.02, 0.08, local_var));
@@ -539,13 +540,23 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         float3 hal_core_g = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 0)).rgb;   // green core: mip 0
         float3 hal_wing   = lf_mip2.rgb;                                            // extended wing: mip 2
         float  hal_luma   = dot(lin, float3(0.2126, 0.7152, 0.0722));
-        float  hal_gate   = smoothstep(0.70, 0.90, hal_luma);  // R79A: softer onset
-        float3 hal_delta  = float3(
-            max(0.0, lerp(hal_core_r, hal_wing, 0.30).r - lin.r),  // red: core + full wing
-            max(0.0, lerp(hal_core_g, hal_wing, 0.20).g - lin.g),  // green: core + less wing (warm bias)
-            0.0                                                      // blue: none — anti-halation
+        // R93A/B: luminance-scaled wing blend + anti-halation OD ratio (red:green 2:1 from Kodak 2383)
+        float  hal_bright  = smoothstep(0.88, 1.0, hal_luma);
+        // R96: spectral warm-tilt on wing — anti-halation absorbs g/b on return path
+        float3 hal_wing_w  = float3(hal_wing.r, hal_wing.g * 0.88, hal_wing.b * 0.75);
+        // delta self-limits: zero where blur ≤ sharp (bright sources, uniform areas), positive only in halo zone
+        float3 hal_src_r   = lerp(hal_core_r, hal_wing_w, lerp(0.20, 0.42, hal_bright));
+        float3 hal_src_g   = lerp(hal_core_g, hal_wing_w, lerp(0.10, 0.21, hal_bright));
+        float3 hal_delta   = float3(
+            max(0.0, hal_src_r.r - lin.r),
+            max(0.0, hal_src_g.g - lin.g),
+            0.0
         );
-        lin = saturate(lin + hal_delta * float3(1.2, 0.45, 0.0) * hal_gate * HAL_STRENGTH);
+        // R97: WarmBias-coupled gain — tungsten scenes get stronger red, cooler scenes softer
+        float  hal_warm   = tex2Dlod(WarmBiasSamp, float4(0.5, 0.5, 0, 0)).r;
+        float  hal_r_gain = lerp(1.05, 1.35, smoothstep(0.02, 0.12, hal_warm));
+        float  hal_g_gain = lerp(0.50, 0.38, smoothstep(0.02, 0.12, hal_warm));
+        lin = saturate(lin + hal_delta * float3(hal_r_gain, hal_g_gain, 0.0) * HAL_STRENGTH);
     }
 
     // dither: break 8-bit BackBuffer quantization — converts banding to imperceptible noise

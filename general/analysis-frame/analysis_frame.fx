@@ -134,6 +134,17 @@ sampler2D SceneCutSamp
     MagFilter = POINT;
 };
 
+// Scene mean Oklab chroma — r=mean_C; read by inverse_grade.fx as pivot for range expansion
+texture2D MeanChromaTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+sampler2D MeanChromaSamp
+{
+    Texture   = MeanChromaTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
 // ─── Vertex shader ─────────────────────────────────────────────────────────
 
 void PostProcessVS(in  uint   id  : SV_VertexID,
@@ -164,6 +175,19 @@ float HueBandWeight(float hue, float center)
     float d = abs(hue - center);
     d = min(d, 1.0 - d);
     return saturate(1.0 - d / BAND_WIDTH);
+}
+
+float3 RGBtoOklab(float3 c)
+{
+    float l = dot(c, float3(0.4122214708, 0.5363325363, 0.0514459929));
+    float m = dot(c, float3(0.2119034982, 0.6806995451, 0.1073969566));
+    float s = dot(c, float3(0.0883024619, 0.2817188376, 0.6299787005));
+    float3 lms = exp2(log2(max(float3(l, m, s), 1e-10)) * (1.0 / 3.0));
+    return float3(
+        dot(lms, float3( 0.2104542553,  0.7936177850, -0.0040720468)),
+        dot(lms, float3( 1.9779984951, -2.4285922050,  0.4505937099)),
+        dot(lms, float3( 0.0259040371,  0.7827717662, -0.8086757660))
+    );
 }
 
 // ─── Pass 1 — Downsample ───────────────────────────────────────────────────
@@ -348,6 +372,36 @@ float4 SceneCutPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     return float4(scene_cut, p50_now, 0.0, 1.0);
 }
 
+// ─── Pass 9 — Scene mean Oklab chroma ─────────────────────────────────────
+// Averages Oklab C over the 32×18 downsample for saturated pixels (C > 0.05).
+// EMA-smoothed across frames. Read by inverse_grade.fx as chroma pivot.
+
+float4 MeanChromaPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    float sum_C = 0.0;
+    float count = 0.0;
+    [loop]
+    for (int y = 0; y < DS_H; y++)
+    {
+        [loop]
+        for (int x = 0; x < DS_W; x++)
+        {
+            float2 s_uv = float2((x + 0.5) / float(DS_W), (y + 0.5) / float(DS_H));
+            float3 lab  = RGBtoOklab(tex2D(Downsample, s_uv).rgb);
+            float  C    = length(lab.yz);
+            float  in_b = step(0.05, C);
+            sum_C += C * in_b;
+            count += in_b;
+        }
+    }
+    float mean_C_raw = sum_C / max(count, 1.0);
+    float valid      = step(0.5, count);
+    float mean_C     = lerp(0.10, mean_C_raw, valid);
+    float prev       = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).r;
+    float alpha      = saturate(frametime * 0.005);
+    return float4(lerp(prev, mean_C, alpha), 0.0, 0.0, 1.0);
+}
+
 // ─── Technique ─────────────────────────────────────────────────────────────
 
 technique FrameAnalysis
@@ -398,5 +452,11 @@ technique FrameAnalysis
         VertexShader = PostProcessVS;
         PixelShader  = SceneCutPS;
         RenderTarget = SceneCutTex;
+    }
+    pass MeanChroma
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = MeanChromaPS;
+        RenderTarget = MeanChromaTex;
     }
 }
