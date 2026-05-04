@@ -41,6 +41,12 @@
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
 #define SHADOW_LIFT_STRENGTH  1.2
 
+// ── HUNT LOCALITY (R61) ───────────────────────────────────────────────────────
+// Per-pixel Hunt effect adaptation. 0 = global scene mean (current behaviour).
+// 0.35 = blend toward pixel-local luminance — highlights get more chroma boost,
+// shadows get less. CAM16 local-field specification.
+#define HUNT_LOCALITY  0.35
+
 // ── FILM CURVE CHARACTER ──────────────────────────────────────────────────────
 // Per-channel knee and toe offsets for the FilmCurve (Stage 1). These encode the
 // physical dye-layer cross-over character of different film stocks: red compresses

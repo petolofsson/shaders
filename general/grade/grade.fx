@@ -368,7 +368,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // R60: temporal context — slow ambient key boosts lift during dark transitions, suppresses on re-entry
     float slow_key     = max(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0.001);
     float context_lift = exp2(log2(slow_key / zk_safe) * 0.4);
-    float shadow_lift_str = lerp(1.50, 0.45, smoothstep(0.03, 0.22, perc.r));
+    float shadow_lift_str = lerp(1.50, 0.45, smoothstep(0.025, 0.20, perc.r));
     float shadow_lift     = shadow_lift_str * (0.149169 / (illum_s0 * illum_s0 + 0.003)) * local_range_att * texture_att * detail_protect * context_lift;
     float lift_w      = new_luma * smoothstep(0.30, 0.0, new_luma);
     new_luma          = saturate(new_luma + (shadow_lift / 100.0) * 0.75 * lift_w * SHADOW_LIFT_STRENGTH);
@@ -440,11 +440,13 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float hw_o4 = HueBandWeight(h_out, BAND_BLUE);
     float hw_o5 = HueBandWeight(h_out, BAND_MAGENTA);
 
-    float _k    = 1.0 / (5.0 * zone_log_key + 1.0);
+    // R61: per-pixel Hunt adaptation — blend scene mean toward pixel luma (CAM16 local-field).
+    float hunt_la = max(lerp(zone_log_key, lab.x, HUNT_LOCALITY), 0.001);
+    float _k    = 1.0 / (5.0 * hunt_la + 1.0);
     float _k4   = _k * _k; _k4 *= _k4;
     float _omk4 = 1.0 - _k4;
     float hunt_scale = sqrt(sqrt(max(
-        _k4 * zone_log_key + 0.1 * _omk4 * _omk4 * pow(5.0 * zone_log_key, 1.0 / 3.0),
+        _k4 * hunt_la + 0.1 * _omk4 * _omk4 * pow(5.0 * hunt_la, 1.0 / 3.0),
         1e-6))) / 0.5912;
 
     // R36: mean_chroma → adaptive chroma and density strengths
