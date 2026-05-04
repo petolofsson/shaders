@@ -1,13 +1,15 @@
 // pro_mist.fx — Black Pro-Mist diffusion filter
 //
-// Single-pass. Uses CreativeLowFreqTex (1/8-res, written by corrective.fx — free)
-// as the scatter source. Additive chromatic composite, scene-adaptive from PercTex.
+// Two-pass global diffusion. Pass 1 downsamples the full BackBuffer to
+// 1/4-res float16 with mips (no threshold — all tones). Pass 2 blends a
+// mip-blurred copy back: lerp(sharp, blurred, strength). Softens edges and
+// reduces micro-contrast uniformly across shadows, mids, and highlights.
+// Highlight glow is handled by halation.fx + veil.fx.
 //
 // Shared texture contract:
 //   PercTex { Width=1; Height=1; Format=RGBA16F } — written by analysis_frame
 //   r=p25, g=p50, b=p75, a=iqr
-//   CreativeLowFreqTex { Width=BW/8; Height=BH/8; Format=RGBA16F } — written by corrective.fx
-//   rgb=full colour, a=luma
+//   ChromaHistoryTex { Width=8; Height=4; Format=RGBA16F } — written by corrective.fx
 
 #include "debug_text.fxh"
 #include "../highway.fxh"
@@ -25,16 +27,6 @@ sampler2D PercSamp
     MagFilter = POINT;
 };
 
-texture2D CreativeLowFreqTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 3; };
-sampler2D CreativeLowFreqSamp
-{
-    Texture   = CreativeLowFreqTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = LINEAR;
-    MagFilter = LINEAR;
-};
-
 // Zone global stats — col 6 of ChromaHistoryTex: r=log_key, g=zone_std, b=zmin, a=zmax
 texture2D ChromaHistoryTex { Width = 8; Height = 4; Format = RGBA16F; MipLevels = 1; };
 sampler2D ChromaHistSamp
@@ -46,7 +38,7 @@ sampler2D ChromaHistSamp
     MagFilter = POINT;
 };
 
-// ─── Textures ─────────────────────────────────────────────────────────────
+// ─── Private textures ──────────────────────────────────────────────────────
 
 texture2D BackBufferTex : COLOR;
 sampler2D BackBuffer
@@ -56,6 +48,18 @@ sampler2D BackBuffer
     AddressV  = CLAMP;
     MinFilter = LINEAR;
     MagFilter = LINEAR;
+};
+
+// Full-image downsample at 1/4-res — float16, mips for blur depth
+texture2D MistDiffuseTex { Width = BUFFER_WIDTH / 4; Height = BUFFER_HEIGHT / 4; Format = RGBA16F; MipLevels = 4; };
+sampler2D MistDiffuseSamp
+{
+    Texture   = MistDiffuseTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+    MipFilter = LINEAR;
 };
 
 // ─── Vertex shader ────────────────────────────────────────────────────────
@@ -69,50 +73,38 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
     pos  = float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
 }
 
-float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
+// ─── Pass 1 — Full-image downsample ───────────────────────────────────────
 
-// ─── Pass — Scatter composite ─────────────────────────────────────────────
+float4 DownsamplePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    if (pos.y < 1.0) return float4(0.0, 0.0, 0.0, 0.0);
+    return float4(tex2D(BackBuffer, uv).rgb, 1.0);
+}
+
+// ─── Pass 2 — Global diffusion composite ──────────────────────────────────
 
 float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float4 base = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return base;
 
-    // R55: multi-scale scatter — blend mip 0 (tight) and mip 1 (wider) driven by scene contrast
-    float3 diffuse0 = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 0)).rgb;
-    float3 diffuse1 = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 1)).rgb;
+    // Mip 2 of 1/4-res = 1/16-res effective = heavily blurred full image
+    float3 blurred = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 2)).rgb;
 
     float4 perc      = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
-    float  p75       = perc.b;
     float  iqr       = perc.b - perc.r;
-    float  adapt_str = MIST_STRENGTH * 0.09 * lerp(0.7, 1.3, saturate(iqr / 0.5));
-    // R80B: scene-key adaptive — dark scenes get more mist, bright exteriors less
+    // High-contrast scenes get slightly more diffusion
+    float  adapt_str = MIST_STRENGTH * 0.06 * lerp(0.8, 1.2, saturate(iqr / 0.5));
+    // R80B: scene-key adaptive — dark scenes get more diffusion, bright exteriors less
     float zone_log_key   = tex2Dlod(ChromaHistSamp, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
-    float mist_key_scale = lerp(1.30, 0.80, smoothstep(0.05, 0.25, zone_log_key));
-    // R80C: aperture proxy — low EXPOSURE (wide aperture equivalent) → more scatter
+    float mist_key_scale = lerp(1.20, 0.85, smoothstep(0.05, 0.25, zone_log_key));
+    // R80C: aperture proxy — low EXPOSURE (wide aperture equivalent) → more diffusion
     float mist_ap_scale  = lerp(1.10, 0.90, saturate((EXPOSURE - 0.70) / 0.60));
     adapt_str *= mist_key_scale * mist_ap_scale;
 
-    float  scene_softness = smoothstep(0.1, 0.4, iqr);
-    // R91: Mie per-channel scatter — red draws wider (mip 1), blue tighter (mip 0)
-    float  g_blend        = scene_softness * 0.35;
-    float3 scatter_src    = float3(diffuse1.r, lerp(diffuse0.g, diffuse1.g, g_blend), diffuse0.b);
+    float3 result = lerp(base.rgb, blurred, saturate(adapt_str));
 
-    // R46: adapt scatter weights to scene warmth — warm scene → neutral scatter
-    float  warm_bias = ReadHWY(HWY_WARM_BIAS);
-    float  scatter_r = lerp(1.05, 1.00, smoothstep(0.02, 0.12, warm_bias));
-    float  scatter_b = lerp(0.92, 1.00, smoothstep(0.02, 0.12, warm_bias));
-
-    // R55: bidirectional scatter — Pro-Mist reduces contrast (not purely additive glow)
-    // Gate on blurred source luma: fires only near bright sources, not in uniform dark areas.
-    // This prevents the 1/8-res texture boundary from creating a visible disc in dark scenes.
-    float scatter_luma = dot(scatter_src, float3(0.2126, 0.7152, 0.0722));
-    float luma_gate    = smoothstep(0.08, 0.28, scatter_luma);
-    float3 scatter_delta = (scatter_src - base.rgb) * adapt_str * luma_gate;
-    // R46 already encodes warm bias (cool=1.05/0.92, warm=1.0/1.0) — use directly, no extra multiplier
-    float3 result = base.rgb + scatter_delta * float3(scatter_r, 1.00, scatter_b);
-
-    // R92: IGN blue-noise dither (Jimenez 2016) — matches grade.fx
+    // IGN blue-noise dither (Jimenez 2016) — matches grade.fx
     float dither = frac(52.9829189 * frac(dot(pos.xy, float2(0.06711056, 0.00583715)))) - 0.5;
     result += dither * (1.0 / 255.0);
 
@@ -126,7 +118,13 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
 technique ProMist
 {
-    pass
+    pass Downsample
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = DownsamplePS;
+        RenderTarget = MistDiffuseTex;
+    }
+    pass Composite
     {
         VertexShader = PostProcessVS;
         PixelShader  = ProMistPS;

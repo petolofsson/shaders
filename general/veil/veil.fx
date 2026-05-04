@@ -11,7 +11,7 @@
 // Run after pro_mist: pro_mist handles spatial highlight glow, veil handles the
 // DC offset (global contrast floor).
 //
-// One pass — reads scene median (p50) from shared PercTex.
+// One pass — reads scene p75 from shared PercTex.
 //
 // Shared texture contract:
 //   PercTex { Width=1; Height=1; Format=RGBA16F } — written by frame_analysis

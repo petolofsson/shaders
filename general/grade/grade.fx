@@ -381,11 +381,14 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
     // R22: saturation by luminance — baked Munsell calibration (shadow 20%, highlight 45%)
     // + midtone expansion bell from cinema SDR mastering data (Žaganeli et al. 2026)
-    float mid_C_boost = 0.04 * smoothstep(0.22, 0.40, lab.x)
+    float mid_C_boost = 0.08 * smoothstep(0.22, 0.40, lab.x)
                              * (1.0 - smoothstep(0.55, 0.70, lab.x));
+    // R74: highlight desaturation — film shoulder rolloff, silvery highlights (Shift analog intermediate)
+    float r74_desat = 0.30 * saturate((lab.x - 0.80) / 0.20);
     C *= (1.0 + mid_C_boost
              - 0.20 * saturate(1.0 - lab.x / 0.25)
-             - 0.45 * saturate((lab.x - 0.75) / 0.25));
+             - 0.45 * saturate((lab.x - 0.75) / 0.25)
+             - r74_desat);
 
     // R21: per-band hue rotation — compute h_out from original h before chroma lift
     float r21_delta = ROT_RED    * HueBandWeight(h_perc, BAND_RED)
@@ -476,9 +479,10 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
     // R79: halation dual-PSF + softened gate + warm wing bias
     {
-        float3 hal_core_r = lf_mip1.rgb;                                            // red core: mip 1 (hoisted, shared with Retinex)
-        float3 hal_core_g = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 0)).rgb;   // green core: mip 0
-        float3 hal_wing   = lf_mip2.rgb;                                            // extended wing: mip 2
+        // Exposure correction — brings pre-grade blur into post-grade tonal space (~20-30% stronger delta)
+        float3 hal_core_r = exp2(log2(max(lf_mip1.rgb, 1e-5)) * EXPOSURE);
+        float3 hal_core_g = exp2(log2(max(tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 0)).rgb, 1e-5)) * EXPOSURE);
+        float3 hal_wing   = exp2(log2(max(lf_mip2.rgb, 1e-5)) * EXPOSURE);
         float  hal_luma   = dot(lin, float3(0.2126, 0.7152, 0.0722));
         // R93A/B: luminance-scaled wing blend + anti-halation OD ratio (red:green 2:1 from Kodak 2383)
         // R100: p90-adaptive threshold — wing fires on scene's own bright content, not absolute value.
@@ -494,10 +498,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
             max(0.0, hal_src_g.g - lin.g),
             0.0
         );
-        // R97: WarmBias-coupled gain — tungsten scenes get stronger red, cooler scenes softer
-        float  hal_warm   = ReadHWY(HWY_WARM_BIAS);
-        float  hal_r_gain = lerp(1.05, 1.35, smoothstep(0.02, 0.12, hal_warm));
-        float  hal_g_gain = lerp(0.50, 0.38, smoothstep(0.02, 0.12, hal_warm));
+        float  hal_r_gain = 1.05;
+        float  hal_g_gain = 0.50;
         lin = saturate(lin + hal_delta * float3(hal_r_gain, hal_g_gain, 0.0) * HAL_STRENGTH);
     }
 

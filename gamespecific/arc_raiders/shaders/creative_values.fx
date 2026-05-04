@@ -12,7 +12,7 @@
 // below "sees". Raising this (>1.0) darkens; lowering (<1.0) brightens.
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune
 // the contrast/chroma knobs beneath.
-#define EXPOSURE            0.85
+#define EXPOSURE            0.90
 
 // ── CAMERA SIGNAL RANGE ───────────────────────────────────────────────────────
 // Remaps the raw pixel into [FILM_FLOOR, FILM_CEILING] before EXPOSURE runs.
@@ -28,7 +28,7 @@
 // Kodak 2383 print emulsion on top of FilmCurve: lifts blacks, compresses
 // highlights, desaturates mids ~15%, adds warm shadow cast. 0 = off.
 // 1 = full 2383. 0.35 = recommended starting point.
-#define PRINT_STOCK  0.40
+#define PRINT_STOCK  0.50
 
 // ── FILM CURVE CHARACTER ──────────────────────────────────────────────────────
 // Per-channel knee and toe offsets for the FilmCurve (Stage 1). These encode the
@@ -51,7 +51,7 @@
 // ── SHADOW LIFT ───────────────────────────────────────────────────────────────
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOW_LIFT_STRENGTH  1.15
+#define SHADOW_LIFT_STRENGTH  1.30
 
 // ── 3-WAY COLOR CORRECTOR ────────────────────────────────────────────────────
 // Runs after EXPOSURE and FilmCurve, before zone contrast. Primary color grade.
@@ -70,7 +70,7 @@
 // near each hue band's scene mean — lift-only, vibrance-masked (already-saturated
 // pixels are attenuated). Spatial R68A modulation is applied on top.
 // 1.0 = calibrated default. 0 = off. Above 2.0 = aggressive.
-#define CHROMA_STR  1.10
+#define CHROMA_STR  1.0
 
 // ── HUE ROTATION ─────────────────────────────────────────────────────────────
 // Per-band rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
@@ -87,11 +87,13 @@
 // brightest sources (luma > 0.80). Red scatters most (deepest dye layer),
 // green tighter, blue none. Fires inside game bloom radius, not on top of it.
 // 0 = off. 0.35 = calibrated default. 1.0 = Ektachrome-style aggressive.
-#define HAL_STRENGTH  0.35
+#define HAL_STRENGTH  0.40
 
 // ── PRO MIST ──────────────────────────────────────────────────────────────────
-// Overall scatter strength scalar. 1.0 = calibrated default (~9% base). 0 = off.
-#define MIST_STRENGTH  1.30
+// Global diffusion strength. Blends a heavily blurred copy of the image back
+// onto the sharp image — micro-contrast softening across all tones equally.
+// 1.0 = calibrated default (~6% blend). 0 = off.
+#define MIST_STRENGTH  2.75
 
 // ── VEIL ──────────────────────────────────────────────────────────────────────
 // Veiling glare: additive luminance lift simulating intraocular scatter and lens
@@ -99,7 +101,7 @@
 // Use for games with no volumetric fog or atmospheric depth. Skip if the game
 // has its own volumetric/fog system (it will compete).
 // VEIL_STRENGTH: glare as fraction of scene p75 luminance. 0 = off. 0.05 = subtle, 0.15 = heavy.
-#define VEIL_STRENGTH  0.10
+#define VEIL_STRENGTH  0.15
 
 // ── RETINAL VIGNETTE ─────────────────────────────────────────────────────────
 // Peripheral luminance darkening (SCE) + chroma desaturation (Purkinje shift).
@@ -115,7 +117,7 @@
 // Rod-vision blue-green hue bias in deep shadows (luma < 0.12). Physiologically
 // correct — Cao et al. 2008, implemented in Ghost of Tsushima. Neutrals unaffected
 // (C=0 → zero shift). 1.0 = calibrated default. 0 = off.
-#define PURKINJE_STRENGTH  1.25
+#define PURKINJE_STRENGTH  1.3
 
 // ── EYE LCA ───────────────────────────────────────────────────────────────────
 // Longitudinal chromatic aberration of the human eye: blue focuses short, red
