@@ -126,7 +126,7 @@
 // Adaptive inverse tone mapping. Expands display IQR toward the ACES-derived
 // 3.28-stop reference. Works on any S-curve tonemapper. 0 = off. 1.0 = full.
 // 0.30 is the recommended starting point.
-#define INVERSE_STRENGTH  0.60
+#define INVERSE_STRENGTH  0.40
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.
