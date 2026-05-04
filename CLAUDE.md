@@ -55,6 +55,7 @@ analysis_frame : inverse_grade : inverse_grade_debug : analysis_scope_pre : corr
 | `general/grade/grade.fx` | All color work — `ColorTransformPS` (MegaPass) |
 | `general/inverse-grade/inverse_grade.fx` | R90 adaptive inverse tone mapping (pre-corrective) |
 | `general/analysis-frame/analysis_frame.fx` | Histogram, PercTex, data highway encoding |
+| `gamespecific/arc_raiders/shaders/highway.fxh` | Data highway slot constants + `ReadHWY()` macro |
 | `gamespecific/arc_raiders/shaders/debug_text.fxh` | 3×5 debug font, included by all effects |
 | `gamespecific/arc_raiders/arc_raiders.conf` | Chain config — never touch without ask |
 
