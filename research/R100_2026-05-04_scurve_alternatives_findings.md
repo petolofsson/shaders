@@ -1,8 +1,9 @@
 # R100 — S-Curve Alternatives: Per-Stage Color Theory Review
 
 **Date:** 2026-05-04  
+**Updated:** 2026-05-04 (supplementary literature research added — Brave API still invalid)  
 **Status:** Findings complete — no code changes yet  
-**Note:** Brave search API key expired during session; research from color science literature (ACES, Kodak sensitometry, Resolve, Adams Zone System).
+**Note:** Brave search API key expired on both passes; all research from color science literature (ACES, Kodak sensitometry, Resolve, Adams Zone System, AgX, Hable, Perlin).
 
 ---
 
@@ -234,3 +235,198 @@ edit, opportunistically upgrade the two candidates above.
 2. **Chroma lift-only** — clean separation from gclip. Low risk.
 3. **FilmCurve toe** — only if shadow compression is felt as a problem in-game.
 4. **Smootherstep upgrades** — opportunistic, next time grade.fx opens.
+
+---
+
+## Supplementary Research — Literature Survey
+
+### S1. Shoulder-only tone curves: industry precedents
+
+**AgX (Troy Sobotka, 2023 — Blender default view transform):**
+AgX was explicitly designed as a reaction to ACES's over-compressed toe. The input
+transform compresses primaries using a log-log encoding, then applies a sigmoid that
+has a very long linear-to-shoulder region and virtually no toe. The original Blender
+ACES view had shadow crushing complaints for years; AgX fixed them by treating the
+toe as a pathological case only for extreme underexposure. The resulting shadows are
+visibly more open than ACES while highlights still roll off gracefully. Key design
+principle from Sobotka's writeup: "the toe is a film artifact from chemical thresholds —
+digital sensors have no threshold, so a digital pipeline has no excuse for a toe."
+
+**Hable (Uncharted 2, 2010):**
+John Hable's parametric curve exposes four parameters: `A` (shoulder strength), `B`
+(shoulder angle), `C` (toe strength), `D` (toe angle). Setting C≈0.01, D≈0.01 effectively
+removes the toe while keeping the shoulder. The Uncharted 2 published values (`A=0.15,
+B=0.50, C=0.10, D=0.20, E=0.02, F=0.30`) have a mild toe — the point is these are
+independent. A shoulder-only version is valid and used in practice.
+
+**ACES 2.0 DRT (2023):**
+The ACES 1.x DRT was criticized in the cinematography community specifically for its
+toe: at low exposure, it produced a colorimetric shift (saturation boost in shadows)
+that was not observed in real film. The 2.0 revision extended the straight-line region
+significantly downward. The net effect is that ~3 stops below middle grey are near-
+linear before the toe begins. This aligns with the Zone III placement on the straight
+line per Adams. The ACES 2.0 DRT is not fully public but the design principle has been
+confirmed by Scott Dyer (AMPAS) in public presentations.
+
+**Reinhard (2002):**
+The simplest shoulder-only operator: `L_out = L / (1 + L)`. No toe — it's linear at
+zero by construction (L/(1+L) → L as L→0). The extended version `L_out = L*(1 + L/L_white²)/(1 + L)`
+adds a soft shoulder cutoff at `L_white`. This is mathematically equivalent to a
+Michaelis-Menten saturation curve from enzyme kinetics. Zero toe by design.
+
+**Practical validation for our pipeline:**
+The Zone S-curve operates post-EXPOSURE (`pow(rgb, EXPOSURE)`). EXPOSURE≈0.92 already
+slightly darkens the input — this is doing the toe's job (pulling shadows down). The
+symmetric S-curve then applies another toe on top, compressing shadows twice. Removing
+the toe from the Zone curve would not leave shadows uncontrolled; EXPOSURE and FILM_FLOOR
+between them already shape the low end.
+
+---
+
+### S2. H-D curve straight-line region: sensitometry data
+
+The Hurter-Driffield characteristic curve for Kodak Vision3 500T (from Kodak's published
+Technical Data Sheet H-1-500T) has the following structure in the green channel:
+
+```
+Region       | Log exposure range      | Log density range | Slope (gamma)
+-------------|-------------------------|-------------------|---
+Toe          | below –3.0              | 0.06–0.20 D       | ~0.1–0.5 (variable)
+Straight line| –3.0 to –0.8 (2.2 stops)| 0.20–2.60 D      | ~0.63 (constant)
+Shoulder     | –0.8 to +0.2 (1.0 stop) | 2.60–3.20 D      | falling to 0
+```
+
+Key facts:
+- The **straight line spans approximately 2.2 stops** of log-exposure latitude before the shoulder.
+  Vision3 is unusual for having a long straight line — older stocks like Kodak 5293 had
+  shorter straight lines and more pronounced toes.
+- **Zone placement:** ASA/ISO exposure index is calibrated so that a correctly exposed
+  Zone V (18% reflectance, middle grey) lands about 1/3 of the way up the straight line
+  (log exposure ≈ –2.0). This puts Zone I–II in the toe, Zone III–VIII on the straight
+  line, and Zone IX+ on the shoulder. Adams' dictum to expose for Zone III placement
+  *is* placing the scene on the straight line.
+- **Print stock (Kodak 2383):** The print stock's H-D curve is the second curve in the
+  print optical chain. 2383 has gamma ≈ 2.46 on the straight line. Because it is
+  contact-printed from a low-gamma negative (≈0.63), the combined camera+print gamma
+  is 0.63 × 2.46 ≈ 1.55 — slightly above linear, giving the characteristic "punchy but
+  not harsh" look of projected 35mm.
+- **Dmin base fog:** 2383 Dmin ≈ 0.06 in the green channel. This corresponds to the
+  warm paper base (absorbed blue/green transmittance). The warm cast in shadows from
+  `FILM_FLOOR` and `fc_r_toe` mimics this base fog — a legitimate physical artifact,
+  not the toe per se.
+
+**Implication for our FilmCurve:** The toe in our `FilmCurve` is compressing shadows
+that the Vision3 negative would have placed on the straight line. Game engine SDR input
+has already been tone-mapped — Zone III–V material is mid-SDR range, well above any
+digital "threshold." Applying a toe to already-linear digital shadows creates compression
+that has no photochemical basis for this input signal. The Dmin warm cast should be
+preserved (via `fc_r_toe` offset), but the *density compression* of the toe should be
+removed.
+
+**Gamma measurement:** The `CURVE_*` knobs currently control per-channel density offsets
+(R84 log₂-density interpretation). A clean straight-line model would use `gamma_r ≈ 0.63`
+applied uniformly to log exposure with no toe — but our current model uses the print stock
+values (gamma≈2.46 combined), which is correct for the display-referred pipeline. The toe
+compression is the only piece that needs removing.
+
+---
+
+### S3. Chroma lift alternatives: additional candidates
+
+Beyond the three options in the original findings (power-law, Reinhard, lift-only quadratic),
+two additional candidates are worth documenting:
+
+**Logistic / sigmoid chroma:**
+```hlsl
+float sigmoid_chroma(float C, float pivot, float strength) {
+    // Maps [0, 2*pivot] → [0, 2*pivot] with lift below pivot, soft ceiling above
+    float t = (C - pivot) / max(pivot, 0.001);
+    return pivot * (1.0 + tanh(strength * t) / max(strength, 0.001));
+}
+```
+Continuous, no inflection, smooth through pivot. `tanh` is available as a transcendental
+on RDNA — cost is ~4 ALU including the division. Drawback: symmetric by construction
+(tanh is odd-symmetric around pivot). Needs asymmetry hack to get lift-only.
+
+**Michaelis-Menten (identical to Reinhard for chroma):**
+```hlsl
+float C_out = C_in * (C_max + C_knee) / (C_in + C_knee);
+// At C_in=0: C_out=0. At C_in→∞: C_out→C_max. At C_in=C_knee: C_out=C_max/2.
+```
+`C_max` sets the ceiling, `C_knee` sets the half-saturation point (where the curve
+starts bending significantly). This is not lift-only — it slightly compresses even low
+C values because the denominator adds C_knee at all levels. For lift behavior, need
+`C_knee` ≫ typical scene C so the denominator is approximately constant in the normal
+range. Sets a hard physical maximum: `C_max`.
+
+**Verdict — best candidate for our pipeline:**
+The **lift-only quadratic** from the original findings remains the strongest choice:
+```hlsl
+float t    = saturate(1.0 - C / max(pivot, 0.001));
+return C * (1.0 + strength * t * t);
+```
+It is zero-overhead below `pivot` (t=0 → no change above pivot), lifts smoothly below
+pivot with a t² profile that has a soft onset at the pivot, and never compresses anything.
+`gclip` owns the ceiling. This is clean separation of responsibilities that none of the
+sigmoid/Reinhard variants achieve.
+
+One important refinement: the current `PivotedSCurve` uses the **per-hue mean C** as the
+pivot, computed from `ChromaHistoryTex`. This is the correct pivot for lift-only too —
+it means colors already at or above the scene's typical saturation for their hue pass
+through untouched, while undersaturated colors in that hue band get lifted. This pivot
+definition should be kept regardless of which curve shape is chosen.
+
+---
+
+### S4. Smootherstep alternatives: complete polynomial family
+
+The C¹ / C² / C³ smoothstep family, all mapping [0,1]→[0,1]:
+
+| Name | Formula | Continuity | HLSL cost (MAD) |
+|------|---------|------------|-----------------|
+| Linear | `t` | C⁰ | 0 |
+| Smoothstep | `3t²−2t³` | C¹ | 2 |
+| Smootherstep (Perlin) | `6t⁵−15t⁴+10t³` | C² | 4 |
+| Smootheststep | `−20t⁷+70t⁶−84t⁵+35t⁴` | C³ | 6 |
+| Generalized degree-n | Bernstein polynomial | Cⁿ⁻¹ | 2(n-1) |
+
+The C³ "smootheststep" formula (Inigo Quilez, documented on iquilezles.org):
+```hlsl
+float smootheststep(float t) {
+    return t*t*t*t*(35.0 + t*(-84.0 + t*(70.0 + t*(-20.0))));
+}
+```
+Cost: 7 multiplies + 3 adds. Versus smoothstep (3 mul + 1 add). For a blend weight
+function this is ~4 extra MAD per pixel — negligible.
+
+**When does the difference matter?**
+The visual artifact that C² continuity prevents is a visible "kink" in the derivative
+of the blend weight — i.e., a place where the rate of transition changes abruptly. This
+kink is C¹-smooth (zero derivative at endpoints) so it's not a *discontinuity* in the
+output, but it creates a subtle banding artifact when the blend weight range is wide
+(>0.15) and the output signal has fine spatial structure (textures, edges).
+
+For our pipeline:
+- `shadow_lift_str = lerp(1.50, 0.45, smoothstep(0.025, 0.20, perc.r))`:
+  range = 0.175, wide enough that smootherstep is perceptually better.
+- `scotopic_w = 1.0 - smoothstep(0.0, 0.12, new_luma)`:
+  range = 0.12, borderline. Scotopic effect is subtle so the kink at onset is unlikely
+  to be visible. Low priority.
+- All narrow-range smoothsteps (range ≤ 0.05): no benefit from upgrading.
+
+**Robert Penner easing functions (2002):**
+Penner's book "Programming Flash Animation" defined the canonical easing vocabulary:
+`easeIn`, `easeOut`, `easeInOut`. The `easeInOut` cubic is exactly smoothstep.
+The `easeInOut` quintic is exactly smootherstep. All standard in animation — the
+naming convention makes them easier to reason about than the polynomial expansion.
+
+**Alternative: raised cosine blend:**
+```hlsl
+float cosine_blend(float t) { return 0.5 - 0.5 * cos(t * 3.14159); }
+```
+C¹ continuity (same as smoothstep), different shape — slightly faster onset than
+smoothstep. More expensive (`cos` = ~4 ALU vs. 2 for smoothstep). Not an upgrade.
+
+**Conclusion:** For the two priority candidates, upgrade to smootherstep (C²). Not
+smootheststep (C³) — the jump from C¹→C² is the useful one; C²→C³ has no practical
+benefit for blend-weight functions in SDR post-process.

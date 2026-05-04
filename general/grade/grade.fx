@@ -167,11 +167,10 @@ float HueBandWeight(float hue, float center)
     return t * t * (3.0 - 2.0 * t);
 }
 
-float PivotedSCurve(float x, float m, float strength)
+float LiftChroma(float C, float pivot, float strength)
 {
-    float t    = x - m;
-    float bent = t + strength * t * (1.0 - abs(t));
-    return saturate(m + bent);
+    float t = saturate(1.0 - C / max(pivot, 0.001));
+    return C * (1.0 + strength * t * t);
 }
 
 float GetBandCenter(int b)
@@ -313,7 +312,10 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float clahe_slope = lerp(1.32, 1.12, ss_04_25);
     float iqr_scale   = min(smoothstep(0.0, 0.25, zone_iqr),
                             (clahe_slope - 1.0) / max(zone_str, 0.001));
-    float new_luma    = saturate(zone_median + (luma - zone_median) * (1.0 + zone_str * iqr_scale * (1.0 - abs(luma - zone_median))));
+    float delta    = luma - zone_median;
+    float zone_adj = zone_str * iqr_scale * delta * (1.0 - abs(delta));
+    float above_w  = smoothstep(-0.05, 0.10, delta);
+    float new_luma = saturate(luma + zone_adj * above_w);
 
 
     // R29: Multi-Scale Retinex — pixel-local illumination/reflectance separation
@@ -332,7 +334,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // R60: temporal context — slow ambient key boosts lift during dark transitions, suppresses on re-entry
     float slow_key     = max(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0.001);
     float context_lift = exp2(log2(slow_key / zk_safe) * 0.4);
-    float shadow_lift_str = lerp(1.50, 0.45, smoothstep(0.025, 0.20, perc.r));
+    float _sls_t = saturate((perc.r - 0.025) / 0.175);
+    float shadow_lift_str = lerp(1.50, 0.45, _sls_t*_sls_t*_sls_t*(_sls_t*(_sls_t*6.0-15.0)+10.0));
     float shadow_lift     = shadow_lift_str * (0.149169 / (illum_s0 * illum_s0 + 0.003)) * local_range_att * texture_att * detail_protect * context_lift;
     float lift_w      = new_luma * smoothstep(0.30, 0.0, new_luma);
     new_luma          = saturate(new_luma + (shadow_lift / 100.0) * 0.75 * lift_w * SHADOW_LIFT_STRENGTH);
@@ -416,7 +419,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     {
         float pivot = tex2D(ChromaHistory, float2((band + 0.5) / 8.0, 0.5 / 4.0)).r;
         float w = HueBandWeight(h_perc, GetBandCenter(band));
-        new_C   += PivotedSCurve(C, pivot, chroma_str) * w;
+        new_C   += LiftChroma(C, pivot, chroma_str) * w;
         total_w += w;
     }
     // max(lifted, C) — lift-only; identity limit at C = 0 by construction
