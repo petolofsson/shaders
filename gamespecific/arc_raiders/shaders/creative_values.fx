@@ -41,11 +41,12 @@
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
 #define SHADOW_LIFT_STRENGTH  1.4
 
-// ── HUNT LOCALITY (R61) ───────────────────────────────────────────────────────
-// Per-pixel Hunt effect adaptation. 0 = global scene mean (current behaviour).
-// 0.35 = blend toward pixel-local luminance — highlights get more chroma boost,
-// shadows get less. CAM16 local-field specification.
-#define HUNT_LOCALITY  0.35
+// ── CHROMA LIFT ───────────────────────────────────────────────────────────────
+// Strength of the per-hue chroma lift (grade.fx PivotedSCurve). Acts as a gain
+// near each hue band's scene mean — lift-only, vibrance-masked (already-saturated
+// pixels are attenuated). Spatial R68A modulation is applied on top.
+// 0 = no lift. Typical range 0.03–0.08.
+#define CHROMA_STR  0.05
 
 // ── FILM CURVE CHARACTER ──────────────────────────────────────────────────────
 // Per-channel knee and toe offsets for the FilmCurve (Stage 1). These encode the

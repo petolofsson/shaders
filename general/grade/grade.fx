@@ -420,36 +420,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float hw_o4 = HueBandWeight(h_out, BAND_BLUE);
     float hw_o5 = HueBandWeight(h_out, BAND_MAGENTA);
 
-    // R61: per-pixel Hunt adaptation — blend scene mean toward pixel luma (CAM16 local-field).
-    float hunt_la = max(lerp(zone_log_key, lab.x, HUNT_LOCALITY), 0.001);
-    float _k    = 1.0 / (5.0 * hunt_la + 1.0);
-    float _k4   = _k * _k; _k4 *= _k4;
-    float _omk4 = 1.0 - _k4;
-    float hunt_scale = sqrt(sqrt(max(
-        _k4 * hunt_la + 0.1 * _omk4 * _omk4 * pow(5.0 * hunt_la, 1.0 / 3.0),
-        1e-6))) / 0.5912;
-
-    // R36: mean_chroma → adaptive chroma and density strengths
-    float cm_t = 0.0, cm_w = 0.0;
-    [unroll] for (int bi = 0; bi < 6; bi++)
-    {
-        float4 hc = tex2D(ChromaHistory, float2((bi + 0.5) / 8.0, 0.5 / 4.0));
-        cm_t += hc.r * hc.b;
-        cm_w += hc.b;
-    }
-    float mean_chroma  = cm_t / max(cm_w, 0.001);
-    float chroma_exp  = exp2(-5.006152 * mean_chroma);
-    float chroma_mc_t   = smoothstep(0.05, 0.25, mean_chroma);
-    float chroma_p50_t  = smoothstep(0.15, 0.55, perc.g);
-    float chroma_drive  = saturate(chroma_mc_t + 0.35 * chroma_p50_t);
-    float chroma_str_base = 0.075;
-    float chroma_str    = saturate(chroma_str_base * chroma_exp * hunt_scale * lerp(1.25, 0.60, chroma_drive));
-    float density_str = 62.0 - 20.0 * chroma_exp;
-    // R68A: spatial chroma modulation — attenuate in textured regions, full in flat.
-    chroma_str *= lerp(1.0, 0.65, smoothstep(0.02, 0.08, local_var));
-    // R99: achromatic brake — reduce chroma lift when scene is predominantly colorless.
-    // Counteracts chroma_exp boost that otherwise over-pushes in near-monochrome scenes.
-    chroma_str *= lerp(1.0, 0.5, smoothstep(0.60, 0.90, ReadHWY(HWY_ACHROM_FRAC)));
+    float chroma_str = CHROMA_STR;
+    chroma_str *= lerp(1.0, 0.65, smoothstep(0.02, 0.08, local_var));  // R68A: attenuate in textured regions
+    float density_str = 50.0;
 
     float new_C = 0.0, total_w = 0.0;
     [unroll] for (int band = 0; band < 6; band++)
