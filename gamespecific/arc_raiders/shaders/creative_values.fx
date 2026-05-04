@@ -46,7 +46,7 @@
 // near each hue band's scene mean — lift-only, vibrance-masked (already-saturated
 // pixels are attenuated). Spatial R68A modulation is applied on top.
 // 0 = no lift. Typical range 0.03–0.08.
-#define CHROMA_STR  0.05
+#define CHROMA_STR  0.03
 
 // ── FILM CURVE CHARACTER ──────────────────────────────────────────────────────
 // Per-channel knee and toe offsets for the FilmCurve (Stage 1). These encode the
