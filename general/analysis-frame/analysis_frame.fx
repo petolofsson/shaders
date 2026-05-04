@@ -135,11 +135,24 @@ sampler2D SceneCutSamp
     MagFilter = POINT;
 };
 
-// Scene mean Oklab chroma — r=mean_C; read by inverse_grade.fx as pivot for range expansion
+// Scene mean Oklab chroma — r=mean_C, g=mean_a, b=mean_b, a=achromatic_fraction
+// mean_a/mean_b give the scene chroma centroid direction in Oklab.
+// Read by inverse_grade.fx (.r only).
 texture2D MeanChromaTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
 sampler2D MeanChromaSamp
 {
     Texture   = MeanChromaTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
+// p90 luma cache — EMA-smoothed specular floor tracker
+texture2D PercHighTex { Width = 1; Height = 1; Format = R16F; MipLevels = 1; };
+sampler2D PercHighSamp
+{
+    Texture   = PercHighTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = POINT;
@@ -289,6 +302,18 @@ float4 DebugOverlayPS(float4 pos : SV_Position,
         // One-frame delay is acceptable; Kalman response lags one frame on hard cuts.
         if (xi == HWY_SCENE_CUT)
             return float4(tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0)).r, 0.0, 0.0, 1.0);
+        // Slots 198,200-202: read previous frame's textures (MeanChromaPS and CDFWalkHighPS
+        // run after this pass). One-frame delay is fine for all three consumers.
+        if (xi == HWY_MEAN_CHROMA)
+            return float4(tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).r, 0.0, 0.0, 1.0);
+        if (xi == HWY_P90)
+            return float4(tex2Dlod(PercHighSamp, float4(0.5, 0.5, 0, 0)).r, 0.0, 0.0, 1.0);
+        if (xi == HWY_CHROMA_ANGLE) {
+            float2 ab = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).gb;
+            return float4((atan2(ab.y, ab.x) + 3.14159265) / (2.0 * 3.14159265), 0.0, 0.0, 1.0);
+        }
+        if (xi == HWY_ACHROM_FRAC)
+            return float4(tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).a, 0.0, 0.0, 1.0);
         return c;
     }
     return DrawLabel(c, pos.xy, 270.0, 10.0,
@@ -383,8 +408,8 @@ float4 SceneCutPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
 float4 MeanChromaPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    float sum_C = 0.0;
-    float count = 0.0;
+    float sum_C = 0.0, sum_a = 0.0, sum_b = 0.0;
+    float count = 0.0, achrom_count = 0.0;
     [loop]
     for (int y = 0; y < DS_H; y++)
     {
@@ -396,15 +421,55 @@ float4 MeanChromaPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
             float  C    = length(lab.yz);
             float  in_b = step(0.05, C);
             sum_C += C * in_b;
+            sum_a += lab.y * in_b;
+            sum_b += lab.z * in_b;
             count += in_b;
+            achrom_count += 1.0 - in_b;
         }
     }
-    float mean_C_raw = sum_C / max(count, 1.0);
     float valid      = step(0.5, count);
-    float mean_C     = lerp(0.10, mean_C_raw, valid);
-    float prev       = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).r;
+    float inv_count  = 1.0 / max(count, 1.0);
+    float mean_C     = lerp(0.10, sum_C * inv_count, valid);
+    float mean_a     = lerp(0.0,  sum_a * inv_count, valid);
+    float mean_b     = lerp(0.0,  sum_b * inv_count, valid);
+    float achrom_frac = achrom_count / float(DS_W * DS_H);
+    float4 prev      = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0));
     float alpha      = saturate(frametime * 0.005);
-    return float4(lerp(prev, mean_C, alpha), 0.0, 0.0, 1.0);
+    return float4(
+        lerp(prev.r, mean_C,     alpha),
+        lerp(prev.g, mean_a,     alpha),
+        lerp(prev.b, mean_b,     alpha),
+        lerp(prev.a, achrom_frac, alpha)
+    );
+}
+
+// ─── Pass 10 — p90 luma percentile ────────────────────────────────────────
+// Same 64-bin CDF walk as CDFWalkPS but targets the 90th percentile.
+// No Kalman — simple EMA is sufficient for a coarse highlight threshold signal.
+
+float4 CDFWalkHighPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    float cumul = 0.0;
+    float p90 = 0.90;
+    float lk90 = 0.0;
+
+    [loop] for (int b = 0; b < HIST_BINS; b++)
+    {
+        float frc  = tex2Dlod(LumHist, float4((float(b) + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
+        float prev = cumul;
+        cumul += frc;
+
+        float inv  = (frc > 0.0) ? 1.0 / frc : 0.0;
+        float t90  = saturate((0.90 - prev) * inv);
+        float bv90 = (float(b) + t90) / float(HIST_BINS);
+        float at90 = step(0.90, cumul) * (1.0 - lk90);
+        p90  = lerp(p90, bv90, at90);
+        lk90 = saturate(lk90 + at90);
+    }
+
+    float prev  = tex2Dlod(PercHighSamp, float4(0.5, 0.5, 0, 0)).r;
+    float alpha = saturate(frametime * 0.005);
+    return float4(lerp(prev, p90, alpha), 0.0, 0.0, 1.0);
 }
 
 // ─── Technique ─────────────────────────────────────────────────────────────
@@ -457,6 +522,12 @@ technique FrameAnalysis
         VertexShader = PostProcessVS;
         PixelShader  = SceneCutPS;
         RenderTarget = SceneCutTex;
+    }
+    pass CDFWalkHigh
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = CDFWalkHighPS;
+        RenderTarget = PercHighTex;
     }
     pass MeanChroma
     {

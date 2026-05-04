@@ -24,6 +24,9 @@
 #define HWY_SLOPE           197    // R90 chroma slope; encode: (v-1.0)/1.5  decode: v*1.5+1.0
 #define HWY_MEAN_CHROMA     198    // scene mean Oklab C (saturated pixels only); raw [0,0.4]
 #define HWY_SCENE_CUT       199    // scene cut signal [0,1]
+#define HWY_P90             200    // scene p90 luma (specular floor tracker); raw [0,1]
+#define HWY_CHROMA_ANGLE    201    // dominant hue angle; encode: (atan2(b,a)+π)/(2π)  decode: v*2π-π
+#define HWY_ACHROM_FRAC     202    // fraction of pixels with Oklab C < 0.05 [0,1]
 
 // ── corrective ────────────────────────────────────────────────────────────────
 #define HWY_WARM_BIAS       210    // highlight warm bias EMA [0,1]
