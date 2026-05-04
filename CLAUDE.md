@@ -21,7 +21,7 @@ analysis_frame : inverse_grade : inverse_grade_debug : analysis_scope_pre : corr
   BackBuffer-writing pass must guard `if (pos.y < 1.0) return col;`
 - Any effect where all passes use explicit RenderTargets must add a Passthrough pass
   that writes BackBuffer, or vkBasalt clears it for the next effect.
-- `corrective.fx` is one effect with 6 passes — the final Passthrough keeps BB alive
+- `corrective.fx` is one effect with 7 passes — the final Passthrough keeps BB alive
   for `grade.fx`. No inter-effect clears between corrective passes.
 
 ## How I work
@@ -69,7 +69,7 @@ inverse_grade.fx runs before corrective — R90 chroma expansion on pre-correcti
 
 1. **CORRECTIVE** — CAT16 chromatic adaptation + `pow(rgb, EXPOSURE)` + FilmCurve (p25/p50/p75) + R83 chromatic floor + R84 log-density offsets + R85 dye masking + R19 3-way CC
 2. **TONAL** — Zone S-curve + Spatial norm (auto from zone_std) + R29 Retinex + Shadow lift + R62 Oklab-stable tonal (L-substitution, chroma preserved) + R65 Hunt coupling + R66 ambient shadow tint
-3. **CHROMA** — HELMLAB Fourier hue correction + R52 Purkinje + R22 sat-by-luma + R21 hue rotation + R75 hue-by-luminance + R61 Hunt per-pixel (HUNT_LOCALITY) + chroma lift + R15 HK + R69/R12 Abney + density + R71 vibrance self-mask + R73 memory color ceilings + gamut pre-knee + gclip
+3. **CHROMA** — HELMLAB Fourier hue correction + R52 Purkinje + R22 sat-by-luma + R21 hue rotation + R75 hue-by-luminance + chroma lift (CHROMA_STR × 0.04 raw, R68A spatial mod) + R15 HK + R69/R12 Abney + density + R71 vibrance self-mask + R73 memory color ceilings + gamut pre-knee + gclip
 
 **Data highway (BackBuffer y=0):** x=0–128 luma hist · x=130–193 hue hist · x=194–196 p25/p50/p75 · x=197 R90 slope · x=198 mean Oklab C · x=199 scene cut · x=200 p90 · x=201 chroma angle (atan2 encoded) · x=202 achromatic fraction · x=210 warm bias · x=211 zone key · x=212 zone std
 

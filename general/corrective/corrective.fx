@@ -118,16 +118,6 @@ sampler2D WarmBiasSamp
     MagFilter = POINT;
 };
 
-// R47: shadow-restricted warm bias EMA — read by grade
-texture2D ShadowBiasTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
-sampler2D ShadowBiasSamp
-{
-    Texture   = ShadowBiasTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
 
 // ─── Vertex shader ─────────────────────────────────────────────────────────
 
@@ -420,31 +410,6 @@ float4 WarmBiasPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     return float4(wb_smooth, 0.0, 0.0, 1.0);
 }
 
-// ─── Pass 7 — R47: shadow warm bias ───────────────────────────────────────
-
-float4 ShadowBiasPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
-{
-    float p25      = tex2Dlod(PercSamp,      float4(0.5, 0.5, 0, 0)).r;
-    float prev_sb  = tex2Dlod(ShadowBiasSamp, float4(0.5, 0.5, 0, 0)).r;
-
-    float sum_r = 0.0, sum_b = 0.0, sum_w = 0.0;
-    [unroll] for (int sy = 0; sy < 8; sy++)
-    [unroll] for (int sx = 0; sx < 8; sx++)
-    {
-        float2 uv_s = float2((sx + 0.5) / 8.0, (sy + 0.5) / 8.0);
-        float4 s    = tex2Dlod(CreativeLowFreqSamp, float4(uv_s, 0, 0));
-        float  wt   = step(s.a, p25);
-        sum_r += s.r * wt;
-        sum_b += s.b * wt;
-        sum_w += wt;
-    }
-
-    float mean_r    = sum_r / max(sum_w, 1.0);
-    float mean_b    = sum_b / max(sum_w, 1.0);
-    float sb_curr   = (mean_r - mean_b) / max(mean_r + mean_b, 0.001);
-    float sb_smooth = lerp(prev_sb, sb_curr, KALMAN_K_INF);
-    return float4(sb_smooth, 0.0, 0.0, 1.0);
-}
 
 // ─── Pass 8 — Passthrough ──────────────────────────────────────────────────
 
@@ -505,12 +470,6 @@ technique Corrective
         VertexShader = PostProcessVS;
         PixelShader  = WarmBiasPS;
         RenderTarget = WarmBiasTex;
-    }
-    pass ShadowBias
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = ShadowBiasPS;
-        RenderTarget = ShadowBiasTex;
     }
     pass Passthrough
     {

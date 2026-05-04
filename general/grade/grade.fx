@@ -91,16 +91,6 @@ sampler2D ChromaHistory
     MagFilter = POINT;
 };
 
-// R47: shadow warm bias EMA (written by corrective.fx ShadowBias pass)
-texture2D ShadowBiasTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
-sampler2D ShadowBiasSamp
-{
-    Texture   = ShadowBiasTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
 
 
 // ─── Vertex shader ─────────────────────────────────────────────────────────
@@ -306,13 +296,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         float r19_hl   = saturate((r19_luma - 0.65) / 0.35);
         float r19_mid  = 1.0 - r19_sh - r19_hl;
 
-        // R47: scene-adaptive shadow temperature — gated by zone_std to exclude UI frames
-        float shadow_bias  = tex2Dlod(ShadowBiasSamp, float4(0.5, 0.5, 0, 0)).r;
-        float r47_gate     = smoothstep(0.06, 0.15, zone_std);
-        float sh_temp_auto = clamp(lerp(0.0, -20.0, smoothstep(0.02, 0.12,  shadow_bias))
-                                 + lerp(0.0, +15.0, smoothstep(0.02, 0.10, -shadow_bias)),
-                                   -22.0, 18.0) * r47_gate;
-        float3 r19_sh_delta  = float3(+(SHADOW_TEMP + sh_temp_auto) + SHADOW_TINT * 0.5, -SHADOW_TINT, -(SHADOW_TEMP + sh_temp_auto) + SHADOW_TINT * 0.5) * 0.0003;
+        float3 r19_sh_delta  = float3(+SHADOW_TEMP + SHADOW_TINT * 0.5, -SHADOW_TINT, -SHADOW_TEMP + SHADOW_TINT * 0.5) * 0.0003;
         float3 r19_mid_delta = float3(+MID_TEMP       + MID_TINT       * 0.5, -MID_TINT,       -MID_TEMP       + MID_TINT       * 0.5) * 0.0003;
         float3 r19_hl_delta  = float3(+HIGHLIGHT_TEMP + HIGHLIGHT_TINT * 0.5, -HIGHLIGHT_TINT, -HIGHLIGHT_TEMP + HIGHLIGHT_TINT * 0.5) * 0.0003;
 
@@ -420,7 +404,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float hw_o4 = HueBandWeight(h_out, BAND_BLUE);
     float hw_o5 = HueBandWeight(h_out, BAND_MAGENTA);
 
-    float chroma_str = CHROMA_STR;
+    float chroma_str = CHROMA_STR * 0.04;
     chroma_str *= lerp(1.0, 0.65, smoothstep(0.02, 0.08, local_var));  // R68A: attenuate in textured regions
     float density_str = 50.0;
 
