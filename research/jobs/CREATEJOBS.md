@@ -127,7 +127,7 @@ Use curl for web search:
 
 ```bash
 curl -s "https://api.search.brave.com/res/v1/web/search?q=QUERY&count=5" \
-  -H "X-Subscription-Token: BSACEZYg3d8q_TVrE-KKqerTXe-h1nA" \
+  -H "X-Subscription-Token: $BRAVE_API_KEY" \
   -H "Accept: application/json"
 ```
 
