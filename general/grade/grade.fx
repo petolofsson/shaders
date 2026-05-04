@@ -241,7 +241,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // ── 1. CORRECTIVE: EXPOSURE + FilmCurve ──────────────────────────────────
     // Frame-constant FilmCurve coefficients — hoisted out of per-pixel path (R62 OPT-2)
     float fc_knee     = lerp(0.90, 0.80, saturate((eff_p75 - 0.60) / 0.30));
-    float fc_stevens  = (1.48 + exp2(log2(max(zone_log_key, 1e-6)) * (1.0 / 3.0))) / 2.04;
+    float fc_stevens  = (1.48 + exp2(log2(zone_log_key) * (1.0 / 3.0))) / 2.04;
     float fc_factor   = 0.05 / ((1.0 - fc_knee) * (1.0 - fc_knee)) * fc_stevens * spread_scale;
     float fc_knee_toe = lerp(0.15, 0.25, saturate((0.40 - eff_p25) / 0.30));
     // R84: CURVE_* are log-density offsets — exp2 folds to constant at compile time
@@ -323,21 +323,20 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float local_var = abs(illum_s0 - illum_s2);
     float nl_safe   = max(new_luma, 0.001);
     float log_R     = log2(nl_safe / illum_s0);
-    float zk_safe   = max(zone_log_key, 0.001);
-    new_luma = lerp(new_luma, saturate(nl_safe * zk_safe / illum_s0), 0.75 * ss_04_25);
+    new_luma = lerp(new_luma, saturate(nl_safe * zone_log_key / illum_s0), 0.75 * ss_04_25);
 
     float local_range_att = 1.0 - smoothstep(0.20, 0.50, zone_iqr);
     float texture_att     = 1.0 - smoothstep(0.005, 0.030, local_var);
     float detail_protect  = smoothstep(-0.5, 0.0, log_R);
     // R60: temporal context — slow ambient key boosts lift during dark transitions, suppresses on re-entry
     float slow_key     = max(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0.001);
-    float context_lift = exp2(log2(slow_key / zk_safe) * 0.4);
+    float context_lift = exp2(log2(slow_key / zone_log_key) * 0.4);
     float shadow_lift_str = lerp(1.50, 0.45, smoothstep(0.025, 0.20, perc.r));
     float shadow_lift     = shadow_lift_str * (0.149169 / (illum_s0 * illum_s0 + 0.003)) * local_range_att * texture_att * detail_protect * context_lift;
     float lift_w      = new_luma * smoothstep(0.30, 0.0, new_luma);
     new_luma          = saturate(new_luma + (shadow_lift / 100.0) * 0.75 * lift_w * SHADOW_LIFT_STRENGTH);
     // R62 Finding 3: chroma-stable tonal — apply luma ratio in Oklab L to prevent zone S-curve from shifting chroma
-    float3 lab_t  = RGBtoOklab(saturate(lin));
+    float3 lab_t  = RGBtoOklab(lin);
     float r_tonal = new_luma / max(luma, 0.001);
     float cbrt_r  = exp2(log2(max(r_tonal, 1e-10)) * (1.0 / 3.0));
     lab_t.x = saturate(lab_t.x * cbrt_r);
@@ -381,7 +380,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
     // R22: saturation by luminance — baked Munsell calibration (shadow 20%, highlight 45%)
     // + midtone expansion bell from cinema SDR mastering data (Žaganeli et al. 2026)
-    float mid_C_boost = 0.0 * smoothstep(0.22, 0.40, lab.x)
+    float mid_C_boost = 0.04 * smoothstep(0.22, 0.40, lab.x)
                              * (1.0 - smoothstep(0.55, 0.70, lab.x));
     C *= (1.0 + mid_C_boost
              - 0.20 * saturate(1.0 - lab.x / 0.25)

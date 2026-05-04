@@ -37,10 +37,10 @@
 // Default values match ARRI ALEXA latitude. Range approximately ±0.015.
 // R knee < 0 = red compresses earlier (film-like warm shadows).
 // B knee > 0 = blue compresses later (open highlights). B toe < 0 = cool toe.
-#define CURVE_R_KNEE  -0.008
-#define CURVE_B_KNEE  +0.006
-#define CURVE_R_TOE   +0.003
-#define CURVE_B_TOE   -0.005
+#define CURVE_R_KNEE  -0.0102
+#define CURVE_B_KNEE   0.0000
+#define CURVE_R_TOE   +0.0100
+#define CURVE_B_TOE   -0.0218
 
 // ── ZONE CONTRAST ────────────────────────────────────────────────────────────
 // Scales the adaptive zone S-curve strength. 1.0 = calibrated default.
@@ -58,12 +58,12 @@
 // TEMP: positive = warm (R up, B down), negative = cool. Range ±100.
 // TINT: positive = magenta (G down, R+B up slightly), negative = green. Range ±100.
 // All default to 0 — passthrough. No output change at defaults.
-#define SHADOW_TEMP     -10
-#define SHADOW_TINT      +5
-#define MID_TEMP         +8
-#define MID_TINT          0
-#define HIGHLIGHT_TEMP  +20
-#define HIGHLIGHT_TINT   -2
+#define SHADOW_TEMP     -5
+#define SHADOW_TINT      0
+#define MID_TEMP         3
+#define MID_TINT         0
+#define HIGHLIGHT_TEMP  +6
+#define HIGHLIGHT_TINT   0
 
 // ── CHROMA LIFT ───────────────────────────────────────────────────────────────
 // Strength of the per-hue chroma lift (grade.fx PivotedSCurve). Acts as a gain
@@ -75,11 +75,11 @@
 // ── HUE ROTATION ─────────────────────────────────────────────────────────────
 // Per-band rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
 // (Red→Yellow, Green→Cyan, Blue→Magenta). Default 0.0 = passthrough.
-#define ROT_RED     -0.04
-#define ROT_YELLOW  -0.07
-#define ROT_GREEN   +0.05
-#define ROT_CYAN    +0.05
-#define ROT_BLUE     0.00
+#define ROT_RED     +0.03
+#define ROT_YELLOW  -0.015
+#define ROT_GREEN   -0.02
+#define ROT_CYAN    +0.015
+#define ROT_BLUE    -0.03
 #define ROT_MAG      0.00
 
 // ── HALATION ──────────────────────────────────────────────────────────────────
