@@ -397,7 +397,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
     // R22: saturation by luminance — baked Munsell calibration (shadow 20%, highlight 45%)
     // + midtone expansion bell from cinema SDR mastering data (Žaganeli et al. 2026)
-    float mid_C_boost = 0.06 * smoothstep(0.22, 0.40, lab.x)
+    float mid_C_boost = 0.0 * smoothstep(0.22, 0.40, lab.x)
                              * (1.0 - smoothstep(0.55, 0.70, lab.x));
     C *= (1.0 + mid_C_boost
              - 0.20 * saturate(1.0 - lab.x / 0.25)
