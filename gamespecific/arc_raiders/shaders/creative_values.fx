@@ -6,7 +6,7 @@
 // below "sees". Raising this (>1.0) darkens; lowering (<1.0) brightens.
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune
 // the contrast/chroma knobs beneath.
-#define EXPOSURE            0.90
+#define EXPOSURE            0.92
 
 // ── CAMERA SIGNAL RANGE ───────────────────────────────────────────────────────
 // Remaps the raw pixel into [FILM_FLOOR, FILM_CEILING] before EXPOSURE runs.
@@ -15,7 +15,7 @@
 // FILM_CEILING: white headroom — pulls true white below clip before EXPOSURE.
 //   0.95 matches ARRI LogC3 usable ceiling (~91-92% of full scale).
 // Both at defaults (0 / 1) = passthrough (identity).
-#define FILM_FLOOR    0.01
+#define FILM_FLOOR    0.005
 #define FILM_CEILING  0.95
 
 // ── 3-WAY COLOR CORRECTOR ────────────────────────────────────────────────────
@@ -39,7 +39,7 @@
 // ── SHADOW LIFT ───────────────────────────────────────────────────────────────
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOW_LIFT_STRENGTH  1.2
+#define SHADOW_LIFT_STRENGTH  1.3
 
 // ── HUNT LOCALITY (R61) ───────────────────────────────────────────────────────
 // Per-pixel Hunt effect adaptation. 0 = global scene mean (current behaviour).
@@ -119,7 +119,7 @@
 // Longitudinal chromatic aberration of the human eye: blue focuses short, red
 // focuses long. Simulates the natural per-channel fringe that real-world optics
 // produce. 0 = off. 0.5 = subtle (~1.2D). 1.0 = full physiological LCA (~2.4D).
-#define LCA_STRENGTH  0.0
+#define LCA_STRENGTH  0.2
 
 // ── INVERSE GRADE (R90) ───────────────────────────────────────────────────────
 // Adaptive inverse tone mapping. Expands display IQR toward the ACES-derived

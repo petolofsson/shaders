@@ -6,7 +6,7 @@ vkBasalt auto-linearizes the sRGB swapchain. HDR must be OFF in-game.
 
 ## Active chain (`arc_raiders.conf`)
 ```
-analysis_frame : analysis_scope_pre : corrective : grade : pro_mist : analysis_scope
+analysis_frame : inverse_grade : inverse_grade_debug : analysis_scope_pre : corrective : grade : pro_mist : analysis_scope
 ```
 
 ## Silent-failure gotchas — verify before every shader edit
@@ -31,8 +31,8 @@ analysis_frame : analysis_scope_pre : corrective : grade : pro_mist : analysis_s
 - **Plan before coding.** For any non-trivial edit: state which lines/approach will change
   and wait for a nod before writing code.
 - **Strict scope.** Only change what was asked. No opportunistic cleanup of surrounding code.
-- **Research naming:** `RXX_YYYY-MM-DD_title.md` (+ `_findings.md`). No N suffix — applies
-  to CLI sessions and nightly jobs alike. Next number: `ls research/R*.md | tail -1`.
+- **Research naming:** `R{next}_{YYYY-MM-DD}_title.md` (+ `_findings.md`). No N suffix — applies
+  to CLI sessions and nightly jobs alike. Next number: `ls research/R*.md | grep -oP 'R\K[0-9]+' | sort -n | tail -1`.
 
 ## Non-negotiable rules
 
@@ -53,17 +53,24 @@ analysis_frame : analysis_scope_pre : corrective : grade : pro_mist : analysis_s
 | `gamespecific/arc_raiders/shaders/creative_values.fx` | Only tuning surface |
 | `general/corrective/corrective.fx` | Analysis passes — zone hist, chroma stats, Passthrough |
 | `general/grade/grade.fx` | All color work — `ColorTransformPS` (MegaPass) |
+| `general/inverse-grade/inverse_grade.fx` | R90 adaptive inverse tone mapping (pre-corrective) |
+| `general/analysis-frame/analysis_frame.fx` | Histogram, PercTex, data highway encoding |
 | `gamespecific/arc_raiders/shaders/debug_text.fxh` | 3×5 debug font, included by all effects |
 | `gamespecific/arc_raiders/arc_raiders.conf` | Chain config — never touch without ask |
 
 ## `ColorTransformPS` stage order (`grade.fx`)
 
-Reads from BackBuffer (post-corrective). Analysis textures (ZoneHistoryTex,
-ChromaHistoryTex, PercTex, CreativeLowFreqTex) written by earlier passes in corrective.fx.
+Reads from BackBuffer (post-inverse_grade, post-corrective). Analysis textures
+(ZoneHistoryTex, ChromaHistoryTex, PercTex, CreativeLowFreqTex) written by corrective.fx.
+inverse_grade.fx runs before corrective — R90 chroma expansion on pre-corrective signal.
 
-1. **CORRECTIVE** — `pow(rgb, EXPOSURE)` + FilmCurve (PercTex p25/p50/p75)
-2. **TONAL** — Zone S-curve + Spatial norm (both auto from zone_std) + Clarity + Shadow lift
-3. **CHROMA** — Oklab chroma lift + HK + Abney + density (gate-free, no outer C gate)
+**Pre-grade:** inverse_grade.fx — Oklab chroma expansion (slope from highway x=197, INVERSE_STRENGTH)
+
+1. **CORRECTIVE** — CAT16 chromatic adaptation + `pow(rgb, EXPOSURE)` + FilmCurve (p25/p50/p75) + R83 chromatic floor + R84 log-density offsets + R85 dye masking + R19 3-way CC
+2. **TONAL** — Zone S-curve + Spatial norm (auto from zone_std) + R29 Retinex + Shadow lift + R62 Oklab-stable tonal (L-substitution, chroma preserved) + R65 Hunt coupling + R66 ambient shadow tint
+3. **CHROMA** — HELMLAB Fourier hue correction + R52 Purkinje + R22 sat-by-luma + R21 hue rotation + R75 hue-by-luminance + R61 Hunt per-pixel (HUNT_LOCALITY) + chroma lift + R15 HK + R69/R12 Abney + density + R71 vibrance self-mask + R73 memory color ceilings + gamut pre-knee + gclip
+
+**Data highway (BackBuffer y=0):** x=0–128 luma hist · x=130–193 hue hist · x=194–196 p25/p50/p75 · x=197 R90 slope
 
 ## Debug
 

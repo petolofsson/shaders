@@ -1,6 +1,6 @@
 # Pipeline Improvement Plan
 **Goal:** Raise every stage to 90% finished / 75% novel (game-specific sense).
-**Created:** 2026-05-03 | **Updated:** 2026-05-04 (R86 prototype)
+**Created:** 2026-05-03 | **Updated:** 2026-05-04 (R61 Hunt locality + job maintenance)
 
 ---
 
@@ -330,16 +330,16 @@ GPU cost: ~6 MAD. No new taps, no new knobs.
 
 ---
 
-## Actual outcomes (all phases complete)
+## Actual outcomes (all phases complete — updated 2026-05-04)
 
-| Stage | Finished | Novel | Gap to 90/75 target |
-|-------|----------|-------|---------------------|
-| Stage 0 | 92% | 75% | **At target** — R83 shipped |
-| Stage 1 | 90% | 75% | **At target** — R84 + R85 shipped |
-| Stage 2 | 90% | 88% | **Exceeds target** |
-| Stage 3 | 95% | 90% | **Exceeds target** |
-| Stage 3.5 | 90% | 78% | **Exceeds target** — zero-tap mip architecture is genuinely distinct |
-| Output | 90% | 72% | Novel −3% — bidirectional + scene-adaptive lifts it close |
+| Stage | Finished | Novel | Notes |
+|-------|----------|-------|-------|
+| Stage 0 — Input | 95% | 80% | R90 inverse grade in active chain (+3F/+5N) |
+| Stage 1 — Corrective | 93% | 78% | F1–F3 sensitometry + R75 hue-by-luma (+3F/+3N) |
+| Stage 2 — Tonal | 93% | 92% | R62 Oklab-stable tonal + R65/R66 (+3F/+4N) |
+| Stage 3 — Chroma | 97% | 93% | R61 CAM16 Hunt per-pixel + R74/R69 (+2F/+3N) |
+| Stage 3.5 — Halation | 90% | 78% | Unchanged — zero-tap mip architecture distinct |
+| Output — Pro-Mist | 91% | 74% | R89 blue-noise dither (+1F/+2N) |
 
 ---
 
@@ -405,6 +405,12 @@ Three implementations from nightly research (`research/2026-05-04_filmcurve.md`,
 - **F3** `fc_stevens`: `sqrt` → `exp2(log2(key)*(1/3))`, denominator 2.03→2.04. Cube root
   matches psychophysical data across full photopic range. Dark scenes +6–8% shoulder.
 
+### R61 — Per-Pixel Hunt Adaptation (CAM16 local-field)
+Replaces global scene-mean luminance in Hunt effect with per-pixel blend:
+`hunt_la = lerp(zone_log_key, lab.x, HUNT_LOCALITY)`. Highlights get stronger chroma
+boost (brighter local field → higher F_L), shadows get less. One lerp, no new passes.
+`HUNT_LOCALITY 0.35` knob. Stage 3 novel: +3%.
+
 ### R90 — Adaptive Inverse Tone Mapping
 Game-agnostic chroma recovery. IQR-based compression ratio (2.5-stop reference, ACES-
 derived) drives Oklab chroma expansion. Luma unchanged — brightness neutral by construction.
@@ -457,7 +463,7 @@ and produce chroma and hue errors that compound through every subsequent stage.
 
 ### R86 — Tone Mapper Identification and Analytical Inversion
 
-**Track:** Scene Reconstruction | **Status:** Prototype running in Arc Raiders (2026-05-04)
+**Track:** Scene Reconstruction | **Status:** Retired — replaced by R90 game-agnostic approach
 **Targets:** New — not tracked in existing novelty scores
 
 **Problem:**

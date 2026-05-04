@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-05-04 — session (R61 Hunt locality + job maintenance)
+
+### Implemented
+- **R61 — Per-pixel Hunt adaptation** (`grade.fx` CHROMA block)
+  - `hunt_la = max(lerp(zone_log_key, lab.x, HUNT_LOCALITY), 0.001)` replaces
+    global `zone_log_key` in Hunt F_L computation. CAM16 local-field specification.
+  - Highlights get stronger chroma boost; shadows get less. One lerp, no new passes.
+  - `HUNT_LOCALITY 0.35` added to `creative_values.fx`.
+
+### Infrastructure
+- **Nightly jobs updated** — all four triggers refreshed for R90/R61 chain state:
+  - Correct active chain (includes `inverse_grade : inverse_grade_debug`)
+  - R-number filename convention fixed (`R{next}_` prefix, was `YYYY-MM-DD_`)
+  - Clarity permanent exclusion added to all jobs
+  - Automation job: stale candidates (CLARITY/DENSITY/CHROMA — non-existent knobs)
+    replaced with R61/R90 adaptive calibration research
+  - Stability audit: targeted review updated from R19–R22 to R88/R89/R90/R61
+  - Optimization job: already-implemented list updated (OPT-1, R88, R89)
+  - `job_r86_scene_reconstruction.md` deleted
+- **Register pressure verified** — RADV shader dump confirms ColorTransformPS uses
+  59 VGPRs / 87 SGPRs in hardware (audit estimated 240 scalars from HLSL — compiler
+  liveness analysis reduced 4×). No spilling. `scratch_en: false`.
+
+---
+
 ## 2026-05-04 — session (F1–F3 film sensitometry + Stevens)
 
 ### Implemented

@@ -1,4 +1,4 @@
-# Handoff — 2026-05-04
+# Handoff — 2026-05-04 (stable)
 
 ## Current branch
 `alpha` — active development.
@@ -27,6 +27,10 @@ analysis_frame : inverse_grade : inverse_grade_debug : analysis_scope_pre : corr
 ---
 
 ## What shipped this session (latest first)
+
+### R61 — Per-pixel Hunt adaptation (grade.fx)
+CAM16 local-field Hunt effect. `hunt_la = lerp(zone_log_key, lab.x, HUNT_LOCALITY)`.
+Highlights get stronger chroma boost, shadows get less. `HUNT_LOCALITY 0.35` knob added.
 
 ### F1–F3 — Film sensitometry + Stevens (grade.fx)
 - **F1** Print stock `desat_w` bounds now track `fc_knee_toe`/`fc_knee` — scene-adaptive desaturation window
@@ -63,6 +67,7 @@ analysis_frame : inverse_grade : inverse_grade_debug : analysis_scope_pre : corr
 | PURKINJE_STRENGTH | 1.3 |
 | VIEWING_SURROUND | 1.123 |
 | LCA_STRENGTH | 0.0 |
+| HUNT_LOCALITY | 0.35 |
 | INVERSE_STRENGTH | 0.50 |
 
 ---
@@ -72,6 +77,7 @@ analysis_frame : inverse_grade : inverse_grade_debug : analysis_scope_pre : corr
 - HAL and VEIL zeroed — both competed with inverse grade highlight expansion; restore
   cautiously if needed (start HAL at 0.15, VEIL at 2.0).
 - `inverse_grade_debug.fx` in chain — can be removed once tuning is stable.
+- Register pressure verified via RADV shader dump: 59 VGPRs / 87 SGPRs, no spilling.
 - No known compile errors or visual regressions.
 
 Debug log: `/tmp/vkbasalt.log` — check first for SPIR-V issues.
