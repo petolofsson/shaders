@@ -26,7 +26,14 @@ analysis_frame : inverse_grade : inverse_grade_debug : analysis_scope_pre : corr
 
 ---
 
-## What shipped this session
+## What shipped this session (latest first)
+
+### F1–F3 — Film sensitometry + Stevens (grade.fx)
+- **F1** Print stock `desat_w` bounds now track `fc_knee_toe`/`fc_knee` — scene-adaptive desaturation window
+- **F2** +6% midtone chroma bell at L≈0.47 in R22 — cinema SDR mastering data (Žaganeli et al. 2026)
+- **F3** Stevens exponent sqrt→cbrt in `fc_stevens`, denominator 2.03→2.04 — psychophysically correct
+
+### R90 — Adaptive inverse tone mapping
 
 - **R90** — `general/inverse-grade/inverse_grade.fx` — game-agnostic adaptive inverse tone mapping
   - Oklab chroma-only expansion: luma unchanged, brightness neutral

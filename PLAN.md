@@ -394,6 +394,17 @@ Critical fix for AMD RDNA: hist_cache[6] array removal frees 24 scalars, reducin
 register spill pressure. All changes exact or below JND threshold.
 See: `research/R82_2026-05-03_optimization_findings.md`
 
+### F1–F3 — Film Sensitometry + Stevens Recalibration (2026-05-04)
+Three implementations from nightly research (`research/2026-05-04_filmcurve.md`,
+Žaganeli et al. 2026 + Nayatani 1997/JoV 2025):
+
+- **F1** Print stock `desat_w` bounds: magic numbers `0.3`/`0.6` → `fc_knee_toe`/`fc_knee`.
+  Desaturation window tracks scene exposure. 2-token change, zero new ops.
+- **F2** Midtone chroma expansion: +6% bell at L≈0.47 added to R22. Net ~+3–4% after
+  downstream ceilings. Gate-free double smoothstep. 4 ALU.
+- **F3** `fc_stevens`: `sqrt` → `exp2(log2(key)*(1/3))`, denominator 2.03→2.04. Cube root
+  matches psychophysical data across full photopic range. Dark scenes +6–8% shoulder.
+
 ### R90 — Adaptive Inverse Tone Mapping
 Game-agnostic chroma recovery. IQR-based compression ratio (2.5-stop reference, ACES-
 derived) drives Oklab chroma expansion. Luma unchanged — brightness neutral by construction.

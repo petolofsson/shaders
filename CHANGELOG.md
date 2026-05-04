@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-05-04 — session (F1–F3 film sensitometry + Stevens)
+
+### Implemented
+- **F1 — Print stock bell tracks FilmCurve** (`grade.fx` line 296)
+  - `desat_w` bounds replaced with `fc_knee_toe` / `fc_knee` (already in scope).
+  - Desaturation window now widens/narrows with scene exposure like real Kodak 2383.
+  - Bright outdoor: midtone window opens. Dark interior: shadow zone tightens.
+  - Source: Žaganeli et al. 2026, arXiv 2604.06276.
+- **F2 — Midtone saturation expansion in R22** (`grade.fx` line 420)
+  - +6% chroma bell peaking at Oklab L≈0.47 (smoothstep [0.22–0.40] × [0.55–0.70]).
+  - Cinema SDR masters actively push midtone saturation — we only modelled suppression.
+  - Net output ~+3–4% after vibrance mask and memory color ceilings.
+  - Source: Žaganeli et al. 2026, arXiv 2604.06276.
+- **F3 — Stevens exponent sqrt→cbrt** (`grade.fx` line 274)
+  - `fc_stevens`: `sqrt(zone_log_key)` → `exp2(log2(key)*(1/3))`. Denominator 2.03→2.04.
+  - Cube root matches psychophysical data across dark→bright luminance range.
+  - Dark scenes: +6–8% shoulder compression. Bright outdoor: unchanged.
+  - Source: Nayatani et al. 1997 + JoV 2025.
+
+### Key findings
+- Fixed luma bounds in print stock desaturation caused incorrect zone widths across scenes.
+- Cinema SDR masters have a measurable midtone saturation bump absent from our model.
+- Stevens effect follows L^(1/3), not L^(1/2), across the full photopic adaptation range.
+
+---
+
 ## 2026-05-04 — session (R90 adaptive inverse — chroma edition)
 
 ### Implemented

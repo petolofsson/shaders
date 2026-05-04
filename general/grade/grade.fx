@@ -271,7 +271,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // ── 1. CORRECTIVE: EXPOSURE + FilmCurve ──────────────────────────────────
     // Frame-constant FilmCurve coefficients — hoisted out of per-pixel path (R62 OPT-2)
     float fc_knee     = lerp(0.90, 0.80, saturate((eff_p75 - 0.60) / 0.30));
-    float fc_stevens  = (1.48 + sqrt(max(zone_log_key, 0.0))) / 2.03;
+    float fc_stevens  = (1.48 + exp2(log2(max(zone_log_key, 1e-6)) * (1.0 / 3.0))) / 2.04;
     float fc_factor   = 0.05 / ((1.0 - fc_knee) * (1.0 - fc_knee)) * fc_stevens * spread_scale;
     float fc_knee_toe = lerp(0.15, 0.25, saturate((0.40 - eff_p25) / 0.30));
     // R84: CURVE_* are log-density offsets — exp2 folds to constant at compile time
@@ -293,8 +293,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         float3 shoulder = 1.0 - (1.0 - ps) * (1.0 - ps) * 1.8;
         ps = lerp(toe, shoulder, smoothstep(0.0, 0.5, ps));
         float luma_ps = dot(ps, float3(0.2126, 0.7152, 0.0722));
-        float desat_w = 0.15 * (1.0 - smoothstep(0.0, 0.3, luma_ps))
-                              * (1.0 - smoothstep(0.6, 1.0, luma_ps));
+        float desat_w = 0.15 * (1.0 - smoothstep(0.0, fc_knee_toe, luma_ps))
+                              * (1.0 - smoothstep(fc_knee, 1.0, luma_ps));
         ps = lerp(ps, luma_ps.xxx, desat_w);
         ps.r += 0.012 * (1.0 - ps.r);
         ps.b -= 0.008 * (1.0 - ps.b);
@@ -416,7 +416,11 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     }
 
     // R22: saturation by luminance — baked Munsell calibration (shadow 20%, highlight 45%)
-    C *= (1.0 - 0.20 * saturate(1.0 - lab.x / 0.25)
+    // + midtone expansion bell from cinema SDR mastering data (Žaganeli et al. 2026)
+    float mid_C_boost = 0.06 * smoothstep(0.22, 0.40, lab.x)
+                             * (1.0 - smoothstep(0.55, 0.70, lab.x));
+    C *= (1.0 + mid_C_boost
+             - 0.20 * saturate(1.0 - lab.x / 0.25)
              - 0.45 * saturate((lab.x - 0.75) / 0.25));
 
     // R21: per-band hue rotation — compute h_out from original h before chroma lift
