@@ -1,17 +1,15 @@
 # Handoff — 2026-05-04
 
 ## Current branch
-`alpha` — active development. Last commit to be created this session.
+`alpha` — active development.
 
 ---
 
 ## Pipeline state
 
-All original plan phases complete. R86 prototype now running in Arc Raiders chain.
-
 | Stage | Finished | Novel |
 |-------|----------|-------|
-| Stage 0 — Input | 92% | 75% |
+| Stage 0 — Input | 93% | 80% |
 | Stage 1 — Corrective | 90% | 75% |
 | Stage 2 — Tonal | 90% | 88% |
 | Stage 3 — Chroma | 95% | 90% |
@@ -20,56 +18,53 @@ All original plan phases complete. R86 prototype now running in Arc Raiders chai
 
 ---
 
-## What shipped this session
+## Active chain (Arc Raiders)
 
-- **R86 prototype** — `inverse_grade_aces.fx` running in Arc Raiders chain
-  - Analytical ACES inverse + per-hue Oklab correction
-  - Scene normalization via p75 highway read
-  - Confidence gate: `blend = ACES_BLEND * aces_conf`
-  - `ACES_BLEND = 0.30` in `creative_values.fx`
-- **Data highway extended** — analysis_frame encodes PercTex→highway at x=194-196
-- **aces_debug.fx** — live confidence overlay + 3-column p25/p50/p75 diagnostic display
-- **tools/aces_calib.py** — screenshot-based calibration tool
-- **Arc Raiders chain** — `aces_debug` reordered before `analysis_scope`
-- **GZW tuning** — various knob adjustments (see CHANGELOG)
+```
+analysis_frame : inverse_grade : inverse_grade_debug : analysis_scope_pre : corrective : grade : pro_mist : analysis_scope
+```
 
 ---
 
-## R86 — active prototype
+## What shipped this session
 
-**Chain:** `analysis_frame : inverse_grade_aces : analysis_scope_pre : corrective : grade : pro_mist : aces_debug : analysis_scope`
+- **R90** — `general/inverse-grade/inverse_grade.fx` — game-agnostic adaptive inverse tone mapping
+  - Oklab chroma-only expansion: luma unchanged, brightness neutral
+  - `mid_weight = L*(1-L)*4` protects black/white
+  - `c_weight = saturate((C-0.10)/0.15)` protects near-neutrals/warm whites
+  - Slope from highway x=197 (Kalman-smoothed, computed in analysis_frame from float16 PercTex)
+  - `INVERSE_STRENGTH 0.50` in `creative_values.fx`
+- **R86 retired** — `inverse_grade_aces.fx`, `aces_debug.fx` moved to `unused/`
+- **Oklab bug fixed** — wrong b-row in inverse_grade.fx caused systematic yellow cast.
+  Correct b-row: `[0.0259040371, 0.7827717662, -0.8086757660]` (matches grade.fx)
 
-**Key files:**
-- `unused/general/inverse-grade/inverse_grade_aces.fx` — the inversion shader
-- `unused/general/inverse-grade/aces_debug.fx` — debug overlay
-- `general/analysis-frame/analysis_frame.fx` — highway encoding (DebugOverlay, x=194-196)
-- `gamespecific/arc_raiders/shaders/creative_values.fx` — `ACES_BLEND 0.30`
-- `tools/aces_calib.py` — calibration tool
+---
 
-**Current state:** Running. Inversion is applied (visually confirmed). Debug box
-currently shows red in outdoor scenes despite valid chain order.
+## Current creative_values.fx (Arc Raiders)
 
-**Open diagnostic:** Debug box shows aces_conf ≈ 0 in bright outdoor scenes.
-The box bottom half now shows 3 columns (p25=red, p50=green, p75=blue) so the
-next screenshot will reveal what values are actually being read from the highway.
-
-If bottom columns are near-black → PercTex is zero (CDFWalk not populating, or
-highway write broken). If columns show values but conf=0 → formula issue:
-`shadow_rat = p25/p50 >= 0.72` AND `highs_norm >= 3.0` simultaneously.
-
-**To investigate:**
-1. Take screenshot in bright outdoor scene
-2. Crop box bottom-half, measure column brightness
-3. Compute conf manually: `iqr=p75-p25`, `highs_norm=(1-p75)/iqr`, `shadow_rat=p25/p50`
-4. If all zeros → test-write constant 0.5 to highway in DebugOverlay to isolate
+| Knob | Value |
+|------|-------|
+| EXPOSURE | 0.90 |
+| FILM_FLOOR | 0.01 |
+| FILM_CEILING | 0.95 |
+| ZONE_STRENGTH | 1.2 |
+| SHADOW_LIFT_STRENGTH | 1.2 |
+| PRINT_STOCK | 0.40 |
+| HAL_STRENGTH | 0.00 |
+| VEIL_STRENGTH | 0.00 |
+| MIST_STRENGTH | 0.25 |
+| PURKINJE_STRENGTH | 1.3 |
+| VIEWING_SURROUND | 1.123 |
+| LCA_STRENGTH | 0.0 |
+| INVERSE_STRENGTH | 0.50 |
 
 ---
 
 ## Known state
 
-- `LCA_STRENGTH = 0.0` in Arc Raiders `creative_values.fx` (disabled for R86 validation)
-- `ACES_BLEND = 0.30` in Arc Raiders `creative_values.fx`
-- GZW: exposure 1.0, floor/ceiling 0/1, zone_strength 1.35, print_stock 0.30
-- No known compile errors or visual regressions
+- HAL and VEIL zeroed — both competed with inverse grade highlight expansion; restore
+  cautiously if needed (start HAL at 0.15, VEIL at 2.0).
+- `inverse_grade_debug.fx` in chain — can be removed once tuning is stable.
+- No known compile errors or visual regressions.
 
 Debug log: `/tmp/vkbasalt.log` — check first for SPIR-V issues.

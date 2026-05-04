@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-05-04 — session (R90 adaptive inverse — chroma edition)
+
+### Implemented
+- **R90** — `general/inverse-grade/inverse_grade.fx` replaces R86 ACES-specific inverse.
+  - Game-agnostic: measures display IQR, infers compression ratio vs. 2.5-stop reference.
+  - **Oklab chroma-only expansion** — luma unchanged, hue preserved, brightness neutral.
+    `lab.yz *= lerp(1.0, slope, INVERSE_STRENGTH * mid_weight * c_weight)`
+  - `mid_weight = L*(1-L)*4` — bell curve, zero at black/white, peak at L=0.5.
+  - `c_weight = saturate((C-0.10)/0.15)` — zero for near-neutral (warm whites, greys),
+    full for clearly coloured pixels (C > 0.25). D65 neutral by construction.
+  - Slope pre-computed in `analysis_frame` from float16 PercTex, encoded at highway x=197.
+    Kalman-smoothed, no flicker. Clamp `[1.15, 1.8]` — always fires, never overexpands.
+  - `inverse_grade_debug.fx` — slope colour box: blue=no-op, green=healthy, red=capped.
+  - `INVERSE_STRENGTH 0.50` in `creative_values.fx` (Arc Raiders).
+- **Data highway extended** — x=197 carries Kalman-smoothed slope (normalised [0,1]).
+- **R86 retired** — `inverse_grade_aces.fx`, `aces_debug.fx` removed from chain.
+- **Arc Raiders tuning** — `HAL_STRENGTH 0.00`, `VEIL_STRENGTH 0.00` (both compete with
+  inverse grade highlights). `EXPOSURE 0.90`.
+
+### Key findings
+- Luma expansion causes net brightness lift (p50 anchor below 0.5 pushes most pixels up).
+  Chroma-only expansion is brightness-neutral by construction.
+- Wrong Oklab b-row (`0.4784341246, -0.4043461455`) maps white to b≈0.1 (yellow).
+  Correct values from grade.fx: `0.7827717662, -0.8086757660` — white maps to b=0.
+- C gate relative to D65 neutral protects warm whites without scene illuminant sampling.
+- Three-zone confidence gate (R86) was a workaround for a bad detector; R90 needs none.
+
+---
+
 ## 2026-05-04 — session (R86 prototype)
 
 ### Implemented

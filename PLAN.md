@@ -394,6 +394,16 @@ Critical fix for AMD RDNA: hist_cache[6] array removal frees 24 scalars, reducin
 register spill pressure. All changes exact or below JND threshold.
 See: `research/R82_2026-05-03_optimization_findings.md`
 
+### R90 — Adaptive Inverse Tone Mapping
+Game-agnostic chroma recovery. IQR-based compression ratio (2.5-stop reference, ACES-
+derived) drives Oklab chroma expansion. Luma unchanged — brightness neutral by construction.
+Mid-weight bell curve `L*(1-L)*4` protects black/white. C-gate `saturate((C-0.10)/0.15)`
+protects near-neutral pixels from amplifying warm white bias. Slope Kalman-smoothed in
+analysis_frame (float16 PercTex), encoded at highway x=197. `INVERSE_STRENGTH 0.50`.
+Key bug found: Oklab b-row from wrong spec (`0.4784…, -0.4043…`) mapped white to b≈0.1
+(yellow). Correct row `0.7827…, -0.8086…` matches grade.fx and maps white to b=0.
+Replaces R86 ACES-specific inverse. Stage 0 novel: +5%.
+
 ### SHADOW_LIFT_STRENGTH knob
 Auto shadow lift was fully hidden. Exposed as user scalar (1.0 = calibrated default).
 Arc Raiders: 1.0. GZW: 1.1 (dark indoor environments need more lift).

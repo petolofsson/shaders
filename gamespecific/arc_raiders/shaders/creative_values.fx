@@ -6,7 +6,7 @@
 // below "sees". Raising this (>1.0) darkens; lowering (<1.0) brightens.
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune
 // the contrast/chroma knobs beneath.
-#define EXPOSURE            0.85
+#define EXPOSURE            0.90
 
 // ── CAMERA SIGNAL RANGE ───────────────────────────────────────────────────────
 // Remaps the raw pixel into [FILM_FLOOR, FILM_CEILING] before EXPOSURE runs.
@@ -64,7 +64,7 @@
 // brightest sources (luma > 0.80). Red scatters most (deepest dye layer),
 // green tighter, blue none. Fires inside game bloom radius, not on top of it.
 // 0 = off. 0.35 = calibrated default. 1.0 = Ektachrome-style aggressive.
-#define HAL_STRENGTH  0.35
+#define HAL_STRENGTH  0.00
 
 // ── HUE ROTATION ─────────────────────────────────────────────────────────────
 // Per-band rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
@@ -92,7 +92,7 @@
 // Use for games with no volumetric fog or atmospheric depth. Skip if the game
 // has its own volumetric/fog system (it will compete).
 // VEIL_STRENGTH: glare as % of scene median luminance. 0 = off. 3–8 = subtle.
-#define VEIL_STRENGTH  4.00
+#define VEIL_STRENGTH  0.00
 
 // ── PRO MIST ──────────────────────────────────────────────────────────────────
 // Overall scatter strength scalar. 1.0 = calibrated default (~9% base). 0 = off.
@@ -115,12 +115,11 @@
 // produce. 0 = off. 0.5 = subtle (~1.2D). 1.0 = full physiological LCA (~2.4D).
 #define LCA_STRENGTH  0.0
 
-// ── ACES INVERSE (R86) ───────────────────────────────────────────────────────
-// Inverts UE5 Hill 2016 ACES tonemapper before our grade pipeline. Use only
-// for games confirmed to use ACES (Arc Raiders: yes). 0 = off. 1.0 = full.
-// 0.25 is a conservative starting point — highlights clip above ~0.85 without
-// scene normalization, so keep low until validated.
-#define ACES_BLEND  0.30
+// ── INVERSE GRADE (R90) ───────────────────────────────────────────────────────
+// Adaptive inverse tone mapping. Expands display IQR toward the ACES-derived
+// 3.28-stop reference. Works on any S-curve tonemapper. 0 = off. 1.0 = full.
+// 0.60 is the recommended starting point for Arc Raiders.
+#define INVERSE_STRENGTH  0.50
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.

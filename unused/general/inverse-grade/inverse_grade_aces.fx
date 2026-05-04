@@ -116,9 +116,14 @@ float3 ACESInverse3(float3 rgb)
 
 float ACESConfidence(float p25, float p50, float p75)
 {
-    float mid_score    = smoothstep(0.10, 0.22, p50) * smoothstep(0.72, 0.58, p50);
-    float spread_score = smoothstep(0.01, 0.08, max(p75 - p25, 0.0));
-    return saturate(mid_score * 0.70 + spread_score * 0.30);
+    float iqr           = max(p75 - p25, 0.001);
+    float highs_norm    = max(1.0 - p75, 0.0) / iqr;
+    float shadow_rat    = p25 / max(p50, 0.001);
+    float highs_score   = smoothstep(3.0, 1.2, highs_norm);
+    float shadow_score  = smoothstep(0.72, 0.52, shadow_rat);
+    float midtone_score = smoothstep(0.10, 0.22, p50) * (1.0 - smoothstep(0.65, 0.80, p50));
+    float best          = max(shadow_score, midtone_score);
+    return saturate(best + (1.0 - best) * highs_score * 0.70);
 }
 
 // ─── R86 Angle 1: ACESHueCorrection ────────────────────────────────────────
@@ -136,7 +141,6 @@ float3 ACESHueCorrection(float3 scene_norm)
 {
     float3 lab = RGBtoOklab(scene_norm);
     float  C   = length(lab.yz);
-    if (C < 0.005) return scene_norm;
 
     float h = OklabHueNorm(lab.y, lab.z);
     float delta = ACES_CORR_RED    * HueBandWeight(h, BAND_RED)
@@ -149,9 +153,8 @@ float3 ACESHueCorrection(float3 scene_norm)
     float h_out = frac(h + delta * 0.10);
     float sh, ch;
     sincos(h_out * 6.28318, sh, ch);
-    lab.y = C * ch;
-    lab.z = C * sh;
-    return saturate(OklabToRGB(lab));
+    float3 lab_out = float3(lab.x, C * ch, C * sh);
+    return lerp(scene_norm, saturate(OklabToRGB(lab_out)), smoothstep(0.002, 0.01, C));
 }
 
 // ─── Main pass ─────────────────────────────────────────────────────────────
@@ -167,7 +170,7 @@ float4 ACESInversePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
     float p75 = tex2D(BackBuffer, float2((PERC_X_P75 + 0.5) / BUFFER_WIDTH, 0.5 / BUFFER_HEIGHT)).r;
 
     float aces_conf  = ACESConfidence(p25, p50, p75);
-    float scene_ceil = max(ACESInverse(p75), 1.0);
+    float scene_ceil = max(ACESInverse(max(p50, 0.01)) / 0.18, 1.0);
 
     float3 scene_norm = saturate(ACESInverse3(col.rgb) / scene_ceil);
     scene_norm = ACESHueCorrection(scene_norm);

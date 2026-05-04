@@ -253,6 +253,13 @@ float4 DebugOverlayPS(float4 pos : SV_Position,
         if (xi == 194) return float4(perc.r, 0.0, 0.0, 1.0);
         if (xi == 195) return float4(perc.g, 0.0, 0.0, 1.0);
         if (xi == 196) return float4(perc.b, 0.0, 0.0, 1.0);
+        if (xi == 197) {
+            // R90: encode Kalman-smoothed slope from float16 PercTex.
+            // slope = clamp(2.5 / log_iqr, 1.15, 1.8), normalised to [0,1] for 8-bit highway.
+            float log_iqr  = log2(max(perc.b, 0.01)) - log2(max(perc.r, 0.01));
+            float slope    = clamp(2.5 / max(log_iqr, 0.5), 1.15, 1.8);
+            return float4((slope - 1.0) / 1.5, 0.0, 0.0, 1.0);
+        }
         return c;
     }
     return DrawLabel(c, pos.xy, 270.0, 10.0,
