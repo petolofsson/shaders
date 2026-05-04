@@ -1,4 +1,4 @@
-# Handoff — 2026-05-04 (stable)
+# Handoff — 2026-05-04
 
 ## Current branch
 `alpha` — active development.
@@ -7,14 +7,22 @@
 
 ## Pipeline state
 
-| Stage | Finished | Novel |
-|-------|----------|-------|
-| Stage 0 — Input | 93% | 80% |
-| Stage 1 — Corrective | 90% | 75% |
-| Stage 2 — Tonal | 90% | 88% |
-| Stage 3 — Chroma | 95% | 90% |
-| Stage 3.5 — Halation | 90% | 78% |
-| Output — Pro-Mist | 90% | 72% |
+| Stage | Finished | Novel | Gap |
+|-------|----------|-------|-----|
+| Stage 0 — Input | 95% | 80% | — |
+| Stage 1 — Corrective | 93% | 78% | — |
+| Stage 2 — Tonal | 93% | 92% | — |
+| Stage 3 — Chroma | 97% | 93% | — |
+| Stage 3.5 — Halation | 90% | 78% | — |
+| Output — Pro-Mist | 91% | 74% | **1% below 75% target** |
+
+**Next session goal:** Push Output/Pro-Mist novelty from 74% → 76%+.
+
+Two concrete targets:
+- **R91** — Mie-correct per-channel scatter radius: blue channel uses mip 0 (tighter, shorter λ scatters more in polymer), red uses mip 1 (wider, longer λ penetrates deeper). 3 ALU, no new taps. Spectral-physically motivated — no other real-time mist does this.
+- **R92** — Apply IGN blue-noise dither to pro_mist.fx (currently still uses `sin(dot)*43758` white noise from before R89). One-line fix, consistency with grade.fx.
+
+Combined expected: Output novelty 74% → 76–77%.
 
 ---
 
@@ -27,6 +35,14 @@ analysis_frame : inverse_grade : inverse_grade_debug : analysis_scope_pre : corr
 ---
 
 ## What shipped this session (latest first)
+
+### Tuning pass — filmic curve + creamy whites (creative_values.fx, both games)
+Arc Raiders: `CURVE_B_KNEE` zeroed (removes blue-retention bias from shoulder),
+`CURVE_R_TOE +0.010` (Vision3 warm toe), `HIGHLIGHT_TEMP +6` (creamy whites),
+`ROT_YELLOW -0.015` / `ROT_CYAN +0.015` (deeper warm/cold palette separation).
+GZW: full reset to Arc Raiders baseline; `SHADOW_LIFT_STRENGTH` + `HUNT_LOCALITY`
+added (were missing — compile error). `gzw.conf` updated: `inverse_grade` +
+`inverse_grade_debug` + `retinal_vignette` added to effects chain.
 
 ### R61 — Per-pixel Hunt adaptation (grade.fx)
 CAM16 local-field Hunt effect. `hunt_la = lerp(zone_log_key, lab.x, HUNT_LOCALITY)`.
@@ -55,29 +71,36 @@ Highlights get stronger chroma boost, shadows get less. `HUNT_LOCALITY 0.35` kno
 
 | Knob | Value |
 |------|-------|
-| EXPOSURE | 0.90 |
-| FILM_FLOOR | 0.01 |
+| EXPOSURE | 0.92 |
+| FILM_FLOOR | 0.005 |
 | FILM_CEILING | 0.95 |
+| SHADOW_TEMP / MID_TEMP / HIGHLIGHT_TEMP | -5 / +3 / +6 |
 | ZONE_STRENGTH | 1.2 |
-| SHADOW_LIFT_STRENGTH | 1.2 |
+| SHADOW_LIFT_STRENGTH | 1.3 |
+| CURVE_R_KNEE / B_KNEE | -0.0102 / 0.0000 |
+| CURVE_R_TOE / B_TOE | +0.0100 / -0.0218 |
 | PRINT_STOCK | 0.40 |
-| HAL_STRENGTH | 0.00 |
+| HAL_STRENGTH | 0.30 |
+| ROT_RED / YELLOW / GREEN / CYAN / BLUE | +0.03 / -0.015 / -0.02 / +0.015 / -0.03 |
 | VEIL_STRENGTH | 0.00 |
 | MIST_STRENGTH | 0.25 |
 | PURKINJE_STRENGTH | 1.3 |
 | VIEWING_SURROUND | 1.123 |
-| LCA_STRENGTH | 0.0 |
+| LCA_STRENGTH | 0.2 |
 | HUNT_LOCALITY | 0.35 |
 | INVERSE_STRENGTH | 0.50 |
+
+GZW `creative_values.fx` is now identical to Arc Raiders (reset this session).
+GZW `gzw.conf` chain: `analysis_frame : inverse_grade : inverse_grade_debug : analysis_scope_pre : corrective : grade : pro_mist : retinal_vignette : analysis_scope`
 
 ---
 
 ## Known state
 
-- HAL and VEIL zeroed — both competed with inverse grade highlight expansion; restore
-  cautiously if needed (start HAL at 0.15, VEIL at 2.0).
-- `inverse_grade_debug.fx` in chain — can be removed once tuning is stable.
+- HAL re-enabled at 0.30 (was zeroed last session to isolate inverse grade). VEIL stays 0 — Arc Raiders has volumetrics.
+- `inverse_grade_debug.fx` in both chains — remove once tuning is stable.
 - Register pressure verified via RADV shader dump: 59 VGPRs / 87 SGPRs, no spilling.
+- `pro_mist.fx` line 125: still uses old `sin(dot)*43758` white-noise dither — R89 IGN not yet applied here (target for R92 next session).
 - No known compile errors or visual regressions.
 
 Debug log: `/tmp/vkbasalt.log` — check first for SPIR-V issues.
