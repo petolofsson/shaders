@@ -8,6 +8,7 @@
 // slope=1.0 for uncompressed content (no-op). No confidence gate.
 
 #include "creative_values.fx"
+#include "../highway.fxh"
 
 texture2D BackBufferTex : COLOR;
 sampler2D BackBuffer
@@ -39,7 +40,6 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
     pos  = float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
 }
 
-#define PERC_X_SLOPE  197
 
 float3 RGBToOklab(float3 rgb)
 {
@@ -73,7 +73,7 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     if (pos.y < 1.0) return col;
     if (INVERSE_STRENGTH <= 0.0) return col;
 
-    float slope_enc = tex2D(BackBuffer, float2((PERC_X_SLOPE + 0.5) / BUFFER_WIDTH, 0.5 / BUFFER_HEIGHT)).r;
+    float slope_enc = ReadHWY(HWY_SLOPE);
     float slope     = slope_enc * 1.5 + 1.0;
 
     float3 lab       = RGBToOklab(col.rgb);
@@ -83,8 +83,13 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
 
     float  mean_C  = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).r;
     float  factor  = lerp(1.0, slope, float(INVERSE_STRENGTH) * mid_weight * c_weight);
-    float  new_C   = mean_C + (C - mean_C) * factor;
     float2 dir     = lab.yz / max(C, 1e-5);
+    // Directional expansion — bias toward scene dominant hue (HWY_CHROMA_ANGLE)
+    float  scene_theta = ReadHWY(HWY_CHROMA_ANGLE) * (2.0 * 3.14159265) - 3.14159265;
+    float  sc_s, sc_c;
+    sincos(scene_theta, sc_s, sc_c);
+    float  dir_weight = saturate(dot(dir, float2(sc_c, sc_s)) * 0.5 + 0.5);
+    float  new_C   = mean_C + (C - mean_C) * lerp(1.0, factor, dir_weight);
     lab.yz         = dir * max(new_C, 0.0);
     col.rgb        = saturate(OklabToRGB(lab));
     return col;
