@@ -1,5 +1,6 @@
 // corrective.fx — Game-agnostic corrective analysis chain
 #include "debug_text.fxh"
+#include "highway.fxh"
 //
 // Prepares all analysis textures consumed by grade.fx (MegaPass).
 // Single vkBasalt effect — no inter-effect BackBuffer clears, no wasted Passthroughs.
@@ -100,17 +101,6 @@ texture2D PercTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
 sampler2D PercSamp
 {
     Texture   = PercTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
-
-// R53: scene-cut signal — r=scene_cut [0,1] (written by analysis_frame SceneCut pass)
-texture2D SceneCutTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
-sampler2D SceneCutSamp
-{
-    Texture   = SceneCutTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = POINT;
@@ -306,7 +296,7 @@ float4 SmoothZoneLevelsPS(float4 pos : SV_Position,
     float P_pred = P_prev + Q_vff;
     float K      = P_pred / (P_pred + KALMAN_R);
     // R53: scene-cut override — spike K toward 1.0 on hard cuts
-    float scene_cut = tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0)).r;
+    float scene_cut = ReadHWY(HWY_SCENE_CUT);
     K = lerp(K, 1.0, scene_cut);
     float median = prev.r + K * e_zone;
     float P_new  = (1.0 - K) * P_pred;
@@ -391,7 +381,7 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
     float P_pred   = P_prev + Q_vff_c;
     float K        = P_pred / (P_pred + KALMAN_R);
     // R53: scene-cut override — spike K toward 1.0 on hard cuts
-    float scene_cut = tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0)).r;
+    float scene_cut = ReadHWY(HWY_SCENE_CUT);
     K = lerp(K, 1.0, scene_cut);
     float new_mean = prev.r + K * e_chroma;
     float P_new    = (1.0 - K) * P_pred;
@@ -461,7 +451,12 @@ float4 ShadowBiasPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 float4 PassthroughPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float4 c = tex2D(BackBuffer, uv);
-    if (pos.y < 1.0) return c;  // data highway
+    if (pos.y < 1.0) {
+        // R46: write WarmBias EMA to highway (WarmBias pass runs before this — same-frame data).
+        if (int(pos.x) == HWY_WARM_BIAS)
+            return float4(tex2Dlod(WarmBiasSamp, float4(0.5, 0.5, 0, 0)).r, 0.0, 0.0, 1.0);
+        return c;
+    }
     c = DrawLabel(c, pos.xy, 270.0, 26.0,
                   51u, 67u, 79u, 82u, float3(0.1, 0.90, 0.1));  // 3COR
     c = DrawLabel(c, pos.xy, 270.0, 34.0,

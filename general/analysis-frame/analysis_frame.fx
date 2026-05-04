@@ -1,5 +1,6 @@
 // frame_analysis.fx — Frame-wide histogram analysis
 #include "debug_text.fxh"
+#include "highway.fxh"
 //
 // Builds per-frame luminance and per-hue saturation histograms.
 // Shared smoothed textures (LumHistTex, SatHistTex) are read by
@@ -284,6 +285,10 @@ float4 DebugOverlayPS(float4 pos : SV_Position,
             float slope    = clamp(2.5 / max(log_iqr, 0.5), 1.15, 1.8);
             return float4((slope - 1.0) / 1.5, 0.0, 0.0, 1.0);
         }
+        // R53: scene-cut — reads previous frame's SceneCutTex (SceneCutPS runs after this pass).
+        // One-frame delay is acceptable; Kalman response lags one frame on hard cuts.
+        if (xi == HWY_SCENE_CUT)
+            return float4(tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0)).r, 0.0, 0.0, 1.0);
         return c;
     }
     return DrawLabel(c, pos.xy, 270.0, 10.0,

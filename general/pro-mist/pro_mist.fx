@@ -10,6 +10,7 @@
 //   rgb=full colour, a=luma
 
 #include "debug_text.fxh"
+#include "highway.fxh"
 #include "creative_values.fx"
 
 // ─── Shared textures ───────────────────────────────────────────────────────
@@ -32,17 +33,6 @@ sampler2D CreativeLowFreqSamp
     AddressV  = CLAMP;
     MinFilter = LINEAR;
     MagFilter = LINEAR;
-};
-
-// R46: highlight warm bias EMA (written by corrective.fx WarmBias pass)
-texture2D WarmBiasTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
-sampler2D WarmBiasSamp
-{
-    Texture   = WarmBiasTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
 };
 
 // Zone global stats — col 6 of ChromaHistoryTex: r=log_key, g=zone_std, b=zmin, a=zmax
@@ -109,7 +99,7 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float3 scatter_src    = float3(diffuse1.r, lerp(diffuse0.g, diffuse1.g, g_blend), diffuse0.b);
 
     // R46: adapt scatter weights to scene warmth — warm scene → neutral scatter
-    float  warm_bias = tex2Dlod(WarmBiasSamp, float4(0.5, 0.5, 0, 0)).r;
+    float  warm_bias = ReadHWY(HWY_WARM_BIAS);
     float  scatter_r = lerp(1.05, 1.00, smoothstep(0.02, 0.12, warm_bias));
     float  scatter_b = lerp(0.92, 1.00, smoothstep(0.02, 0.12, warm_bias));
 

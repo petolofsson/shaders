@@ -1,5 +1,6 @@
 // creative_color_grade.fx — Mega-pass: all downstream color work in one full-res pass
 #include "debug_text.fxh"
+#include "highway.fxh"
 //
 // Eliminates 3 inter-pass VRAM read-write cycles by running in registers:
 //   1. EXPOSURE gamma + scene-adaptive FilmCurve (per-channel knee/toe from creative_values)
@@ -90,17 +91,6 @@ sampler2D ChromaHistory
     MagFilter = POINT;
 };
 
-// R46: highlight warm bias EMA (written by corrective.fx WarmBias pass)
-texture2D WarmBiasTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
-sampler2D WarmBiasSamp
-{
-    Texture   = WarmBiasTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
-
 // R47: shadow warm bias EMA (written by corrective.fx ShadowBias pass)
 texture2D ShadowBiasTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
 sampler2D ShadowBiasSamp
@@ -112,16 +102,6 @@ sampler2D ShadowBiasSamp
     MagFilter = POINT;
 };
 
-// R53: scene-cut signal (written by analysis_frame, read here for R66 gate)
-texture2D SceneCutTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
-sampler2D SceneCutSamp
-{
-    Texture   = SceneCutTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
 
 // ─── Vertex shader ─────────────────────────────────────────────────────────
 
@@ -388,7 +368,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         float3 illum_s2_rgb = lf_mip2.rgb;
         float3 illum_norm   = illum_s2_rgb / max(Luma(illum_s2_rgb), 0.001);
         float3 lab_amb      = RGBtoOklab(illum_norm * 0.18);
-        float  scene_cut    = tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0)).r;
+        float  scene_cut    = ReadHWY(HWY_SCENE_CUT);
         float  achrom_w     = 1.0 - smoothstep(0.0, 0.05, length(lab_t.yz));
         float  r66_w        = r65_sw * achrom_w * (1.0 - scene_cut) * 0.4;
         lab_t.y = lerp(lab_t.y, lab_amb.y, r66_w);
@@ -553,7 +533,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
             0.0
         );
         // R97: WarmBias-coupled gain — tungsten scenes get stronger red, cooler scenes softer
-        float  hal_warm   = tex2Dlod(WarmBiasSamp, float4(0.5, 0.5, 0, 0)).r;
+        float  hal_warm   = ReadHWY(HWY_WARM_BIAS);
         float  hal_r_gain = lerp(1.05, 1.35, smoothstep(0.02, 0.12, hal_warm));
         float  hal_g_gain = lerp(0.50, 0.38, smoothstep(0.02, 0.12, hal_warm));
         lin = saturate(lin + hal_delta * float3(hal_r_gain, hal_g_gain, 0.0) * HAL_STRENGTH);
