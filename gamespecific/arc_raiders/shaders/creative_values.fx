@@ -6,7 +6,7 @@
 // below "sees". Raising this (>1.0) darkens; lowering (<1.0) brightens.
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune
 // the contrast/chroma knobs beneath.
-#define EXPOSURE            0.92
+#define EXPOSURE            0.88
 
 // ── CAMERA SIGNAL RANGE ───────────────────────────────────────────────────────
 // Remaps the raw pixel into [FILM_FLOOR, FILM_CEILING] before EXPOSURE runs.
@@ -27,19 +27,19 @@
 #define SHADOW_TINT      0
 #define MID_TEMP         3
 #define MID_TINT         0
-#define HIGHLIGHT_TEMP  -3
+#define HIGHLIGHT_TEMP  +6
 #define HIGHLIGHT_TINT   0
 
 // ── ZONE CONTRAST ────────────────────────────────────────────────────────────
 // Scales the adaptive zone S-curve strength. 1.0 = calibrated default.
 // Adaptive range is ~0.16–0.26 × ZONE_STRENGTH, driven by zone_std + scene key.
 // 0 = flat image. Above 1.5 = aggressive crushing.
-#define ZONE_STRENGTH  1.2
+#define ZONE_STRENGTH  1.15
 
 // ── SHADOW LIFT ───────────────────────────────────────────────────────────────
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOW_LIFT_STRENGTH  1.3
+#define SHADOW_LIFT_STRENGTH  1.5
 
 // ── HUNT LOCALITY (R61) ───────────────────────────────────────────────────────
 // Per-pixel Hunt effect adaptation. 0 = global scene mean (current behaviour).
@@ -55,8 +55,8 @@
 // R knee < 0 = red compresses earlier (film-like warm shadows).
 // B knee > 0 = blue compresses later (open highlights). B toe < 0 = cool toe.
 #define CURVE_R_KNEE  -0.0102
-#define CURVE_B_KNEE  +0.0085
-#define CURVE_R_TOE    0.0000
+#define CURVE_B_KNEE   0.0000
+#define CURVE_R_TOE   +0.0100
 #define CURVE_B_TOE   -0.0218
 
 // ── PRINT STOCK ───────────────────────────────────────────────────────────────
@@ -70,15 +70,15 @@
 // brightest sources (luma > 0.80). Red scatters most (deepest dye layer),
 // green tighter, blue none. Fires inside game bloom radius, not on top of it.
 // 0 = off. 0.35 = calibrated default. 1.0 = Ektachrome-style aggressive.
-#define HAL_STRENGTH  0.00
+#define HAL_STRENGTH  0.30
 
 // ── HUE ROTATION ─────────────────────────────────────────────────────────────
 // Per-band rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
 // (Red→Yellow, Green→Cyan, Blue→Magenta). Default 0.0 = passthrough.
 #define ROT_RED     +0.03
-#define ROT_YELLOW   0.00
+#define ROT_YELLOW  -0.015
 #define ROT_GREEN   -0.02
-#define ROT_CYAN     0.00
+#define ROT_CYAN    +0.015
 #define ROT_BLUE    -0.03
 #define ROT_MAG      0.00
 
@@ -98,7 +98,7 @@
 // Use for games with no volumetric fog or atmospheric depth. Skip if the game
 // has its own volumetric/fog system (it will compete).
 // VEIL_STRENGTH: glare as % of scene median luminance. 0 = off. 3–8 = subtle.
-#define VEIL_STRENGTH  0.00
+#define VEIL_STRENGTH  1.00
 
 // ── PRO MIST ──────────────────────────────────────────────────────────────────
 // Overall scatter strength scalar. 1.0 = calibrated default (~9% base). 0 = off.
