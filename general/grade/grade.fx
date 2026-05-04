@@ -1,6 +1,6 @@
 // creative_color_grade.fx — Mega-pass: all downstream color work in one full-res pass
 #include "debug_text.fxh"
-#include "highway.fxh"
+#include "../highway.fxh"
 //
 // Eliminates 3 inter-pass VRAM read-write cycles by running in registers:
 //   1. EXPOSURE gamma + scene-adaptive FilmCurve (per-channel knee/toe from creative_values)

@@ -1,6 +1,6 @@
 // frame_analysis.fx — Frame-wide histogram analysis
 #include "debug_text.fxh"
-#include "highway.fxh"
+#include "../highway.fxh"
 //
 // Builds per-frame luminance and per-hue saturation histograms.
 // Shared smoothed textures (LumHistTex, SatHistTex) are read by

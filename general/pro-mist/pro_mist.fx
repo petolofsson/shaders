@@ -10,7 +10,7 @@
 //   rgb=full colour, a=luma
 
 #include "debug_text.fxh"
-#include "highway.fxh"
+#include "../highway.fxh"
 #include "creative_values.fx"
 
 // ─── Shared textures ───────────────────────────────────────────────────────

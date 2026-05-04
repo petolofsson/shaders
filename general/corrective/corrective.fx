@@ -1,6 +1,6 @@
 // corrective.fx — Game-agnostic corrective analysis chain
 #include "debug_text.fxh"
-#include "highway.fxh"
+#include "../highway.fxh"
 //
 // Prepares all analysis textures consumed by grade.fx (MegaPass).
 // Single vkBasalt effect — no inter-effect BackBuffer clears, no wasted Passthroughs.
