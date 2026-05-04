@@ -70,7 +70,7 @@ inverse_grade.fx runs before corrective — R90 chroma expansion on pre-correcti
 2. **TONAL** — Zone S-curve + Spatial norm (auto from zone_std) + R29 Retinex + Shadow lift + R62 Oklab-stable tonal (L-substitution, chroma preserved) + R65 Hunt coupling + R66 ambient shadow tint
 3. **CHROMA** — HELMLAB Fourier hue correction + R52 Purkinje + R22 sat-by-luma + R21 hue rotation + R75 hue-by-luminance + R61 Hunt per-pixel (HUNT_LOCALITY) + chroma lift + R15 HK + R69/R12 Abney + density + R71 vibrance self-mask + R73 memory color ceilings + gamut pre-knee + gclip
 
-**Data highway (BackBuffer y=0):** x=0–128 luma hist · x=130–193 hue hist · x=194–196 p25/p50/p75 · x=197 R90 slope
+**Data highway (BackBuffer y=0):** x=0–128 luma hist · x=130–193 hue hist · x=194–196 p25/p50/p75 · x=197 R90 slope · x=198 mean Oklab C · x=199 scene cut · x=200 p90 · x=201 chroma angle (atan2 encoded) · x=202 achromatic fraction · x=210 warm bias · x=211 zone key · x=212 zone std
 
 ## Debug
 
