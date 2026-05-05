@@ -420,6 +420,11 @@ float4 PassthroughPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
         // R46: write WarmBias EMA to highway (WarmBias pass runs before this — same-frame data).
         if (int(pos.x) == HWY_WARM_BIAS)
             return float4(tex2Dlod(WarmBiasSamp, float4(0.5, 0.5, 0, 0)).r, 0.0, 0.0, 1.0);
+        if (int(pos.x) == HWY_STEVENS) {
+            float zk  = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
+            float fc_s = (1.48 + exp2(log2(max(zk, 1e-6)) * (1.0 / 3.0))) / 2.04;
+            return float4(saturate(fc_s), 0.0, 0.0, 1.0);
+        }
         return c;
     }
     c = DrawLabel(c, pos.xy, 270.0, 26.0,
