@@ -26,15 +26,23 @@ filters them for architectural viability. Writes a dated findings file to alpha.
 - OPT-2/3 (zone_log_key guard removal, saturate(lin) removal) — cold-start
   regression confirmed; do not re-propose without cold-start frame proof
 
-## Pipeline state as of 2026-05-04 (for context)
-- Chain: analysis_frame → inverse_grade → corrective (7 passes) → grade → pro_mist
+## Already implemented — do not re-propose (Tuesday/chroma domain)
+- **R101 F1 — Bezold-Brücke** (2026-05-05): Replaces R75 uniform hue-by-luminance lerp.
+  Unique-yellow-anchored `-sin(2π(h−0.27))` model using `sh_h`/`ch_h` from HELMLAB.
+  Single-harmonic — slightly over-corrects cyan; two-harmonic extension is a future candidate.
+- **R101 F2 — H-K exponent scene-adaptation** (2026-05-05): `pow(final_C, 0.587)` →
+  `pow(final_C, lerp(0.52, 0.64, saturate(zone_log_key / 0.50)))`. Nayatani 1997 backed.
+- **R101 F3 — Abney C_stim** (2026-05-05): Abney coefficients scale by pre-lift stimulus
+  chroma `C_stim`, not post-lift `final_C`. Burns et al. 1984.
+
+## Pipeline state as of 2026-05-05
+- Chain: analysis_frame → inverse_grade → inverse_grade_debug → corrective (7 passes) → grade → pro_mist → analysis_scope
 - Active knobs: INVERSE_STRENGTH, EXPOSURE, FILM_FLOOR/CEILING, PRINT_STOCK,
   CURVE_R/B_KNEE/TOE, ZONE_STRENGTH, SHADOW_LIFT_STRENGTH, 3-way CC (6 values),
   CHROMA_STR, ROT_* (6 values), HAL_STRENGTH, MIST_STRENGTH, VEIL_STRENGTH,
   VIGN_* (3 values), PURKINJE_STRENGTH, LCA_STRENGTH, VIEWING_SURROUND
-- Removed this session: R47 shadow auto-temp, HUNT_LOCALITY, ShadowBias pass
+- HUNT_LOCALITY: intentionally removed (e155e6c, 2026-05-04) — not a regression
 - New highway slots: HWY_P90 (200), HWY_CHROMA_ANGLE (201), HWY_ACHROM_FRAC (202)
 
 ## Last updated
-2026-05-04 — Added pipeline state snapshot, OPT-2/3 exclusion, updated chain
-pass count to 7 (ShadowBias removed).
+2026-05-05 — Added R101 F1/F2/F3 to implemented list. Updated pipeline state.

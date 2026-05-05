@@ -1,5 +1,45 @@
 # Changelog
 
+## 2026-05-05 — session (R101 chroma refinements + OPT-1/2/3/4)
+
+### Implemented
+
+- **OPT-3/4** — Deleted dead `lin_pre_tonal` register + lerp and `CORRECTIVE_STRENGTH`
+  lerp from `ColorTransformPS`. Both `TONAL_STRENGTH` and `CORRECTIVE_STRENGTH` are
+  compile-time `#define 100` — `lerp(a, b, 1.0)` is identity. Zero-risk dead code removal.
+- **OPT-2** — `tex2D` → `tex2Dlod` for 4 reads in `ColorTransformPS`: `PercSamp`,
+  `ChromaHistory` (×2 — zstats row and 6-band pivot loop), `ZoneHistorySamp`. Eliminates
+  9 GPU derivative computations per pixel. Consistent with existing `ReadHWY()` usage.
+- **R101 F1 — Bezold-Brücke** (`grade.fx`) — Replaces R75 uniform hue-by-luminance lerp
+  with unique-yellow-anchored `-sin(2π(h − 0.27))` model. Unique hues are luminance-invariant
+  by construction. Reuses `sh_h`/`ch_h` from HELMLAB — zero new trig. Watch cyan in bright
+  sky content (single-harmonic slightly over-corrects cyan band).
+- **R101 F2 — H-K exponent scene-adaptation** (`grade.fx`) — Hellwig 2022 fixed exponent
+  0.587 made scene-adaptive: `lerp(0.52, 0.64, saturate(zone_log_key / 0.50))`. Backed by
+  Nayatani 1997 + CIECAM02 F_L. Dim scenes get stronger H-K; bright exteriors get weaker.
+- **R101 F3 — Abney C_stim** (`grade.fx`) — Abney per-hue coefficients now scale by
+  stimulus chroma `C_stim` (captured before chroma lift) instead of post-lift `final_C`.
+  Burns et al. 1984: Abney shift is a stimulus property. Zero ALU.
+- **OPT-1** — Eliminated third `sincos` in `ColorTransformPS`. H-K `sh`/`ch` derived via
+  small-angle approximation of HELMLAB `dh` (max error 1.28×10⁻⁴) + exact angle-addition
+  of R21 rotation using existing `r21_sin`/`r21_cos`. Saves one quarter-rate sincos per pixel.
+
+### Clarified
+
+- **R61 / HUNT_LOCALITY** — Confirmed intentionally removed in commit `e155e6c`
+  (2026-05-04, chroma lift simplification). `hunt_la` fed only into `hunt_scale`, which was
+  part of a 5-factor pipeline replaced by `chroma_str = CHROMA_STR * R68A`. Not a regression.
+  Nightly audits (R102) incorrectly flagged it; explanation added to HANDOFF.
+
+### Automation research verdicts (closed)
+
+INVERSE_STRENGTH base, HAL_STRENGTH auto-enable, and ZONE_STRENGTH inverse scaling all
+**rejected** — each case showed the first-order adaptation is already present in the pipeline
+(slope encodes inverse-IQR; per-pixel `max(0,blur-sharp)` self-limits halation; inner
+`lerp(0.26,0.16,ss_08_25)` already provides 38% inverse scaling with zone_std).
+
+---
+
 ## 2026-05-04 — session (R61 Hunt locality + job maintenance)
 
 ### Implemented
