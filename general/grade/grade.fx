@@ -364,6 +364,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // ── 3. CHROMA: Oklab chroma lift ──────────────────────────────────────────
     float3 lab = RGBtoOklab(lin);
     float  C   = length(lab.yz);
+    float  C_stim = C;
     float  h   = OklabHueNorm(lab.y, lab.z);
     // HELMLAB: 2-harmonic Fourier correction aligns Oklab hue toward perceptual hue.
     // Corrects 8.9× non-uniformity in blue-cyan band (HELMLAB 2026, arxiv 2602.23010).
@@ -397,8 +398,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
                     + ROT_CYAN   * HueBandWeight(h_perc, BAND_CYAN)
                     + ROT_BLUE   * HueBandWeight(h_perc, BAND_BLUE)
                     + ROT_MAG    * HueBandWeight(h_perc, BAND_MAGENTA);
-    // R75: hue-by-luminance — cool shadows, warm highlights (2383 tonal character)
-    r21_delta += lerp(-0.003, +0.003, lab.x);
+    // R101: Bezold-Brücke — unique-yellow-anchored hue rotation, zero new trig (reuses sh_h/ch_h)
+    r21_delta += (lab.x - 0.50) * 0.006 * (sh_h * 0.1253 + ch_h * 0.9921);
     float h_out = frac(h_perc + r21_delta * 0.10);
     float hw_o0 = HueBandWeight(h_out, BAND_RED);
     float hw_o1 = HueBandWeight(h_out, BAND_YELLOW);
@@ -444,7 +445,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
                    + hw_o2 * 0.02    // GREEN   — shifts toward yellow-green (R69)
                    - hw_o3 * 0.08    // CYAN    — shifts toward yellow-green
                    + hw_o4 * 0.04    // BLUE    — shifts toward purple
-                   + hw_o5 * 0.03) * final_C;
+                   + hw_o5 * 0.03) * C_stim;
     float dtheta = +(GREEN_HUE_COOL * 2.0 * 3.14159265) * hw_o2 * final_C + abney;
     float cos_dt = 1.0 - dtheta * dtheta * 0.5;
     float sin_dt = dtheta;
@@ -455,7 +456,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float sh, ch;
     sincos(h_out * 6.28318, sh, ch);
     float f_hk     = -0.160 * ch + 0.132 * (ch*ch - sh*sh) - 0.405 * sh + 0.080 * (2.0*sh*ch) + 0.792;
-    float hk_boost = 1.0 + 0.25 * f_hk * pow(final_C, 0.587);
+    float hk_exp   = lerp(0.52, 0.64, saturate(zone_log_key / 0.50));
+    float hk_boost = 1.0 + 0.25 * f_hk * pow(final_C, hk_exp);
     float final_L  = saturate(lab.x / lerp(1.0, hk_boost, smoothstep(0.0, 0.35, lab.x)));
 
     // Gamut-distance density: headroom limits darkening near the sRGB boundary
