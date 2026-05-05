@@ -1,12 +1,18 @@
 // creative_values.fx — tune here
 
+// ── INVERSE GRADE (R90) ───────────────────────────────────────────────────────
+// Adaptive inverse tone mapping. Expands display IQR toward the ACES-derived
+// 3.28-stop reference. Works on any S-curve tonemapper. 0 = off. 1.0 = full.
+// 0.30 is the recommended starting point.
+#define INVERSE_STRENGTH  0.50
+
 // ── EXPOSURE ─────────────────────────────────────────────────────────────────
 // First thing that runs. Applied as pow(rgb, EXPOSURE) before any zone or curve
 // work. Sets where pixels sit tonally — which directly changes what every knob
 // below "sees". Raising this (>1.0) darkens; lowering (<1.0) brightens.
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune
 // the contrast/chroma knobs beneath.
-#define EXPOSURE            1.03
+#define EXPOSURE            0.90
 
 // ── CAMERA SIGNAL RANGE ───────────────────────────────────────────────────────
 // Remaps the raw pixel into [FILM_FLOOR, FILM_CEILING] before EXPOSURE runs.
@@ -15,31 +21,21 @@
 // FILM_CEILING: white headroom — pulls true white below clip before EXPOSURE.
 //   0.95 matches ARRI LogC3 usable ceiling (~91-92% of full scale).
 // Both at defaults (0 / 1) = passthrough (identity).
-#define FILM_FLOOR    0.005
+#define FILM_FLOOR    0.01
 #define FILM_CEILING  0.95
 
-// ── 3-WAY COLOR CORRECTOR ────────────────────────────────────────────────────
-// Runs after EXPOSURE and FilmCurve, before zone contrast. Primary color grade.
-// TEMP: positive = warm (R up, B down), negative = cool. Range ±100.
-// TINT: positive = magenta (G down, R+B up slightly), negative = green. Range ±100.
-// All default to 0 — passthrough. No output change at defaults.
-#define SHADOW_TEMP      0
-#define SHADOW_TINT      0
-#define MID_TEMP         0
-#define MID_TINT         0
-#define HIGHLIGHT_TEMP   0
-#define HIGHLIGHT_TINT   0
+// ── PRINT STOCK ───────────────────────────────────────────────────────────────
+// Kodak 2383 print emulsion on top of FilmCurve: lifts blacks, compresses
+// highlights, desaturates mids ~15%, adds warm shadow cast. 0 = off.
+// 1 = full 2383. 0.35 = recommended starting point.
+#define PRINT_STOCK  0.40
 
-// ── ZONE CONTRAST ────────────────────────────────────────────────────────────
-// Scales the adaptive zone S-curve strength. 1.0 = calibrated default.
-// Adaptive range is ~0.16–0.26 × ZONE_STRENGTH, driven by zone_std + scene key.
-// 0 = flat image. Above 1.5 = aggressive crushing.
-#define ZONE_STRENGTH  1.0
-
-// ── CHROMA ────────────────────────────────────────────────────────────────────
-// Scales the adaptive chroma lift strength. 1.0 = calibrated default.
-// Adaptive base is ~0.085 × hunt_scale × CHROMA_STRENGTH. 0 = no lift. Above 1.5 = oversaturation.
-#define CHROMA_STRENGTH  0.9
+// ── DIR COUPLERS ──────────────────────────────────────────────────────────────
+// Developer-inhibitor-release cross-channel masking. Each dye layer releases
+// inhibitors that suppress adjacent layers, increasing colour separation.
+// Fires after EXPOSURE, before FilmCurve — pure SDR-log effect.
+// 0 = off (default). 0.3 = subtle. 0.6 = visible colour pop. 1.0 = strong.
+#define COUPLER_STRENGTH  0.0
 
 // ── FILM CURVE CHARACTER ──────────────────────────────────────────────────────
 // Per-channel knee and toe offsets for the FilmCurve (Stage 1). These encode the
@@ -48,33 +44,77 @@
 // Default values match ARRI ALEXA latitude. Range approximately ±0.015.
 // R knee < 0 = red compresses earlier (film-like warm shadows).
 // B knee > 0 = blue compresses later (open highlights). B toe < 0 = cool toe.
-#define CURVE_R_KNEE   0.000
-#define CURVE_B_KNEE   0.000
-#define CURVE_R_TOE    0.000
-#define CURVE_B_TOE    0.000
+#define CURVE_R_KNEE  -0.0102
+#define CURVE_B_KNEE   0.0000
+#define CURVE_R_TOE   +0.0100
+#define CURVE_B_TOE   -0.0218
 
-// ── PRINT STOCK ───────────────────────────────────────────────────────────────
-// Kodak 2383 print emulsion on top of FilmCurve: lifts blacks, compresses
-// highlights, desaturates mids ~15%, adds warm shadow cast. 0 = off (current
-// behaviour). 1 = full 2383. 0.35 = recommended starting point.
-#define PRINT_STOCK  0.20
+// ── ZONE CONTRAST ────────────────────────────────────────────────────────────
+// Scales the adaptive zone S-curve strength. 1.0 = calibrated default.
+// Adaptive range is ~0.16–0.26 × ZONE_STRENGTH, driven by zone_std + scene key.
+// 0 = flat image. Above 1.5 = aggressive crushing.
+#define ZONE_STRENGTH  1.15
+
+// ── SHADOW LIFT ───────────────────────────────────────────────────────────────
+// Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
+// Raise for dark games with poor visibility, lower if lift feels too aggressive.
+#define SHADOW_LIFT_STRENGTH  1.25
+
+// ── 3-WAY COLOR CORRECTOR ────────────────────────────────────────────────────
+// Runs after EXPOSURE and FilmCurve, before zone contrast. Primary color grade.
+// TEMP: positive = warm (R up, B down), negative = cool. Range ±100.
+// TINT: positive = magenta (G down, R+B up slightly), negative = green. Range ±100.
+// All default to 0 — passthrough. No output change at defaults.
+#define SHADOW_TEMP     -5
+#define SHADOW_TINT      0
+#define MID_TEMP         3
+#define MID_TINT         0
+#define HIGHLIGHT_TEMP  +6
+#define HIGHLIGHT_TINT   0
+
+// ── CHROMA LIFT ───────────────────────────────────────────────────────────────
+// Strength of the per-hue chroma lift (grade.fx LiftChroma). Acts as a gain
+// near each hue band's scene mean — lift-only, vibrance-masked (already-saturated
+// pixels are attenuated). Spatial R68A modulation is applied on top.
+// 1.0 = calibrated default. 0 = off. Above 2.0 = aggressive.
+#define CHROMA_STR  1.0
+
+// ── HUE ROTATION ─────────────────────────────────────────────────────────────
+// Per-band rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
+// (Red→Yellow, Green→Cyan, Blue→Magenta). Default 0.0 = passthrough.
+#define ROT_RED     +0.03
+#define ROT_YELLOW  -0.015
+#define ROT_GREEN   -0.02
+#define ROT_CYAN    +0.015
+#define ROT_BLUE    -0.03
+#define ROT_MAG      0.00
 
 // ── HALATION ──────────────────────────────────────────────────────────────────
 // Film emulsion scatter from specular highlights — tight red fringe around
 // brightest sources (luma > 0.80). Red scatters most (deepest dye layer),
 // green tighter, blue none. Fires inside game bloom radius, not on top of it.
 // 0 = off. 0.35 = calibrated default. 1.0 = Ektachrome-style aggressive.
-#define HAL_STRENGTH  0.35
+#define HAL_STRENGTH  0.40
+// HAL_GAMMA: Lorentzian tail half-width for the broad scatter component.
+// Controls how far the halo bleeds past the annular ring into dark areas.
+// Lower = faster falloff (tight halo, near-Gaussian). Higher = heavier tail
+// (halo lingers further, models deeper emulsion base reflections).
+// Range 0.10–1.0. 0.40 = calibrated default.
+#define HAL_GAMMA     0.40
 
-// ── HUE ROTATION ─────────────────────────────────────────────────────────────
-// Per-band rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
-// (Red→Yellow, Green→Cyan, Blue→Magenta). Default 0.0 = passthrough.
-#define ROT_RED     0.00
-#define ROT_YELLOW  0.00
-#define ROT_GREEN   0.00
-#define ROT_CYAN    0.00
-#define ROT_BLUE    0.00
-#define ROT_MAG     0.00
+// ── PRO MIST ──────────────────────────────────────────────────────────────────
+// Global diffusion strength. Blends a heavily blurred copy of the image back
+// onto the sharp image — micro-contrast softening across all tones equally.
+// 1.0 = calibrated default (~6% blend). 0 = off.
+#define MIST_STRENGTH  2.75
+
+// ── VEIL ──────────────────────────────────────────────────────────────────────
+// Veiling glare: additive luminance lift simulating intraocular scatter and lens
+// reflections. Restores the contrast floor of real optical viewing.
+// Use for games with no volumetric fog or atmospheric depth. Skip if the game
+// has its own volumetric/fog system (it will compete).
+// VEIL_STRENGTH: glare as fraction of scene p75 luminance. 0 = off. 0.05 = subtle, 0.15 = heavy.
+#define VEIL_STRENGTH  0.15
 
 // ── RETINAL VIGNETTE ─────────────────────────────────────────────────────────
 // Peripheral luminance darkening (SCE) + chroma desaturation (Purkinje shift).
@@ -86,27 +126,22 @@
 #define VIGN_RADIUS    0.40
 #define VIGN_CHROMA    0.00
 
-// ── VEIL ──────────────────────────────────────────────────────────────────────
-// Veiling glare: additive luminance lift simulating intraocular scatter and lens
-// reflections. Restores the contrast floor of real optical viewing.
-// Use for games with no volumetric fog or atmospheric depth. Skip if the game
-// has its own volumetric/fog system (it will compete).
-// VEIL_STRENGTH: glare as % of scene median luminance. 0 = off. 3–8 = subtle.
-#define VEIL_STRENGTH  0.00
-
-// ── PRO MIST ──────────────────────────────────────────────────────────────────
-// Overall scatter strength scalar. 1.0 = calibrated default (~9% base). 0 = off.
-#define MIST_STRENGTH  0.25
-
-// ── SHADOW LIFT ───────────────────────────────────────────────────────────────
-// Scales the adaptive shadow lift. 1.0 = calibrated default. 0 = disabled.
-#define SHADOW_LIFT  1.7
-
 // ── PURKINJE SHIFT ────────────────────────────────────────────────────────────
 // Rod-vision blue-green hue bias in deep shadows (luma < 0.12). Physiologically
 // correct — Cao et al. 2008, implemented in Ghost of Tsushima. Neutrals unaffected
 // (C=0 → zero shift). 1.0 = calibrated default. 0 = off.
 #define PURKINJE_STRENGTH  1.3
+
+// ── EYE LCA ───────────────────────────────────────────────────────────────────
+// Longitudinal chromatic aberration of the human eye: blue focuses short, red
+// focuses long. Simulates the natural per-channel fringe that real-world optics
+// produce. 0 = off. 0.5 = subtle (~1.2D). 1.0 = full physiological LCA (~2.4D).
+#define LCA_STRENGTH  0.3
+
+// ── VIEWING SURROUND ─────────────────────────────────────────────────────────
+// CIECAM02 surround compensation (R76B). Corrects perceived contrast for dark-room
+// viewing. 1.0 = off. dim→dark (gaming/desktop): 1.123. average→dark: 1.314.
+#define VIEWING_SURROUND  1.123
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.

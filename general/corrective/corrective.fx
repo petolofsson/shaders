@@ -1,5 +1,6 @@
 // corrective.fx — Game-agnostic corrective analysis chain
 #include "debug_text.fxh"
+#include "../highway.fxh"
 //
 // Prepares all analysis textures consumed by grade.fx (MegaPass).
 // Single vkBasalt effect — no inter-effect BackBuffer clears, no wasted Passthroughs.
@@ -106,17 +107,6 @@ sampler2D PercSamp
     MagFilter = POINT;
 };
 
-// R53: scene-cut signal — r=scene_cut [0,1] (written by analysis_frame SceneCut pass)
-texture2D SceneCutTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
-sampler2D SceneCutSamp
-{
-    Texture   = SceneCutTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
-
 // R46: highlight-restricted warm bias EMA — read by grade + pro_mist
 texture2D WarmBiasTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
 sampler2D WarmBiasSamp
@@ -128,16 +118,6 @@ sampler2D WarmBiasSamp
     MagFilter = POINT;
 };
 
-// R47: shadow-restricted warm bias EMA — read by grade
-texture2D ShadowBiasTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
-sampler2D ShadowBiasSamp
-{
-    Texture   = ShadowBiasTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
 
 // ─── Vertex shader ─────────────────────────────────────────────────────────
 
@@ -160,9 +140,8 @@ float3 RGBtoOklab(float3 rgb)
     float m = dot(rgb, float3(0.2119034982, 0.6806995451, 0.1073969566));
     float s = dot(rgb, float3(0.0883024619, 0.2817188376, 0.6299787005));
 
-    l = pow(l, 1.0 / 3.0);
-    m = pow(m, 1.0 / 3.0);
-    s = pow(s, 1.0 / 3.0);
+    float3 lms_cbrt = exp2(log2(max(float3(l, m, s), 1e-10)) * (1.0 / 3.0));
+    l = lms_cbrt.x; m = lms_cbrt.y; s = lms_cbrt.z;
 
     return float3(
         dot(float3(l, m, s), float3( 0.2104542553,  0.7936177850, -0.0040720468)),
@@ -302,11 +281,12 @@ float4 SmoothZoneLevelsPS(float4 pos : SV_Position,
     // R39: VFF Kalman — zone median (.r), P in .a, cold-start when uninitialized
     float P_prev = (prev.a < 0.001) ? 1.0 : prev.a;
     float e_zone = current.r - prev.r;
-    float Q_vff  = lerp(KALMAN_Q_MIN, KALMAN_Q_MAX, smoothstep(0.0, VFF_E_SIGMA, abs(e_zone)));
+    // R88: Sage-Husa Q — driven by posterior P, not instantaneous innovation spike
+    float Q_vff  = lerp(KALMAN_Q_MIN, KALMAN_Q_MAX, smoothstep(KALMAN_R * 0.5, KALMAN_R * 5.0, P_prev));
     float P_pred = P_prev + Q_vff;
     float K      = P_pred / (P_pred + KALMAN_R);
     // R53: scene-cut override — spike K toward 1.0 on hard cuts
-    float scene_cut = tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0)).r;
+    float scene_cut = ReadHWY(HWY_SCENE_CUT);
     K = lerp(K, 1.0, scene_cut);
     float median = prev.r + K * e_zone;
     float P_new  = (1.0 - K) * P_pred;
@@ -325,7 +305,7 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
                        float2 uv  : TEXCOORD0) : SV_Target
 {
     int band_idx = int(pos.x);
-    if (pos.y >= 1.0 || band_idx >= 7) return float4(0, 0, 0, 0);
+    if (pos.y >= 1.0 || band_idx >= 8) return float4(0, 0, 0, 0);
 
     // Column 6: zone global stats (zone_log_key, zone_std, zmin, zmax) — free pixel, no chroma work
     if (band_idx == 6)
@@ -336,16 +316,25 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
         {
             float zm = tex2Dlod(ZoneHistorySamp,
                 float4((zx + 0.5) / 4.0, (zy + 0.5) / 4.0, 0, 0)).r;
-            lk  += log(max(zm, 0.001));
+            lk  += log2(max(zm, 0.001));
             m   += zm;
             m2  += zm * zm;
             zmin = min(zmin, zm);
             zmax = max(zmax, zm);
         }
         float zavg = m * 0.0625;
-        return float4(exp(lk * 0.0625),
+        return float4(exp2(lk * 0.0625),
                       sqrt(max(m2 * 0.0625 - zavg * zavg, 0.0)),
                       zmin, zmax);
+    }
+
+    // Column 7: slow ambient key — long time constant EMA for temporal context (R60)
+    if (band_idx == 7)
+    {
+        float zone_log_key = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
+        float prev_slow    = tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
+        if (prev_slow < 0.001) prev_slow = zone_log_key;
+        return float4(lerp(prev_slow, zone_log_key, 0.003), 0, 0, 0);
     }
 
     uint  base_idx = uint(FRAME_COUNT * 8) % 256u;
@@ -377,11 +366,12 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
     // R39: VFF Kalman — chroma mean (.r), P in .a, cold-start when uninitialized
     float P_prev   = (prev.a < 0.001) ? 1.0 : prev.a;
     float e_chroma = mean - prev.r;
-    float Q_vff_c  = lerp(KALMAN_Q_MIN, KALMAN_Q_MAX, smoothstep(0.0, VFF_E_SIGMA_CHROMA, abs(e_chroma)));
+    // R88: Sage-Husa Q — driven by posterior P, not instantaneous innovation spike
+    float Q_vff_c  = lerp(KALMAN_Q_MIN, KALMAN_Q_MAX, smoothstep(KALMAN_R * 0.5, KALMAN_R * 5.0, P_prev));
     float P_pred   = P_prev + Q_vff_c;
     float K        = P_pred / (P_pred + KALMAN_R);
     // R53: scene-cut override — spike K toward 1.0 on hard cuts
-    float scene_cut = tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0)).r;
+    float scene_cut = ReadHWY(HWY_SCENE_CUT);
     K = lerp(K, 1.0, scene_cut);
     float new_mean = prev.r + K * e_chroma;
     float P_new    = (1.0 - K) * P_pred;
@@ -420,38 +410,23 @@ float4 WarmBiasPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     return float4(wb_smooth, 0.0, 0.0, 1.0);
 }
 
-// ─── Pass 7 — R47: shadow warm bias ───────────────────────────────────────
-
-float4 ShadowBiasPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
-{
-    float p25      = tex2Dlod(PercSamp,      float4(0.5, 0.5, 0, 0)).r;
-    float prev_sb  = tex2Dlod(ShadowBiasSamp, float4(0.5, 0.5, 0, 0)).r;
-
-    float sum_r = 0.0, sum_b = 0.0, sum_w = 0.0;
-    [unroll] for (int sy = 0; sy < 8; sy++)
-    [unroll] for (int sx = 0; sx < 8; sx++)
-    {
-        float2 uv_s = float2((sx + 0.5) / 8.0, (sy + 0.5) / 8.0);
-        float4 s    = tex2Dlod(CreativeLowFreqSamp, float4(uv_s, 0, 0));
-        float  wt   = step(s.a, p25);
-        sum_r += s.r * wt;
-        sum_b += s.b * wt;
-        sum_w += wt;
-    }
-
-    float mean_r    = sum_r / max(sum_w, 1.0);
-    float mean_b    = sum_b / max(sum_w, 1.0);
-    float sb_curr   = (mean_r - mean_b) / max(mean_r + mean_b, 0.001);
-    float sb_smooth = lerp(prev_sb, sb_curr, KALMAN_K_INF);
-    return float4(sb_smooth, 0.0, 0.0, 1.0);
-}
 
 // ─── Pass 8 — Passthrough ──────────────────────────────────────────────────
 
 float4 PassthroughPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float4 c = tex2D(BackBuffer, uv);
-    if (pos.y < 1.0) return c;  // data highway
+    if (pos.y < 1.0) {
+        // R46: write WarmBias EMA to highway (WarmBias pass runs before this — same-frame data).
+        if (int(pos.x) == HWY_WARM_BIAS)
+            return float4(tex2Dlod(WarmBiasSamp, float4(0.5, 0.5, 0, 0)).r, 0.0, 0.0, 1.0);
+        if (int(pos.x) == HWY_STEVENS) {
+            float zk  = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
+            float fc_s = (1.48 + exp2(log2(max(zk, 1e-6)) * (1.0 / 3.0))) / 2.04;
+            return float4(saturate(fc_s / 1.3), 0.0, 0.0, 1.0);
+        }
+        return c;
+    }
     c = DrawLabel(c, pos.xy, 270.0, 26.0,
                   51u, 67u, 79u, 82u, float3(0.1, 0.90, 0.1));  // 3COR
     c = DrawLabel(c, pos.xy, 270.0, 34.0,
@@ -500,12 +475,6 @@ technique Corrective
         VertexShader = PostProcessVS;
         PixelShader  = WarmBiasPS;
         RenderTarget = WarmBiasTex;
-    }
-    pass ShadowBias
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = ShadowBiasPS;
-        RenderTarget = ShadowBiasTex;
     }
     pass Passthrough
     {

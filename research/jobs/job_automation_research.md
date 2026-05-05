@@ -1,130 +1,45 @@
-## Nightly Job B — Automation & Knob Reduction Research
+# Job — Shader Automation Research
 
-**Schedule:** 04:00 daily  
-**Output:** `/home/pol/code/shaders/research/R{next}_{YYYY-MM-DD}_Nightly_Automation_Research.md`  
-where `{next}` = one more than the highest R-number found in `ls research/R*.md`.  
-**Branch:** commit and push output file to `alpha`.  
-**Do not modify any source files.**
-
----
-
-### Context — read these first
-
-1. `/home/pol/code/shaders/CLAUDE.md` — pipeline constraints and philosophy
-2. `/home/pol/code/shaders/research/HANDOFF.md` — full pipeline state, all knobs, all implemented Rx jobs
-3. `/home/pol/code/shaders/gamespecific/arc_raiders/shaders/creative_values.fx` — current 24 knobs with values
-4. `/home/pol/code/shaders/general/grade/grade.fx` — MegaPass: how each knob is consumed in code
-5. `/home/pol/code/shaders/general/corrective/corrective.fx` — what analysis data is already computed
-
----
-
-### Background
-
-The pipeline has 24 user-facing knobs. The goal is to reduce this to ~9 **artistic** knobs (those encoding deliberate creative intent) by automating the remaining **scene-descriptive** knobs — ones whose correct value is determined by what the image looks like, not by artistic preference.
-
-**Knobs that must stay** (artistic intent, not derivable from scene statistics):
-- `EXPOSURE` — deliberate luminance placement; explicitly not auto-exposure per CLAUDE.md
-- `SHADOW_TEMP`, `SHADOW_TINT`, `MID_TEMP`, `MID_TINT`, `HIGHLIGHT_TEMP`, `HIGHLIGHT_TINT` — primary color grade (6 knobs)
-- `CURVE_R_KNEE`, `CURVE_B_KNEE`, `CURVE_R_TOE`, `CURVE_B_TOE` — film stock character (4 knobs)  
-- `ROT_RED`, `ROT_YELLOW`, `ROT_GREEN`, `ROT_CYAN`, `ROT_BLUE`, `ROT_MAG` — hue rotation intent (6 knobs)
-- `CORRECTIVE_STRENGTH`, `TONAL_STRENGTH` — stage gates, not tuning knobs
-
-**Candidates for automation** (4 knobs, scene-descriptive):
-- `CLARITY_STRENGTH 35`
-- `SHADOW_LIFT 15`
-- `DENSITY_STRENGTH 45`
-- `CHROMA_STRENGTH 40`
-
-**Already automated (do not re-research):**
-- `SPATIAL_NORM_STRENGTH` — done; driven by `zone_std` in grade.fx Stage 2
-
-**Analysis data already available** (written by corrective.fx before grade.fx runs):
-- `PercTex` 1×1 RGBA16F — global p25 (.r), p50 (.g), p75 (.b) of luma
-- `ZoneHistoryTex` 4×4 RGBA16F — per-zone smoothed median (.r), p25 (.g), p75 (.b) — 16 zones
-- `CreativeZoneHistTex` 32×16 R16F — 32-bin luma histogram per zone
-- `ChromaHistoryTex` — per-hue chroma statistics
-- `CreativeLowFreqTex` — 1/8-res base image (luma in .a)
-- `zone_std` — standard deviation of the 16 zone medians (already computed in grade.fx Stage 2)
-
-**Constraints from CLAUDE.md that all automation must respect:**
-- No gates (hard conditionals on pixel properties) — automation target functions must be smooth
-- No auto-exposure
-- SDR by construction — all outputs [0,1]
-- `creative_values.fx` is the only tuning surface — automation replaces a #define with a computed value; the knob may still exist as a manual override ceiling
-
----
-
-### Task
-
-For each of the 5 candidate knobs, derive a psychophysically grounded target function using the available analysis data. Then search for 2024–2026 research that either validates or improves the proposed function.
-
-#### For each knob, produce:
-
-1. **Current behaviour** — what the knob does in code (read from grade.fx), at what stage, on what signal
-2. **Scene-descriptive target** — what value should this knob take as a function of the scene statistics? Derive from first principles (e.g., SHADOW_LIFT should decrease when p25 is already high — the shadows are already bright)
-3. **Proposed formula** — concrete HLSL-compatible expression using available analysis data. Must be smooth (no hard conditionals). Must produce a value in the knob's valid range.
-4. **Literature support** — use Brave Search to find 2024–2026 papers supporting or refining this formula. Search arxiv.org, acm.org, and IEEE Xplore. Prefer papers with accessible abstracts or PDFs. If no strong paper exists, note that.
-5. **Risk** — what could go wrong? (e.g., does automating CLARITY cause pumping on scene cuts?)
-
-#### Specific derivation notes per knob
-
-**CLARITY_STRENGTH:** Clarity boosts local midtone contrast. In flat/low-detail scenes it should reduce (nothing to sharpen). In textured scenes it can be higher. The signal for "image detail density" exists in `CreativeLowFreqTex` — the residual between full-res and low-freq already drives the clarity kernel. Compute a scalar scene detail measure from this texture and map it to [20, 45].
-
-**SHADOW_LIFT:** Raises the toe. The correct lift is inversely related to where the shadows naturally sit. Use `PercTex.r` (p25) as the anchor: if p25 is already > 0.15, the game's own shadows are bright and less lift is needed. Derive a monotonically decreasing function of p25.
-
-**DENSITY_STRENGTH:** Subtractive density compacts chroma. Over-dense scenes (high average C from ChromaHistoryTex) need less density applied — the image already has the "film compaction body feel". Derive from mean chroma across ChromaHistoryTex.
-
-**CHROMA_STRENGTH:** Per-hue saturation bend. High average scene saturation means less bend is needed. Low average saturation (desaturated scenes — fog, overcast) may benefit from more bend. Derive from ChromaHistoryTex mean chroma, inverse to DENSITY logic.
-
-#### Stevens + Hunt connection
-
-R11 (Stevens + Hunt, researched but not coded) is directly relevant here. Stevens effect: apparent contrast increases with adaptation luminance — a brighter scene looks more contrasty even at the same physical contrast ratio. Hunt effect: saturation appears higher at higher luminance. These are psychophysical arguments for making CLARITY and CHROMA functions of `PercTex.g` (global p50 / scene key). Include Stevens + Hunt in the Brave Search and assess whether they should anchor the CLARITY and CHROMA automation formulas.
-
----
-
-### Output format
-
-```
-# Nightly Automation Research — {YYYY-MM-DD}
+**Trigger ID:** trig_01Cm4QTimdKcVX5ZwoiSvhBg
+**Schedule:** 0 2 * * * (2 AM UTC)
+**Output:** `research/R{next}_{YYYY-MM-DD}_automation.md`
 
 ## Summary
-{2–3 sentences: which knobs have strong automation candidates, which are risky}
 
-## CLARITY_STRENGTH
-### Current behaviour
-### Proposed formula
-### Literature support
-### Risk
+Core scene-descriptive automation is complete (R41). This job now focuses on:
+1. Adaptive base values — can remaining knobs be auto-derived from scene statistics?
+2. Knob count reduction — can rarely-changed knobs be eliminated or merged?
+3. New highway slots — HWY_P90, HWY_CHROMA_ANGLE, HWY_ACHROM_FRAC are available.
+   Investigate what pipeline stages could consume them usefully.
 
-## SHADOW_LIFT
-...
+## Closed investigations (do not re-open)
 
-## DENSITY_STRENGTH
-...
+These were evaluated in R102 (2026-05-05) and rejected:
 
-## CHROMA_STRENGTH
-...
+| Knob | Verdict | Reason |
+|------|---------|--------|
+| HUNT_LOCALITY | N/A — removed | Intentionally removed (commit e155e6c, 2026-05-04). Fed only into the dropped hunt_scale. Not a regression. Do not flag as missing. |
+| INVERSE_STRENGTH base | REJECT | `slope` (highway x=197) already encodes inverse-IQR scaling via `2.5/log_iqr`. Adapting INVERSE_STRENGTH on top creates double-counting with super-quadratic response. |
+| HAL_STRENGTH auto-enable | REJECT | Per-pixel `max(0, blur−sharp)` naturally evaluates to zero in scenes with no highlights. Physical model — no scene-level gate needed or appropriate. |
+| ZONE_STRENGTH inverse scaling | REJECT | Inner `lerp(0.26, 0.16, smoothstep(0.08, 0.25, zone_std))` already provides 38% inverse scaling. Adding outer adaptation double-counts and over-suppresses legitimate high-contrast scenes. |
 
-## Stevens + Hunt as automation anchor
-{assessment — should p50 drive CLARITY and CHROMA? What does the literature say?}
+## Open candidates
 
-## Implementation priority
-| Knob | Confidence | Risk | Recommended order |
-|------|------------|------|------------------|
-...
+- **CHROMA_STR (1.0)** — can the calibrated constant be derived from achromatic fraction
+  (HWY_ACHROM_FRAC)? Gray-heavy scenes might want less lift.
+- **HWY_CHROMA_ANGLE** — scene colour direction now on highway. Could inverse_grade
+  use it to bias expansion toward scene's dominant hue rather than expanding uniformly?
+- **Pro-Mist warm scatter** — scatter_r=1.05/scatter_b=0.92 is a baked warm push.
+  Now that R47 is removed, investigate whether this should be neutralised or kept.
+- **HUNT_LOCALITY adaptive formula** — if R61 per-pixel Hunt is ever re-implemented,
+  a zone_std-adaptive version is ready: `HUNT_LOCALITY * smoothstep(0.06, 0.20, zone_std)`.
+  Do not implement until R61 itself is implemented first.
 
-## Brave Search findings
-{list papers found, with title, authors, year, and 2-sentence relevance summary}
-```
+## Locked artistic knobs (do not propose automating)
+EXPOSURE, all CC wheels, CURVE_*_KNEE/TOE, ROT_*, PRINT_STOCK, MIST_STRENGTH,
+PURKINJE_STRENGTH, VIEWING_SURROUND, LCA_STRENGTH, stage gates.
 
----
-
-### After writing the output file
-
-```bash
-cd /home/pol/code/shaders
-git checkout alpha
-git add research/R*_*_Nightly_Automation_Research.md
-git commit -m "nightly: automation research {YYYY-MM-DD}"
-git push origin alpha
-```
+## Last updated
+2026-05-05 — Added closed investigation verdicts from R102. Removed HUNT_LOCALITY
+from open candidates (intentional removal, not a gap). Documented HUNT_LOCALITY
+adaptive formula for future reference if R61 is ever re-implemented.

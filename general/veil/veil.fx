@@ -11,12 +11,13 @@
 // Run after pro_mist: pro_mist handles spatial highlight glow, veil handles the
 // DC offset (global contrast floor).
 //
-// One pass — reads scene median (p50) from shared PercTex.
+// One pass — reads scene p75 from shared PercTex.
 //
 // Shared texture contract:
 //   PercTex { Width=1; Height=1; Format=RGBA16F } — written by frame_analysis
 //   r=p25, g=p50, b=p75, a=iqr
 
+#include "debug_text.fxh"
 #include "creative_values.fx"
 
 #define VEIL_TINT float3(1.0, 0.95, 0.80)  // AR coating amber
@@ -63,15 +64,18 @@ float4 ApplyVeilPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float4 col = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return col;
 
-    float lum_p50 = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0)).g;
+    float lum_p75 = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0)).b;
 
     // Radial: 1.0 at centre, 0.85 at corners (0.707 = max UV distance)
     float dist    = distance(uv, float2(0.5, 0.5));
     float spatial = lerp(1.0, 0.85, saturate(dist / 0.707));
 
-    float3 glare  = lum_p50 * (VEIL_STRENGTH / 100.0) * VEIL_TINT * spatial;
+    float3 glare  = lum_p75 * VEIL_STRENGTH * VEIL_TINT * spatial;
 
-    return float4(saturate(col.rgb + glare), col.a);
+    float4 out_col = float4(saturate(col.rgb + glare), col.a);
+    out_col = DrawLabel(out_col, pos.xy, 270.0, 66.0,
+                        56u, 86u, 69u, 73u, float3(0.0, 0.80, 0.80)); // 8VEI
+    return out_col;
 }
 
 // ─── Technique ────────────────────────────────────────────────────────────

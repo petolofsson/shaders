@@ -1,13 +1,15 @@
 # Shader Pipeline
 
-vkBasalt HLSL post-process chain, game-agnostic. Arc Raiders used as test platform
-(exceptional lighting/contrast/color). SDR. Linear light throughout —
+vkBasalt HLSL post-process chain, game-agnostic. Active testbed configured in
+`gamespecific/`. SDR. Linear light throughout —
 vkBasalt auto-linearizes the sRGB swapchain. HDR must be OFF in-game.
 
 ## Active chain (`arc_raiders.conf`)
 ```
-analysis_frame : analysis_scope_pre : corrective : grade : pro_mist : analysis_scope
+analysis_frame : inverse_grade : inverse_grade_debug : analysis_scope_pre : corrective : grade : analysis_scope
 ```
+`grade` is a 3-pass technique (ColorTransform → MistDownsample → ProMist). Pro-Mist is merged
+inside grade.fx — it is NOT a separate effect in the chain. Veil is fully removed.
 
 ## Silent-failure gotchas — verify before every shader edit
 
@@ -21,7 +23,7 @@ analysis_frame : analysis_scope_pre : corrective : grade : pro_mist : analysis_s
   BackBuffer-writing pass must guard `if (pos.y < 1.0) return col;`
 - Any effect where all passes use explicit RenderTargets must add a Passthrough pass
   that writes BackBuffer, or vkBasalt clears it for the next effect.
-- `corrective.fx` is one effect with 6 passes — the final Passthrough keeps BB alive
+- `corrective.fx` is one effect with 7 passes — the final Passthrough keeps BB alive
   for `grade.fx`. No inter-effect clears between corrective passes.
 
 ## How I work
@@ -31,8 +33,8 @@ analysis_frame : analysis_scope_pre : corrective : grade : pro_mist : analysis_s
 - **Plan before coding.** For any non-trivial edit: state which lines/approach will change
   and wait for a nod before writing code.
 - **Strict scope.** Only change what was asked. No opportunistic cleanup of surrounding code.
-- **Research naming:** `RXX_YYYY-MM-DD_title.md` (+ `_findings.md`). No N suffix — applies
-  to CLI sessions and nightly jobs alike. Next number: `ls research/R*.md | tail -1`.
+- **Research naming:** `R{next}_{YYYY-MM-DD}_title.md` (+ `_findings.md`). No N suffix — applies
+  to CLI sessions and nightly jobs alike. Next number: `ls research/R*.md | grep -oP 'R\K[0-9]+' | sort -n | tail -1`.
 
 ## Non-negotiable rules
 
@@ -53,17 +55,34 @@ analysis_frame : analysis_scope_pre : corrective : grade : pro_mist : analysis_s
 | `gamespecific/arc_raiders/shaders/creative_values.fx` | Only tuning surface |
 | `general/corrective/corrective.fx` | Analysis passes — zone hist, chroma stats, Passthrough |
 | `general/grade/grade.fx` | All color work — `ColorTransformPS` (MegaPass) |
+| `general/inverse-grade/inverse_grade.fx` | R90 adaptive inverse tone mapping (pre-corrective) |
+| `general/analysis-frame/analysis_frame.fx` | Histogram, PercTex, data highway encoding |
+| `general/highway.fxh` | Data highway slot constants + `ReadHWY()` macro |
 | `gamespecific/arc_raiders/shaders/debug_text.fxh` | 3×5 debug font, included by all effects |
 | `gamespecific/arc_raiders/arc_raiders.conf` | Chain config — never touch without ask |
 
 ## `ColorTransformPS` stage order (`grade.fx`)
 
-Reads from BackBuffer (post-corrective). Analysis textures (ZoneHistoryTex,
-ChromaHistoryTex, PercTex, CreativeLowFreqTex) written by earlier passes in corrective.fx.
+Reads from BackBuffer (post-inverse_grade, post-corrective). Analysis textures
+(ZoneHistoryTex, ChromaHistoryTex, PercTex, CreativeLowFreqTex) written by corrective.fx.
+inverse_grade.fx runs before corrective — R90 chroma expansion on pre-corrective signal.
 
-1. **CORRECTIVE** — `pow(rgb, EXPOSURE)` + FilmCurve (PercTex p25/p50/p75)
-2. **TONAL** — Zone S-curve + Spatial norm (both auto from zone_std) + Clarity + Shadow lift
-3. **CHROMA** — Oklab chroma lift + HK + Abney + density (gate-free, no outer C gate)
+**Pre-grade:** inverse_grade.fx — Oklab chroma expansion (slope from highway x=197, INVERSE_STRENGTH)
+
+**ColorTransformPS pass (pre-stage):** R107 edge-directional LCA — lf_mip2.a gradient drives
+CA offset direction; 4 reads at mip2 stride; replaces radial offset
+
+1. **CORRECTIVE** — CAT16 chromatic adaptation + `pow(rgb, EXPOSURE)` + R104 DIR couplers (log2-space cross-channel inhibition, default off) + FilmCurve (p25/p50/p75, fc_stevens from highway x=213) + R83 chromatic floor + R84 log-density offsets + R85 dye masking + R19 3-way CC
+2. **TONAL** — Zone S-curve + Spatial norm (auto from zone_std) + R29 Retinex + Shadow lift + R62 Oklab-stable tonal (L-substitution, chroma preserved) + R65 Hunt coupling + R66 ambient shadow tint
+3. **CHROMA** — HELMLAB Fourier hue correction + R52 Purkinje + R22 sat-by-luma + R21 hue rotation + R75 hue-by-luminance + chroma lift (CHROMA_STR × 0.04 raw, R68A spatial mod) + R15 HK + R69/R12 Abney + density + R71 vibrance self-mask + R73 memory color ceilings + gamut pre-knee + gclip + R105 halation DoG PSF (mip1−mip2 ring) + R106 Lorentzian tail
+
+**MistDownsample + ProMist passes (same technique):** Pro-Mist merged into grade.fx; downsample to
+MistDiffuseTex (1/8-res, MipLevels=2), composite mip1 back at full res. vkBasalt auto-generates mips.
+
+**Data highway (BackBuffer y=0):** x=0–128 luma hist · x=130–193 hue hist · x=194–196 p25/p50/p75 · x=197 R90 slope · x=198 mean Oklab C · x=199 scene cut · x=200 p90 · x=201 chroma angle (atan2 encoded) · x=202 achromatic fraction · x=210 warm bias · x=211 zone key · x=212 zone std · x=213 fc_stevens (encode ÷1.3, decode ×1.3)
+
+**Highway encoding rule:** 8-bit UNORM highway clips at 1.0. Values that can exceed 1.0 must be
+encoded on write (÷scale) and decoded on read (×scale). Document encode/decode in highway.fxh comment.
 
 ## Debug
 

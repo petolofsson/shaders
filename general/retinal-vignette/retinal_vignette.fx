@@ -15,6 +15,7 @@
 //   PercTex { Width=1; Height=1; Format=RGBA16F } — written by analysis_frame
 //   r=p25, g=p50, b=p75, a=iqr
 
+#include "debug_text.fxh"
 #include "creative_values.fx"
 
 // ─── Shared textures ──────────────────────────────────────────────────────
@@ -113,7 +114,10 @@ float4 RetinalVignettePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_T
     lab.yz         *= 1.0 - chroma_r;  // scale chroma axes, L untouched
     rgb             = saturate(OKLabtoRGB(lab));
 
-    return float4(rgb, col.a);
+    float4 out_col = float4(rgb, col.a);
+    out_col = DrawLabel(out_col, pos.xy, 270.0, 74.0,
+                        57u, 82u, 86u, 71u, float3(1.0, 0.50, 0.50)); // 9RVG
+    return out_col;
 }
 
 // ─── Technique ────────────────────────────────────────────────────────────
