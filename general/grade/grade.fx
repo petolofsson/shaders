@@ -260,7 +260,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // ── 1. CORRECTIVE: EXPOSURE + FilmCurve ──────────────────────────────────
     // Frame-constant FilmCurve coefficients — hoisted out of per-pixel path (R62 OPT-2)
     float fc_knee     = lerp(0.90, 0.80, saturate((eff_p75 - 0.60) / 0.30));
-    float fc_stevens  = ReadHWY(HWY_STEVENS);
+    float fc_stevens  = ReadHWY(HWY_STEVENS) * 1.3;
     float fc_factor   = 0.05 / ((1.0 - fc_knee) * (1.0 - fc_knee)) * fc_stevens * spread_scale;
     float fc_knee_toe = lerp(0.15, 0.25, saturate((0.40 - eff_p25) / 0.30));
     // R84: CURVE_* are log-density offsets — exp2 folds to constant at compile time

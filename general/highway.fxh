@@ -32,7 +32,7 @@
 #define HWY_WARM_BIAS       210    // highlight warm bias EMA [0,1]
 #define HWY_ZONE_KEY        211    // zone log key; raw [0,0.5] fits in [0,1]
 #define HWY_ZONE_STD        212    // zone luminance std
-#define HWY_STEVENS         213    // fc_stevens = cbrt(zone_log_key) scaled; raw [0,1]
+#define HWY_STEVENS         213    // fc_stevens; encode: v/1.3  decode: v*1.3  range [0.72,1.22]
 
 // ── Helper ───────────────────────────────────────────────────────────────────
 #define ReadHWY(slot) \

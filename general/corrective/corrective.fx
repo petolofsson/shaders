@@ -423,7 +423,7 @@ float4 PassthroughPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
         if (int(pos.x) == HWY_STEVENS) {
             float zk  = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
             float fc_s = (1.48 + exp2(log2(max(zk, 1e-6)) * (1.0 / 3.0))) / 2.04;
-            return float4(saturate(fc_s), 0.0, 0.0, 1.0);
+            return float4(saturate(fc_s / 1.3), 0.0, 0.0, 1.0);
         }
         return c;
     }
