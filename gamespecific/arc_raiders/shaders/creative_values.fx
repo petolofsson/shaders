@@ -30,6 +30,13 @@
 // 1 = full 2383. 0.35 = recommended starting point.
 #define PRINT_STOCK  0.40
 
+// ── DIR COUPLERS ──────────────────────────────────────────────────────────────
+// Developer-inhibitor-release cross-channel masking. Each dye layer releases
+// inhibitors that suppress adjacent layers, increasing colour separation.
+// Fires after EXPOSURE, before FilmCurve — pure SDR-log effect.
+// 0 = off (default). 0.3 = subtle. 0.6 = visible colour pop. 1.0 = strong.
+#define COUPLER_STRENGTH  0.0
+
 // ── FILM CURVE CHARACTER ──────────────────────────────────────────────────────
 // Per-channel knee and toe offsets for the FilmCurve (Stage 1). These encode the
 // physical dye-layer cross-over character of different film stocks: red compresses
@@ -51,7 +58,7 @@
 // ── SHADOW LIFT ───────────────────────────────────────────────────────────────
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOW_LIFT_STRENGTH  1.10
+#define SHADOW_LIFT_STRENGTH  1.25
 
 // ── 3-WAY COLOR CORRECTOR ────────────────────────────────────────────────────
 // Runs after EXPOSURE and FilmCurve, before zone contrast. Primary color grade.

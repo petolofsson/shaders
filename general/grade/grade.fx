@@ -249,7 +249,17 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float fc_ktoe_r   = clamp(fc_knee_toe * exp2(CURVE_R_TOE),  0.08, 0.35);
     float fc_ktoe_b   = clamp(fc_knee_toe * exp2(CURVE_B_TOE),  0.08, 0.35);
     float fc_toe_fac  = 0.03 / (fc_knee_toe * fc_knee_toe);
-    float3 lin = FilmCurveApply(pow(max(col.rgb, 0.0), EXPOSURE),
+    float3 lin_e = pow(max(col.rgb, 0.0), EXPOSURE);
+    // R104: DIR couplers — developer-inhibitor-release cross-channel masking
+    {
+        float3 log_e = log2(lin_e + 1e-5);
+        float3 act   = lin_e * lin_e / (lin_e * lin_e + 0.09);
+        float3 cpl   = float3(act.g * 0.12 + act.b * 0.06,
+                              act.r * 0.10 + act.b * 0.04,
+                              act.r * 0.06 + act.g * 0.08);
+        lin_e = saturate(exp2(log_e - cpl * COUPLER_STRENGTH));
+    }
+    float3 lin = FilmCurveApply(lin_e,
                                 fc_knee_r, fc_knee, fc_knee_b,
                                 fc_ktoe_r, fc_knee_toe, fc_ktoe_b,
                                 fc_factor, fc_toe_fac);
@@ -497,12 +507,12 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         float  hal_bright  = smoothstep(hal_thresh, 1.0, hal_luma);
         // R96: spectral warm-tilt on wing — anti-halation absorbs g/b on return path
         float3 hal_wing_w  = float3(hal_wing.r, hal_wing.g * 0.88, hal_wing.b * 0.75);
-        // delta self-limits: zero where blur ≤ sharp (bright sources, uniform areas), positive only in halo zone
-        float3 hal_src_r   = lerp(hal_core_r, hal_wing_w, lerp(0.20, 0.42, hal_bright));
-        float3 hal_src_g   = lerp(hal_core_g, hal_wing_w, lerp(0.10, 0.21, hal_bright));
+        // R105: DoG PSF — annular ring (tight−wide Gaussian) + broad tail; replaces filled-disk lerp
+        float  hal_ring_r  = max(hal_core_r.r - hal_wing_w.r, 0.0);
+        float  hal_ring_g  = max(hal_core_g.g - hal_wing_w.g, 0.0);
         float3 hal_delta   = float3(
-            max(0.0, hal_src_r.r - lin.r),
-            max(0.0, hal_src_g.g - lin.g),
+            max(0.0, hal_ring_r + hal_wing_w.r * lerp(0.20, 0.42, hal_bright) - lin.r),
+            max(0.0, hal_ring_g + hal_wing_w.g * lerp(0.10, 0.21, hal_bright) - lin.g),
             0.0
         );
         float  hal_r_gain = 1.05;
