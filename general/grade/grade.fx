@@ -91,6 +91,18 @@ sampler2D ChromaHistory
     MagFilter = POINT;
 };
 
+// Pro-Mist downsample target — 1/8-res, 2 mips; mip 1 = 1/16-res effective (same blur as old 1/4-res mip 2)
+texture2D MistDiffuseTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 2; };
+sampler2D MistDiffuseSamp
+{
+    Texture   = MistDiffuseTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+    MipFilter = LINEAR;
+};
+
 
 
 // ─── Vertex shader ─────────────────────────────────────────────────────────
@@ -529,6 +541,39 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
                      54u, 71u, 82u, 65u, float3(0.2, 0.50, 1.0)); // 6GRA
 }
 
+// ─── Pro-Mist passes (merged from pro_mist.fx — saves one inter-effect overhead) ──
+
+float4 MistDownsamplePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    if (pos.y < 1.0) return float4(0.0, 0.0, 0.0, 0.0);
+    return float4(tex2D(BackBuffer, uv).rgb, 1.0);
+}
+
+float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    float4 base = tex2D(BackBuffer, uv);
+    if (pos.y < 1.0) return base;
+
+    float3 blurred = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 1)).rgb;
+
+    float4 perc           = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
+    float  iqr            = perc.b - perc.r;
+    float  adapt_str      = MIST_STRENGTH * 0.06 * lerp(0.8, 1.2, saturate(iqr / 0.5));
+    float  zone_log_key   = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
+    float  mist_key_scale = lerp(1.20, 0.85, smoothstep(0.05, 0.25, zone_log_key));
+    float  mist_ap_scale  = lerp(1.10, 0.90, saturate((EXPOSURE - 0.70) / 0.60));
+    adapt_str *= mist_key_scale * mist_ap_scale;
+
+    float3 result = lerp(base.rgb, blurred, saturate(adapt_str));
+
+    float dither = frac(52.9829189 * frac(dot(pos.xy, float2(0.06711056, 0.00583715)))) - 0.5;
+    result += dither * (1.0 / 255.0);
+
+    float4 out_col = float4(saturate(result), base.a);
+    return DrawLabel(out_col, pos.xy, 270.0, 58.0,
+                     55u, 80u, 77u, 83u, float3(0.9, 0.1, 0.9)); // 7PMS
+}
+
 // ─── Technique ─────────────────────────────────────────────────────────────
 
 technique OlofssonianColorGrade
@@ -537,5 +582,16 @@ technique OlofssonianColorGrade
     {
         VertexShader = PostProcessVS;
         PixelShader  = ColorTransformPS;
+    }
+    pass MistDownsample
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = MistDownsamplePS;
+        RenderTarget = MistDiffuseTex;
+    }
+    pass ProMist
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = ProMistPS;
     }
 }
