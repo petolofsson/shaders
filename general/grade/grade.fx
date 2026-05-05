@@ -371,7 +371,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float  h_theta = h * 6.28318;
     float  sh_h, ch_h;
     sincos(h_theta, sh_h, ch_h);
-    float  h_perc  = frac(h + (sh_h * (0.008 + 0.008 * ch_h)) / 6.28318);
+    float  dh      = sh_h * (0.008 + 0.008 * ch_h);
+    float  h_perc  = frac(h + dh / 6.28318);
 
     // ── R52: Purkinje shift — rod-vision blue-green bias in deep shadows ───────
     {
@@ -453,8 +454,12 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float f_okb  = ab_s.x * sin_dt + ab_s.y * cos_dt;
 
     // Hellwig 2022: hue-dependent H-K correction, C^0.587 (R15)
-    float sh, ch;
-    sincos(h_out * 6.28318, sh, ch);
+    // OPT-1: derive sh/ch from HELMLAB+R21 results — eliminates one quarter-rate sincos.
+    // Small-angle for dh (max |dh|=0.016 rad, error <= dh²/2 = 1.28e-4); R21 is exact.
+    float sh_p = sh_h + ch_h * dh;
+    float ch_p = ch_h - sh_h * dh;
+    float sh   = sh_p * r21_cos + ch_p * r21_sin;
+    float ch   = ch_p * r21_cos - sh_p * r21_sin;
     float f_hk     = -0.160 * ch + 0.132 * (ch*ch - sh*sh) - 0.405 * sh + 0.080 * (2.0*sh*ch) + 0.792;
     float hk_exp   = lerp(0.52, 0.64, saturate(zone_log_key / 0.50));
     float hk_boost = 1.0 + 0.25 * f_hk * pow(final_C, hk_exp);
