@@ -1,6 +1,6 @@
 # Pipeline Improvement Plan
 **Goal:** Raise every stage to 90% finished / 75% novel (game-specific sense).
-**Created:** 2026-05-03 | **Updated:** 2026-05-04 (directional inverse_grade + orange hunt + tuning overhaul)
+**Created:** 2026-05-03 | **Updated:** 2026-05-05 (R104 DIR couplers, R105/R106 halation DoG+Lorentz, R107 edge LCA, Pro-Mist merge, fc_stevens OPT-4)
 
 ---
 
@@ -20,11 +20,11 @@ Adjusts local brightness relationships. A zone-based S-curve (like Ansel Adams' 
 **Stage 3 — Color (grade)**
 The large color science block. Purkinje shift (scotopic blue sensitivity at low luminance), Helmholtz-Kohlrausch effect (bright colors look brighter than grey at the same luminance), Abney effect (hue shifts when saturation changes), Hunt effect (adapted-field brightness changes apparent saturation), per-hue rotation, chroma lift with spatial modulation, and MacAdam-calibrated gamut ceilings (each hue has a different maximum chromaticity before it crosses a discrimination threshold). Novel: HELMLAB Fourier hue correction, real-time MacAdam ellipse ceilings, Beer-Lambert absorption, and per-pixel Hunt adaptation are all unique in game post-process.
 
-**Stage 3.5 — Halation (pro_mist / halation block)**
-Film halation is the glow around bright highlights caused by light bouncing off the film base and exposing the emulsion from behind. The model uses mip levels as spatial blur kernels (zero extra texture taps — existing mips, different levels per channel), applies a dual-Gaussian PSF (tight core + extended wings), and models the slightly warmer color in the extended scatter (longer wavelengths penetrate deeper). Novel: zero-tap mip architecture with calibrated chromatic model — published implementations all use convolution or radial blur passes.
+**Stage 3.5 — Halation (halation block inside grade.fx)**
+Film halation is the glow around bright highlights caused by light bouncing off the film base and exposing the emulsion from behind. The model uses a DoG (Difference-of-Gaussians) PSF: mip1−mip2 of CreativeLowFreqTex creates an annular ring around bright sources with zero extra texture taps. A Lorentzian tail function γ²/(γ²+d²+ε) models the heavier-than-Gaussian falloff of deep emulsion base reflections (ISL-like, not Gaussian). Chromatic: red uses mip1 core (wider scatter, deepest dye layer), green uses mip1 (tighter), blue = zero. HAL_GAMMA controls Lorentzian tail half-width. Novel: DoG mip-ring PSF + Lorentzian tail in a zero-tap architecture — published implementations all use convolution or radial blur passes.
 
-**Output — Pro-Mist + Veil**
-Pro-Mist is now global diffusion: the full image is downsampled to 1/4-res with mips, and a heavily blurred copy (mip 2 = 1/16-res effective) is lerped back onto the sharp image. This softens micro-contrast uniformly across all tones — shadows, mids, and highlights equally — without adding brightness. Highlight glow belongs to halation (red fringe, specular sources) and veil (additive DC lift from scene p75 luminance). Veil simulates intraocular scatter and AR coating reflections; it raises the contrast floor globally, with a slight amber tint and radial falloff toward corners. The three optical output effects have clean non-overlapping responsibilities. Novel: statistics-driven adaptive diffusion blend (IQR + zone key + aperture proxy) on a full-image lerp, combined with a physiologically-grounded veil model that separately owns the DC offset.
+**Output — Pro-Mist (merged into grade.fx)**
+Pro-Mist is global diffusion: the image is downsampled to MistDiffuseTex (1/8-res, MipLevels=2), vkBasalt auto-generates mip1 (1/16-res effective), and ProMistPS lerps that blurred copy back onto the sharp image. Blend strength is scene-adaptive (IQR + zone_log_key + EXPOSURE proxy). This softens micro-contrast uniformly across all tones without adding brightness. Pro-Mist is the 2nd and 3rd passes of OlofssonianColorGrade — NOT a separate effect in the chain. Veil is available for games with no volumetric fog; it is removed from Arc Raiders (was fighting engine atmospheric volumes). Novel: statistics-driven adaptive diffusion blend on a full-image lerp.
 
 ---
 
@@ -51,9 +51,9 @@ Pro-Mist is now global diffusion: the full image is downsampled to 1/4-res with 
 | Stage 1 — Corrective | 93% | 78% | R47 removed; PRINT_STOCK warm cast + R85 dye coupling confirmed intentional |
 | Stage 2 — Tonal | 92% | 90% | R61 HUNT_LOCALITY removed; zone/R60/R62/R66 remain novel |
 | Stage 3 — Chroma | 97% | 93% | R22 mid_C_boost 0.08; R74 highlight desat added; CHROMA_STR ×0.04 normalized |
-| Stage 3.5 — Halation | 92% | 80% | warm_bias feedback loop removed; exposure correction on blur sources |
-| Output — Pro-Mist | 90% | 78% | Redesigned: global diffusion lerp (1/4-res mip 2), not additive bloom |
-| Output — Veil | 88% | 72% | 0.10→0.15 (filmic soft); doc fix p50→p75 |
+| Stage 3.5 — Halation | 96% | 88% | R105 DoG PSF ring + R106 Lorentzian tail; exposure correction removed (OPT-1); green mip0 bug fixed |
+| Output — Pro-Mist | 94% | 82% | Merged into grade.fx 3-pass technique; 1/8-res MistDiffuseTex mip1 |
+| Output — Veil | —  | —  | Removed from Arc Raiders (fights engine atmospheric volumes) |
 
 ---
 
@@ -312,11 +312,12 @@ This created a feedback loop: warm scene → warm bias → warmer halation → m
 Fixed to neutral constants: `hal_r_gain = 1.05; hal_g_gain = 0.50;`. Red channel still
 dominant (deepest dye layer) but color character is now scene-independent.
 
-### Halation exposure correction
+### Halation exposure correction (added 2026-05-04, removed 2026-05-05 as OPT-1)
 Blur source (`lf_mip1`, `lf_mip2`) was sampled pre-grade (CreativeLowFreqTex), but
 composited in post-grade tonal space. Bright sources appeared muted in the wrong zone.
-Fixed: `hal_core_r = exp2(log2(max(lf_mip1.rgb, 1e-5)) * EXPOSURE)` — brings pre-grade
-blur into post-grade equivalent before compositing.
+Added: `hal_core_r = exp2(log2(max(lf_mip1.rgb, 1e-5)) * EXPOSURE)`. Subsequently removed
+in OPT-1: the halation gate (hal_bright) uses post-grade luma, making the correction
+imperceptible at EXPOSURE=0.90. Not worth 3 ALU per channel.
 
 ### Pro-Mist redesigned: global diffusion (R99)
 Replaced additive threshold-extract bloom with full-image lerp diffusion.
@@ -348,3 +349,59 @@ plan. R90 instead uses scene statistics (IQR, p25/p75) to measure compression an
 chroma without identifying the specific tone mapper. This is more game-agnostic and proved
 sufficient for Arc Raiders. R86's ACES hue-shift correction remains a potential future
 addition if orange/magenta cast in ACES content becomes an issue again.
+
+---
+
+## Session 2026-05-05 additions
+
+### R104 — DIR Couplers
+Developer-inhibitor-release cross-channel masking in log2 space. Fires after `pow(rgb, EXPOSURE)`,
+before FilmCurveApply. Activation: x²/(x²+0.09). Each bright channel suppresses adjacent channels.
+COUPLER_STRENGTH knob (default 0.0 = off). Physically models the inter-layer dye inhibitor
+chemistry in color negative film. 0 extra taps. ~8 ALU (skipped at COUPLER_STRENGTH=0 by compiler).
+
+### R105 — Halation DoG PSF (replacing lerp blend)
+Annular ring PSF via Difference-of-Gaussians: ring = max(mip1 − mip2, 0). Both red and green
+use mip1 as core (green mip0 was an audit bug, corrected). The ring fires around bright sources
+with no extra texture taps. Replaces the previous filled-disk lerp blend.
+
+### R106 — Lorentzian Tail for Halation
+Tail weight: γ²/(γ²+d²+ε) where d=1−hal_bright, ε=1e-6 (NaN guard). Heavier falloff than
+Gaussian — models deep emulsion base reflections (ISL character). HAL_GAMMA knob (0.10–1.0,
+default 0.40). Lower = faster falloff; higher = halo lingers further into dark areas.
+
+### R107 — Edge-Directional LCA (replacing radial)
+Luminance gradient from lf_mip2.a (4 reads at ~32px stride in mip2 space) drives CA offset
+direction. Red shifts opposite gradient, blue with gradient. Self-limiting: saturate(glen) keeps
+offset zero in flat areas. Replaces radial offset from screen centre. Same tap count; gradient
+reads reuse the already-hoisted lf_mip2 cache. Max UV offset 0.0015 at LCA_STRENGTH=0.3.
+
+### Halation exposure correction removed (OPT-1)
+`hal_core_r = exp2(log2(max(lf_mip1.rgb, 1e-5)) * EXPOSURE)` was a workaround for the
+pre-grade/post-grade mismatch. Removed: the halation gate (hal_bright) uses post-grade luma
+which already has EXPOSURE applied; the source/gate mismatch at EXPOSURE=0.90 is imperceptible.
+Saves 3 ALU per channel.
+
+### H-K pow → sqrt (OPT-2)
+`pow(final_C, 0.587)` approximated with `sqrt(final_C)` (exp 0.5). Max error 0.8% at C=1,
+zero at C=0. Saves 1 transcendental per pixel (exp2+log2 pair → rsq).
+
+### fc_stevens hoisted to highway slot 213 (OPT-4)
+`cbrt(zone_log_key)` scaled — frame-constant, was computed per pixel (~3 transcendentals ×
+2M pixels/frame). Now written once by corrective PassthroughPS to highway slot 213.
+Encode ÷1.3, decode ×1.3 (fc_stevens range [0.72, 1.22] exceeds 8-bit UNORM without encoding).
+Grade.fx reads with ReadHWY(HWY_STEVENS). Establishes the highway encode/decode convention
+for any future value outside [0,1].
+
+### Pro-Mist merged into grade.fx
+No longer a separate effect in arc_raiders.conf. OlofssonianColorGrade is now a 3-pass technique:
+ColorTransform → MistDownsample (writes MistDiffuseTex 1/8-res) → ProMist (composites mip1).
+Veil removed from Arc Raiders entirely (was fighting engine atmospheric volumes).
+
+### Session audit — bugs found and fixed
+- **fc_stevens saturate clamp**: highway write was `saturate(fc_s)`, clipping values >1.0 for
+  medium-bright scenes. Fixed with ÷1.3 encode / ×1.3 decode.
+- **Green halation mip0**: hal_core_g used mip0 (widest ring), inverted from film physics.
+  Fixed to mip1 (same as red). hal_g_gain=0.50 attenuated the visual impact but shape was wrong.
+- **HAL_GAMMA=0 NaN**: Lorentzian denominator was 0/0 at HAL_GAMMA=0, hal_bright=1.
+  Fixed with +1e-6 guard in denominator.
