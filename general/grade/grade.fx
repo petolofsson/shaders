@@ -202,21 +202,20 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 {
     float4 col = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return col;  // data highway
-    // R107: eye LCA — edge-directional; gradient drives offset so CA fires along edges not radially
+    float4 lf_mip2 = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 2));  // hoisted above LCA — used by gradient, CAT16, Retinex, ambient tint, halation
+    // R107: eye LCA — edge-directional; lf_mip2.a gradient replaces 4 full-res BackBuffer reads
     {
-        float2 px      = float2(1.0 / BUFFER_WIDTH, 1.0 / BUFFER_HEIGHT);
-        float  gr      = dot(tex2D(BackBuffer, uv + float2(px.x, 0.0)).rgb, float3(0.2126, 0.7152, 0.0722));
-        float  gl      = dot(tex2D(BackBuffer, uv - float2(px.x, 0.0)).rgb, float3(0.2126, 0.7152, 0.0722));
-        float  gu      = dot(tex2D(BackBuffer, uv + float2(0.0, px.y)).rgb, float3(0.2126, 0.7152, 0.0722));
-        float  gd      = dot(tex2D(BackBuffer, uv - float2(0.0, px.y)).rgb, float3(0.2126, 0.7152, 0.0722));
+        float2 mpx     = float2(32.0 / BUFFER_WIDTH, 32.0 / BUFFER_HEIGHT);  // 1 texel in mip2 space (~32px stride)
+        float  gr      = tex2Dlod(CreativeLowFreqSamp, float4(uv + float2(mpx.x, 0.0), 0, 2)).a;
+        float  gl      = tex2Dlod(CreativeLowFreqSamp, float4(uv - float2(mpx.x, 0.0), 0, 2)).a;
+        float  gu      = tex2Dlod(CreativeLowFreqSamp, float4(uv + float2(0.0, mpx.y), 0, 2)).a;
+        float  gd      = tex2Dlod(CreativeLowFreqSamp, float4(uv - float2(0.0, mpx.y), 0, 2)).a;
         float2 grad    = float2(gr - gl, gu - gd);
         float  glen    = length(grad);
         float2 lca_off = (grad / max(glen, 1e-5)) * saturate(glen) * LCA_STRENGTH * 0.005;
         col.r = tex2D(BackBuffer, uv - lca_off).r;
         col.b = tex2D(BackBuffer, uv + lca_off).b;
     }
-
-    float4 lf_mip2 = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 2));  // OPT-1: hoisted — used by CAT16, Retinex, ambient tint, halation
     // R76A: CAT16 chromatic adaptation — normalise scene illuminant toward D65
     float3 lms_illum_norm;  // lifted for R83 chromatic floor
     {
@@ -492,8 +491,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float sh   = sh_p * r21_cos + ch_p * r21_sin;
     float ch   = ch_p * r21_cos - sh_p * r21_sin;
     float f_hk     = -0.160 * ch + 0.132 * (ch*ch - sh*sh) - 0.405 * sh + 0.080 * (2.0*sh*ch) + 0.792;
-    float hk_exp   = lerp(0.52, 0.64, saturate(zone_log_key / 0.50));
-    float hk_boost = 1.0 + 0.25 * f_hk * pow(final_C, hk_exp);
+    float hk_boost = 1.0 + 0.25 * f_hk * sqrt(final_C);
     float final_L  = saturate(lab.x / lerp(1.0, hk_boost, smoothstep(0.0, 0.35, lab.x)));
 
     // Gamut-distance density: headroom limits darkening near the sRGB boundary
@@ -517,10 +515,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
     // R79: halation dual-PSF + softened gate + warm wing bias
     {
-        // Exposure correction — brings pre-grade blur into post-grade tonal space (~20-30% stronger delta)
-        float3 hal_core_r = exp2(log2(max(lf_mip1.rgb, 1e-5)) * EXPOSURE);
-        float3 hal_core_g = exp2(log2(max(tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 0)).rgb, 1e-5)) * EXPOSURE);
-        float3 hal_wing   = exp2(log2(max(lf_mip2.rgb, 1e-5)) * EXPOSURE);
+        float3 hal_core_r = max(lf_mip1.rgb, 0.0);
+        float3 hal_core_g = max(tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 0)).rgb, 0.0);
+        float3 hal_wing   = max(lf_mip2.rgb, 0.0);
         float  hal_luma   = dot(lin, float3(0.2126, 0.7152, 0.0722));
         // R93A/B: luminance-scaled wing blend + anti-halation OD ratio (red:green 2:1 from Kodak 2383)
         // R100: p90-adaptive threshold — wing fires on scene's own bright content, not absolute value.
