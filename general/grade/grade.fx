@@ -516,7 +516,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // R79: halation dual-PSF + softened gate + warm wing bias
     {
         float3 hal_core_r = max(lf_mip1.rgb, 0.0);
-        float3 hal_core_g = max(tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 0)).rgb, 0.0);
+        float3 hal_core_g = max(tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 1)).rgb, 0.0);
         float3 hal_wing   = max(lf_mip2.rgb, 0.0);
         float  hal_luma   = dot(lin, float3(0.2126, 0.7152, 0.0722));
         // R93A/B: luminance-scaled wing blend + anti-halation OD ratio (red:green 2:1 from Kodak 2383)
@@ -531,7 +531,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         // R106: Lorentzian tail — γ²/(γ²+d²) where d=1-hal_bright; heavier falloff than Gaussian
         // models deep emulsion base reflections that scatter with 1/r² rather than exp(-r²)
         float  hal_d       = 1.0 - hal_bright;
-        float  hal_lore    = (HAL_GAMMA * HAL_GAMMA) / (HAL_GAMMA * HAL_GAMMA + hal_d * hal_d);
+        float  hal_lore    = (HAL_GAMMA * HAL_GAMMA) / (HAL_GAMMA * HAL_GAMMA + hal_d * hal_d + 1e-6);
         float3 hal_delta   = float3(
             max(0.0, hal_ring_r + hal_wing_w.r * lerp(0.20, 0.42, hal_lore) - lin.r),
             max(0.0, hal_ring_g + hal_wing_w.g * lerp(0.10, 0.21, hal_lore) - lin.g),
