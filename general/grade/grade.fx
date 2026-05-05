@@ -522,9 +522,13 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         // R105: DoG PSF — annular ring (tight−wide Gaussian) + broad tail; replaces filled-disk lerp
         float  hal_ring_r  = max(hal_core_r.r - hal_wing_w.r, 0.0);
         float  hal_ring_g  = max(hal_core_g.g - hal_wing_w.g, 0.0);
+        // R106: Lorentzian tail — γ²/(γ²+d²) where d=1-hal_bright; heavier falloff than Gaussian
+        // models deep emulsion base reflections that scatter with 1/r² rather than exp(-r²)
+        float  hal_d       = 1.0 - hal_bright;
+        float  hal_lore    = (HAL_GAMMA * HAL_GAMMA) / (HAL_GAMMA * HAL_GAMMA + hal_d * hal_d);
         float3 hal_delta   = float3(
-            max(0.0, hal_ring_r + hal_wing_w.r * lerp(0.20, 0.42, hal_bright) - lin.r),
-            max(0.0, hal_ring_g + hal_wing_w.g * lerp(0.10, 0.21, hal_bright) - lin.g),
+            max(0.0, hal_ring_r + hal_wing_w.r * lerp(0.20, 0.42, hal_lore) - lin.r),
+            max(0.0, hal_ring_g + hal_wing_w.g * lerp(0.10, 0.21, hal_lore) - lin.g),
             0.0
         );
         float  hal_r_gain = 1.05;

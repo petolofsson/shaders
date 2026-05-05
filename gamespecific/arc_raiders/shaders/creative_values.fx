@@ -95,6 +95,12 @@
 // green tighter, blue none. Fires inside game bloom radius, not on top of it.
 // 0 = off. 0.35 = calibrated default. 1.0 = Ektachrome-style aggressive.
 #define HAL_STRENGTH  0.40
+// HAL_GAMMA: Lorentzian tail half-width for the broad scatter component.
+// Controls how far the halo bleeds past the annular ring into dark areas.
+// Lower = faster falloff (tight halo, near-Gaussian). Higher = heavier tail
+// (halo lingers further, models deeper emulsion base reflections).
+// Range 0.10–1.0. 0.40 = calibrated default.
+#define HAL_GAMMA     0.40
 
 // ── PRO MIST ──────────────────────────────────────────────────────────────────
 // Global diffusion strength. Blends a heavily blurred copy of the image back
