@@ -222,10 +222,10 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float3 cfilm_floor = FILM_FLOOR * (lms_illum_norm * float3(1.02, 1.00, 0.97));
     col.rgb = col.rgb * (FILM_CEILING - cfilm_floor) + cfilm_floor;
 
-    float4 perc = tex2D(PercSamp, float2(0.5, 0.5));
+    float4 perc = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
 
     // R32: zone global stats — pre-computed in UpdateHistoryPS, stored in ChromaHistoryTex col 6
-    float4 zstats      = tex2D(ChromaHistory, float2(6.5 / 8.0, 0.5 / 4.0));
+    float4 zstats      = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0));
     float zone_log_key = zstats.r;
     float zone_std     = zstats.g;
     float eff_p25      = lerp(perc.r, zstats.b, 0.4);
@@ -253,7 +253,6 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
                                 fc_knee_r, fc_knee, fc_knee_b,
                                 fc_ktoe_r, fc_knee_toe, fc_ktoe_b,
                                 fc_factor, fc_toe_fac);
-    lin = lerp(col.rgb, lin, CORRECTIVE_STRENGTH / 100.0);
 
     // ── R51: print stock emulsion — Kodak 2383 characteristic curve approximation ──
     {
@@ -303,9 +302,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     }
 
     // ── 2. TONAL: Zone contrast + Clarity + Shadow lift ───────────────────────
-    float3 lin_pre_tonal = lin;
     float luma        = Luma(lin);
-    float4 zone_lvl   = tex2D(ZoneHistorySamp, uv);
+    float4 zone_lvl   = tex2Dlod(ZoneHistorySamp, float4(uv, 0, 0));
     float zone_median = zone_lvl.r;
     float zone_iqr    = zone_lvl.b - zone_lvl.g;
     // R33: CLAHE-inspired clip limit — bounds S-curve slope; tightens when Retinex is engaged
@@ -362,7 +360,6 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         lab_t.z = lerp(lab_t.z, lab_amb.z, r66_w);
     }
     lin = saturate(OklabToRGB(lab_t));
-    lin = lerp(lin_pre_tonal, lin, TONAL_STRENGTH / 100.0);
 
     // ── 3. CHROMA: Oklab chroma lift ──────────────────────────────────────────
     float3 lab = RGBtoOklab(lin);
@@ -417,7 +414,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float new_C = 0.0, total_w = 0.0;
     [unroll] for (int band = 0; band < 6; band++)
     {
-        float pivot = tex2D(ChromaHistory, float2((band + 0.5) / 8.0, 0.5 / 4.0)).r;
+        float pivot = tex2Dlod(ChromaHistory, float4((band + 0.5) / 8.0, 0.5 / 4.0, 0, 0)).r;
         float w = HueBandWeight(h_perc, GetBandCenter(band));
         new_C   += LiftChroma(C, pivot, chroma_str) * w;
         total_w += w;
