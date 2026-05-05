@@ -6,8 +6,10 @@ vkBasalt auto-linearizes the sRGB swapchain. HDR must be OFF in-game.
 
 ## Active chain (`arc_raiders.conf`)
 ```
-analysis_frame : inverse_grade : inverse_grade_debug : analysis_scope_pre : corrective : grade : pro_mist : analysis_scope
+analysis_frame : inverse_grade : inverse_grade_debug : analysis_scope_pre : corrective : grade : analysis_scope
 ```
+`grade` is a 3-pass technique (ColorTransform → MistDownsample → ProMist). Pro-Mist is merged
+inside grade.fx — it is NOT a separate effect in the chain. Veil is fully removed.
 
 ## Silent-failure gotchas — verify before every shader edit
 
@@ -67,11 +69,20 @@ inverse_grade.fx runs before corrective — R90 chroma expansion on pre-correcti
 
 **Pre-grade:** inverse_grade.fx — Oklab chroma expansion (slope from highway x=197, INVERSE_STRENGTH)
 
-1. **CORRECTIVE** — CAT16 chromatic adaptation + `pow(rgb, EXPOSURE)` + FilmCurve (p25/p50/p75) + R83 chromatic floor + R84 log-density offsets + R85 dye masking + R19 3-way CC
-2. **TONAL** — Zone S-curve + Spatial norm (auto from zone_std) + R29 Retinex + Shadow lift + R62 Oklab-stable tonal (L-substitution, chroma preserved) + R65 Hunt coupling + R66 ambient shadow tint
-3. **CHROMA** — HELMLAB Fourier hue correction + R52 Purkinje + R22 sat-by-luma + R21 hue rotation + R75 hue-by-luminance + chroma lift (CHROMA_STR × 0.04 raw, R68A spatial mod) + R15 HK + R69/R12 Abney + density + R71 vibrance self-mask + R73 memory color ceilings + gamut pre-knee + gclip
+**ColorTransformPS pass (pre-stage):** R107 edge-directional LCA — lf_mip2.a gradient drives
+CA offset direction; 4 reads at mip2 stride; replaces radial offset
 
-**Data highway (BackBuffer y=0):** x=0–128 luma hist · x=130–193 hue hist · x=194–196 p25/p50/p75 · x=197 R90 slope · x=198 mean Oklab C · x=199 scene cut · x=200 p90 · x=201 chroma angle (atan2 encoded) · x=202 achromatic fraction · x=210 warm bias · x=211 zone key · x=212 zone std
+1. **CORRECTIVE** — CAT16 chromatic adaptation + `pow(rgb, EXPOSURE)` + R104 DIR couplers (log2-space cross-channel inhibition, default off) + FilmCurve (p25/p50/p75, fc_stevens from highway x=213) + R83 chromatic floor + R84 log-density offsets + R85 dye masking + R19 3-way CC
+2. **TONAL** — Zone S-curve + Spatial norm (auto from zone_std) + R29 Retinex + Shadow lift + R62 Oklab-stable tonal (L-substitution, chroma preserved) + R65 Hunt coupling + R66 ambient shadow tint
+3. **CHROMA** — HELMLAB Fourier hue correction + R52 Purkinje + R22 sat-by-luma + R21 hue rotation + R75 hue-by-luminance + chroma lift (CHROMA_STR × 0.04 raw, R68A spatial mod) + R15 HK + R69/R12 Abney + density + R71 vibrance self-mask + R73 memory color ceilings + gamut pre-knee + gclip + R105 halation DoG PSF (mip1−mip2 ring) + R106 Lorentzian tail
+
+**MistDownsample + ProMist passes (same technique):** Pro-Mist merged into grade.fx; downsample to
+MistDiffuseTex (1/8-res, MipLevels=2), composite mip1 back at full res. vkBasalt auto-generates mips.
+
+**Data highway (BackBuffer y=0):** x=0–128 luma hist · x=130–193 hue hist · x=194–196 p25/p50/p75 · x=197 R90 slope · x=198 mean Oklab C · x=199 scene cut · x=200 p90 · x=201 chroma angle (atan2 encoded) · x=202 achromatic fraction · x=210 warm bias · x=211 zone key · x=212 zone std · x=213 fc_stevens (encode ÷1.3, decode ×1.3)
+
+**Highway encoding rule:** 8-bit UNORM highway clips at 1.0. Values that can exceed 1.0 must be
+encoded on write (÷scale) and decoded on read (×scale). Document encode/decode in highway.fxh comment.
 
 ## Debug
 
