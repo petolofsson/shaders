@@ -24,7 +24,7 @@ The large color science block. Purkinje shift (scotopic blue sensitivity at low 
 Film halation is the glow around bright highlights caused by light bouncing off the film base and exposing the emulsion from behind. The model uses a DoG (Difference-of-Gaussians) PSF: mip1−mip2 of CreativeLowFreqTex creates an annular ring around bright sources with zero extra texture taps. A Lorentzian tail function γ²/(γ²+d²+ε) models the heavier-than-Gaussian falloff of deep emulsion base reflections (ISL-like, not Gaussian). Chromatic: red uses mip1 core (wider scatter, deepest dye layer), green uses mip1 (tighter), blue = zero. HAL_GAMMA controls Lorentzian tail half-width. Novel: DoG mip-ring PSF + Lorentzian tail in a zero-tap architecture — published implementations all use convolution or radial blur passes.
 
 **Output — Pro-Mist (merged into grade.fx)**
-Pro-Mist is global diffusion: the image is downsampled to MistDiffuseTex (1/8-res, MipLevels=2), vkBasalt auto-generates mip1 (1/16-res effective), and ProMistPS lerps that blurred copy back onto the sharp image. Blend strength is scene-adaptive (IQR + zone_log_key + EXPOSURE proxy). This softens micro-contrast uniformly across all tones without adding brightness. Pro-Mist is the 2nd and 3rd passes of OlofssonianColorGrade — NOT a separate effect in the chain. Veil is available for games with no volumetric fog; it is removed from Arc Raiders (was fighting engine atmospheric volumes). Novel: statistics-driven adaptive diffusion blend on a full-image lerp.
+Pro-Mist is global diffusion: the image is downsampled to MistDiffuseTex (1/8-res, MipLevels=2), vkBasalt auto-generates mip1 (1/16-res effective), and ProMistPS lerps that blurred copy back onto the sharp image. Blend strength is scene-adaptive (IQR + zone_log_key + EXPOSURE proxy). This softens micro-contrast uniformly across all tones without adding brightness. Pro-Mist is the 2nd and 3rd passes of OlofssonianColorGrade — NOT a separate effect in the chain. Veil is available for games with no volumetric fog; it is removed from testbed (engine has its own atmospheric volumes). Novel: statistics-driven adaptive diffusion blend on a full-image lerp.
 
 ---
 
@@ -53,7 +53,7 @@ Pro-Mist is global diffusion: the image is downsampled to MistDiffuseTex (1/8-re
 | Stage 3 — Chroma | 97% | 93% | R22 mid_C_boost 0.08; R74 highlight desat added; CHROMA_STR ×0.04 normalized |
 | Stage 3.5 — Halation | 96% | 88% | R105 DoG PSF ring + R106 Lorentzian tail; exposure correction removed (OPT-1); green mip0 bug fixed |
 | Output — Pro-Mist | 94% | 82% | Merged into grade.fx 3-pass technique; 1/8-res MistDiffuseTex mip1 |
-| Output — Veil | —  | —  | Removed from Arc Raiders (fights engine atmospheric volumes) |
+| Output — Veil | —  | —  | Removed from testbed (engine has own volumetrics) |
 
 ---
 
@@ -155,7 +155,7 @@ GPU cost: ~4 ALU total. No new taps.
 **Status: Removed 2026-05-04**
 
 Auto shadow temperature (+15 temp into cool shadows) was the root cause of the orange
-bias in Arc Raiders. Arc Raiders has naturally cool, saturated shadows — R47 was
+bias in testbed. Testbed has naturally cool, saturated shadows — R47 was
 fighting the explicit grade every frame. Diagnosed by zeroing all knobs and
 zero-ing R47 in shader code: orange disappeared immediately. Removed entirely from
 corrective.fx (ShadowBias pass gone; corrective now 7 passes). Do not re-implement
@@ -255,7 +255,7 @@ Auto shadow lift exposed as user scalar (1.0 = calibrated default).
 
 ### Orange hunt + R47 removal
 Systematic zero-everything diagnosis identified R47 (shadow auto-temp) as the root cause
-of the persistent orange cast in Arc Raiders. Removal strategy: zeroed all knobs, confirmed
+of the persistent orange cast in testbed. Removal strategy: zeroed all knobs, confirmed
 warm push disappeared when R47 was zeroed in shader code. R47 removed from corrective.fx.
 ShadowBias pass removed — corrective now 7 passes. PRINT_STOCK warm cast and R85 dye
 coupling confirmed as *intentional* film stock character (not part of the orange bug).
@@ -269,7 +269,7 @@ R47 was the cause. Internal constant (not a knob).
 Raw value 0.03–0.08 was inconsistent with multiplier convention of ZONE_STRENGTH, etc.
 Baked 0.04 as internal constant in grade.fx: `float chroma_str = CHROMA_STR * 0.04`.
 Knob is now a multiplier (1.0 = calibrated default, 0 = off, 2.0 = aggressive).
-Arc Raiders tuned to 1.20.
+Testbed tuned to 1.20.
 
 ### R61 HUNT_LOCALITY removed
 Per-pixel Hunt adaptation removed (knob count reduction). Global hunt_la from
@@ -293,7 +293,7 @@ Stage 0 novel: 80%→83%.
 
 ### Film curve named presets
 Documented Vision3 500T, Portra 400, Velvia 50, Ektachrome E100 as named CURVE_* value
-sets. Arc Raiders currently uses Vision3 500T values (slight warm lift in R toe, cool
+sets. Active testbed uses Vision3 500T values (slight warm lift in R toe, cool
 rolloff in B toe — characteristic 500T look in shadows).
 
 ### creative_values.fx restructured
@@ -347,7 +347,7 @@ Guards restored. Any future proof must include the cold-start frame explicitly.
 The rational-function inverse (quadratic formula approach) for UE5 ACES was the original
 plan. R90 instead uses scene statistics (IQR, p25/p75) to measure compression and recover
 chroma without identifying the specific tone mapper. This is more game-agnostic and proved
-sufficient for Arc Raiders. R86's ACES hue-shift correction remains a potential future
+sufficient for testbed. R86's ACES hue-shift correction remains a potential future
 addition if orange/magenta cast in ACES content becomes an issue again.
 
 ---
@@ -394,9 +394,9 @@ Grade.fx reads with ReadHWY(HWY_STEVENS). Establishes the highway encode/decode 
 for any future value outside [0,1].
 
 ### Pro-Mist merged into grade.fx
-No longer a separate effect in arc_raiders.conf. OlofssonianColorGrade is now a 3-pass technique:
+No longer a separate effect in the chain config. OlofssonianColorGrade is now a 3-pass technique:
 ColorTransform → MistDownsample (writes MistDiffuseTex 1/8-res) → ProMist (composites mip1).
-Veil removed from Arc Raiders entirely (was fighting engine atmospheric volumes).
+Veil removed from testbed (engine has its own atmospheric volumes).
 
 ### Session audit — bugs found and fixed
 - **fc_stevens saturate clamp**: highway write was `saturate(fc_s)`, clipping values >1.0 for

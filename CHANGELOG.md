@@ -104,10 +104,10 @@ INVERSE_STRENGTH base, HAL_STRENGTH auto-enable, and ZONE_STRENGTH inverse scali
   - Slope pre-computed in `analysis_frame` from float16 PercTex, encoded at highway x=197.
     Kalman-smoothed, no flicker. Clamp `[1.15, 1.8]` — always fires, never overexpands.
   - `inverse_grade_debug.fx` — slope colour box: blue=no-op, green=healthy, red=capped.
-  - `INVERSE_STRENGTH 0.50` in `creative_values.fx` (Arc Raiders).
+  - `INVERSE_STRENGTH 0.50` in `creative_values.fx`.
 - **Data highway extended** — x=197 carries Kalman-smoothed slope (normalised [0,1]).
 - **R86 retired** — `inverse_grade_aces.fx`, `aces_debug.fx` removed from chain.
-- **Arc Raiders tuning** — `HAL_STRENGTH 0.00`, `VEIL_STRENGTH 0.00` (both compete with
+- **Testbed tuning** — `HAL_STRENGTH 0.00`, `VEIL_STRENGTH 0.00` (both compete with
   inverse grade highlights). `EXPOSURE 0.90`.
 
 ### Key findings
@@ -123,14 +123,14 @@ INVERSE_STRENGTH base, HAL_STRENGTH auto-enable, and ZONE_STRENGTH inverse scali
 ## 2026-05-04 — session (R86 prototype)
 
 ### Implemented
-- **R86 prototype** — `inverse_grade_aces.fx` + `aces_debug.fx` in Arc Raiders chain.
+- **R86 prototype** — `inverse_grade_aces.fx` + `aces_debug.fx` in chain.
   - Analytical ACES inverse (quadratic formula, 4 ALU) + per-hue Oklab correction.
   - Scene normalization: `scene_ceil = max(ACESInverse(p75), 1.0)` prevents highlight
     clipping. Only activates for high-exposure scenes where p75 > ~0.85.
   - Confidence gate: `blend = ACES_BLEND * aces_conf`. Direct multiplication — no
     smoothstep threshold, no flicker at boundaries.
-  - `ACES_BLEND` knob in `creative_values.fx` (Arc Raiders). Current value: 0.30.
-  - `LCA_STRENGTH` set to 0.0 (Arc Raiders) — disabling for R86 validation.
+  - `ACES_BLEND` knob in `creative_values.fx`. Current value: 0.30.
+  - `LCA_STRENGTH` set to 0.0 — disabling for R86 validation.
 - **Data highway extension** — `analysis_frame.fx` DebugOverlay now encodes PercTex
   p25/p50/p75 into BackBuffer at y=0, x=194/195/196. Proven cross-effect sharing
   mechanism (PercTex `pooled = true` silently ignored by vkBasalt — confirmed dead end).
@@ -138,7 +138,7 @@ INVERSE_STRENGTH base, HAL_STRENGTH auto-enable, and ZONE_STRENGTH inverse scali
   pixels, computes ACESConfidence in Python, tracks stability.
 - **`aces_debug.fx`** — live debug overlay. Box top-right corner: red→green confidence.
   Bottom half: three columns showing raw p25/p50/p75 from highway (diagnostic mode).
-- **Arc Raiders chain reordered** — `aces_debug` moved before `analysis_scope` so it
+- **Chain reordered** — `aces_debug` moved before `analysis_scope` so it
   reads highway before scope visualization overwrites x=194-196.
 - **GZW tuning** — exposure 0.80→1.00, floor/ceiling reset to 0/1, zone_strength 1.30→1.35,
   film curve values tightened, print_stock 0.50→0.30.
@@ -164,7 +164,7 @@ INVERSE_STRENGTH base, HAL_STRENGTH auto-enable, and ZONE_STRENGTH inverse scali
   D-min ratios (1.02/1.00/0.97), modulated by CAT16 `lms_illum_norm`. Zero new taps.
 - **R84** Log-density FilmCurve (`grade.fx`): `CURVE_*` knobs reinterpreted as log₂-density
   offsets (`fc_knee * exp2(CURVE_R_KNEE)`). exp2 folds at compile time. CURVE_* values
-  recalibrated for both Arc Raiders and GZW.
+  recalibrated for both testbed configs.
 - **R85** Inter-channel dye masking (`grade.fx`): cyan→green 2.0% and magenta→blue 2.2%
   bleed inside Beer-Lambert block. First real-time implementation of inter-channel dye coupling.
 - **R88** Sage-Husa Q adaptation (`corrective.fx`): Kalman Q in `SmoothZoneLevelsPS` and
@@ -172,7 +172,7 @@ INVERSE_STRENGTH base, HAL_STRENGTH auto-enable, and ZONE_STRENGTH inverse scali
   instantaneous innovation. Single-frame flashes no longer spike the filter gain.
 - **R89** IGN blue-noise dither (`grade.fx`): Jimenez IGN replaces `sin(dot)·43758` white
   noise. Spectrally blue — banding in gradients reduced.
-- **LCA** displacement halved (base scale 0.004→0.002); Arc Raiders `LCA_STRENGTH` 0.4→0.8.
+- **LCA** displacement halved (base scale 0.004→0.002); testbed `LCA_STRENGTH` 0.4→0.8.
 
 ### Research committed
 - **R86** ACES analytical inverse — exact quadratic formula (4 ALU, float32 epsilon).

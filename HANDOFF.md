@@ -26,7 +26,7 @@ Combined expected: Output novelty 74% → 76–77%.
 
 ---
 
-## Active chain (Arc Raiders)
+## Active chain (current testbed)
 
 ```
 analysis_frame : inverse_grade : inverse_grade_debug : analysis_scope_pre : corrective : grade : pro_mist : analysis_scope
@@ -103,7 +103,7 @@ HANDOFF 2026-05-04 listed R61 as shipped. It was removed in commit `e155e6c`
 
 ---
 
-## Current creative_values.fx (Arc Raiders)
+## Current testbed creative_values.fx
 
 | Knob | Value |
 |------|-------|

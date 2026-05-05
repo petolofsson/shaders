@@ -1,7 +1,7 @@
 # Shader Pipeline
 
-vkBasalt HLSL post-process chain, game-agnostic. Arc Raiders used as test platform
-(exceptional lighting/contrast/color). SDR. Linear light throughout —
+vkBasalt HLSL post-process chain, game-agnostic. Active testbed configured in
+`gamespecific/`. SDR. Linear light throughout —
 vkBasalt auto-linearizes the sRGB swapchain. HDR must be OFF in-game.
 
 ## Active chain (`arc_raiders.conf`)
