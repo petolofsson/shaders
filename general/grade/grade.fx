@@ -573,6 +573,8 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float  mist_key_scale = lerp(1.20, 0.85, smoothstep(0.05, 0.25, zone_log_key));
     float  mist_ap_scale  = lerp(1.10, 0.90, saturate((EXPOSURE - 0.70) / 0.60));
     adapt_str *= mist_key_scale * mist_ap_scale;
+    float2 vd = uv - 0.5;
+    adapt_str *= saturate(dot(vd, vd) * 4.0);
 
     float3 result = lerp(base.rgb, blurred, saturate(adapt_str));
 
