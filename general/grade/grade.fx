@@ -19,6 +19,7 @@
 #define SAT_THRESHOLD   2
 #define GREEN_HUE_COOL  (4.0 / 360.0)
 #define BAND_RED        0.083
+#define BAND_ORANGE     0.181
 #define BAND_YELLOW     0.305
 #define BAND_GREEN      0.396
 #define BAND_CYAN       0.542
@@ -457,8 +458,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // R101: Bezold-Brücke — unique-yellow-anchored hue rotation, zero new trig (reuses sh_h/ch_h)
     r21_delta += (lab.x - 0.50) * 0.006 * (sh_h * 0.1253 + ch_h * 0.9921);
     float h_out = frac(h_perc + r21_delta * 0.10);
-    float hw_o0 = HueBandWeight(h_out, BAND_RED);
-    float hw_o1 = HueBandWeight(h_out, BAND_YELLOW);
+    float hw_o0  = HueBandWeight(h_out, BAND_RED);
+    float hw_org = HueBandWeight(h_out, BAND_ORANGE);
+    float hw_o1  = HueBandWeight(h_out, BAND_YELLOW);
     float hw_o2 = HueBandWeight(h_out, BAND_GREEN);
     float hw_o3 = HueBandWeight(h_out, BAND_CYAN);
     float hw_o4 = HueBandWeight(h_out, BAND_BLUE);
@@ -492,10 +494,12 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // R73: memory color protection — per-band chroma ceiling (sky/foliage/skin).
     // R81B: MacAdam-calibrated ceilings. Yellow tightened (smallest ellipses = finest
     // discrimination); prior comment "yellow relaxed" was inverted. Natural scene yellow
-    // peaks ~Oklab C 0.14 (Munsell 5Y chroma 14). Blue/cyan moderate (larger ellipses).
+    // peaks ~Oklab C 0.14 (Munsell 5Y chroma 14). Orange explicit band added (R118):
+    // gap between red/yellow bands left orange with no ceiling; natural orange ~0.16
+    // (Munsell 5YR). Blue/cyan moderate (larger ellipses).
     // R116: ceiling applied before vibrance so the guarantee is unambiguous — vibrance
     // masks within the ceiling-bounded lift, not on top of an already-clamped value.
-    float C_ceil      = hw_o0 * 0.28 + hw_o1 * 0.14 + hw_o2 * 0.16
+    float C_ceil      = hw_o0 * 0.28 + hw_org * 0.16 + hw_o1 * 0.14 + hw_o2 * 0.16
                       + hw_o3 * 0.15 + hw_o4 * 0.19 + hw_o5 * 0.22;
     float lifted_C_c  = min(lifted_C, max(C_ceil, C));
     // R71: vibrance — attenuate lift delta on already-saturated pixels.
