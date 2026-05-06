@@ -224,20 +224,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 {
     float4 col = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return col;  // data highway
-    float4 lf_mip0 = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 0));  // hoisted — mip0 only (vkBasalt cross-technique mips unpopulated); used by LCA gradient, CAT16, Retinex, ambient tint
-    // R107: eye LCA — edge-directional; lf_mip0.a gradient replaces 4 full-res BackBuffer reads
-    {
-        float2 mpx     = float2(4.0 / BUFFER_WIDTH, 4.0 / BUFFER_HEIGHT);  // 1 texel in mip0 space (~8px stride at 1/8-res)
-        float  gr      = tex2Dlod(CreativeLowFreqSamp, float4(uv + float2(mpx.x, 0.0), 0, 0)).a;
-        float  gl      = tex2Dlod(CreativeLowFreqSamp, float4(uv - float2(mpx.x, 0.0), 0, 0)).a;
-        float  gu      = tex2Dlod(CreativeLowFreqSamp, float4(uv + float2(0.0, mpx.y), 0, 0)).a;
-        float  gd      = tex2Dlod(CreativeLowFreqSamp, float4(uv - float2(0.0, mpx.y), 0, 0)).a;
-        float2 grad    = float2(gr - gl, gu - gd);
-        float  glen    = length(grad);
-        float2 lca_off = (grad / max(glen, 1e-5)) * saturate(glen) * LCA_STRENGTH * 0.005;
-        col.r = tex2D(BackBuffer, uv - lca_off).r;
-        col.b = tex2D(BackBuffer, uv + lca_off).b;
-    }
+    float4 lf_mip0 = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 0));  // hoisted — mip0 only (vkBasalt cross-technique mips unpopulated); used by CAT16, Retinex, ambient tint
     // R76A: CAT16 chromatic adaptation — normalise scene illuminant toward D65
     float3 lms_illum_norm;  // lifted for R83 chromatic floor
     {
@@ -258,8 +245,6 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         cat16            = cat16 * (Luma(col.rgb) / max(Luma(cat16), 0.001));
         col.rgb          = lerp(col.rgb, saturate(cat16), 0.60);
     }
-    // R76B: CIECAM02 surround compensation
-    col.rgb = pow(max(col.rgb, 0.0), VIEWING_SURROUND);
     // R54 + R83: camera signal floor/ceiling — chromatic pedestal from Kodak 2383 D-min + illuminant
     float3 cfilm_floor = FILM_FLOOR * (lms_illum_norm * float3(1.02, 1.00, 0.97));
     col.rgb = col.rgb * (FILM_CEILING - cfilm_floor) + cfilm_floor;
@@ -546,21 +531,23 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float3 chroma_rgb = OklabToRGB(float3(density_L, f_oka * gclip_ok, f_okb * gclip_ok));
     lin = saturate(chroma_rgb);
 
-    // R105: halation DoG PSF ring — LowFreqMip1 (1/16-res) inner, LowFreqMip2 (1/32-res) outer.
-    // Ring = max(0, outer - inner): annular, peaks adjacent to highlight, zero at source center.
-    // Both textures built within this technique so mip data is real (no cross-technique zero issue).
-    // R111: Lorentzian tail warms fringe further from source via G attenuation.
-    // R91: red +12% from outer blur — longer λ, deeper emulsion layer, more scatter.
+    // R105: halation — blur−sharp fires at dark pixels adjacent to bright sources.
+    // hal_blur (LowFreqMip1, 1/16-res) is the neighborhood average; col is the sharp pixel.
+    // max(0, blur − sharp) > 0 only where blur > sharp = dark pixel near a highlight. Self-limiting.
+    // DoG outer−inner does NOT work: LowFreqMip2 is 4× more diluted than LowFreqMip1 (1024 vs
+    // 256 pixel average), so outer < inner always → ring always zero. Use blur−sharp instead.
+    // R111: Lorentzian tail warms fringe via G attenuation driven by luma proximity proxy.
+    // R91: red +12% from broad blur (LowFreqMip2) — longer λ, deeper emulsion layer.
     {
-        float3 hal_inner  = tex2D(LowFreqMip1Samp, uv).rgb;
-        float3 hal_outer  = tex2D(LowFreqMip2Samp, uv).rgb;
-        float3 hal_ring   = max(0.0, hal_outer - hal_inner);
+        float3 hal_blur   = tex2D(LowFreqMip1Samp, uv).rgb;
+        float3 hal_broad  = tex2D(LowFreqMip2Samp, uv).rgb;
+        float3 hal_ring   = max(0.0, hal_blur - col.rgb);
         float  hal_luma   = dot(col.rgb, float3(0.2126, 0.7152, 0.0722));
         float  hal_thresh = max(ReadHWY(HWY_P90) * 0.90, 0.50);
         float  hal_bright = smoothstep(hal_thresh, 1.0, hal_luma);
         float  hal_d      = 1.0 - hal_bright;
         float  hal_lore   = (HAL_GAMMA * HAL_GAMMA) / (HAL_GAMMA * HAL_GAMMA + hal_d * hal_d + 1e-6);
-        float  hal_r      = hal_ring.r + hal_outer.r * 0.12;
+        float  hal_r      = hal_ring.r + hal_broad.r * 0.12;
         float  hal_g      = hal_ring.g * lerp(0.94, 0.78, hal_lore);
         lin = saturate(lin + float3(hal_r, hal_g, 0.0) * float3(1.05, 0.50, 0.0) * HAL_STRENGTH);
     }

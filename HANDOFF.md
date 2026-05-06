@@ -96,9 +96,7 @@ Fixed to match spec. 2-line change.
 | MIST_STRENGTH | 2.5 | Confirmed working |
 | VEIL_STRENGTH | 0.0 | Off |
 | PURKINJE_STRENGTH | 1.15 | — |
-| LCA_STRENGTH | 1.0 | Now actually works — may want to reduce to 0.5 |
 | INVERSE_STRENGTH | 0.40 | — |
-| VIEWING_SURROUND | 1.123 | — |
 
 ---
 
@@ -107,8 +105,6 @@ Fixed to match spec. 2-line change.
 - `inverse_grade_debug.fx` in chain — remove once tuning is stable.
 - **SHADOW_LIFT_STRENGTH needs retuning** — the fix made shadow lift dramatically weaker
   (was 4–50× over-amplified). Current value 1.30 may feel too dark. Start higher if needed.
-- **LCA_STRENGTH = 1.0** — LCA was silently off before; 1.0 full physiological may be strong.
-  Try 0.5 if edges look over-fringed.
 - CAT16 chromatic adaptation now active for real — scene-illuminant colour shifts are live.
 - Pro-Mist confirmed working (within-technique mip auto-generation verified).
 - No known compile errors or visual regressions.

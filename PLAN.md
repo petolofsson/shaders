@@ -1,6 +1,6 @@
 # Pipeline Improvement Plan
 **Goal:** Raise every stage to 90% finished / 75% novel (game-specific sense).
-**Created:** 2026-05-03 | **Updated:** 2026-05-05 (R104 DIR couplers, R105/R106 halation DoG+Lorentz, R107 edge LCA, Pro-Mist merge, fc_stevens OPT-4)
+**Created:** 2026-05-03 | **Updated:** 2026-05-06 (R113 mip bug fix, LCA removed, VIEWING_SURROUND removed)
 
 ---
 
@@ -34,7 +34,7 @@ Pro-Mist is global diffusion: the image is downsampled to MistDiffuseTex (1/8-re
 |-------|--------|-------|
 | 1 — Research | **Done** | R74–R90 all researched, findings docs committed |
 | 2 — Quick code | **Done** | R74, R75 shipped; R47 removed (orange source); R72 removed (clarity redundant) |
-| 3 — Stage 0 | **Done** | R76A (CAT16) + R76B (surround) + R90 (directional inverse grade) |
+| 3 — Stage 0 | **Done** | R76A (CAT16) + R90 (directional inverse grade) — R76B surround removed |
 | 4 — Stage 2 | **Skip** | R77 findings: no code changes needed |
 | 5 — Stage 3 | **Done** | R78 constant-hue gamut projection |
 | 6 — Stage 3.5 | **Done** | R79A/B/C halation |
@@ -104,10 +104,10 @@ GPU cost: ~3 ALU. No new taps, no new knobs.
 Normalises toward D65 in LMS cone space. More principled than R19's linear RGB shifts.
 Uses spatially-measured illuminant from `CreativeLowFreqTex mip 2`.
 
-**R76B — CIECAM02 viewing condition surround compensation.**
-Dark-room vs. bright-room contrast adjustment. `VIEWING_SURROUND` knob (0.9–1.2).
+**R76B — CIECAM02 viewing condition surround compensation. Removed 2026-05-06.**
+Outside environment is not the pipeline's responsibility to compensate for.
 
-GPU cost: CAT16 = matrix multiply (9 MAD). Surround = 2–3 ALU. No new taps.
+GPU cost: CAT16 = matrix multiply (9 MAD). No new taps.
 
 ---
 
@@ -205,10 +205,9 @@ First real-time post-process to model inter-channel dye coupling. Stage 1 novel:
 
 ## Post-plan additions
 
-### R81A — Eye LCA (longitudinal chromatic aberration)
-Per-pixel radial channel separation modelling the human eye's focus-wavelength
-dispersion. Blue samples outward, red inward from screen centre. `LCA_STRENGTH` knob.
-First physiologically-grounded LCA in game post-process.
+### R81A — Eye LCA (longitudinal chromatic aberration) — **Removed 2026-05-06**
+Revised 10+ times across multiple sessions. Fundamental problem: no way to exclude UI text
+without a UI mask. Fires on text with any luminance or edge model. Permanently removed.
 
 ### R81B — MacAdam-calibrated chroma ceilings
 Per-hue chroma ceilings re-derived from MacAdam discrimination ellipses: blue/cyan
@@ -299,7 +298,7 @@ rolloff in B toe — characteristic 500T look in shadows).
 ### creative_values.fx restructured
 Reordered all knobs in workflow-logical tuning order:
 INVERSE → EXPOSURE → FILM → PRINT_STOCK → CURVE → ZONE → SHADOW_LIFT → CC → CHROMA →
-HUE → HAL → MIST → VEIL → VIGN → PURKINJE → LCA → SURROUND.
+HUE → HAL → MIST → VEIL → VIGN → PURKINJE.
 
 ### R74 — Highlight Desaturation (Done)
 Oklab C rolloff above L=0.80: `C *= 1.0 - 0.30 * saturate((lab.x - 0.80) / 0.20)`.

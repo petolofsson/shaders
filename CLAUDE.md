@@ -87,9 +87,6 @@ inverse_grade.fx runs before corrective — R90 chroma expansion on pre-correcti
 and `LowFreqMip2Tex` (1/32-res) from `CreativeLowFreqTex` mip0 via 4-tap box filter. Must run
 before ColorTransform. Cross-technique mips are zero — these passes are the fix (R113).
 
-**ColorTransformPS pass (pre-stage):** R107 edge-directional LCA — lf_mip0.a gradient drives
-CA offset direction; 4 reads at mip0 stride (~8px); replaces radial offset
-
 1. **CORRECTIVE** — CAT16 chromatic adaptation (illum from lf_mip0) + `pow(rgb, EXPOSURE)` + R104 DIR couplers (log2-space cross-channel inhibition, default off) + FilmCurve (p25/p50/p75, fc_stevens from highway x=213) + R83 chromatic floor + R84 log-density offsets + R85 dye masking + R19 3-way CC
 2. **TONAL** — Zone S-curve + Spatial norm (auto from zone_std) + R29 Retinex (illum_s0 from LowFreqMip1, illum_s2 from LowFreqMip2) + Shadow lift + R62 Oklab-stable tonal (L-substitution, chroma preserved) + R65 Hunt coupling + R66 ambient shadow tint (illum from LowFreqMip2)
 3. **CHROMA** — HELMLAB Fourier hue correction + R52 Purkinje + R22 sat-by-luma + R21 hue rotation + R75 hue-by-luminance + chroma lift (CHROMA_STR × 0.04 raw, R68A spatial mod) + R15 HK + R69/R12 Abney + density + R71 vibrance self-mask + R73 memory color ceilings + gamut pre-knee + gclip + R105 halation DoG PSF (LowFreqMip1 inner / LowFreqMip2 outer ring) + R106 Lorentzian tail

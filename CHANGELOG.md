@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-05-06 — session (R113 mip fix, LCA removed, surround removed)
+
+### Removed
+
+- **LCA / R107** — Edge-directional chromatic aberration permanently removed. Revised
+  10+ times across multiple sessions (radial → edge-directional → ddx/ddy → 4-tap central
+  difference → highlight-gated → tent function). Core problem: no way to exclude UI text
+  without a UI mask. `LCA_STRENGTH` knob removed from both `creative_values.fx` files.
+- **VIEWING_SURROUND / R76B** — CIECAM02 surround compensation removed. Outside viewing
+  environment is not the pipeline's responsibility. `pow(col.rgb, VIEWING_SURROUND)` line
+  deleted from `grade.fx`. `VIEWING_SURROUND` knob removed from both `creative_values.fx` files.
+
+### Fixed
+
+- **R113** — vkBasalt cross-technique mip generation bug. `CreativeLowFreqTex` mip1/mip2
+  were zero everywhere — vkBasalt only auto-generates mips for render targets written and
+  read within the same technique. Fix: two explicit downscale passes (`LFDownscale1PS`,
+  `LFDownscale2PS`) within `OlofssonianColorGrade`. `grade.fx` is now a 5-pass technique.
+  All downstream effects (Retinex, halation, shadow lift, CAT16, R66) now receive real data.
+- **Halation** — Switched from DoG (`mip2 − mip1`, which was always zero) to blur-sharp
+  model (`max(0, LowFreqMip1 − col.rgb)`). Fires at dark pixels adjacent to bright sources.
+
+---
+
 ## 2026-05-05 — session (R101 chroma refinements + OPT-1/2/3/4)
 
 ### Implemented

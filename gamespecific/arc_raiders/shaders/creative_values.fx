@@ -94,19 +94,19 @@
 // brightest sources (luma > 0.80). Red scatters most (deepest dye layer),
 // green tighter, blue none. Fires inside game bloom radius, not on top of it.
 // 0 = off. 0.35 = calibrated default. 1.0 = Ektachrome-style aggressive.
-#define HAL_STRENGTH  0.35
+#define HAL_STRENGTH  0.8
 // HAL_GAMMA: Lorentzian tail half-width for the broad scatter component.
 // Controls how far the halo bleeds past the annular ring into dark areas.
 // Lower = faster falloff (tight halo, near-Gaussian). Higher = heavier tail
 // (halo lingers further, models deeper emulsion base reflections).
 // Range 0.10–1.0. 0.40 = calibrated default.
-#define HAL_GAMMA     0.40
+#define HAL_GAMMA     1.20
 
 // ── PRO MIST ──────────────────────────────────────────────────────────────────
 // Global diffusion strength. Blends a heavily blurred copy of the image back
 // onto the sharp image — micro-contrast softening across all tones equally.
 // 1.0 = calibrated default (~6% blend). 0 = off.
-#define MIST_STRENGTH  2.5
+#define MIST_STRENGTH  5.0
 
 // ── VEIL ──────────────────────────────────────────────────────────────────────
 // Veiling glare: additive luminance lift simulating intraocular scatter and lens
@@ -130,18 +130,7 @@
 // Rod-vision blue-green hue bias in deep shadows (luma < 0.12). Physiologically
 // correct — Cao et al. 2008, implemented in Ghost of Tsushima. Neutrals unaffected
 // (C=0 → zero shift). 1.0 = calibrated default. 0 = off.
-#define PURKINJE_STRENGTH  1.15
-
-// ── EYE LCA ───────────────────────────────────────────────────────────────────
-// Longitudinal chromatic aberration of the human eye: blue focuses short, red
-// focuses long. Simulates the natural per-channel fringe that real-world optics
-// produce. 0 = off. 0.5 = subtle (~1.2D). 1.0 = full physiological LCA (~2.4D).
-#define LCA_STRENGTH  1.0
-
-// ── VIEWING SURROUND ─────────────────────────────────────────────────────────
-// CIECAM02 surround compensation (R76B). Corrects perceived contrast for dark-room
-// viewing. 1.0 = off. dim→dark (gaming/desktop): 1.123. average→dark: 1.314.
-#define VIEWING_SURROUND  1.123
+#define PURKINJE_STRENGTH  1.1
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.

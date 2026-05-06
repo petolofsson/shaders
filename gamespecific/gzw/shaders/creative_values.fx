@@ -119,17 +119,6 @@
 // (C=0 → zero shift). 1.0 = calibrated default. 0 = off.
 #define PURKINJE_STRENGTH  1.25
 
-// ── EYE LCA ───────────────────────────────────────────────────────────────────
-// Longitudinal chromatic aberration of the human eye: blue focuses short, red
-// focuses long. Simulates the natural per-channel fringe that real-world optics
-// produce. 0 = off. 0.5 = subtle (~1.2D). 1.0 = full physiological LCA (~2.4D).
-#define LCA_STRENGTH  0.4
-
-// ── VIEWING SURROUND ─────────────────────────────────────────────────────────
-// CIECAM02 surround compensation (R76B). Corrects perceived contrast for dark-room
-// viewing. 1.0 = off. dim→dark (gaming/desktop): 1.123. average→dark: 1.314.
-#define VIEWING_SURROUND  1.123
-
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.
 #define CORRECTIVE_STRENGTH 100
