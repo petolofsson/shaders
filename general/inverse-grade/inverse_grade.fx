@@ -84,12 +84,7 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     float  mean_C  = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).r;
     float  factor  = lerp(1.0, slope, float(INVERSE_STRENGTH) * mid_weight * c_weight);
     float2 dir     = lab.yz / max(C, 1e-5);
-    // Directional expansion — bias toward scene dominant hue (HWY_CHROMA_ANGLE)
-    float  scene_theta = ReadHWY(HWY_CHROMA_ANGLE) * (2.0 * 3.14159265) - 3.14159265;
-    float  sc_s, sc_c;
-    sincos(scene_theta, sc_s, sc_c);
-    float  dir_weight = saturate(dot(dir, float2(sc_c, sc_s)) * 0.5 + 0.5);
-    float  new_C   = mean_C + (C - mean_C) * lerp(1.0, factor, dir_weight);
+    float  new_C   = mean_C + (C - mean_C) * factor;
     lab.yz         = dir * max(new_C, 0.0);
     col.rgb        = saturate(OklabToRGB(lab));
     return col;

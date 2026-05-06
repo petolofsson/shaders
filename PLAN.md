@@ -47,12 +47,12 @@ Pro-Mist is an additive shimmer/bloom effect: the image is downsampled to MistDi
 
 | Stage | Finished | Novel | Notes |
 |-------|----------|-------|-------|
-| Stage 0 — Input | 95% | 85% | Gap: directional bias is single-hue only (dominant direction); multi-hue scenes under-expanded |
+| Stage 0 — Input | 97% | 86% | R117: uniform expansion; multi-hue scenes now fully covered |
 | Stage 1 — Corrective | 94% | 83% | Gap: CAT16 illuminant from coarse lf_mip0 average; FilmCurve S-shape simplified (linear between p25/p75) |
-| Stage 2 — Tonal | 92% | 88% | Gap: ZONE_STRENGTH needs retune post-R116; R88 VFF Kalman removed from zone smoothing (novelty dip) |
-| Stage 3 — Chroma | 97% | 92% | Most complete stage; minor gaps: HK sqrt approx (0.8% err), Abney data from 1984 |
-| Stage 3.5 — Halation | 94% | 89% | Gap: ring radius fixed at 1/16-res; can't scale PSF width with highlight brightness |
-| Output — Pro-Mist | 93% | 84% | Gap: single-scale blur only (1/8-res mip1); no multi-scale scatter falloff |
+| Stage 2 — Tonal | 93% | 88% | ZONE_STRENGTH retuned in-game (user); R88 VFF Kalman removed from zone smoothing (accepted) |
+| Stage 3 — Chroma | 97% | 92% | HK adaptive exponent already implemented (R101 F2); minor gaps: Abney data from 1984 |
+| Stage 3.5 — Halation | 96% | 91% | R117: broad scatter scales with source brightness; PSF radius now adaptive |
+| Output — Pro-Mist | 95% | 86% | R117: three-scale blur (mip0/1/2); falloff now extends to 1/32-res |
 | Output — Veil | —  | —  | Removed from testbed (engine has own volumetrics) |
 
 ---
@@ -440,3 +440,29 @@ Full audit of all statistical and logical issues in the pipeline. Research paper
 - Issue 6 (triple highlight compression) — stacking is physically correct; measure before changing
 - Issue 7 (black lift documentation) — comment-only; low priority
 - Switching to intra-zone std immediately recommended ZONE_STRENGTH retune before finalising
+
+---
+
+## Session 2026-05-06 additions (R117)
+
+### R117 — Stage gap closures (3 changes)
+
+**Stage 0 — Uniform chroma expansion** (`inverse_grade.fx`)
+Removed directional bias (`dir_weight` cosine toward HWY_CHROMA_ANGLE). Multi-hue scenes
+(warm practicals + cool fill) were under-expanding colours orthogonal to the dominant hue.
+The C-gate and mid_weight already protect neutrals — the directional constraint was redundant.
+`scene_theta`, `sincos`, `dir_weight` removed. `new_C = mean_C + (C - mean_C) * factor`.
+Saves 1 sincos + ~4 ALU. Stage 0: 95/85 → 97/86.
+
+**Stage 3.5 — Halation brightness-scaled PSF** (`grade.fx`)
+`hal_broad.r` broad factor scaled by `hal_bright`: `lerp(0.06, 0.18, hal_bright)` instead of
+fixed 0.12. Brighter sources now produce wider scatter (larger effective PSF radius).
+Green broad component added: `hal_ring.g + hal_broad.g * hal_bright * 0.06`. Blue unchanged.
+Stage 3.5: 94/89 → 96/91.
+
+**Output — Pro-Mist three-scale blur** (`grade.fx`)
+`MistDiffuseTex` MipLevels 2 → 3. vkBasalt auto-generates mip2 within-technique (same rule
+confirmed for mip1). ProMistPS adds `mist_broader = tex2Dlod(MistDiffuseSamp, ..., mip2)`.
+Blended in via `broad_w = saturate(MIST_STRENGTH * 0.20 − 0.10)` — ramps above ~0.5.
+All three scales from post-grade MistDiffuseTex: no pre/post-grade colour mismatch.
+Output Pro-Mist: 93/84 → 95/86.

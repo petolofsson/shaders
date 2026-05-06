@@ -113,8 +113,8 @@ sampler2D LowFreqMip2Samp
     MagFilter = LINEAR;
 };
 
-// Pro-Mist downsample target — 1/8-res, 2 mips; mip 1 = 1/16-res effective (same blur as old 1/4-res mip 2)
-texture2D MistDiffuseTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 2; };
+// Pro-Mist downsample target — 1/8-res, 3 mips; mip1=1/16-res, mip2=1/32-res (vkBasalt auto-generates within-technique)
+texture2D MistDiffuseTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 3; };
 sampler2D MistDiffuseSamp
 {
     Texture   = MistDiffuseTex;
@@ -557,8 +557,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         float  hal_bright = smoothstep(hal_thresh, 1.0, hal_luma);
         float  hal_d      = 1.0 - hal_bright;
         float  hal_lore   = (HAL_GAMMA * HAL_GAMMA) / (HAL_GAMMA * HAL_GAMMA + hal_d * hal_d + 1e-6);
-        float  hal_r      = hal_ring.r + hal_broad.r * 0.12;
-        float  hal_g      = hal_ring.g * lerp(0.94, 0.78, hal_lore);
+        float  hal_r      = hal_ring.r + hal_broad.r * lerp(0.06, 0.18, hal_bright);
+        float  hal_g      = (hal_ring.g + hal_broad.g * hal_bright * 0.06) * lerp(0.94, 0.78, hal_lore);
         float  hal_b      = hal_ring.b * lerp(0.38, 0.22, hal_lore);
         lin = saturate(lin + float3(hal_r, hal_g, hal_b) * float3(1.05, 0.30, 0.03) * HAL_STRENGTH);
     }
@@ -610,9 +610,10 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     // R115: shimmer model — additive bloom only where blur > sharp (highlight→shadow bleed).
     // Dark pixels near bright sources glow; midtones and shadows unaffected.
     // Replaces R108 symmetric lerp-diffusion (which softened micro-contrast uniformly).
-    // Two-scale blur: tight (mip0) at low strength, wide (mip1) at high — unchanged.
-    float3 mist_tight = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 0)).rgb;
-    float3 mist_wide  = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 1)).rgb;
+    // Three-scale blur: tight (mip0) / wide (mip1) / broader (mip2, 1/32-res effective).
+    float3 mist_tight   = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 0)).rgb;
+    float3 mist_wide    = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 1)).rgb;
+    float3 mist_broader = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 2)).rgb;
 
     float4 perc           = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
     float  iqr            = perc.b - perc.r;
@@ -624,10 +625,11 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float2 vd = uv - 0.5;
     adapt_str *= saturate(dot(vd, vd) * 4.0);
 
-    float  scale_w  = saturate(MIST_STRENGTH * 0.25);
-    float3 blurred  = lerp(mist_tight, mist_wide, scale_w);
-    float3 bloom    = max(0.0, blurred - base.rgb);
-    float3 result   = base.rgb + bloom * adapt_str;
+    float  scale_w   = saturate(MIST_STRENGTH * 0.25);
+    float  broad_w   = saturate(MIST_STRENGTH * 0.20 - 0.10);  // ramps in above MIST_STRENGTH ~0.5
+    float3 blurred   = lerp(lerp(mist_tight, mist_wide, scale_w), mist_broader, broad_w);
+    float3 bloom     = max(0.0, blurred - base.rgb);
+    float3 result    = base.rgb + bloom * adapt_str;
 
     float dither = frac(52.9829189 * frac(dot(pos.xy, float2(0.06711056, 0.00583715)))) - 0.5;
     result += dither * (1.0 / 255.0);
