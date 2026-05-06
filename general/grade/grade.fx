@@ -560,7 +560,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         float  hal_r      = hal_ring.r + hal_broad.r * 0.12;
         float  hal_g      = hal_ring.g * lerp(0.94, 0.78, hal_lore);
         float  hal_b      = hal_ring.b * lerp(0.38, 0.22, hal_lore);
-        lin = saturate(lin + float3(hal_r, hal_g, hal_b) * float3(1.05, 0.30, 0.03) * HAL_STRENGTH);
+        lin = saturate(lin + float3(hal_r, hal_g, hal_b) * float3(1.05, 0.45, 0.03) * HAL_STRENGTH);
     }
 
     // dither: break 8-bit BackBuffer quantization — converts banding to imperceptible noise
@@ -609,8 +609,8 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
     // R115: shimmer model — additive bloom only where blur > sharp (highlight→shadow bleed).
     // Dark pixels near bright sources glow; midtones and shadows unaffected.
-    // Replaces R108 symmetric lerp-diffusion (which softened micro-contrast uniformly).
-    // Two-scale blur: tight (mip0) / wide (mip1). mip2 unverified in vkBasalt — reverted R117.
+    // R118: shadow lift — forward-scattered highlight energy reaches dark areas (Black Pro-Mist physics).
+    // Two-scale bloom (post-grade mip0/1) + neutral shadow lift from LowFreqMip2 (1/32-res ambient map).
     float3 mist_tight = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 0)).rgb;
     float3 mist_wide  = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 1)).rgb;
 
@@ -628,6 +628,15 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float3 blurred  = lerp(mist_tight, mist_wide, scale_w);
     float3 bloom    = max(0.0, blurred - base.rgb);
     float3 result   = base.rgb + bloom * adapt_str;
+
+    // R118: shadow lift — broad ambient scatter from LowFreqMip2 (pre-grade 1/32-res).
+    // Neutral (luma-only) to match Black Pro-Mist character: highlights scatter, blacks lift,
+    // colour is not introduced. Strongest at base_lum=0, zero at base_lum=1.
+    float3 lf_broad    = tex2Dlod(LowFreqMip2Samp, float4(uv, 0, 0)).rgb;
+    float  lf_lum      = dot(lf_broad, float3(0.2126, 0.7152, 0.0722));
+    float  base_lum    = dot(base.rgb,  float3(0.2126, 0.7152, 0.0722));
+    float  shadow_lift = lf_lum * MIST_STRENGTH * 0.06 * (1.0 - base_lum);
+    result = saturate(result + shadow_lift);
 
     float dither = frac(52.9829189 * frac(dot(pos.xy, float2(0.06711056, 0.00583715)))) - 0.5;
     result += dither * (1.0 / 255.0);
