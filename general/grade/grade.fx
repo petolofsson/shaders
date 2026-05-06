@@ -490,11 +490,12 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         lifted_C += (0.008 * mem_sky + 0.006 * mem_fol + 0.006 * mem_skn) * C;
     }
     // R73: memory color protection — per-band chroma ceiling (sky/foliage/skin).
-    // R81B: MacAdam-calibrated ceilings — blue/cyan tightened (smallest discrimination
-    // ellipses), yellow relaxed (largest ellipses).
+    // R81B: MacAdam-calibrated ceilings. Yellow tightened (smallest ellipses = finest
+    // discrimination); prior comment "yellow relaxed" was inverted. Natural scene yellow
+    // peaks ~Oklab C 0.14 (Munsell 5Y chroma 14). Blue/cyan moderate (larger ellipses).
     // R116: ceiling applied before vibrance so the guarantee is unambiguous — vibrance
     // masks within the ceiling-bounded lift, not on top of an already-clamped value.
-    float C_ceil      = hw_o0 * 0.28 + hw_o1 * 0.24 + hw_o2 * 0.16
+    float C_ceil      = hw_o0 * 0.28 + hw_o1 * 0.14 + hw_o2 * 0.16
                       + hw_o3 * 0.15 + hw_o4 * 0.19 + hw_o5 * 0.22;
     float lifted_C_c  = min(lifted_C, max(C_ceil, C));
     // R71: vibrance — attenuate lift delta on already-saturated pixels.
