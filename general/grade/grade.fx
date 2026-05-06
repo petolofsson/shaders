@@ -20,11 +20,16 @@
 #define GREEN_HUE_COOL  (4.0 / 360.0)
 #define BAND_RED        0.083
 #define BAND_ORANGE     0.181
+#define BAND_AMBER      0.242
 #define BAND_YELLOW     0.305
 #define BAND_GREEN      0.396
+#define BAND_TEAL       0.469
 #define BAND_CYAN       0.542
+#define BAND_AZURE      0.639
 #define BAND_BLUE       0.735
+#define BAND_VIOLET     0.825
 #define BAND_MAGENTA    0.913
+#define BAND_ROSE       0.997
 
 
 // ─── Textures ──────────────────────────────────────────────────────────────
@@ -460,11 +465,16 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float h_out = frac(h_perc + r21_delta * 0.10);
     float hw_o0  = HueBandWeight(h_out, BAND_RED);
     float hw_org = HueBandWeight(h_out, BAND_ORANGE);
+    float hw_amb = HueBandWeight(h_out, BAND_AMBER);
     float hw_o1  = HueBandWeight(h_out, BAND_YELLOW);
-    float hw_o2 = HueBandWeight(h_out, BAND_GREEN);
-    float hw_o3 = HueBandWeight(h_out, BAND_CYAN);
-    float hw_o4 = HueBandWeight(h_out, BAND_BLUE);
-    float hw_o5 = HueBandWeight(h_out, BAND_MAGENTA);
+    float hw_o2  = HueBandWeight(h_out, BAND_GREEN);
+    float hw_tel = HueBandWeight(h_out, BAND_TEAL);
+    float hw_o3  = HueBandWeight(h_out, BAND_CYAN);
+    float hw_azr = HueBandWeight(h_out, BAND_AZURE);
+    float hw_o4  = HueBandWeight(h_out, BAND_BLUE);
+    float hw_vio = HueBandWeight(h_out, BAND_VIOLET);
+    float hw_o5  = HueBandWeight(h_out, BAND_MAGENTA);
+    float hw_ros = HueBandWeight(h_out, BAND_ROSE);
 
     float chroma_str = CHROMA_STR * 0.04;
     chroma_str *= lerp(1.0, 0.65, smoothstep(0.02, 0.08, local_var));  // R68A: attenuate in textured regions
@@ -492,15 +502,13 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         lifted_C += (0.008 * mem_sky + 0.006 * mem_fol + 0.006 * mem_skn) * C;
     }
     // R73: memory color protection — per-band chroma ceiling (sky/foliage/skin).
-    // R81B: MacAdam-calibrated ceilings. Yellow tightened (smallest ellipses = finest
-    // discrimination); prior comment "yellow relaxed" was inverted. Natural scene yellow
-    // peaks ~Oklab C 0.14 (Munsell 5Y chroma 14). Orange explicit band added (R118):
-    // gap between red/yellow bands left orange with no ceiling; natural orange ~0.16
-    // (Munsell 5YR). Blue/cyan moderate (larger ellipses).
-    // R116: ceiling applied before vibrance so the guarantee is unambiguous — vibrance
-    // masks within the ceiling-bounded lift, not on top of an already-clamped value.
-    float C_ceil      = hw_o0 * 0.28 + hw_org * 0.16 + hw_o1 * 0.14 + hw_o2 * 0.16
-                      + hw_o3 * 0.15 + hw_o4 * 0.19 + hw_o5 * 0.22;
+    // R81B/R118: full 12-hue wheel coverage — primaries + secondaries + tertiary fill bands.
+    // Ceilings follow Munsell natural chroma: yellow tightest (finest MacAdam discrimination,
+    // ~Munsell C14), warm hues moderate, cool hues relaxed (larger MacAdam ellipses in blue).
+    // R116: ceiling applied before vibrance so the guarantee is unambiguous.
+    float C_ceil      = hw_o0 * 0.28 + hw_org * 0.16 + hw_amb * 0.15 + hw_o1 * 0.14
+                      + hw_o2 * 0.16 + hw_tel * 0.15 + hw_o3 * 0.15 + hw_azr * 0.17
+                      + hw_o4 * 0.19 + hw_vio * 0.20 + hw_o5 * 0.22 + hw_ros * 0.22;
     float lifted_C_c  = min(lifted_C, max(C_ceil, C));
     // R71: vibrance — attenuate lift delta on already-saturated pixels.
     float vib_mask = saturate(1.0 - C / 0.22);
