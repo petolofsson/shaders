@@ -641,8 +641,7 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
     // R115: shimmer model — additive bloom only where blur > sharp (highlight→shadow bleed).
     // Dark pixels near bright sources glow; midtones and shadows unaffected.
-    // R118: shadow lift — forward-scattered highlight energy reaches dark areas (Black Pro-Mist physics).
-    // Two-scale bloom (post-grade mip0/1) + neutral shadow lift from LowFreqMip2 (1/32-res ambient map).
+    // Reinhard knee at 0.08: soft shoulder prevents clipping; adapt_str controls overall scale.
     float3 mist_tight = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 0)).rgb;
     float3 mist_wide  = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 1)).rgb;
 
@@ -654,20 +653,11 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float  mist_ap_scale  = lerp(1.10, 0.90, saturate((EXPOSURE - 0.70) / 0.60));
     adapt_str *= mist_key_scale * mist_ap_scale;
 
-    float  scale_w  = saturate(MIST_STRENGTH * 0.25);
+    float  scale_w   = saturate(MIST_STRENGTH * 0.25);
     float3 blurred   = lerp(mist_tight, mist_wide, scale_w);
     float3 bloom_raw = max(0.0, blurred - base.rgb);
-    float3 bloom     = bloom_raw / (bloom_raw + 0.08);  // Reinhard: soft toe + shoulder, peak midrange
-    float3 result    = base.rgb + bloom * adapt_str * 0.08;
-
-    // R118: shadow lift — broad ambient scatter from LowFreqMip2 (pre-grade 1/32-res).
-    // Neutral (luma-only) to match Black Pro-Mist character: highlights scatter, blacks lift,
-    // colour is not introduced. Strongest at base_lum=0, zero at base_lum=1.
-    float3 lf_broad    = tex2Dlod(LowFreqMip2Samp, float4(uv, 0, 0)).rgb;
-    float  lf_lum      = dot(lf_broad, float3(0.2126, 0.7152, 0.0722));
-    float  base_lum    = dot(base.rgb,  float3(0.2126, 0.7152, 0.0722));
-    float  shadow_lift = lf_lum * MIST_STRENGTH * 0.06 * (1.0 - base_lum);
-    result = saturate(result + shadow_lift);
+    float3 bloom     = bloom_raw / (bloom_raw + 0.08);
+    float3 result    = saturate(base.rgb + bloom * adapt_str);
 
     float dither = frac(52.9829189 * frac(dot(pos.xy, float2(0.06711056, 0.00583715)))) - 0.5;
     result += dither * (1.0 / 255.0);
