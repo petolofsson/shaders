@@ -41,6 +41,29 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 }
 
 
+// ── Hue band ceiling (mirrors R73 in grade.fx) ───────────────────────────────
+#define IG_BAND_WIDTH   0.08
+#define IG_BAND_RED     0.083
+#define IG_BAND_ORANGE  0.181
+#define IG_BAND_AMBER   0.242
+#define IG_BAND_YELLOW  0.305
+#define IG_BAND_GREEN   0.396
+#define IG_BAND_TEAL    0.469
+#define IG_BAND_CYAN    0.542
+#define IG_BAND_AZURE   0.639
+#define IG_BAND_BLUE    0.735
+#define IG_BAND_VIOLET  0.825
+#define IG_BAND_MAGENTA 0.913
+#define IG_BAND_ROSE    0.997
+
+float IGBandWeight(float hue, float center)
+{
+    float d = abs(hue - center);
+    d = min(d, 1.0 - d);
+    float t = saturate(1.0 - d / IG_BAND_WIDTH);
+    return t * t * (3.0 - 2.0 * t);
+}
+
 float3 RGBToOklab(float3 rgb)
 {
     float l = dot(rgb, float3(0.4122214708, 0.5363325363, 0.0514459929));
@@ -85,6 +108,25 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     float  factor  = lerp(1.0, slope, float(INVERSE_STRENGTH) * mid_weight * c_weight);
     float2 dir     = lab.yz / max(C, 1e-5);
     float  new_C   = mean_C + (C - mean_C) * factor;
+
+    // Per-hue ceiling — prevents expansion from overshooting natural gamut.
+    // Preserves incoming C if already above ceiling (no reduction), but blocks
+    // inverse grade from pushing further. Mirrors R73 ceilings in grade.fx.
+    float hue    = frac(atan2(lab.z, lab.y) / 6.28318530);
+    float C_ceil = IGBandWeight(hue, IG_BAND_RED)     * 0.28
+                 + IGBandWeight(hue, IG_BAND_ORANGE)  * 0.16
+                 + IGBandWeight(hue, IG_BAND_AMBER)   * 0.15
+                 + IGBandWeight(hue, IG_BAND_YELLOW)  * 0.14
+                 + IGBandWeight(hue, IG_BAND_GREEN)   * 0.16
+                 + IGBandWeight(hue, IG_BAND_TEAL)    * 0.15
+                 + IGBandWeight(hue, IG_BAND_CYAN)    * 0.15
+                 + IGBandWeight(hue, IG_BAND_AZURE)   * 0.17
+                 + IGBandWeight(hue, IG_BAND_BLUE)    * 0.19
+                 + IGBandWeight(hue, IG_BAND_VIOLET)  * 0.20
+                 + IGBandWeight(hue, IG_BAND_MAGENTA) * 0.22
+                 + IGBandWeight(hue, IG_BAND_ROSE)    * 0.22;
+    new_C        = min(new_C, max(C_ceil, C));
+
     lab.yz         = dir * max(new_C, 0.0);
     col.rgb        = saturate(OklabToRGB(lab));
     return col;
