@@ -65,6 +65,7 @@ Pro-Mist is merged inside grade.fx — it is NOT a separate effect in the chain.
 | `general/inverse-grade/inverse_grade.fx` | R90 adaptive inverse tone mapping (pre-corrective) |
 | `general/analysis-frame/analysis_frame.fx` | Histogram, PercTex, data highway encoding |
 | `general/highway.fxh` | Data highway slot constants + `ReadHWY()` macro |
+| `general/hue_bands.fxh` | 12-hue band centers, `HueBandWeight()`, `HueCeil()` — natural chroma ceilings shared by inverse_grade.fx and grade.fx |
 | `gamespecific/arc_raiders/shaders/debug_text.fxh` | 3×5 debug font, included by all effects |
 | `gamespecific/arc_raiders/arc_raiders.conf` | Chain config — never touch without ask |
 
@@ -81,7 +82,7 @@ Reads from BackBuffer (post-inverse_grade, post-corrective). Analysis textures
 (ZoneHistoryTex, ChromaHistoryTex, PercTex, CreativeLowFreqTex) written by corrective.fx.
 inverse_grade.fx runs before corrective — R90 chroma expansion on pre-corrective signal.
 
-**Pre-grade:** inverse_grade.fx — Oklab chroma expansion (slope from highway x=197, INVERSE_STRENGTH)
+**Pre-grade:** inverse_grade.fx — Oklab chroma expansion (slope from highway x=197, INVERSE_STRENGTH) + per-hue chroma ceiling (`HueCeil()` from hue_bands.fxh — blocks expansion overshoot past natural gamut)
 
 **LFDownscale1 + LFDownscale2 passes (pre-ColorTransform):** Build `LowFreqMip1Tex` (1/16-res)
 and `LowFreqMip2Tex` (1/32-res) from `CreativeLowFreqTex` mip0 via 4-tap box filter. Must run
@@ -89,7 +90,7 @@ before ColorTransform. Cross-technique mips are zero — these passes are the fi
 
 1. **CORRECTIVE** — CAT16 chromatic adaptation (illum from lf_mip0, adaptive blend 0.80 near-neutral / 0.60 tinted) + `pow(rgb, EXPOSURE)` + R104 DIR couplers (log2-space cross-channel inhibition, default off) + FilmCurve (pure global p25/p75, fc_stevens from highway x=213) + R83 chromatic floor + R84 log-density offsets + R85 dye masking + R19 3-way CC
 2. **TONAL** — Zone S-curve + Spatial norm (auto from zone_std) + R29 Retinex (illum_s0 from LowFreqMip1, illum_s2 from LowFreqMip2) + Shadow lift + R62 Oklab-stable tonal (L-substitution, chroma preserved) + R65 Hunt coupling + R66 ambient shadow tint (illum from LowFreqMip2)
-3. **CHROMA** — HELMLAB Fourier hue correction + R52 Purkinje + R22 sat-by-luma + R21 hue rotation + R75 hue-by-luminance + chroma lift (CHROMA_STR × 0.04 raw, R68A spatial mod) + R15 HK + R69/R12 Abney + density + R71 vibrance self-mask + R73 memory color ceilings + gamut pre-knee + gclip + R105 halation DoG PSF (LowFreqMip1 inner / LowFreqMip2 outer ring) + R106 Lorentzian tail
+3. **CHROMA** — HELMLAB Fourier hue correction + R52 Purkinje + R22 sat-by-luma + R21 hue rotation + R75 hue-by-luminance + chroma lift (CHROMA_STR × 0.04 raw, R68A spatial mod) + R15 HK + R69/R12 Abney + density + R71 vibrance self-mask + R73 memory color ceilings (`HueCeil()` from hue_bands.fxh, full 12-hue wheel) + gamut pre-knee + gclip + R105 halation DoG PSF (LowFreqMip1 inner / LowFreqMip2 outer ring) + R106 Lorentzian tail
 
 **MistDownsample + ProMist passes (same technique):** Pro-Mist merged into grade.fx; downsample to
 MistDiffuseTex (1/8-res, MipLevels=2), composite mip1 back at full res via additive shimmer:
