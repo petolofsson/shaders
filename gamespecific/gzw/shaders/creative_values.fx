@@ -28,7 +28,7 @@
 // Kodak 2383 print emulsion on top of FilmCurve: lifts blacks, compresses
 // highlights, desaturates mids ~15%, adds warm shadow cast. 0 = off.
 // 1 = full 2383. 0.35 = recommended starting point.
-#define PRINT_STOCK  0.40
+#define PRINT_STOCK  0.50
 
 // ── DIR COUPLERS ──────────────────────────────────────────────────────────────
 // Developer-inhibitor-release cross-channel masking. Each dye layer releases
@@ -103,13 +103,13 @@
 // Lower = crossover occurs at lower ring brightness (more orange overall).
 // Higher = crossover threshold rises (inner ring stays balanced further out).
 // Range 0.02–0.20. Tune: raise until orange fringe looks physically correct.
-#define HAL_GAMMA     0.04
+#define HAL_GAMMA     0.05
 
 // ── PRO MIST ──────────────────────────────────────────────────────────────────
 // Highlight shimmer — bright sources bloom into adjacent dark areas (additive).
 // Shadows stay dark; midtones unaffected. Recalibrate from scratch after R115:
-// old values were tuned for diffusion. Start around 1.0–2.0. 0 = off.
-#define MIST_STRENGTH  1.8
+// old values were tuned for diffusion. Start around 0.1–0.4. 0 = off.
+#define MIST_STRENGTH  0.3
 
 // ── RETINAL VIGNETTE ─────────────────────────────────────────────────────────
 // Peripheral luminance darkening (SCE) + chroma desaturation (Purkinje shift).
@@ -127,7 +127,7 @@
 // (C=0 → zero shift). R117: transition widened from luma 0.12 → 0.30 to cover full
 // scotopic-photopic range. Recalibrate from scratch: try 0.6–0.8 (wider range = more
 // integrated effect at same strength). 0 = off.
-#define PURKINJE_STRENGTH  0.7
+#define PURKINJE_STRENGTH  1.2
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.
