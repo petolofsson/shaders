@@ -385,12 +385,22 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float local_range_att = 1.0 - smoothstep(0.20, 0.50, zone_iqr);
     float texture_att     = 1.0 - smoothstep(0.005, 0.030, local_var);
     float detail_protect  = smoothstep(-0.5, 0.0, log_R);
+    // R119: fine-texture gate — 4 diagonal bilinear taps give a cheap 3×3 neighbourhood avg.
+    // Detects sub-16px texture (fabric, skin grain) invisible to 1/16-res illuminant maps.
+    float2 fine_px         = float2(1.0 / BUFFER_WIDTH, 1.0 / BUFFER_HEIGHT);
+    float  luma_nb         = Luma(0.25 * (
+        tex2D(BackBuffer, uv + float2(-0.5, -0.5) * fine_px).rgb +
+        tex2D(BackBuffer, uv + float2( 0.5, -0.5) * fine_px).rgb +
+        tex2D(BackBuffer, uv + float2(-0.5,  0.5) * fine_px).rgb +
+        tex2D(BackBuffer, uv + float2( 0.5,  0.5) * fine_px).rgb));
+    float  fine_var        = abs(Luma(col.rgb) - luma_nb);
+    float  fine_texture_att = 1.0 - saturate(fine_var / 0.004);
     // R60: temporal context — slow ambient key boosts lift during dark transitions, suppresses on re-entry
     float slow_key     = max(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0.001);
     float context_lift = exp2(log2(slow_key / zk_safe) * 0.4);
     float _sls_t = saturate((perc.r - 0.025) / 0.175);
     float shadow_lift_str = lerp(1.50, 0.45, _sls_t*_sls_t*_sls_t*(_sls_t*(_sls_t*6.0-15.0)+10.0));
-    float shadow_lift     = shadow_lift_str * (0.149169 / (illum_s0 * illum_s0 + 0.003)) * local_range_att * texture_att * detail_protect * context_lift;
+    float shadow_lift     = shadow_lift_str * (0.149169 / (illum_s0 * illum_s0 + 0.003)) * local_range_att * texture_att * fine_texture_att * detail_protect * context_lift;
     float lift_w      = new_luma * smoothstep(0.30, 0.0, new_luma);
     new_luma          = saturate(new_luma + (shadow_lift / 100.0) * 0.75 * lift_w * SHADOW_LIFT_STRENGTH);
     // R62 Finding 3: chroma-stable tonal — apply luma ratio in Oklab L to prevent zone S-curve from shifting chroma
@@ -398,11 +408,12 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float r_tonal = new_luma / max(luma, 0.001);
     float cbrt_r  = exp2(log2(max(r_tonal, 1e-10)) * (1.0 / 3.0));
     lab_t.x = saturate(lab_t.x * cbrt_r);
-    // R65: couple a/b to L — maintains C/L (Oklab saturation) during shadow lift
-    float r65_ab = cbrt_r;
-    float r65_sw = smoothstep(0.30, 0.0, lab_t.x);
-    lab_t.y = lab_t.y * lerp(1.0, r65_ab, r65_sw);
-    lab_t.z = lab_t.z * lerp(1.0, r65_ab, r65_sw);
+    // R65: R119 fix — CAM16 Hunt exponent 0.25. Prior exponent 1.0 (C/L constant) tripled
+    // chroma at 3× lift. Correct: colorfulness ∝ L^0.25 (Hunt 2004, CIECAM02 eq.14-16).
+    float r65_scale = exp2(log2(max(r_tonal, 1e-10)) * 0.25);
+    float r65_sw    = smoothstep(0.30, 0.0, lab_t.x);
+    lab_t.y = lab_t.y * lerp(1.0, r65_scale, r65_sw);
+    lab_t.z = lab_t.z * lerp(1.0, r65_scale, r65_sw);
     // R66: ambient shadow tint — inject scene-ambient hue into achromatic lifted shadows.
     // Normalise illum_s2 RGB to extract hue direction at 18% gray (decouples from local luma).
     {
@@ -410,8 +421,10 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         float3 illum_norm   = illum_s2_rgb / max(Luma(illum_s2_rgb), 0.001);
         float3 lab_amb      = RGBtoOklab(illum_norm * 0.18);
         float  scene_cut    = ReadHWY(HWY_SCENE_CUT);
-        float  achrom_w     = 1.0 - smoothstep(0.0, 0.05, length(lab_t.yz));
-        float  r66_w        = r65_sw * achrom_w * (1.0 - scene_cut) * 0.4;
+        float  lab_t_C      = length(lab_t.yz);
+        float  achrom_w     = 1.0 - smoothstep(0.0, 0.05, lab_t_C);
+        float  c_gate       = saturate(1.0 - lab_t_C / 0.10);  // R119: zero tint for colored objects
+        float  r66_w        = r65_sw * achrom_w * c_gate * (1.0 - scene_cut) * 0.20;
         lab_t.y = lerp(lab_t.y, lab_amb.y, r66_w);
         lab_t.z = lerp(lab_t.z, lab_amb.z, r66_w);
     }
