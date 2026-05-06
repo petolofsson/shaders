@@ -87,14 +87,16 @@ inverse_grade.fx runs before corrective — R90 chroma expansion on pre-correcti
 and `LowFreqMip2Tex` (1/32-res) from `CreativeLowFreqTex` mip0 via 4-tap box filter. Must run
 before ColorTransform. Cross-technique mips are zero — these passes are the fix (R113).
 
-1. **CORRECTIVE** — CAT16 chromatic adaptation (illum from lf_mip0) + `pow(rgb, EXPOSURE)` + R104 DIR couplers (log2-space cross-channel inhibition, default off) + FilmCurve (p25/p50/p75, fc_stevens from highway x=213) + R83 chromatic floor + R84 log-density offsets + R85 dye masking + R19 3-way CC
+1. **CORRECTIVE** — CAT16 chromatic adaptation (illum from lf_mip0, adaptive blend 0.80 near-neutral / 0.60 tinted) + `pow(rgb, EXPOSURE)` + R104 DIR couplers (log2-space cross-channel inhibition, default off) + FilmCurve (pure global p25/p75, fc_stevens from highway x=213) + R83 chromatic floor + R84 log-density offsets + R85 dye masking + R19 3-way CC
 2. **TONAL** — Zone S-curve + Spatial norm (auto from zone_std) + R29 Retinex (illum_s0 from LowFreqMip1, illum_s2 from LowFreqMip2) + Shadow lift + R62 Oklab-stable tonal (L-substitution, chroma preserved) + R65 Hunt coupling + R66 ambient shadow tint (illum from LowFreqMip2)
 3. **CHROMA** — HELMLAB Fourier hue correction + R52 Purkinje + R22 sat-by-luma + R21 hue rotation + R75 hue-by-luminance + chroma lift (CHROMA_STR × 0.04 raw, R68A spatial mod) + R15 HK + R69/R12 Abney + density + R71 vibrance self-mask + R73 memory color ceilings + gamut pre-knee + gclip + R105 halation DoG PSF (LowFreqMip1 inner / LowFreqMip2 outer ring) + R106 Lorentzian tail
 
 **MistDownsample + ProMist passes (same technique):** Pro-Mist merged into grade.fx; downsample to
-MistDiffuseTex (1/8-res, MipLevels=2), composite mip1 back at full res. vkBasalt auto-generates mips.
+MistDiffuseTex (1/8-res, MipLevels=2), composite mip1 back at full res via additive shimmer:
+`base + max(0, blurred − base) * strength`. Adds scatter from highlights only — not symmetric diffusion.
+vkBasalt auto-generates mips.
 
-**Data highway (BackBuffer y=0):** x=0–128 luma hist · x=130–193 hue hist · x=194–196 p25/p50/p75 · x=197 R90 slope · x=198 mean Oklab C · x=199 scene cut · x=200 p90 · x=201 chroma angle (atan2 encoded) · x=202 achromatic fraction · x=210 warm bias · x=211 zone key · x=212 zone std · x=213 fc_stevens (encode ÷1.3, decode ×1.3)
+**Data highway (BackBuffer y=0):** x=0–128 luma hist · x=130–193 hue hist · x=194–196 p25/p50/p75 · x=197 R90 slope · x=198 median Oklab C (CDF p50) · x=199 scene cut · x=200 p90 · x=201 chroma angle (atan2 encoded) · x=202 achromatic fraction · x=210 warm bias · x=211 zone key (linear mean of zone medians) · x=212 zone std (mean intra-zone pixel variance) · x=213 fc_stevens (encode ÷1.3, decode ×1.3)
 
 **Highway encoding rule:** 8-bit UNORM highway clips at 1.0. Values that can exceed 1.0 must be
 encoded on write (÷scale) and decoded on read (×scale). Document encode/decode in highway.fxh comment.

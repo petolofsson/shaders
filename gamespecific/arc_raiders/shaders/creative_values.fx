@@ -4,7 +4,7 @@
 // Adaptive inverse tone mapping. Expands display IQR toward the ACES-derived
 // 3.28-stop reference. Works on any S-curve tonemapper. 0 = off. 1.0 = full.
 // 0.30 is the recommended starting point.
-#define INVERSE_STRENGTH  0.40
+#define INVERSE_STRENGTH  0.55
 
 // ── EXPOSURE ─────────────────────────────────────────────────────────────────
 // First thing that runs. Applied as pow(rgb, EXPOSURE) before any zone or curve
@@ -12,7 +12,7 @@
 // below "sees". Raising this (>1.0) darkens; lowering (<1.0) brightens.
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune
 // the contrast/chroma knobs beneath.
-#define EXPOSURE            0.85
+#define EXPOSURE            0.95
 
 // ── CAMERA SIGNAL RANGE ───────────────────────────────────────────────────────
 // Remaps the raw pixel into [FILM_FLOOR, FILM_CEILING] before EXPOSURE runs.
@@ -35,7 +35,7 @@
 // inhibitors that suppress adjacent layers, increasing colour separation.
 // Fires after EXPOSURE, before FilmCurve — pure SDR-log effect.
 // 0 = off (default). 0.3 = subtle. 0.6 = visible colour pop. 1.0 = strong.
-#define COUPLER_STRENGTH  0.25
+#define COUPLER_STRENGTH  0.20
 
 // ── FILM CURVE CHARACTER ──────────────────────────────────────────────────────
 // Per-channel knee and toe offsets for the FilmCurve (Stage 1). These encode the
@@ -77,7 +77,7 @@
 // near each hue band's scene mean — lift-only, vibrance-masked (already-saturated
 // pixels are attenuated). Spatial R68A modulation is applied on top.
 // 1.0 = calibrated default. 0 = off. Above 2.0 = aggressive.
-#define CHROMA_STR  0.60
+#define CHROMA_STR  0.50
 
 // ── HUE ROTATION ─────────────────────────────────────────────────────────────
 // Per-band rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
@@ -90,23 +90,24 @@
 #define ROT_MAG      0.00
 
 // ── HALATION ──────────────────────────────────────────────────────────────────
-// Film emulsion scatter from specular highlights — tight red fringe around
-// brightest sources (luma > 0.80). Red scatters most (deepest dye layer),
-// green tighter, blue none. Fires inside game bloom radius, not on top of it.
+// Film emulsion scatter from specular highlights — orange/amber fringe around
+// brightest sources. Red dominates (deepest dye layer), green small, blue near-zero
+// (yellow filter layer blocks blue from reaching base). White sources glow orange.
+// Fires inside game bloom radius, not on top of it.
 // 0 = off. 0.35 = calibrated default. 1.0 = Ektachrome-style aggressive.
-#define HAL_STRENGTH  0.8
+#define HAL_STRENGTH  2.0
 // HAL_GAMMA: Lorentzian tail half-width for the broad scatter component.
 // Controls how far the halo bleeds past the annular ring into dark areas.
 // Lower = faster falloff (tight halo, near-Gaussian). Higher = heavier tail
 // (halo lingers further, models deeper emulsion base reflections).
 // Range 0.10–1.0. 0.40 = calibrated default.
-#define HAL_GAMMA     1.20
+#define HAL_GAMMA     2.50
 
 // ── PRO MIST ──────────────────────────────────────────────────────────────────
-// Global diffusion strength. Blends a heavily blurred copy of the image back
-// onto the sharp image — micro-contrast softening across all tones equally.
-// 1.0 = calibrated default (~6% blend). 0 = off.
-#define MIST_STRENGTH  5.0
+// Highlight shimmer — bright sources bloom into adjacent dark areas (additive).
+// Shadows stay dark; midtones unaffected. Recalibrate from scratch after R115:
+// old values were tuned for diffusion. Start around 1.0–2.0. 0 = off.
+#define MIST_STRENGTH  1.5
 
 // ── VEIL ──────────────────────────────────────────────────────────────────────
 // Veiling glare: additive luminance lift simulating intraocular scatter and lens
@@ -130,7 +131,7 @@
 // Rod-vision blue-green hue bias in deep shadows (luma < 0.12). Physiologically
 // correct — Cao et al. 2008, implemented in Ghost of Tsushima. Neutrals unaffected
 // (C=0 → zero shift). 1.0 = calibrated default. 0 = off.
-#define PURKINJE_STRENGTH  1.1
+#define PURKINJE_STRENGTH  1.2
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.

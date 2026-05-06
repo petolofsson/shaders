@@ -74,7 +74,7 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     if (INVERSE_STRENGTH <= 0.0) return col;
 
     float slope_enc = ReadHWY(HWY_SLOPE);
-    float slope     = slope_enc * 1.5 + 1.0;
+    float slope     = max(slope_enc * 1.5 + 1.0, 1.15);  // R116: clamp below valid min; uninit highway decodes as 1.0
 
     float3 lab       = RGBToOklab(col.rgb);
     float mid_weight = lab.x * (1.0 - lab.x) * 4.0;

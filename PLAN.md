@@ -1,6 +1,6 @@
 # Pipeline Improvement Plan
 **Goal:** Raise every stage to 90% finished / 75% novel (game-specific sense).
-**Created:** 2026-05-03 | **Updated:** 2026-05-06 (R113 mip bug fix, LCA removed, VIEWING_SURROUND removed)
+**Created:** 2026-05-03 | **Updated:** 2026-05-06 (R114 halation chromatic, R115 Pro-Mist shimmer, R116 pipeline audit)
 
 ---
 
@@ -24,7 +24,7 @@ The large color science block. Purkinje shift (scotopic blue sensitivity at low 
 Film halation is the glow around bright highlights caused by light bouncing off the film base and exposing the emulsion from behind. The model uses a DoG (Difference-of-Gaussians) PSF: mip1−mip2 of CreativeLowFreqTex creates an annular ring around bright sources with zero extra texture taps. A Lorentzian tail function γ²/(γ²+d²+ε) models the heavier-than-Gaussian falloff of deep emulsion base reflections (ISL-like, not Gaussian). Chromatic: red uses mip1 core (wider scatter, deepest dye layer), green uses mip1 (tighter), blue = zero. HAL_GAMMA controls Lorentzian tail half-width. Novel: DoG mip-ring PSF + Lorentzian tail in a zero-tap architecture — published implementations all use convolution or radial blur passes.
 
 **Output — Pro-Mist (merged into grade.fx)**
-Pro-Mist is global diffusion: the image is downsampled to MistDiffuseTex (1/8-res, MipLevels=2), vkBasalt auto-generates mip1 (1/16-res effective), and ProMistPS lerps that blurred copy back onto the sharp image. Blend strength is scene-adaptive (IQR + zone_log_key + EXPOSURE proxy). This softens micro-contrast uniformly across all tones without adding brightness. Pro-Mist is the 2nd and 3rd passes of OlofssonianColorGrade — NOT a separate effect in the chain. Veil is available for games with no volumetric fog; it is removed from testbed (engine has its own atmospheric volumes). Novel: statistics-driven adaptive diffusion blend on a full-image lerp.
+Pro-Mist is an additive shimmer/bloom effect: the image is downsampled to MistDiffuseTex (1/8-res, MipLevels=2), vkBasalt auto-generates mip1 (1/16-res effective), and ProMistPS composites `max(0, blurred − sharp)` back onto the image — adding only the scatter from highlights, leaving shadows and midtones unaffected. Blend strength is scene-adaptive (IQR + zone_log_key + EXPOSURE proxy). This creates the characteristic shimmer of a physical Pro-Mist filter (scatter from bright sources only) rather than uniform diffusion. Pro-Mist is the 4th and 5th passes of OlofssonianColorGrade — NOT a separate effect in the chain. Veil is available for games with no volumetric fog; it is removed from testbed (engine has its own atmospheric volumes). Novel: statistics-driven adaptive additive shimmer on per-pixel highlight extraction.
 
 ---
 
@@ -47,12 +47,12 @@ Pro-Mist is global diffusion: the image is downsampled to MistDiffuseTex (1/8-re
 
 | Stage | Finished | Novel | Notes |
 |-------|----------|-------|-------|
-| Stage 0 — Input | 96% | 83% | R90 directional HWY_CHROMA_ANGLE wired (+1F/+3N) |
-| Stage 1 — Corrective | 93% | 78% | R47 removed; PRINT_STOCK warm cast + R85 dye coupling confirmed intentional |
-| Stage 2 — Tonal | 92% | 90% | R61 HUNT_LOCALITY removed; zone/R60/R62/R66 remain novel |
-| Stage 3 — Chroma | 97% | 93% | R22 mid_C_boost 0.08; R74 highlight desat added; CHROMA_STR ×0.04 normalized |
-| Stage 3.5 — Halation | 96% | 88% | R105 DoG PSF ring + R106 Lorentzian tail; exposure correction removed (OPT-1); green mip0 bug fixed |
-| Output — Pro-Mist | 94% | 82% | Merged into grade.fx 3-pass technique; 1/8-res MistDiffuseTex mip1 |
+| Stage 0 — Input | 97% | 84% | R116 chroma median + HWY_SLOPE clamp; INVERSE_STRENGTH 0.55 |
+| Stage 1 — Corrective | 96% | 83% | R116 linear zone key, intra-zone std, pure percentiles, adaptive CAT16 |
+| Stage 2 — Tonal | 94% | 92% | R116 zone_std intra-variance; ZONE_STRENGTH may need retune |
+| Stage 3 — Chroma | 98% | 93% | R116 ceiling before vibrance, adaptive CAT16 blend |
+| Stage 3.5 — Halation | 97% | 90% | R114 chromatic fringe (orange/amber); HAL_STRENGTH 2.0, HAL_GAMMA 2.50 |
+| Output — Pro-Mist | 95% | 86% | R115 additive shimmer model; MIST_STRENGTH 1.5 |
 | Output — Veil | —  | —  | Removed from testbed (engine has own volumetrics) |
 
 ---
@@ -404,3 +404,39 @@ Veil removed from testbed (engine has its own atmospheric volumes).
   Fixed to mip1 (same as red). hal_g_gain=0.50 attenuated the visual impact but shape was wrong.
 - **HAL_GAMMA=0 NaN**: Lorentzian denominator was 0/0 at HAL_GAMMA=0, hal_bright=1.
   Fixed with +1e-6 guard in denominator.
+
+---
+
+## Session 2026-05-06 additions (R114 / R115 / R116)
+
+### R114 — Halation chromatic fringe
+Halation was producing purely red/green fringe (blue=0 hardcoded). Added `hal_b` component:
+`hal_b = hal_ring.b * lerp(0.38, 0.22, hal_lore)`. Gains: `float3(1.05, 0.30, 0.03)`.
+White surfaces produce orange/amber fringe (red dominant + faint blue). Red dominance preserved
+(deepest emulsion layer; yellow filter layer attenuates blue but passes orange/red).
+HAL_STRENGTH 0.50 → 2.0; HAL_GAMMA 0.40 → 2.50.
+
+### R115 — Pro-Mist shimmer model
+ProMistPS changed from symmetric lerp diffusion to additive unilateral bloom:
+`base + max(0, blurred − base) * strength`. The lerp model muted shadows alongside brightening
+highlights — correct for diffusion fog, wrong for a Pro-Mist shimmer filter. New model adds
+scatter from highlights only. MIST_STRENGTH 5.0 → 1.5.
+
+### R116 — Color pipeline audit (9 issues)
+
+Full audit of all statistical and logical issues in the pipeline. Research papers in
+`research/R116_2026-05-06_color_pipeline_audit.md` and `_findings.md`.
+
+**Implemented fixes (in priority order):**
+1. **Chroma ceiling before vibrance** — 1 ALU, zero risk
+2. **HWY_SLOPE minimum clamp** — 1 line, eliminates cold-start identity
+3. **Adaptive CAT16 blend** — 3 ALU, better correction in neutral scenes
+4. **Chroma median (CDF p50)** — replaces arithmetic mean; eliminates outlier bias in shadows
+5. **Pure global percentiles for eff_p25/p75** — eliminates incompatible statistics blend
+6. **Linear zone log key** — linear mean of zone medians; equal-weight zones
+7. **Intra-zone pixel variance** — histogram moments E[X²]−E[X]² per zone; R88 VFF Kalman removed
+
+**What was deliberately NOT changed:**
+- Issue 6 (triple highlight compression) — stacking is physically correct; measure before changing
+- Issue 7 (black lift documentation) — comment-only; low priority
+- Switching to intra-zone std immediately recommended ZONE_STRENGTH retune before finalising

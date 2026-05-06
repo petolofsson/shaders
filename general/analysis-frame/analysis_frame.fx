@@ -402,13 +402,22 @@ float4 SceneCutPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     return float4(scene_cut, p50_now, 0.0, 1.0);
 }
 
-// ─── Pass 9 — Scene mean Oklab chroma ─────────────────────────────────────
-// Averages Oklab C over the 32×18 downsample for saturated pixels (C > 0.05).
-// EMA-smoothed across frames. Read by inverse_grade.fx as chroma pivot.
+// ─── Pass 9 — Scene median Oklab chroma ───────────────────────────────────
+// R116: replaced arithmetic mean_C with histogram p50 (median). Mean was biased
+// toward saturated outliers (neon, fire, UI), causing inverse_grade to over-expand
+// globally and wash out shadows. Median tracks typical scene chroma.
+// (a, b) direction kept as arithmetic mean — direction is robust, magnitude is not.
+// 32 bins over [0, 0.30] — bin width ~0.009, intra-bin interp gives ~0.001 resolution.
+
+#define CHROMA_BINS   32
+#define CHROMA_C_MAX  0.30
 
 float4 MeanChromaPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    float sum_C = 0.0, sum_a = 0.0, sum_b = 0.0;
+    float hist[CHROMA_BINS];
+    [unroll] for (int i = 0; i < CHROMA_BINS; i++) hist[i] = 0.0;
+
+    float sum_a = 0.0, sum_b = 0.0;
     float count = 0.0, achrom_count = 0.0;
     [loop]
     for (int y = 0; y < DS_H; y++)
@@ -420,25 +429,45 @@ float4 MeanChromaPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
             float3 lab  = RGBtoOklab(tex2D(Downsample, s_uv).rgb);
             float  C    = length(lab.yz);
             float  in_b = step(0.05, C);
-            sum_C += C * in_b;
-            sum_a += lab.y * in_b;
-            sum_b += lab.z * in_b;
-            count += in_b;
+            int    bin  = clamp(int(C / CHROMA_C_MAX * CHROMA_BINS), 0, CHROMA_BINS - 1);
+            hist[bin]  += in_b;
+            sum_a      += lab.y * in_b;
+            sum_b      += lab.z * in_b;
+            count      += in_b;
             achrom_count += 1.0 - in_b;
         }
     }
-    float valid      = step(0.5, count);
-    float inv_count  = 1.0 / max(count, 1.0);
-    float mean_C     = lerp(0.10, sum_C * inv_count, valid);
-    float mean_a     = lerp(0.0,  sum_a * inv_count, valid);
-    float mean_b     = lerp(0.0,  sum_b * inv_count, valid);
+
+    // CDF walk → p50 of saturated-pixel C distribution
+    float target   = max(count, 1.0) * 0.50;
+    float cumul    = 0.0;
+    float median_C = 0.10;
+    float lk       = 0.0;
+    [loop] for (int b = 0; b < CHROMA_BINS; b++)
+    {
+        float prev_c = cumul;
+        cumul       += hist[b];
+        float inv    = (hist[b] > 0.0) ? 1.0 / hist[b] : 0.0;
+        float t      = saturate((target - prev_c) * inv);
+        float bv     = (float(b) + t) / float(CHROMA_BINS) * CHROMA_C_MAX;
+        float at     = step(target, cumul) * (1.0 - lk);
+        median_C     = lerp(median_C, bv, at);
+        lk           = saturate(lk + at);
+    }
+
+    float valid       = step(0.5, count);
+    float inv_count   = 1.0 / max(count, 1.0);
+    float out_C       = lerp(0.10, median_C, valid);
+    float mean_a      = lerp(0.0,  sum_a * inv_count, valid);
+    float mean_b      = lerp(0.0,  sum_b * inv_count, valid);
     float achrom_frac = achrom_count / float(DS_W * DS_H);
-    float4 prev      = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0));
-    float alpha      = saturate(frametime * 0.005);
+
+    float4 prev  = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0));
+    float  alpha = saturate(frametime * 0.005);
     return float4(
-        lerp(prev.r, mean_C,     alpha),
-        lerp(prev.g, mean_a,     alpha),
-        lerp(prev.b, mean_b,     alpha),
+        lerp(prev.r, out_C,       alpha),
+        lerp(prev.g, mean_a,      alpha),
+        lerp(prev.b, mean_b,      alpha),
         lerp(prev.a, achrom_frac, alpha)
     );
 }

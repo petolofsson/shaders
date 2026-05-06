@@ -1,5 +1,62 @@
 # Changelog
 
+## 2026-05-06 — session (R114 halation chromatic, R115 Pro-Mist shimmer, R116 pipeline audit)
+
+### Fixed / Improved
+
+- **R114 — Halation chromatic fringe** (`grade.fx`) — Halation previously produced pure red/green
+  fringe only (blue=0 was hardcoded). Added `hal_b` component with Lorentzian attenuation from
+  `hal_ring.b`. Gains changed from `float3(1.05, 0.50, 0.0)` to `float3(1.05, 0.30, 0.03)`.
+  White surfaces now receive the correct orange/amber fringe. Red dominance preserved (deepest
+  dye layer, yellow filter blocks blue emission but passes red/orange).
+
+- **R115 — Pro-Mist shimmer model** (`grade.fx`) — `ProMistPS` changed from symmetric lerp
+  diffusion (`lerp(base, blurred, strength)`) to additive unilateral bloom
+  (`base + max(0, blurred − base) * strength`). Previous model muted dark areas alongside
+  brightening highlights — physically incorrect for scatter optics. New model only adds scatter
+  from highlights, shadow/midtone unaffected. `MIST_STRENGTH` recalibrated 5.0 → 1.5.
+
+- **R116 — Color pipeline audit — 9 issues resolved:**
+  - **Issue 8 — Chroma ceiling before vibrance** (`grade.fx`): Ceiling applied to `lifted_C`
+    before vibrance masking, not after. Ceiling is now a hard guarantee on what enters vibrance.
+  - **Issue 9 — HWY_SLOPE minimum clamp** (`inverse_grade.fx`): `max(slope_enc * 1.5 + 1.0, 1.15)`
+    enforces minimum valid slope at decode. Cold-start uninit (0) no longer decodes as 1.0 (below
+    the valid floor of 1.15).
+  - **Issue 5C — Adaptive CAT16 blend** (`grade.fx`): `illum_dev = length(lms_illum_norm − 1)`
+    drives blend: 0.80 near-neutral (reliable estimate), 0.60 strongly tinted (safety valve).
+    3–5 ALU, zero new taps.
+  - **Issue 1 — Chroma median** (`analysis_frame.fx`): `MeanChromaPS` replaced with 32-bin
+    histogram CDF-walk p50. Arithmetic mean was outlier-biased (neon, bright primaries) →
+    inflated mean → over-expanded shadows. Highway x=198 now carries median Oklab C.
+  - **Issue 4 — Pure global percentiles** (`grade.fx`): `eff_p25`/`eff_p75` changed from
+    `lerp(global_p25, zone_zmin, 0.4)` to direct `perc.r`/`perc.b`. Previous blend mixed
+    a histogram percentile with a spatial zone extreme — incompatible statistics.
+  - **Issue 2 — Zone log key linear mean** (`corrective.fx`): `zone_log_key` changed from
+    geometric mean to `sum(medians) / 16` (linear mean). Equal weight across all zones;
+    eliminates dark-bias in high-contrast (split interior/window) scenes.
+  - **Issue 3 — Intra-zone pixel variance** (`corrective.fx`): `zone_std` changed from
+    inter-zone std-dev (spread of 16 medians) to mean intra-zone pixel variance
+    (histogram moments E[X²] − E[X]² per zone). `ZoneHistoryTex.a` repurposed from
+    Kalman P (unused downstream) to smoothed `intra_std`. R88 VFF Kalman Q adaptation
+    removed from `SmoothZoneLevelsPS`; replaced with fixed-K EMA (scene-cut reset preserved).
+
+### Tuning (creative_values.fx — Arc Raiders)
+
+- `EXPOSURE` 0.85 → 0.95
+- `INVERSE_STRENGTH` 0.40 → 0.55 (chroma median lower than mean → more expansion headroom)
+- `COUPLER_STRENGTH` 0.15 → 0.20
+- `HAL_STRENGTH` 0.50 → 2.0 (recalibrated for orange/amber fringe on white surfaces)
+- `HAL_GAMMA` 0.40 → 2.50 (wider Lorentzian tail for broader diffuse scatter)
+- `MIST_STRENGTH` 5.0 → 1.5 (recalibrated after additive shimmer model)
+- `PURKINJE_STRENGTH` 1.15 → 1.2
+
+### Research committed
+
+- `research/R116_2026-05-06_color_pipeline_audit.md` — 9 confirmed issues with code evidence
+- `research/R116_2026-05-06_color_pipeline_audit_findings.md` — better solutions, priority order, what NOT to fix
+
+---
+
 ## 2026-05-06 — session (R113 mip fix, LCA removed, surround removed)
 
 ### Removed

@@ -243,7 +243,11 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         float3 lms_px    = mul(M_fwd, col.rgb) * gain;
         float3 cat16     = mul(M_bwd, lms_px);
         cat16            = cat16 * (Luma(col.rgb) / max(Luma(cat16), 0.001));
-        col.rgb          = lerp(col.rgb, saturate(cat16), 0.60);
+        // R116: adaptive blend — near-neutral illuminant estimate is reliable, blend
+        // stronger (0.80); strongly tinted estimate may be scene-biased, stay safe (0.60).
+        float illum_dev  = length(lms_illum_norm - float3(1.0, 1.0, 1.0));
+        float cat_blend  = lerp(0.80, 0.60, smoothstep(0.05, 0.20, illum_dev));
+        col.rgb          = lerp(col.rgb, saturate(cat16), cat_blend);
     }
     // R54 + R83: camera signal floor/ceiling — chromatic pedestal from Kodak 2383 D-min + illuminant
     float3 cfilm_floor = FILM_FLOOR * (lms_illum_norm * float3(1.02, 1.00, 0.97));
@@ -255,8 +259,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float4 zstats      = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0));
     float zone_log_key = zstats.r;
     float zone_std     = zstats.g;
-    float eff_p25      = lerp(perc.r, zstats.b, 0.4);
-    float eff_p75      = lerp(perc.b, zstats.a, 0.4);
+    float eff_p25      = perc.r;   // R116: pure global p25 — was lerp with zone zmin (incompatible statistics)
+    float eff_p75      = perc.b;   // R116: pure global p75 — was lerp with zone zmax
     float ss_08_25     = smoothstep(0.08, 0.25, zone_std);
     float ss_04_25     = smoothstep(0.04, 0.25, zone_std);
     float spread_scale = lerp(0.7, 1.1, ss_08_25);
@@ -470,15 +474,18 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     }
     // max(lifted, C) — lift-only; identity limit at C = 0 by construction
     float lifted_C = (total_w > 0.001) ? new_C / total_w : C;
-    // R71: vibrance — attenuate lift delta on already-saturated pixels.
-    float vib_mask = saturate(1.0 - C / 0.22);
-    float vib_C    = C + max(lifted_C - C, 0.0) * vib_mask;
     // R73: memory color protection — per-band chroma ceiling (sky/foliage/skin).
     // R81B: MacAdam-calibrated ceilings — blue/cyan tightened (smallest discrimination
     // ellipses), yellow relaxed (largest ellipses).
-    float C_ceil   = hw_o0 * 0.28 + hw_o1 * 0.24 + hw_o2 * 0.16
-                   + hw_o3 * 0.15 + hw_o4 * 0.19 + hw_o5 * 0.22;
-    float final_C  = min(vib_C, max(C_ceil, C));
+    // R116: ceiling applied before vibrance so the guarantee is unambiguous — vibrance
+    // masks within the ceiling-bounded lift, not on top of an already-clamped value.
+    float C_ceil      = hw_o0 * 0.28 + hw_o1 * 0.24 + hw_o2 * 0.16
+                      + hw_o3 * 0.15 + hw_o4 * 0.19 + hw_o5 * 0.22;
+    float lifted_C_c  = min(lifted_C, max(C_ceil, C));
+    // R71: vibrance — attenuate lift delta on already-saturated pixels.
+    float vib_mask = saturate(1.0 - C / 0.22);
+    float vib_C    = C + max(lifted_C_c - C, 0.0) * vib_mask;
+    float final_C  = vib_C;
 
     // Vector-space (a,b) reconstruction — rotate original direction by R21 delta
     float r21_cos, r21_sin;
@@ -538,6 +545,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // 256 pixel average), so outer < inner always → ring always zero. Use blur−sharp instead.
     // R111: Lorentzian tail warms fringe via G attenuation driven by luma proximity proxy.
     // R91: red +12% from broad blur (LowFreqMip2) — longer λ, deeper emulsion layer.
+    // R114: chromatic model — film-accurate gains give white sources an orange/amber fringe.
+    // R >> G >> B mirrors emulsion depth: red penetrates to base and scatters most, blue is
+    // blocked by the yellow filter layer (near zero). Blue sources get no visible halo — correct.
     {
         float3 hal_blur   = tex2D(LowFreqMip1Samp, uv).rgb;
         float3 hal_broad  = tex2D(LowFreqMip2Samp, uv).rgb;
@@ -549,7 +559,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         float  hal_lore   = (HAL_GAMMA * HAL_GAMMA) / (HAL_GAMMA * HAL_GAMMA + hal_d * hal_d + 1e-6);
         float  hal_r      = hal_ring.r + hal_broad.r * 0.12;
         float  hal_g      = hal_ring.g * lerp(0.94, 0.78, hal_lore);
-        lin = saturate(lin + float3(hal_r, hal_g, 0.0) * float3(1.05, 0.50, 0.0) * HAL_STRENGTH);
+        float  hal_b      = hal_ring.b * lerp(0.38, 0.22, hal_lore);
+        lin = saturate(lin + float3(hal_r, hal_g, hal_b) * float3(1.05, 0.30, 0.03) * HAL_STRENGTH);
     }
 
     // dither: break 8-bit BackBuffer quantization — converts banding to imperceptible noise
@@ -596,13 +607,16 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float4 base = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return base;
 
-    // R108: two-scale neutral diffusion — tight (mip0) at low strength, wide (mip1) at high strength
+    // R115: shimmer model — additive bloom only where blur > sharp (highlight→shadow bleed).
+    // Dark pixels near bright sources glow; midtones and shadows unaffected.
+    // Replaces R108 symmetric lerp-diffusion (which softened micro-contrast uniformly).
+    // Two-scale blur: tight (mip0) at low strength, wide (mip1) at high — unchanged.
     float3 mist_tight = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 0)).rgb;
     float3 mist_wide  = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 1)).rgb;
 
     float4 perc           = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
     float  iqr            = perc.b - perc.r;
-    float  adapt_str      = MIST_STRENGTH * 0.06 * lerp(0.8, 1.2, saturate(iqr / 0.5));
+    float  adapt_str      = MIST_STRENGTH * 0.15 * lerp(0.8, 1.2, saturate(iqr / 0.5));
     float  zone_log_key   = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
     float  mist_key_scale = lerp(1.20, 0.85, smoothstep(0.05, 0.25, zone_log_key));
     float  mist_ap_scale  = lerp(1.10, 0.90, saturate((EXPOSURE - 0.70) / 0.60));
@@ -612,7 +626,8 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
     float  scale_w  = saturate(MIST_STRENGTH * 0.25);
     float3 blurred  = lerp(mist_tight, mist_wide, scale_w);
-    float3 result   = lerp(base.rgb, blurred, saturate(adapt_str));
+    float3 bloom    = max(0.0, blurred - base.rgb);
+    float3 result   = base.rgb + bloom * adapt_str;
 
     float dither = frac(52.9829189 * frac(dot(pos.xy, float2(0.06711056, 0.00583715)))) - 0.5;
     result += dither * (1.0 / 255.0);

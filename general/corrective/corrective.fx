@@ -248,13 +248,17 @@ float4 BuildZoneLevelsPS(float4 pos : SV_Position,
     float cumulative = 0.0;
     float p25 = 0.25, median = 0.5, p75 = 0.75;
     float lock25 = 0.0, lock50 = 0.0, lock75 = 0.0;
+    float sum_x = 0.0, sum_x2 = 0.0;  // R116: histogram moments for intra-zone variance
 
     [loop] for (int b = 0; b < 32; b++)
     {
         float bv   = float(b) / 32.0;
+        float bc   = (float(b) + 0.5) / 32.0;  // bin centre for variance moments
         float frac = tex2Dlod(CreativeZoneHistSamp,
             float4((float(b) + 0.5) / 32.0, (float(zone) + 0.5) / 16.0, 0, 0)).r;
         cumulative += frac;
+        sum_x      += bc * frac;
+        sum_x2     += bc * bc * frac;
 
         float at25 = step(0.25, cumulative) * (1.0 - lock25);
         float at50 = step(0.50, cumulative) * (1.0 - lock50);
@@ -267,7 +271,9 @@ float4 BuildZoneLevelsPS(float4 pos : SV_Position,
         lock75 = saturate(lock75 + at75);
     }
 
-    return float4(median, p25, p75, 1.0);
+    // E[X²] - E[X]² = per-pixel luma variance within this zone
+    float intra_std = sqrt(max(sum_x2 - sum_x * sum_x, 0.0));
+    return float4(median, p25, p75, intra_std);
 }
 
 // ─── Pass 4 — temporal smoothing ───────────────────────────────────────────
@@ -278,25 +284,19 @@ float4 SmoothZoneLevelsPS(float4 pos : SV_Position,
     float4 current = tex2D(CreativeZoneLevelsSamp, uv);
     float4 prev    = tex2D(ZoneHistorySamp, uv);
 
-    // R39: VFF Kalman — zone median (.r), P in .a, cold-start when uninitialized
-    float P_prev = (prev.a < 0.001) ? 1.0 : prev.a;
-    float e_zone = current.r - prev.r;
-    // R88: Sage-Husa Q — driven by posterior P, not instantaneous innovation spike
-    float Q_vff  = lerp(KALMAN_Q_MIN, KALMAN_Q_MAX, smoothstep(KALMAN_R * 0.5, KALMAN_R * 5.0, P_prev));
-    float P_pred = P_prev + Q_vff;
-    float K      = P_pred / (P_pred + KALMAN_R);
-    // R53: scene-cut override — spike K toward 1.0 on hard cuts
+    // R39: fixed-gain Kalman for zone median — R88 VFF Q removed; .a now holds intra_std.
+    // Scene-cut override preserved. Steady-state behaviour identical to VFF at convergence.
     float scene_cut = ReadHWY(HWY_SCENE_CUT);
-    K = lerp(K, 1.0, scene_cut);
-    float median = prev.r + K * e_zone;
-    float P_new  = (1.0 - K) * P_pred;
+    float k_med  = lerp(KALMAN_K_INF, 1.0, scene_cut);
+    float median = prev.r + k_med * (current.r - prev.r);
 
-    // EMA: p25/p75 — steady-state gain
-    float k_ema = lerp(KALMAN_K_INF, 1.0, scene_cut);
-    float p25 = lerp(prev.g, current.g, k_ema);
-    float p75 = lerp(prev.b, current.b, k_ema);
+    // EMA: p25 / p75 / intra_std — steady-state gain, scene-cut snap
+    float k_ema     = lerp(KALMAN_K_INF, 1.0, scene_cut);
+    float p25       = lerp(prev.g, current.g, k_ema);
+    float p75       = lerp(prev.b, current.b, k_ema);
+    float intra_std = lerp(prev.a, current.a, k_ema);  // R116: per-zone intra_std
 
-    return float4(median, p25, p75, P_new);
+    return float4(median, p25, p75, intra_std);
 }
 
 // ─── Pass 5 — per-band chroma stats ────────────────────────────────────────
@@ -310,22 +310,22 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
     // Column 6: zone global stats (zone_log_key, zone_std, zmin, zmax) — free pixel, no chroma work
     if (band_idx == 6)
     {
-        float lk = 0.0, m = 0.0, m2 = 0.0, zmin = 1.0, zmax = 0.0;
+        float m = 0.0, avg_intra_std = 0.0, zmin = 1.0, zmax = 0.0;
         [unroll] for (int zy = 0; zy < 4; zy++)
         [unroll] for (int zx = 0; zx < 4; zx++)
         {
-            float zm = tex2Dlod(ZoneHistorySamp,
-                float4((zx + 0.5) / 4.0, (zy + 0.5) / 4.0, 0, 0)).r;
-            lk  += log2(max(zm, 0.001));
-            m   += zm;
-            m2  += zm * zm;
-            zmin = min(zmin, zm);
-            zmax = max(zmax, zm);
+            float4 zs = tex2Dlod(ZoneHistorySamp,
+                float4((zx + 0.5) / 4.0, (zy + 0.5) / 4.0, 0, 0));
+            m             += zs.r;
+            avg_intra_std += zs.a;   // R116: per-zone intra_std accumulated here
+            zmin = min(zmin, zs.r);
+            zmax = max(zmax, zs.r);
         }
+        // R116: zone_log_key = linear mean of zone medians (was geometric mean).
+        // zone_std = mean of per-zone intra_std (was std of zone medians — measured
+        // spatial spread between zones, not pixel-level contrast within zones).
         float zavg = m * 0.0625;
-        return float4(exp2(lk * 0.0625),
-                      sqrt(max(m2 * 0.0625 - zavg * zavg, 0.0)),
-                      zmin, zmax);
+        return float4(zavg, avg_intra_std * 0.0625, zmin, zmax);
     }
 
     // Column 7: slow ambient key — long time constant EMA for temporal context (R60)
