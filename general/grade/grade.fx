@@ -1,6 +1,7 @@
 // creative_color_grade.fx — Mega-pass: all downstream color work in one full-res pass
 #include "debug_text.fxh"
 #include "../highway.fxh"
+#include "../hue_bands.fxh"
 //
 // Eliminates 3 inter-pass VRAM read-write cycles by running in registers:
 //   1. EXPOSURE gamma + scene-adaptive FilmCurve (per-channel knee/toe from creative_values)
@@ -14,22 +15,23 @@
 #include "creative_values.fx"
 
 // ─── Chroma lift constants ─────────────────────────────────────────────────
-#define BAND_WIDTH      8
+#define BAND_WIDTH      8       // kept for GetBandCenter only
 #define MIN_WEIGHT      1.0
 #define SAT_THRESHOLD   2
 #define GREEN_HUE_COOL  (4.0 / 360.0)
-#define BAND_RED        0.083
-#define BAND_ORANGE     0.181
-#define BAND_AMBER      0.242
-#define BAND_YELLOW     0.305
-#define BAND_GREEN      0.396
-#define BAND_TEAL       0.469
-#define BAND_CYAN       0.542
-#define BAND_AZURE      0.639
-#define BAND_BLUE       0.735
-#define BAND_VIOLET     0.825
-#define BAND_MAGENTA    0.913
-#define BAND_ROSE       0.997
+// Band center aliases — canonical values live in hue_bands.fxh
+#define BAND_RED     HB_BAND_RED
+#define BAND_ORANGE  HB_BAND_ORANGE
+#define BAND_AMBER   HB_BAND_AMBER
+#define BAND_YELLOW  HB_BAND_YELLOW
+#define BAND_GREEN   HB_BAND_GREEN
+#define BAND_TEAL    HB_BAND_TEAL
+#define BAND_CYAN    HB_BAND_CYAN
+#define BAND_AZURE   HB_BAND_AZURE
+#define BAND_BLUE    HB_BAND_BLUE
+#define BAND_VIOLET  HB_BAND_VIOLET
+#define BAND_MAGENTA HB_BAND_MAGENTA
+#define BAND_ROSE    HB_BAND_ROSE
 
 
 // ─── Textures ──────────────────────────────────────────────────────────────
@@ -199,13 +201,6 @@ float OklabHueNorm(float a, float b)
     return frac(sign(b + 1e-10) * th / 6.28318 + 1.0);
 }
 
-float HueBandWeight(float hue, float center)
-{
-    float d = abs(hue - center);
-    d = min(d, 1.0 - d);
-    float t = saturate(1.0 - d / (BAND_WIDTH / 100.0));
-    return t * t * (3.0 - 2.0 * t);
-}
 
 float LiftChroma(float C, float pivot, float strength)
 {
@@ -502,13 +497,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         lifted_C += (0.008 * mem_sky + 0.006 * mem_fol + 0.006 * mem_skn) * C;
     }
     // R73: memory color protection — per-band chroma ceiling (sky/foliage/skin).
-    // R81B/R118: full 12-hue wheel coverage — primaries + secondaries + tertiary fill bands.
-    // Ceilings follow Munsell natural chroma: yellow tightest (finest MacAdam discrimination,
-    // ~Munsell C14), warm hues moderate, cool hues relaxed (larger MacAdam ellipses in blue).
-    // R116: ceiling applied before vibrance so the guarantee is unambiguous.
-    float C_ceil      = hw_o0 * 0.28 + hw_org * 0.16 + hw_amb * 0.15 + hw_o1 * 0.14
-                      + hw_o2 * 0.16 + hw_tel * 0.15 + hw_o3 * 0.15 + hw_azr * 0.17
-                      + hw_o4 * 0.19 + hw_vio * 0.20 + hw_o5 * 0.22 + hw_ros * 0.22;
+    // R81B/R118: full 12-hue wheel. Ceilings defined in hue_bands.fxh (shared with
+    // inverse_grade.fx). Ceiling applied before vibrance — R116.
+    float C_ceil      = HueCeil(h_out);
     float lifted_C_c  = min(lifted_C, max(C_ceil, C));
     // R71: vibrance — attenuate lift delta on already-saturated pixels.
     float vib_mask = saturate(1.0 - C / 0.22);
