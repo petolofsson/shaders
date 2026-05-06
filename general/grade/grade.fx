@@ -431,7 +431,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
     // ── R52: Purkinje shift — rod-vision blue-green bias in deep shadows ───────
     {
-        float scotopic_w = 1.0 - smoothstep(0.0, 0.12, new_luma);
+        float scotopic_w = 1.0 - smoothstep(0.0, 0.30, new_luma);  // R117: widened from 0.12; mesopic transition spans full scotopic-photopic range
         lab.z -= 0.018 * scotopic_w * C * PURKINJE_STRENGTH;
         C = length(lab.yz);
     }
@@ -466,6 +466,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
     float chroma_str = CHROMA_STR * 0.04;
     chroma_str *= lerp(1.0, 0.65, smoothstep(0.02, 0.08, local_var));  // R68A: attenuate in textured regions
+    chroma_str *= lerp(0.80, 1.20, smoothstep(0.05, 0.35, zone_log_key));  // R117: Hunt — colorfulness scales with adapting luminance
     float density_str = 50.0;
 
     float new_C = 0.0, total_w = 0.0;
@@ -478,6 +479,16 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     }
     // max(lifted, C) — lift-only; identity limit at C = 0 by construction
     float lifted_C = (total_w > 0.001) ? new_C / total_w : C;
+    // R117D: memory color chroma attraction — gentle boost in canonical luminance range.
+    // Complements R73 ceilings: where ceilings prevent over-saturation, this nudges up
+    // under-saturation in canonical hue+luminance zones. C gate: achromatic pixels are excluded.
+    // Ceiling below still bounds the total — attraction cannot exceed the R73 limit.
+    {
+        float mem_sky = saturate(hw_o3 * 0.6 + hw_o4 * 0.4) * smoothstep(0.42, 0.65, lab.x);
+        float mem_fol = hw_o2 * smoothstep(0.35, 0.58, lab.x) * (1.0 - smoothstep(0.62, 0.75, lab.x));
+        float mem_skn = saturate(hw_o0 * 0.5 + hw_o1 * 0.5) * smoothstep(0.30, 0.52, lab.x);
+        lifted_C += (0.008 * mem_sky + 0.006 * mem_fol + 0.006 * mem_skn) * C;
+    }
     // R73: memory color protection — per-band chroma ceiling (sky/foliage/skin).
     // R81B: MacAdam-calibrated ceilings — blue/cyan tightened (smallest discrimination
     // ellipses), yellow relaxed (largest ellipses).
@@ -522,6 +533,19 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float hk_exp   = lerp(0.52, 0.64, saturate(zone_log_key / 0.50));
     float hk_boost = 1.0 + 0.25 * f_hk * pow(max(final_C, 0.0), hk_exp);
     float final_L  = saturate(lab.x / lerp(1.0, hk_boost, smoothstep(0.0, 0.35, lab.x)));
+
+    // R117C: chromatic induction — broad surround hue nudges near-achromatic pixels toward complement.
+    // Simultaneous contrast: a grey patch in a coloured surround takes on a slight opposite hue tinge.
+    // Uses LowFreqMip2 (1/32-res, already read by R66 + halation) as the spatial surround estimate.
+    // Gate: ind_mask → 0 as pixel chroma rises; full effect only on achromatic / low-chroma pixels.
+    // Strength 0.12: for a moderately warm surround (Oklab a≈0.04), shift ≈ 0.005 in f_oka — subtle.
+    {
+        float3 surr     = tex2D(LowFreqMip2Samp, uv).rgb;
+        float3 surr_lab = RGBtoOklab(surr / max(Luma(surr), 0.001) * 0.18);
+        float  ind_mask = saturate(1.0 - final_C / 0.06);
+        f_oka -= surr_lab.y * 0.12 * ind_mask;
+        f_okb -= surr_lab.z * 0.12 * ind_mask;
+    }
 
     // Gamut-distance density: headroom limits darkening near the sRGB boundary
     float3 rgb_probe  = OklabToRGB(float3(final_L, f_oka, f_okb));

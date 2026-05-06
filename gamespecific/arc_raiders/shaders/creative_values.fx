@@ -122,10 +122,12 @@
 #define VIGN_CHROMA    0.00
 
 // ── PURKINJE SHIFT ────────────────────────────────────────────────────────────
-// Rod-vision blue-green hue bias in deep shadows (luma < 0.12). Physiologically
+// Rod-vision blue-green hue bias across the mesopic range (luma 0–0.30). Physiologically
 // correct — Cao et al. 2008, implemented in Ghost of Tsushima. Neutrals unaffected
-// (C=0 → zero shift). 1.0 = calibrated default. 0 = off.
-#define PURKINJE_STRENGTH  1.2
+// (C=0 → zero shift). R117: transition widened from luma 0.12 → 0.30 to cover full
+// scotopic-photopic range. Recalibrate from scratch: try 0.6–0.8 (wider range = more
+// integrated effect at same strength). 0 = off.
+#define PURKINJE_STRENGTH  0.7
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.
