@@ -4,7 +4,7 @@
 // Adaptive inverse tone mapping. Expands display IQR toward the ACES-derived
 // 3.28-stop reference. Works on any S-curve tonemapper. 0 = off. 1.0 = full.
 // 0.30 is the recommended starting point.
-#define INVERSE_STRENGTH  0.50
+#define INVERSE_STRENGTH  0.40
 
 // ── EXPOSURE ─────────────────────────────────────────────────────────────────
 // First thing that runs. Applied as pow(rgb, EXPOSURE) before any zone or curve
@@ -12,7 +12,7 @@
 // below "sees". Raising this (>1.0) darkens; lowering (<1.0) brightens.
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune
 // the contrast/chroma knobs beneath.
-#define EXPOSURE            0.90
+#define EXPOSURE            0.95
 
 // ── CAMERA SIGNAL RANGE ───────────────────────────────────────────────────────
 // Remaps the raw pixel into [FILM_FLOOR, FILM_CEILING] before EXPOSURE runs.
@@ -30,6 +30,13 @@
 // 1 = full 2383. 0.35 = recommended starting point.
 #define PRINT_STOCK  0.40
 
+// ── DIR COUPLERS ──────────────────────────────────────────────────────────────
+// Developer-inhibitor-release cross-channel masking. Each dye layer releases
+// inhibitors that suppress adjacent layers, increasing colour separation.
+// Fires after EXPOSURE, before FilmCurve — pure SDR-log effect.
+// 0 = off (default). 0.3 = subtle. 0.6 = visible colour pop. 1.0 = strong.
+#define COUPLER_STRENGTH  0.10
+
 // ── FILM CURVE CHARACTER ──────────────────────────────────────────────────────
 // Per-channel knee and toe offsets for the FilmCurve (Stage 1). These encode the
 // physical dye-layer cross-over character of different film stocks: red compresses
@@ -46,12 +53,12 @@
 // Scales the adaptive zone S-curve strength. 1.0 = calibrated default.
 // Adaptive range is ~0.16–0.26 × ZONE_STRENGTH, driven by zone_std + scene key.
 // 0 = flat image. Above 1.5 = aggressive crushing.
-#define ZONE_STRENGTH  1.20
+#define ZONE_STRENGTH  1.25
 
 // ── SHADOW LIFT ───────────────────────────────────────────────────────────────
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOW_LIFT_STRENGTH  1.15
+#define SHADOW_LIFT_STRENGTH  1.50
 
 // ── 3-WAY COLOR CORRECTOR ────────────────────────────────────────────────────
 // Runs after EXPOSURE and FilmCurve, before zone contrast. Primary color grade.
@@ -66,11 +73,11 @@
 #define HIGHLIGHT_TINT   0
 
 // ── CHROMA LIFT ───────────────────────────────────────────────────────────────
-// Strength of the per-hue chroma lift (grade.fx PivotedSCurve). Acts as a gain
+// Strength of the per-hue chroma lift (grade.fx LiftChroma). Acts as a gain
 // near each hue band's scene mean — lift-only, vibrance-masked (already-saturated
 // pixels are attenuated). Spatial R68A modulation is applied on top.
 // 1.0 = calibrated default. 0 = off. Above 2.0 = aggressive.
-#define CHROMA_STR  1.10
+#define CHROMA_STR  0.45
 
 // ── HUE ROTATION ─────────────────────────────────────────────────────────────
 // Per-band rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
@@ -83,25 +90,26 @@
 #define ROT_MAG      0.00
 
 // ── HALATION ──────────────────────────────────────────────────────────────────
-// Film emulsion scatter from specular highlights — tight red fringe around
-// brightest sources (luma > 0.80). Red scatters most (deepest dye layer),
-// green tighter, blue none. Fires inside game bloom radius, not on top of it.
+// Film emulsion scatter from specular highlights — orange/amber fringe around
+// brightest sources. Red dominates (deepest dye layer), green small, blue near-zero
+// (yellow filter layer blocks blue from reaching base). White sources glow orange.
+// Fires inside game bloom radius, not on top of it.
 // 0 = off. 0.35 = calibrated default. 1.0 = Ektachrome-style aggressive.
-#define HAL_STRENGTH  0.35
+#define HAL_STRENGTH  2.5
+// HAL_GAMMA: chromatic crossover threshold (ring luma units, R117).
+// Controls where the inner/outer halation colour character transitions.
+// Inner ring (large ring energy > HAL_GAMMA): spectrally balanced.
+// Outer tail (small ring energy < HAL_GAMMA): orange/amber dominant.
+// Lower = crossover occurs at lower ring brightness (more orange overall).
+// Higher = crossover threshold rises (inner ring stays balanced further out).
+// Range 0.02–0.20. Tune: raise until orange fringe looks physically correct.
+#define HAL_GAMMA     0.04
 
 // ── PRO MIST ──────────────────────────────────────────────────────────────────
-// Global diffusion strength. Blends a heavily blurred copy of the image back
-// onto the sharp image — micro-contrast softening across all tones equally.
-// 1.0 = calibrated default (~6% blend). 0 = off.
-#define MIST_STRENGTH  1.50
-
-// ── VEIL ──────────────────────────────────────────────────────────────────────
-// Veiling glare: additive luminance lift simulating intraocular scatter and lens
-// reflections. Restores the contrast floor of real optical viewing.
-// Use for games with no volumetric fog or atmospheric depth. Skip if the game
-// has its own volumetric/fog system (it will compete).
-// VEIL_STRENGTH: glare as fraction of scene p75 luminance. 0 = off. 0.05 = subtle, 0.15 = heavy.
-#define VEIL_STRENGTH  0.15
+// Highlight shimmer — bright sources bloom into adjacent dark areas (additive).
+// Shadows stay dark; midtones unaffected. Recalibrate from scratch after R115:
+// old values were tuned for diffusion. Start around 1.0–2.0. 0 = off.
+#define MIST_STRENGTH  1.8
 
 // ── RETINAL VIGNETTE ─────────────────────────────────────────────────────────
 // Peripheral luminance darkening (SCE) + chroma desaturation (Purkinje shift).
@@ -114,10 +122,12 @@
 #define VIGN_CHROMA    0.00
 
 // ── PURKINJE SHIFT ────────────────────────────────────────────────────────────
-// Rod-vision blue-green hue bias in deep shadows (luma < 0.12). Physiologically
+// Rod-vision blue-green hue bias across the mesopic range (luma 0–0.30). Physiologically
 // correct — Cao et al. 2008, implemented in Ghost of Tsushima. Neutrals unaffected
-// (C=0 → zero shift). 1.0 = calibrated default. 0 = off.
-#define PURKINJE_STRENGTH  1.25
+// (C=0 → zero shift). R117: transition widened from luma 0.12 → 0.30 to cover full
+// scotopic-photopic range. Recalibrate from scratch: try 0.6–0.8 (wider range = more
+// integrated effect at same strength). 0 = off.
+#define PURKINJE_STRENGTH  0.7
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.
