@@ -8,14 +8,21 @@ vkBasalt auto-linearizes the sRGB swapchain. HDR must be OFF in-game.
 ```
 analysis_frame : inverse_grade : inverse_grade_debug : analysis_scope_pre : corrective : grade : analysis_scope
 ```
-`grade` is a 3-pass technique (ColorTransform → MistDownsample → ProMist). Pro-Mist is merged
-inside grade.fx — it is NOT a separate effect in the chain. Veil is fully removed.
+`grade` is a 5-pass technique (LFDownscale1 → LFDownscale2 → ColorTransform → MistDownsample → ProMist).
+Pro-Mist is merged inside grade.fx — it is NOT a separate effect in the chain. Veil is fully removed.
 
 ## Silent-failure gotchas — verify before every shader edit
 
 **SPIR-V:**
 - No `static const float[]` or `static const float3` — compiles silently, wrong output
 - No `out` as a variable name — reserved keyword in HLSL/SPIR-V
+
+**vkBasalt mip generation (R113):**
+- `tex2Dlod(BackBuffer, ...)` always returns zero — use `tex2D(BackBuffer, uv)` only
+- Cross-technique render targets: only mip0 is populated. `MipLevels > 1` on a texture
+  written by one technique and read by another silently zeroes mip1+. Use explicit
+  downscale passes within the reading technique instead (see LFDownscale1/2 in grade.fx).
+- Within-technique render targets: vkBasalt auto-generates mips correctly (MistDiffuseTex confirmed).
 
 **BackBuffer chain rule:**
 - Inter-effect BackBuffer is 8-bit UNORM. Values >1.0 clip silently between effects.
@@ -61,6 +68,13 @@ inside grade.fx — it is NOT a separate effect in the chain. Veil is fully remo
 | `gamespecific/arc_raiders/shaders/debug_text.fxh` | 3×5 debug font, included by all effects |
 | `gamespecific/arc_raiders/arc_raiders.conf` | Chain config — never touch without ask |
 
+**grade.fx internal textures (within-technique, always populated):**
+| Texture | Size | Role |
+|---------|------|------|
+| `LowFreqMip1Tex` / `LowFreqMip1Samp` | 1/16-res | Retinex illum_s0, shadow lift denominator |
+| `LowFreqMip2Tex` / `LowFreqMip2Samp` | 1/32-res | Retinex illum_s2, R66 ambient tint, halation outer ring |
+| `MistDiffuseTex` / `MistDiffuseSamp` | 1/8-res, 2 mips | Pro-Mist diffusion blur source |
+
 ## `ColorTransformPS` stage order (`grade.fx`)
 
 Reads from BackBuffer (post-inverse_grade, post-corrective). Analysis textures
@@ -69,12 +83,16 @@ inverse_grade.fx runs before corrective — R90 chroma expansion on pre-correcti
 
 **Pre-grade:** inverse_grade.fx — Oklab chroma expansion (slope from highway x=197, INVERSE_STRENGTH)
 
-**ColorTransformPS pass (pre-stage):** R107 edge-directional LCA — lf_mip2.a gradient drives
-CA offset direction; 4 reads at mip2 stride; replaces radial offset
+**LFDownscale1 + LFDownscale2 passes (pre-ColorTransform):** Build `LowFreqMip1Tex` (1/16-res)
+and `LowFreqMip2Tex` (1/32-res) from `CreativeLowFreqTex` mip0 via 4-tap box filter. Must run
+before ColorTransform. Cross-technique mips are zero — these passes are the fix (R113).
 
-1. **CORRECTIVE** — CAT16 chromatic adaptation + `pow(rgb, EXPOSURE)` + R104 DIR couplers (log2-space cross-channel inhibition, default off) + FilmCurve (p25/p50/p75, fc_stevens from highway x=213) + R83 chromatic floor + R84 log-density offsets + R85 dye masking + R19 3-way CC
-2. **TONAL** — Zone S-curve + Spatial norm (auto from zone_std) + R29 Retinex + Shadow lift + R62 Oklab-stable tonal (L-substitution, chroma preserved) + R65 Hunt coupling + R66 ambient shadow tint
-3. **CHROMA** — HELMLAB Fourier hue correction + R52 Purkinje + R22 sat-by-luma + R21 hue rotation + R75 hue-by-luminance + chroma lift (CHROMA_STR × 0.04 raw, R68A spatial mod) + R15 HK + R69/R12 Abney + density + R71 vibrance self-mask + R73 memory color ceilings + gamut pre-knee + gclip + R105 halation DoG PSF (mip1−mip2 ring) + R106 Lorentzian tail
+**ColorTransformPS pass (pre-stage):** R107 edge-directional LCA — lf_mip0.a gradient drives
+CA offset direction; 4 reads at mip0 stride (~8px); replaces radial offset
+
+1. **CORRECTIVE** — CAT16 chromatic adaptation (illum from lf_mip0) + `pow(rgb, EXPOSURE)` + R104 DIR couplers (log2-space cross-channel inhibition, default off) + FilmCurve (p25/p50/p75, fc_stevens from highway x=213) + R83 chromatic floor + R84 log-density offsets + R85 dye masking + R19 3-way CC
+2. **TONAL** — Zone S-curve + Spatial norm (auto from zone_std) + R29 Retinex (illum_s0 from LowFreqMip1, illum_s2 from LowFreqMip2) + Shadow lift + R62 Oklab-stable tonal (L-substitution, chroma preserved) + R65 Hunt coupling + R66 ambient shadow tint (illum from LowFreqMip2)
+3. **CHROMA** — HELMLAB Fourier hue correction + R52 Purkinje + R22 sat-by-luma + R21 hue rotation + R75 hue-by-luminance + chroma lift (CHROMA_STR × 0.04 raw, R68A spatial mod) + R15 HK + R69/R12 Abney + density + R71 vibrance self-mask + R73 memory color ceilings + gamut pre-knee + gclip + R105 halation DoG PSF (LowFreqMip1 inner / LowFreqMip2 outer ring) + R106 Lorentzian tail
 
 **MistDownsample + ProMist passes (same technique):** Pro-Mist merged into grade.fx; downsample to
 MistDiffuseTex (1/8-res, MipLevels=2), composite mip1 back at full res. vkBasalt auto-generates mips.
