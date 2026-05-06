@@ -394,7 +394,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         tex2D(BackBuffer, uv + float2(-0.5,  0.5) * fine_px).rgb +
         tex2D(BackBuffer, uv + float2( 0.5,  0.5) * fine_px).rgb));
     float  fine_var        = abs(Luma(col.rgb) - luma_nb);
-    float  fine_texture_att = 1.0 - saturate(fine_var / 0.004);
+    float  fine_texture_att = 1.0 - saturate((fine_var - 0.004) / 0.008);
     // R60: temporal context — slow ambient key boosts lift during dark transitions, suppresses on re-entry
     float slow_key     = max(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0.001);
     float context_lift = exp2(log2(slow_key / zk_safe) * 0.4);
