@@ -339,11 +339,15 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         lin.b = saturate(lin.b * (1.0 - dye_cross.y));
     }
 
-    // ── R19: 3-way color corrector — temp/tint per region, linear light ──────
+    // ── R19: 3-way color corrector — temp/tint per region ────────────────────
+    // R117: region masking in sqrt(luma) ≈ gamma-2 space, matching Resolve-style perceptual
+    // split. Linear-luma boundaries (0.35/0.65) placed "shadow" over most of the perceptual
+    // image in dark games; sqrt gives intuitive half-pixels-per-region coverage.
     {
         float r19_luma = Luma(lin);
-        float r19_sh   = saturate(1.0 - r19_luma / 0.35);
-        float r19_hl   = saturate((r19_luma - 0.65) / 0.35);
+        float r19_g    = sqrt(r19_luma);  // gamma-2 approximation of perceptual lightness
+        float r19_sh   = saturate(1.0 - r19_g / 0.35);
+        float r19_hl   = saturate((r19_g - 0.65) / 0.35);
         float r19_mid  = 1.0 - r19_sh - r19_hl;
 
         float3 r19_sh_delta  = float3(+SHADOW_TEMP + SHADOW_TINT * 0.5, -SHADOW_TINT, -SHADOW_TEMP + SHADOW_TINT * 0.5) * 0.0003;
@@ -551,15 +555,19 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     {
         float3 hal_blur   = tex2D(LowFreqMip1Samp, uv).rgb;
         float3 hal_broad  = tex2D(LowFreqMip2Samp, uv).rgb;
-        float3 hal_ring   = max(0.0, hal_blur - col.rgb);
-        float  hal_luma   = dot(col.rgb, float3(0.2126, 0.7152, 0.0722));
-        float  hal_thresh = max(ReadHWY(HWY_P90) * 0.90, 0.50);
-        float  hal_bright = smoothstep(hal_thresh, 1.0, hal_luma);
-        float  hal_d      = 1.0 - hal_bright;
-        float  hal_lore   = (HAL_GAMMA * HAL_GAMMA) / (HAL_GAMMA * HAL_GAMMA + hal_d * hal_d + 1e-6);
-        float  hal_r      = hal_ring.r + hal_broad.r * 0.12;
-        float  hal_g      = hal_ring.g * lerp(0.94, 0.78, hal_lore);
-        float  hal_b      = hal_ring.b * lerp(0.38, 0.22, hal_lore);
+        float3 hal_ring      = max(0.0, hal_blur - col.rgb);
+        // R117: drive Lorentzian from ring energy, not pixel brightness.
+        // Old code: hal_lore HIGH at bright source pixels → more orange, but ring≈0 there (no effect).
+        //           hal_lore LOW  at dark adjacent pixels → less orange, but that IS the fringe.
+        // Physical emulsion (Kodak): outer tail (small ring, far from source) is more orange/red
+        //   (longer scatter path extinguishes blue+green). Inner ring (large ring) is more balanced.
+        // Fix: hal_lore = ring_luma / (ring_luma + HAL_GAMMA) → 0 at small ring (outer → orange),
+        //   1 at large ring (inner → balanced). HAL_GAMMA sets the crossover ring amplitude.
+        float  hal_ring_luma = dot(hal_ring, float3(0.2126, 0.7152, 0.0722));
+        float  hal_lore      = hal_ring_luma / (hal_ring_luma + HAL_GAMMA + 1e-6);
+        float  hal_r         = hal_ring.r + hal_broad.r * 0.12;
+        float  hal_g         = hal_ring.g * lerp(0.78, 0.94, hal_lore);  // outer→orange, inner→balanced
+        float  hal_b         = hal_ring.b * lerp(0.22, 0.38, hal_lore);
         lin = saturate(lin + float3(hal_r, hal_g, hal_b) * float3(1.05, 0.45, 0.03) * HAL_STRENGTH);
     }
 
@@ -623,9 +631,10 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     adapt_str *= mist_key_scale * mist_ap_scale;
 
     float  scale_w  = saturate(MIST_STRENGTH * 0.25);
-    float3 blurred  = lerp(mist_tight, mist_wide, scale_w);
-    float3 bloom    = max(0.0, blurred - base.rgb);
-    float3 result   = base.rgb + bloom * adapt_str;
+    float3 blurred   = lerp(mist_tight, mist_wide, scale_w);
+    float3 bloom_raw = max(0.0, blurred - base.rgb);
+    float3 bloom     = bloom_raw / (bloom_raw + 0.08);  // Reinhard: soft toe + shoulder, peak midrange
+    float3 result    = base.rgb + bloom * adapt_str * 0.08;
 
     // R118: shadow lift — broad ambient scatter from LowFreqMip2 (pre-grade 1/32-res).
     // Neutral (luma-only) to match Black Pro-Mist character: highlights scatter, blacks lift,

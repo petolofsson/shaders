@@ -46,7 +46,7 @@ sampler2D BackBuffer
     MagFilter = LINEAR;
 };
 
-texture2D CreativeLowFreqTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 3; };
+texture2D CreativeLowFreqTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 1; };  // R117: mip1/2 never used (grade.fx builds LowFreqMip1/2Tex explicitly)
 sampler2D CreativeLowFreqSamp
 {
     Texture   = CreativeLowFreqTex;

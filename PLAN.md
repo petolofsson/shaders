@@ -24,7 +24,7 @@ The large color science block. Purkinje shift (scotopic blue sensitivity at low 
 Film halation is the glow around bright highlights caused by light bouncing off the film base and exposing the emulsion from behind. The model uses a blur-minus-sharp PSF: `max(0, LowFreqMip1 − col)` fires only at dark pixels adjacent to bright sources, producing an annular ring with zero extra texture taps. (True DoG mip2−mip1 doesn't work — mip2 is 4× more diluted than mip1, so the ring is always zero.) A Lorentzian tail function γ²/(γ²+d²+ε) models the heavier-than-Gaussian falloff of deep emulsion base reflections. Red also adds a LowFreqMip2 broad component (+12%, R91 — longer wavelength, deeper dye layer). Chromatic: red gains 1.05 (dominant), green 0.30 (attenuated), blue 0.03 (faint, physically correct — yellow filter blocks most blue). White sources produce an orange/amber fringe. HAL_GAMMA controls the Lorentzian tail half-width. Novel: blur-minus-sharp annular PSF + Lorentzian tail at zero texture taps; chromatic model derived from film emulsion physics (dye layer depth, yellow filter absorption).
 
 **Output — Pro-Mist (merged into grade.fx)**
-Pro-Mist is an additive shimmer/bloom effect: the image is downsampled to MistDiffuseTex (1/8-res, MipLevels=2), vkBasalt auto-generates mip1 (1/16-res effective), and ProMistPS composites `max(0, blurred − sharp)` back onto the image — adding only the scatter from highlights, leaving shadows and midtones unaffected. Blend strength is scene-adaptive (IQR + zone_log_key + EXPOSURE proxy). This creates the characteristic shimmer of a physical Pro-Mist filter (scatter from bright sources only) rather than uniform diffusion. Pro-Mist is the 4th and 5th passes of OlofssonianColorGrade — NOT a separate effect in the chain. Veil is available for games with no volumetric fog; it is removed from testbed (engine has its own atmospheric volumes). Novel: statistics-driven adaptive additive shimmer on per-pixel highlight extraction.
+Pro-Mist is an additive shimmer/bloom effect: the image is downsampled to MistDiffuseTex (1/8-res, MipLevels=2), vkBasalt auto-generates mip1 (1/16-res effective), and ProMistPS composites `max(0, blurred − sharp)` back onto the image — adding only the scatter from highlights, leaving shadows and midtones unaffected. Blend strength is scene-adaptive (IQR + zone_log_key + EXPOSURE proxy). A Reinhard curve (x/(x+0.08)) shapes the bloom for soft toe and shoulder with midrange emphasis. Shadow lift (neutral luma-only, LowFreqMip2-driven) adds ambient scatter that lifts dark areas when broad highlights are present. Pro-Mist is the 4th and 5th passes of OlofssonianColorGrade — NOT a separate effect in the chain. Novel: statistics-driven adaptive additive shimmer on per-pixel highlight extraction with Reinhard bloom shaping.
 
 ---
 
@@ -52,8 +52,7 @@ Pro-Mist is an additive shimmer/bloom effect: the image is downsampled to MistDi
 | Stage 2 — Tonal | 93% | 88% | ZONE_STRENGTH retuned in-game (user); R88 VFF Kalman removed from zone smoothing (accepted) |
 | Stage 3 — Chroma | 97% | 92% | HK adaptive exponent already implemented (R101 F2); minor gaps: Abney data from 1984 |
 | Stage 3.5 — Halation | 96% | 91% | R117: broad scatter scales with source brightness; PSF radius now adaptive |
-| Output — Pro-Mist | 95% | 86% | R117: three-scale blur (mip0/1/2); falloff now extends to 1/32-res |
-| Output — Veil | —  | —  | Removed from testbed (engine has own volumetrics) |
+| Output — Pro-Mist | 95% | 86% | Reinhard bloom shaping + shadow lift; veil removed |
 
 ---
 
@@ -298,7 +297,7 @@ rolloff in B toe — characteristic 500T look in shadows).
 ### creative_values.fx restructured
 Reordered all knobs in workflow-logical tuning order:
 INVERSE → EXPOSURE → FILM → PRINT_STOCK → CURVE → ZONE → SHADOW_LIFT → CC → CHROMA →
-HUE → HAL → MIST → VEIL → VIGN → PURKINJE.
+HUE → HAL → MIST → VIGN → PURKINJE.
 
 ### R74 — Highlight Desaturation (Done)
 Oklab C rolloff above L=0.80: `C *= 1.0 - 0.30 * saturate((lab.x - 0.80) / 0.20)`.
@@ -322,11 +321,7 @@ imperceptible at EXPOSURE=0.90. Not worth 3 ALU per channel.
 Replaced additive threshold-extract bloom with full-image lerp diffusion.
 See R99 findings doc. Responsibility separation:
 - Halation: red fringe around specular sources
-- Veil: additive DC lift (intraocular scatter, contrast floor)
-- Pro-Mist: global micro-contrast softening (all tones equally)
-
-### Veil calibrated to filmic soft
-VEIL_STRENGTH 0.10 → 0.15 on both games. Doc fix: "scene median (p50)" → "scene p75".
+- Pro-Mist: additive shimmer from highlights + neutral shadow lift
 
 ### OPT-2/3 guards reverted
 Research job's proof that zone_log_key ≥ 0.001 in steady-state was valid but incomplete:
@@ -395,8 +390,6 @@ for any future value outside [0,1].
 ### Pro-Mist merged into grade.fx
 No longer a separate effect in the chain config. OlofssonianColorGrade is now a 3-pass technique:
 ColorTransform → MistDownsample (writes MistDiffuseTex 1/8-res) → ProMist (composites mip1).
-Veil removed from testbed (engine has its own atmospheric volumes).
-
 ### Session audit — bugs found and fixed
 - **fc_stevens saturate clamp**: highway write was `saturate(fc_s)`, clipping values >1.0 for
   medium-bright scenes. Fixed with ÷1.3 encode / ×1.3 decode.

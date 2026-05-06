@@ -21,7 +21,7 @@
 ## Active chain (current testbed)
 
 ```
-analysis_frame : inverse_grade : inverse_grade_debug : analysis_scope_pre : corrective : grade : analysis_scope
+analysis_frame : inverse_grade : analysis_scope_pre : corrective : grade : analysis_scope
 ```
 
 grade is a **5-pass technique**: LFDownscale1 → LFDownscale2 → ColorTransform → MistDownsample → ProMist
@@ -135,14 +135,12 @@ Documented fully in `research/R113_2026-05-06_vkbasalt_mip_generation.md`.
 | CHROMA_STR | 0.60 | — |
 | ROT_RED/YELLOW/GREEN/CYAN/BLUE/MAG | +0.03/-0.015/-0.02/+0.015/-0.03/0.00 | — |
 | MIST_STRENGTH | 1.5 | Recalibrated after R115 additive shimmer model |
-| VEIL_STRENGTH | 0.0 | Off |
 | PURKINJE_STRENGTH | 1.2 | — |
 
 ---
 
 ## Known state
 
-- `inverse_grade_debug.fx` in chain — remove once tuning is stable.
 - **ZONE_STRENGTH may need retuning** — linear zone_log_key raises key in high-contrast scenes
   → zone contrast may fire less aggressively. Current 1.25 is a reasonable starting point.
 - **INVERSE_STRENGTH at 0.55** — calibrated against median chroma (lower than arithmetic mean).

@@ -6,10 +6,10 @@ vkBasalt auto-linearizes the sRGB swapchain. HDR must be OFF in-game.
 
 ## Active chain (`arc_raiders.conf`)
 ```
-analysis_frame : inverse_grade : inverse_grade_debug : analysis_scope_pre : corrective : grade : analysis_scope
+analysis_frame : inverse_grade : analysis_scope_pre : corrective : grade : analysis_scope
 ```
 `grade` is a 5-pass technique (LFDownscale1 → LFDownscale2 → ColorTransform → MistDownsample → ProMist).
-Pro-Mist is merged inside grade.fx — it is NOT a separate effect in the chain. Veil is fully removed.
+Pro-Mist is merged inside grade.fx — it is NOT a separate effect in the chain.
 
 ## Silent-failure gotchas — verify before every shader edit
 
