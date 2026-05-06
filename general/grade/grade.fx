@@ -91,6 +91,28 @@ sampler2D ChromaHistory
     MagFilter = POINT;
 };
 
+// 1/16-res LF scale 1 — populated by LFDownscale1PS within this technique (vkBasalt cross-technique mips are zero)
+texture2D LowFreqMip1Tex { Width = BUFFER_WIDTH / 16; Height = BUFFER_HEIGHT / 16; Format = RGBA16F; MipLevels = 1; };
+sampler2D LowFreqMip1Samp
+{
+    Texture   = LowFreqMip1Tex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+};
+
+// 1/32-res LF scale 2 — populated by LFDownscale2PS within this technique
+texture2D LowFreqMip2Tex { Width = BUFFER_WIDTH / 32; Height = BUFFER_HEIGHT / 32; Format = RGBA16F; MipLevels = 1; };
+sampler2D LowFreqMip2Samp
+{
+    Texture   = LowFreqMip2Tex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+};
+
 // Pro-Mist downsample target — 1/8-res, 2 mips; mip 1 = 1/16-res effective (same blur as old 1/4-res mip 2)
 texture2D MistDiffuseTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 2; };
 sampler2D MistDiffuseSamp
@@ -202,14 +224,14 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 {
     float4 col = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return col;  // data highway
-    float4 lf_mip2 = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 2));  // hoisted above LCA — used by gradient, CAT16, Retinex, ambient tint, halation
-    // R107: eye LCA — edge-directional; lf_mip2.a gradient replaces 4 full-res BackBuffer reads
+    float4 lf_mip0 = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 0));  // hoisted — mip0 only (vkBasalt cross-technique mips unpopulated); used by LCA gradient, CAT16, Retinex, ambient tint
+    // R107: eye LCA — edge-directional; lf_mip0.a gradient replaces 4 full-res BackBuffer reads
     {
-        float2 mpx     = float2(32.0 / BUFFER_WIDTH, 32.0 / BUFFER_HEIGHT);  // 1 texel in mip2 space (~32px stride)
-        float  gr      = tex2Dlod(CreativeLowFreqSamp, float4(uv + float2(mpx.x, 0.0), 0, 2)).a;
-        float  gl      = tex2Dlod(CreativeLowFreqSamp, float4(uv - float2(mpx.x, 0.0), 0, 2)).a;
-        float  gu      = tex2Dlod(CreativeLowFreqSamp, float4(uv + float2(0.0, mpx.y), 0, 2)).a;
-        float  gd      = tex2Dlod(CreativeLowFreqSamp, float4(uv - float2(0.0, mpx.y), 0, 2)).a;
+        float2 mpx     = float2(4.0 / BUFFER_WIDTH, 4.0 / BUFFER_HEIGHT);  // 1 texel in mip0 space (~8px stride at 1/8-res)
+        float  gr      = tex2Dlod(CreativeLowFreqSamp, float4(uv + float2(mpx.x, 0.0), 0, 0)).a;
+        float  gl      = tex2Dlod(CreativeLowFreqSamp, float4(uv - float2(mpx.x, 0.0), 0, 0)).a;
+        float  gu      = tex2Dlod(CreativeLowFreqSamp, float4(uv + float2(0.0, mpx.y), 0, 0)).a;
+        float  gd      = tex2Dlod(CreativeLowFreqSamp, float4(uv - float2(0.0, mpx.y), 0, 0)).a;
         float2 grad    = float2(gr - gl, gu - gd);
         float  glen    = length(grad);
         float2 lca_off = (grad / max(glen, 1e-5)) * saturate(glen) * LCA_STRENGTH * 0.005;
@@ -226,7 +248,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
                                          -1.0784,  2.1456, -0.1184,
                                           0.0078, -0.2191,  1.1200);
         const float3 lms_d65 = float3(0.9756, 1.0165, 1.0849);
-        float3 illum_rgb  = lf_mip2.rgb;
+        float3 illum_rgb  = lf_mip0.rgb;
         float3 illum_norm = illum_rgb / max(Luma(illum_rgb), 0.001);
         float3 lms_illum  = mul(M_fwd, illum_norm);
         lms_illum_norm    = lms_illum / max(lms_illum.g, 0.001);
@@ -294,9 +316,20 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         float desat_w = 0.15 * (1.0 - smoothstep(0.0, fc_knee_toe, luma_ps))
                               * (1.0 - smoothstep(fc_knee, 1.0, luma_ps));
         ps = lerp(ps, luma_ps.xxx, desat_w);
-        ps.r += 0.012 * (1.0 - ps.r);
-        ps.b -= 0.008 * (1.0 - ps.b);
+        ps.r += 0.010 * (1.0 - ps.r);   // R110 rebalance: uniform reduced, tonal portion in masking coupler block
+        ps.b -= 0.007 * (1.0 - ps.b);
         lin = lerp(lin, saturate(ps), PRINT_STOCK);
+    }
+
+    // ── R110: masking coupler — shadow warm bias; coupler consumed proportional to dye density ──
+    // unexposed print areas retain full coupler → warm; highlights consume coupler → neutral
+    {
+        float mc_luma = dot(lin, float3(0.2126, 0.7152, 0.0722));
+        float mc_w    = saturate(1.0 - mc_luma / 0.75);
+        mc_w         *= mc_w;
+        float mc_str  = PRINT_STOCK * 0.008 * mc_w;
+        lin.r = saturate(lin.r + mc_str);
+        lin.b = saturate(lin.b - mc_str * 0.65);
     }
 
     // ── R50: dye secondary absorption — dominant-channel soft attenuation ─────
@@ -347,9 +380,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
 
     // R29: Multi-Scale Retinex — pixel-local illumination/reflectance separation
-    float4 lf_mip1  = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 1));
-    float illum_s0  = max(lf_mip1.a, 0.001);
-    float illum_s2  = max(lf_mip2.a, 0.001);
+    float illum_s0  = max(tex2D(LowFreqMip1Samp, uv).a, 0.001);
+    float illum_s2  = max(tex2D(LowFreqMip2Samp, uv).a, 0.001);
     float local_var = abs(illum_s0 - illum_s2);
     float nl_safe   = max(new_luma, 0.001);
     float log_R     = log2(nl_safe / illum_s0);
@@ -380,7 +412,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // R66: ambient shadow tint — inject scene-ambient hue into achromatic lifted shadows.
     // Normalise illum_s2 RGB to extract hue direction at 18% gray (decouples from local luma).
     {
-        float3 illum_s2_rgb = lf_mip2.rgb;
+        float3 illum_s2_rgb = tex2D(LowFreqMip2Samp, uv).rgb;
         float3 illum_norm   = illum_s2_rgb / max(Luma(illum_s2_rgb), 0.001);
         float3 lab_amb      = RGBtoOklab(illum_norm * 0.18);
         float  scene_cut    = ReadHWY(HWY_SCENE_CUT);
@@ -491,7 +523,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float sh   = sh_p * r21_cos + ch_p * r21_sin;
     float ch   = ch_p * r21_cos - sh_p * r21_sin;
     float f_hk     = -0.160 * ch + 0.132 * (ch*ch - sh*sh) - 0.405 * sh + 0.080 * (2.0*sh*ch) + 0.792;
-    float hk_boost = 1.0 + 0.25 * f_hk * sqrt(final_C);
+    float hk_exp   = lerp(0.52, 0.64, saturate(zone_log_key / 0.50));
+    float hk_boost = 1.0 + 0.25 * f_hk * pow(max(final_C, 0.0), hk_exp);
     float final_L  = saturate(lab.x / lerp(1.0, hk_boost, smoothstep(0.0, 0.35, lab.x)));
 
     // Gamut-distance density: headroom limits darkening near the sRGB boundary
@@ -513,33 +546,23 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float3 chroma_rgb = OklabToRGB(float3(density_L, f_oka * gclip_ok, f_okb * gclip_ok));
     lin = saturate(chroma_rgb);
 
-    // R79: halation dual-PSF + softened gate + warm wing bias
+    // R105: halation DoG PSF ring — LowFreqMip1 (1/16-res) inner, LowFreqMip2 (1/32-res) outer.
+    // Ring = max(0, outer - inner): annular, peaks adjacent to highlight, zero at source center.
+    // Both textures built within this technique so mip data is real (no cross-technique zero issue).
+    // R111: Lorentzian tail warms fringe further from source via G attenuation.
+    // R91: red +12% from outer blur — longer λ, deeper emulsion layer, more scatter.
     {
-        float3 hal_core_r = max(lf_mip1.rgb, 0.0);
-        float3 hal_core_g = max(tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 1)).rgb, 0.0);
-        float3 hal_wing   = max(lf_mip2.rgb, 0.0);
-        float  hal_luma   = dot(lin, float3(0.2126, 0.7152, 0.0722));
-        // R93A/B: luminance-scaled wing blend + anti-halation OD ratio (red:green 2:1 from Kodak 2383)
-        // R100: p90-adaptive threshold — wing fires on scene's own bright content, not absolute value.
-        float  hal_thresh  = max(ReadHWY(HWY_P90) * 0.90, 0.50);
-        float  hal_bright  = smoothstep(hal_thresh, 1.0, hal_luma);
-        // R96: spectral warm-tilt on wing — anti-halation absorbs g/b on return path
-        float3 hal_wing_w  = float3(hal_wing.r, hal_wing.g * 0.88, hal_wing.b * 0.75);
-        // R105: DoG PSF — annular ring (tight−wide Gaussian) + broad tail; replaces filled-disk lerp
-        float  hal_ring_r  = max(hal_core_r.r - hal_wing_w.r, 0.0);
-        float  hal_ring_g  = max(hal_core_g.g - hal_wing_w.g, 0.0);
-        // R106: Lorentzian tail — γ²/(γ²+d²) where d=1-hal_bright; heavier falloff than Gaussian
-        // models deep emulsion base reflections that scatter with 1/r² rather than exp(-r²)
-        float  hal_d       = 1.0 - hal_bright;
-        float  hal_lore    = (HAL_GAMMA * HAL_GAMMA) / (HAL_GAMMA * HAL_GAMMA + hal_d * hal_d + 1e-6);
-        float3 hal_delta   = float3(
-            max(0.0, hal_ring_r + hal_wing_w.r * lerp(0.20, 0.42, hal_lore) - lin.r),
-            max(0.0, hal_ring_g + hal_wing_w.g * lerp(0.10, 0.21, hal_lore) - lin.g),
-            0.0
-        );
-        float  hal_r_gain = 1.05;
-        float  hal_g_gain = 0.50;
-        lin = saturate(lin + hal_delta * float3(hal_r_gain, hal_g_gain, 0.0) * HAL_STRENGTH);
+        float3 hal_inner  = tex2D(LowFreqMip1Samp, uv).rgb;
+        float3 hal_outer  = tex2D(LowFreqMip2Samp, uv).rgb;
+        float3 hal_ring   = max(0.0, hal_outer - hal_inner);
+        float  hal_luma   = dot(col.rgb, float3(0.2126, 0.7152, 0.0722));
+        float  hal_thresh = max(ReadHWY(HWY_P90) * 0.90, 0.50);
+        float  hal_bright = smoothstep(hal_thresh, 1.0, hal_luma);
+        float  hal_d      = 1.0 - hal_bright;
+        float  hal_lore   = (HAL_GAMMA * HAL_GAMMA) / (HAL_GAMMA * HAL_GAMMA + hal_d * hal_d + 1e-6);
+        float  hal_r      = hal_ring.r + hal_outer.r * 0.12;
+        float  hal_g      = hal_ring.g * lerp(0.94, 0.78, hal_lore);
+        lin = saturate(lin + float3(hal_r, hal_g, 0.0) * float3(1.05, 0.50, 0.0) * HAL_STRENGTH);
     }
 
     // dither: break 8-bit BackBuffer quantization — converts banding to imperceptible noise
@@ -549,6 +572,28 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
     return DrawLabel(float4(lin, col.a), pos.xy, 270.0, 50.0,
                      54u, 71u, 82u, 65u, float3(0.2, 0.50, 1.0)); // 6GRA
+}
+
+// ─── LF downscale passes — build mip1 and mip2 within this technique ──────────────
+
+float4 LFDownscale1PS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    // 2× box filter: 4 taps at ±half-texel in mip0 space (mip0 texel = 8/BUFFER px)
+    float2 s = float2(4.0 / BUFFER_WIDTH, 4.0 / BUFFER_HEIGHT);
+    return (tex2D(CreativeLowFreqSamp, uv + float2( s.x,  s.y))
+          + tex2D(CreativeLowFreqSamp, uv + float2(-s.x,  s.y))
+          + tex2D(CreativeLowFreqSamp, uv + float2( s.x, -s.y))
+          + tex2D(CreativeLowFreqSamp, uv + float2(-s.x, -s.y))) * 0.25;
+}
+
+float4 LFDownscale2PS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    // 2× box filter: 4 taps at ±half-texel in mip1 space (mip1 texel = 16/BUFFER px)
+    float2 s = float2(8.0 / BUFFER_WIDTH, 8.0 / BUFFER_HEIGHT);
+    return (tex2D(LowFreqMip1Samp, uv + float2( s.x,  s.y))
+          + tex2D(LowFreqMip1Samp, uv + float2(-s.x,  s.y))
+          + tex2D(LowFreqMip1Samp, uv + float2( s.x, -s.y))
+          + tex2D(LowFreqMip1Samp, uv + float2(-s.x, -s.y))) * 0.25;
 }
 
 // ─── Pro-Mist passes (merged from pro_mist.fx — saves one inter-effect overhead) ──
@@ -564,7 +609,9 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float4 base = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return base;
 
-    float3 blurred = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 1)).rgb;
+    // R108: two-scale neutral diffusion — tight (mip0) at low strength, wide (mip1) at high strength
+    float3 mist_tight = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 0)).rgb;
+    float3 mist_wide  = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 1)).rgb;
 
     float4 perc           = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
     float  iqr            = perc.b - perc.r;
@@ -576,7 +623,9 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float2 vd = uv - 0.5;
     adapt_str *= saturate(dot(vd, vd) * 4.0);
 
-    float3 result = lerp(base.rgb, blurred, saturate(adapt_str));
+    float  scale_w  = saturate(MIST_STRENGTH * 0.25);
+    float3 blurred  = lerp(mist_tight, mist_wide, scale_w);
+    float3 result   = lerp(base.rgb, blurred, saturate(adapt_str));
 
     float dither = frac(52.9829189 * frac(dot(pos.xy, float2(0.06711056, 0.00583715)))) - 0.5;
     result += dither * (1.0 / 255.0);
@@ -590,6 +639,18 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
 technique OlofssonianColorGrade
 {
+    pass LFDownscale1
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = LFDownscale1PS;
+        RenderTarget = LowFreqMip1Tex;
+    }
+    pass LFDownscale2
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = LFDownscale2PS;
+        RenderTarget = LowFreqMip2Tex;
+    }
     pass ColorTransform
     {
         VertexShader = PostProcessVS;
