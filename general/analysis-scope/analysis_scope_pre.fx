@@ -62,8 +62,8 @@ float4 ScopeCapturePS(float4 pos : SV_Position,
         [loop]
         for (int sx = 0; sx < SCOPE_S; sx++)
         {
-            float luma = Luma(tex2Dlod(BackBuffer,
-                float4((sx + 0.5) / float(SCOPE_S), (sy + 0.5) / float(SCOPE_S), 0, 0)).rgb);
+            float luma = Luma(tex2D(BackBuffer,
+                float2((sx + 0.5) / float(SCOPE_S), (sy + 0.5) / float(SCOPE_S))).rgb);
             samples[sy * SCOPE_S + sx] = luma;
             mean += luma;
         }
@@ -98,8 +98,8 @@ float4 ScopeCapturePS(float4 pos : SV_Position,
         [loop] for (int sy = 0; sy < SCOPE_S; sy++)
         [loop] for (int sx = 0; sx < SCOPE_S; sx++)
         {
-            float3 col = tex2Dlod(BackBuffer,
-                float4((sx + 0.5) / float(SCOPE_S), (sy + 0.5) / float(SCOPE_S), 0, 0)).rgb;
+            float3 col = tex2D(BackBuffer,
+                float2((sx + 0.5) / float(SCOPE_S), (sy + 0.5) / float(SCOPE_S))).rgb;
             float3 hsv = RGBtoHSV(col);
             float  w   = step(0.04, hsv.y);
             count   += (hsv.x >= bucket_lo && hsv.x < bucket_hi) ? w : 0.0;

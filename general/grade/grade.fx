@@ -223,8 +223,9 @@ float GetBandCenter(int b)
 
 float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    float4 col = tex2D(BackBuffer, uv);
+    float4 col      = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return col;  // data highway
+    float  col_luma = Luma(col.rgb);
     float4 lf_mip0 = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 0));  // hoisted — mip0 only (vkBasalt cross-technique mips unpopulated); used by CAT16, Retinex, ambient tint
     // R76A: CAT16 chromatic adaptation — normalise scene illuminant toward D65
     float3 lms_illum_norm;  // lifted for R83 chromatic floor
@@ -375,7 +376,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
     // R29: Multi-Scale Retinex — pixel-local illumination/reflectance separation
     float illum_s0  = max(tex2D(LowFreqMip1Samp, uv).a, 0.001);
-    float illum_s2  = max(tex2D(LowFreqMip2Samp, uv).a, 0.001);
+    float4 lf_mip2_tex = tex2D(LowFreqMip2Samp, uv);  // cached — reused by R66, R117C, halation
+    float  illum_s2    = max(lf_mip2_tex.a, 0.001);
+    float3 lf_mip2     = lf_mip2_tex.rgb;
     float local_var = abs(illum_s0 - illum_s2);
     float nl_safe   = max(new_luma, 0.001);
     float log_R     = log2(nl_safe / illum_s0);
@@ -393,7 +396,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         tex2D(BackBuffer, uv + float2( 0.5, -0.5) * fine_px).rgb +
         tex2D(BackBuffer, uv + float2(-0.5,  0.5) * fine_px).rgb +
         tex2D(BackBuffer, uv + float2( 0.5,  0.5) * fine_px).rgb));
-    float  fine_var        = abs(Luma(col.rgb) - luma_nb);
+    float  fine_var        = abs(col_luma - luma_nb);
     float  fine_texture_att = 1.0 - saturate((fine_var - 0.004) / 0.008);
     // R60: temporal context — slow ambient key boosts lift during dark transitions, suppresses on re-entry
     float slow_key     = max(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0.001);
@@ -401,7 +404,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float _sls_t = saturate((perc.r - 0.025) / 0.175);
     float shadow_lift_str = lerp(1.50, 0.45, _sls_t*_sls_t*_sls_t*(_sls_t*(_sls_t*6.0-15.0)+10.0));
     float shadow_lift     = shadow_lift_str * (0.149169 / (illum_s0 * illum_s0 + 0.003)) * local_range_att * texture_att * fine_texture_att * detail_protect * context_lift;
-    float lift_w      = new_luma * smoothstep(0.30, 0.0, new_luma);
+    float lift_w      = new_luma * smoothstep(0.25, 0.0, new_luma);
     new_luma          = saturate(new_luma + (shadow_lift / 100.0) * 0.75 * lift_w * SHADOW_LIFT_STRENGTH);
     // R62 Finding 3: chroma-stable tonal — apply luma ratio in Oklab L to prevent zone S-curve from shifting chroma
     float3 lab_t  = RGBtoOklab(saturate(lin));
@@ -411,13 +414,13 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // R65: R119 fix — CAM16 Hunt exponent 0.25. Prior exponent 1.0 (C/L constant) tripled
     // chroma at 3× lift. Correct: colorfulness ∝ L^0.25 (Hunt 2004, CIECAM02 eq.14-16).
     float r65_scale = exp2(log2(max(r_tonal, 1e-10)) * 0.25);
-    float r65_sw    = smoothstep(0.30, 0.0, lab_t.x);
+    float r65_sw    = smoothstep(0.25, 0.0, lab_t.x);
     lab_t.y = lab_t.y * lerp(1.0, r65_scale, r65_sw);
     lab_t.z = lab_t.z * lerp(1.0, r65_scale, r65_sw);
     // R66: ambient shadow tint — inject scene-ambient hue into achromatic lifted shadows.
     // Normalise illum_s2 RGB to extract hue direction at 18% gray (decouples from local luma).
     {
-        float3 illum_s2_rgb = tex2D(LowFreqMip2Samp, uv).rgb;
+        float3 illum_s2_rgb = lf_mip2;
         float3 illum_norm   = illum_s2_rgb / max(Luma(illum_s2_rgb), 0.001);
         float3 lab_amb      = RGBtoOklab(illum_norm * 0.18);
         float  scene_cut    = ReadHWY(HWY_SCENE_CUT);
@@ -557,7 +560,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // Gate: ind_mask → 0 as pixel chroma rises; full effect only on achromatic / low-chroma pixels.
     // Strength 0.12: for a moderately warm surround (Oklab a≈0.04), shift ≈ 0.005 in f_oka — subtle.
     {
-        float3 surr     = tex2D(LowFreqMip2Samp, uv).rgb;
+        float3 surr     = lf_mip2;
         float3 surr_lab = RGBtoOklab(surr / max(Luma(surr), 0.001) * 0.18);
         float  ind_mask = saturate(1.0 - final_C / 0.06);
         f_oka -= surr_lab.y * 0.12 * ind_mask;
@@ -595,7 +598,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // blocked by the yellow filter layer (near zero). Blue sources get no visible halo — correct.
     {
         float3 hal_blur   = tex2D(LowFreqMip1Samp, uv).rgb;
-        float3 hal_broad  = tex2D(LowFreqMip2Samp, uv).rgb;
+        float3 hal_broad  = lf_mip2;
         float3 hal_ring      = max(0.0, hal_blur - col.rgb);
         // R117: drive Lorentzian from ring energy, not pixel brightness.
         // Old code: hal_lore HIGH at bright source pixels → more orange, but ring≈0 there (no effect).

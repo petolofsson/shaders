@@ -199,10 +199,10 @@ float4 ComputeLowFreqPS(float4 pos : SV_Position,
 {
     float2 px = float2(1.0 / BUFFER_WIDTH, 1.0 / BUFFER_HEIGHT);
     float3 rgb = 0.0;
-    rgb += tex2Dlod(BackBuffer, float4(uv + float2(-1.5, -1.5) * px, 0, 0)).rgb;
-    rgb += tex2Dlod(BackBuffer, float4(uv + float2( 1.5, -1.5) * px, 0, 0)).rgb;
-    rgb += tex2Dlod(BackBuffer, float4(uv + float2(-1.5,  1.5) * px, 0, 0)).rgb;
-    rgb += tex2Dlod(BackBuffer, float4(uv + float2( 1.5,  1.5) * px, 0, 0)).rgb;
+    rgb += tex2D(BackBuffer, uv + float2(-1.5, -1.5) * px).rgb;
+    rgb += tex2D(BackBuffer, uv + float2( 1.5, -1.5) * px).rgb;
+    rgb += tex2D(BackBuffer, uv + float2(-1.5,  1.5) * px).rgb;
+    rgb += tex2D(BackBuffer, uv + float2( 1.5,  1.5) * px).rgb;
     rgb *= 0.25;
     return float4(rgb, Luma(rgb));
 }
@@ -346,7 +346,7 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
     {
         uint   idx  = (base_idx + uint(i)) % 256u;
         float2 s_uv = float2(Halton2(idx), Halton3(idx));
-        float3 rgb  = tex2Dlod(BackBuffer, float4(s_uv, 0, 0)).rgb;
+        float3 rgb  = tex2D(BackBuffer, s_uv).rgb;
         float3 lab  = RGBtoOklab(rgb);
         float  C    = length(lab.yz);
         float  h    = OklabHueNorm(lab.y, lab.z);

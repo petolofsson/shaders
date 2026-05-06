@@ -34,4 +34,4 @@
 
 // ── Helper ───────────────────────────────────────────────────────────────────
 #define ReadHWY(slot) \
-    tex2Dlod(BackBuffer, float4(((slot) + 0.5) / BUFFER_WIDTH, 0.5 / BUFFER_HEIGHT, 0, 0)).r
+    tex2D(BackBuffer, float2(((slot) + 0.5) / BUFFER_WIDTH, 0.5 / BUFFER_HEIGHT)).r

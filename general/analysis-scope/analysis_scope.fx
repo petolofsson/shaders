@@ -133,8 +133,8 @@ float4 ScopePS(float4 pos : SV_Position,
             for (int my = 0; my < SCOPE_S; my++)
             [loop]
             for (int mx = 0; mx < SCOPE_S; mx++)
-                live += Luma(tex2Dlod(BackBuffer,
-                    float4((mx + 0.5) / float(SCOPE_S), (my + 0.5) / float(SCOPE_S), 0, 0)).rgb);
+                live += Luma(tex2D(BackBuffer,
+                    float2((mx + 0.5) / float(SCOPE_S), (my + 0.5) / float(SCOPE_S))).rgb);
             live /= float(SCOPE_S * SCOPE_S);
             return float4(live, live, live, 1.0);
         }
@@ -173,8 +173,8 @@ float4 ScopePS(float4 pos : SV_Position,
     // Stage means from data highway
     float pre_mean_u  = (float(SCOPE_BINS)     + 0.5) / float(BUFFER_WIDTH);
     float post_mean_u = (float(SCOPE_BINS + 1) + 0.5) / float(BUFFER_WIDTH);
-    float pre_mean    = tex2Dlod(BackBuffer, float4(pre_mean_u,  data_v, 0, 0)).r;
-    float post_mean   = tex2Dlod(BackBuffer, float4(post_mean_u, data_v, 0, 0)).r;
+    float pre_mean    = tex2D(BackBuffer, float2(pre_mean_u,  data_v)).r;
+    float post_mean   = tex2D(BackBuffer, float2(post_mean_u, data_v)).r;
 
     bool ref_90 = (bin == int(0.90 * float(SCOPE_BINS)));
     float3 bg = float3(0.06, 0.06, 0.06);
@@ -188,8 +188,8 @@ float4 ScopePS(float4 pos : SV_Position,
         [loop] for (int sy = 0; sy < SCOPE_S; sy++)
         [loop] for (int sx = 0; sx < SCOPE_S; sx++)
         {
-            float luma = Luma(tex2Dlod(BackBuffer,
-                float4((sx + 0.5) / float(SCOPE_S), (sy + 0.5) / float(SCOPE_S), 0, 0)).rgb);
+            float luma = Luma(tex2D(BackBuffer,
+                float2((sx + 0.5) / float(SCOPE_S), (sy + 0.5) / float(SCOPE_S))).rgb);
             count += (luma >= bucket_lo && luma < bucket_hi) ? 1.0 : 0.0;
         }
         float bar = saturate(count / float(SCOPE_S * SCOPE_S) * float(SCOPE_BINS) * SCOPE_AMP);
@@ -211,7 +211,7 @@ float4 ScopePS(float4 pos : SV_Position,
     {
         float pix     = 1.0 - (rel_y - float(SCOPE_PH + SCOPE_DIV)) / float(SCOPE_PH);
         float data_u  = (float(bin) + 0.5) / float(BUFFER_WIDTH);
-        float raw_val = tex2Dlod(BackBuffer, float4(data_u, data_v, 0, 0)).r;
+        float raw_val = tex2D(BackBuffer, float2(data_u, data_v)).r;
         float bar     = saturate(raw_val * float(SCOPE_BINS) * SCOPE_AMP);
         bool ref_mean = (bin == int(pre_mean * float(SCOPE_BINS)));
         float3 scope;
@@ -244,8 +244,8 @@ float4 ScopePS(float4 pos : SV_Position,
             [loop] for (int sy = 0; sy < SCOPE_HS; sy++)
             [loop] for (int sx = 0; sx < SCOPE_HS; sx++)
             {
-                float3 s   = tex2Dlod(BackBuffer,
-                    float4((sx + 0.5) / float(SCOPE_HS), (sy + 0.5) / float(SCOPE_HS), 0, 0)).rgb;
+                float3 s   = tex2D(BackBuffer,
+                    float2((sx + 0.5) / float(SCOPE_HS), (sy + 0.5) / float(SCOPE_HS))).rgb;
                 float3 hsv = RGBtoHSV(s);
                 float  w   = step(0.04, hsv.y);
                 count   += (hsv.x >= bucket_lo && hsv.x < bucket_hi) ? w : 0.0;
@@ -259,7 +259,7 @@ float4 ScopePS(float4 pos : SV_Position,
         {
             float pix     = 1.0 - (rel_y - hue_off - float(SCOPE_HSB)) / float(SCOPE_HSB);
             float hue_u   = (float(HUE_OFFSET + hue_bin) + 0.5) / float(BUFFER_WIDTH);
-            float hue_val = tex2Dlod(BackBuffer, float4(hue_u, data_v, 0, 0)).r;
+            float hue_val = tex2D(BackBuffer, float2(hue_u, data_v)).r;
             float bar     = saturate(hue_val * float(HUE_BINS) * SCOPE_HAMP);
             float3 scope  = (pix <= bar) ? hue_col * 0.55 : bg;
             return float4(lerp(col.rgb, scope, 0.92), col.a);

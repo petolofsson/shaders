@@ -74,7 +74,6 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     float4 col = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return col;
     if (INVERSE_STRENGTH <= 0.0) return col;
-
     float slope_enc = ReadHWY(HWY_SLOPE);
     float slope     = max(slope_enc * 1.5 + 1.0, 1.15);  // R116: clamp below valid min; uninit highway decodes as 1.0
 
