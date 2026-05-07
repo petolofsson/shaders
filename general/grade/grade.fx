@@ -297,6 +297,26 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
                                 fc_ktoe_r, fc_knee_toe, fc_ktoe_b,
                                 fc_factor, fc_toe_fac);
 
+    // lf_mip2 hoisted: needed by halation (before PRINT_STOCK) and reused by R66, R117C below
+    float4 lf_mip2_tex = tex2D(LowFreqMip2Samp, uv);
+    float  illum_s2    = max(lf_mip2_tex.a, 0.001);
+    float3 lf_mip2     = lf_mip2_tex.rgb;
+
+    // ── R105: halation — negative stock property; fires before print stock (P1, R120) ──
+    // Physical order: halation occurs in the camera negative before printing.
+    // Print stock then compresses and warm-tints the glow — the correct photochemical chain.
+    {
+        float3 hal_blur      = tex2D(LowFreqMip1Samp, uv).rgb;
+        float3 hal_broad     = lf_mip2;
+        float3 hal_ring      = max(0.0, hal_blur - col.rgb);
+        float  hal_ring_luma = dot(hal_ring, float3(0.2126, 0.7152, 0.0722));
+        float  hal_lore      = hal_ring_luma / (hal_ring_luma + HAL_GAMMA + 1e-6);
+        float  hal_r         = hal_ring.r + hal_broad.r * 0.12;
+        float  hal_g         = hal_ring.g * lerp(0.78, 0.94, hal_lore);
+        float  hal_b         = hal_ring.b * lerp(0.22, 0.38, hal_lore);
+        lin = saturate(lin + float3(hal_r, hal_g, hal_b) * float3(1.05, 0.45, 0.03) * HAL_STRENGTH);
+    }
+
     // ── R51: print stock emulsion — Kodak 2383 characteristic curve approximation ──
     {
         float3 ps      = lin * (1.0 - 0.025) + 0.025;
@@ -341,6 +361,21 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         lin.b = saturate(lin.b * (1.0 - dye_cross.y));
     }
 
+    // ── BLEACH BYPASS: silver retention in print emulsion (P2, R120) ─────────
+    // Skipping the bleach step retains metallic silver alongside color dye.
+    // Silver is achromatic — desaturates strongest in shadows (denser unexposed areas).
+    // Retained silver adds neutral density, steepening midtone contrast.
+    {
+        float3 lab_bb  = RGBtoOklab(lin);
+        float  bb_dark = 1.0 - smoothstep(0.0, 0.65, lab_bb.x);
+        float  bb_desat = BLEACH_BYPASS * lerp(0.35, 0.72, bb_dark);
+        lab_bb.y *= (1.0 - bb_desat);
+        lab_bb.z *= (1.0 - bb_desat);
+        float  bb_mid  = lab_bb.x * (1.0 - lab_bb.x) * 4.0;
+        lab_bb.x = saturate(lab_bb.x - BLEACH_BYPASS * 0.055 * bb_mid);
+        lin = saturate(OklabToRGB(lab_bb));
+    }
+
     // ── R19: 3-way color corrector — temp/tint per region ────────────────────
     // R117: region masking in sqrt(luma) ≈ gamma-2 space, matching Resolve-style perceptual
     // split. Linear-luma boundaries (0.35/0.65) placed "shadow" over most of the perceptual
@@ -376,9 +411,6 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
     // R29: Multi-Scale Retinex — pixel-local illumination/reflectance separation
     float illum_s0  = max(tex2D(LowFreqMip1Samp, uv).a, 0.001);
-    float4 lf_mip2_tex = tex2D(LowFreqMip2Samp, uv);  // cached — reused by R66, R117C, halation
-    float  illum_s2    = max(lf_mip2_tex.a, 0.001);
-    float3 lf_mip2     = lf_mip2_tex.rgb;
     float local_var = abs(illum_s0 - illum_s2);
     float nl_safe   = max(new_luma, 0.001);
     float log_R     = log2(nl_safe / illum_s0);
@@ -585,35 +617,6 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float  gclip_ok   = saturate((1.0 - L_grey) / max(rmax_probe - L_grey, 0.001));
     float3 chroma_rgb = OklabToRGB(float3(density_L, f_oka * gclip_ok, f_okb * gclip_ok));
     lin = saturate(chroma_rgb);
-
-    // R105: halation — blur−sharp fires at dark pixels adjacent to bright sources.
-    // hal_blur (LowFreqMip1, 1/16-res) is the neighborhood average; col is the sharp pixel.
-    // max(0, blur − sharp) > 0 only where blur > sharp = dark pixel near a highlight. Self-limiting.
-    // DoG outer−inner does NOT work: LowFreqMip2 is 4× more diluted than LowFreqMip1 (1024 vs
-    // 256 pixel average), so outer < inner always → ring always zero. Use blur−sharp instead.
-    // R111: Lorentzian tail warms fringe via G attenuation driven by luma proximity proxy.
-    // R91: red +12% from broad blur (LowFreqMip2) — longer λ, deeper emulsion layer.
-    // R114: chromatic model — film-accurate gains give white sources an orange/amber fringe.
-    // R >> G >> B mirrors emulsion depth: red penetrates to base and scatters most, blue is
-    // blocked by the yellow filter layer (near zero). Blue sources get no visible halo — correct.
-    {
-        float3 hal_blur   = tex2D(LowFreqMip1Samp, uv).rgb;
-        float3 hal_broad  = lf_mip2;
-        float3 hal_ring      = max(0.0, hal_blur - col.rgb);
-        // R117: drive Lorentzian from ring energy, not pixel brightness.
-        // Old code: hal_lore HIGH at bright source pixels → more orange, but ring≈0 there (no effect).
-        //           hal_lore LOW  at dark adjacent pixels → less orange, but that IS the fringe.
-        // Physical emulsion (Kodak): outer tail (small ring, far from source) is more orange/red
-        //   (longer scatter path extinguishes blue+green). Inner ring (large ring) is more balanced.
-        // Fix: hal_lore = ring_luma / (ring_luma + HAL_GAMMA) → 0 at small ring (outer → orange),
-        //   1 at large ring (inner → balanced). HAL_GAMMA sets the crossover ring amplitude.
-        float  hal_ring_luma = dot(hal_ring, float3(0.2126, 0.7152, 0.0722));
-        float  hal_lore      = hal_ring_luma / (hal_ring_luma + HAL_GAMMA + 1e-6);
-        float  hal_r         = hal_ring.r + hal_broad.r * 0.12;
-        float  hal_g         = hal_ring.g * lerp(0.78, 0.94, hal_lore);  // outer→orange, inner→balanced
-        float  hal_b         = hal_ring.b * lerp(0.22, 0.38, hal_lore);
-        lin = saturate(lin + float3(hal_r, hal_g, hal_b) * float3(1.05, 0.45, 0.03) * HAL_STRENGTH);
-    }
 
     // dither: break 8-bit BackBuffer quantization — converts banding to imperceptible noise
     // R89: IGN blue-noise dither (Jimenez 2016) — pushes quantization error to high freq

@@ -12,7 +12,7 @@
 // below "sees". Raising this (>1.0) darkens; lowering (<1.0) brightens.
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune
 // the contrast/chroma knobs beneath.
-#define EXPOSURE            0.90
+#define EXPOSURE            0.95
 
 // ── CAMERA SIGNAL RANGE ───────────────────────────────────────────────────────
 // Remaps the raw pixel into [FILM_FLOOR, FILM_CEILING] before EXPOSURE runs.
@@ -28,14 +28,21 @@
 // Kodak 2383 print emulsion on top of FilmCurve: lifts blacks, compresses
 // highlights, desaturates mids ~15%, adds warm shadow cast. 0 = off.
 // 1 = full 2383. 0.35 = recommended starting point.
-#define PRINT_STOCK  0.40
+#define PRINT_STOCK  0.45
+
+// ── BLEACH BYPASS ─────────────────────────────────────────────────────────────
+// Skip the bleach step during print development — retains metallic silver alongside
+// color dye. Desaturates shadows most (denser silver retention in unexposed areas),
+// steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.
+// 0 = off. 1 = full (near-monochrome shadows). Start: 0.1–0.3.
+#define BLEACH_BYPASS  0.0
 
 // ── DIR COUPLERS ──────────────────────────────────────────────────────────────
 // Developer-inhibitor-release cross-channel masking. Each dye layer releases
 // inhibitors that suppress adjacent layers, increasing colour separation.
 // Fires after EXPOSURE, before FilmCurve — pure SDR-log effect.
 // 0 = off (default). 0.3 = subtle. 0.6 = visible colour pop. 1.0 = strong.
-#define COUPLER_STRENGTH  0.3
+#define COUPLER_STRENGTH  0.4
 
 // ── FILM CURVE CHARACTER ──────────────────────────────────────────────────────
 // Per-channel knee and toe offsets for the FilmCurve (Stage 1). These encode the
@@ -53,12 +60,12 @@
 // Scales the adaptive zone S-curve strength. 1.0 = calibrated default.
 // Adaptive range is ~0.16–0.26 × ZONE_STRENGTH, driven by zone_std + scene key.
 // 0 = flat image. Above 1.5 = aggressive crushing.
-#define ZONE_STRENGTH  1.0
+#define ZONE_STRENGTH  1.3
 
 // ── SHADOW LIFT ───────────────────────────────────────────────────────────────
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOW_LIFT_STRENGTH  0.4
+#define SHADOW_LIFT_STRENGTH  0.8
 
 // ── 3-WAY COLOR CORRECTOR ────────────────────────────────────────────────────
 // Runs after EXPOSURE and FilmCurve, before zone contrast. Primary color grade.
@@ -95,7 +102,7 @@
 // (yellow filter layer blocks blue from reaching base). White sources glow orange.
 // Fires inside game bloom radius, not on top of it.
 // 0 = off. 0.35 = calibrated default. 1.0 = Ektachrome-style aggressive.
-#define HAL_STRENGTH  0.35
+#define HAL_STRENGTH  0.5
 // HAL_GAMMA: chromatic crossover threshold (ring luma units, R117).
 // Controls where the inner/outer halation colour character transitions.
 // Inner ring (large ring energy > HAL_GAMMA): spectrally balanced.
@@ -103,7 +110,7 @@
 // Lower = crossover occurs at lower ring brightness (more orange overall).
 // Higher = crossover threshold rises (inner ring stays balanced further out).
 // Range 0.02–0.20. Tune: raise until orange fringe looks physically correct.
-#define HAL_GAMMA     0.02
+#define HAL_GAMMA     0.01
 
 // ── PRO MIST ──────────────────────────────────────────────────────────────────
 // Highlight shimmer — bright sources bloom into adjacent dark areas (additive).
