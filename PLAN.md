@@ -48,9 +48,9 @@ Pro-Mist is a three-scale additive shimmer/bloom effect: the image is downsample
 | Stage | Finished | Novel | Notes |
 |-------|----------|-------|-------|
 | Stage 0 — Input | 97% | 86% | R117A: uniform expansion; directional bias removed; per-hue gamut ceilings |
-| Stage 1 — Corrective | 94% | 83% | R124A: achromatic confidence gate on CAT16; gap: illuminant still grey world, FilmCurve body linear |
+| Stage 1 — Corrective | 96% | 85% | R126: FilmCurve body S-curve (H&D midtone contrast, zero at toe/knee); gap: Abney data from 1984 (minor) |
 | Stage 2 — Tonal | 95% | 88% | Zone_std thresholds recalibrated for intra-zone signal (0.08/0.25 → 0.06/0.16); ZONE_STRENGTH unchanged |
-| Stage 3 — Chroma | 98% | 93% | R125: B-B anchor fixed (h=0.25/0.75), two-harmonic, teal dir corrected; gap: HK adaptive exponent (R101 F2); Abney data from 1984 (minor) |
+| Stage 3 — Chroma | 99% | 94% | R126: B-B teal lobe 1.6× orange (ch3_h triple-angle asymmetry); HK adaptive exponent already implemented (R101 F2); gap: Abney data from 1984 (minor) |
 | Stage 3.5 — Halation | 96% | 91% | R114: chromatic fringe (orange/amber); fixed PSF radius — brightness-scaled rejected on film physics |
 | Output — Pro-Mist | 95% | 86% | R117C: three-scale blur (tight/wide/broader); broad_w ramps above MIST_STRENGTH ~0.5 |
 

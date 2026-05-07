@@ -83,11 +83,14 @@ Verify `result = base.rgb + bloom * adapt_str`.
 - **pro_mist.fx** is not in the active chain (merged into grade.fx). Do not audit.
 - **`tex2Dlod(BackBuffer, ...)`** always returns zero in vkBasalt — correct form is `tex2D`. Flag any tex2Dlod on BackBuffer sampler as a bug.
 
-**R125 — Bezold-Brücke anchor fix + two-harmonic (grade.fx)**
-- Verify B-B line reads: `float sh2_h = 2.0 * sh_h * ch_h;` followed by
-  `r21_delta += (lab.x - 0.50) * 0.015 * (ch_h + 0.9 * sh2_h);`
+**R125/R126 — Bezold-Brücke anchor + asymmetry (grade.fx)**
+- Verify B-B block declares `sh2_h = 2.0*sh_h*ch_h` and `ch3_h = ch_h*(4.0*ch_h*ch_h - 3.0)`.
+- Verify B-B line: `r21_delta += (lab.x - 0.50) * 0.015 * (0.10*ch_h + 0.50*sh2_h + 0.30*ch3_h);`
 - Verify old formula `sh_h * 0.1253 + ch_h * 0.9921` is ABSENT.
-- Verify `sh2_h` declaration is in the B-B block, not before (single-use variable).
+
+**R126 — FilmCurve body S-curve (grade.fx FilmCurveApply)**
+- Verify `body_s = x * (1.0 - x) * (1.0 - 2.0 * x) * 0.12` present in FilmCurveApply.
+- Verify return reads `x + body_s - factor * shoulder_w * above * above + toe_fac * toe_w * below * below`.
 
 ## Last updated
-2026-05-07 — Added R125 B-B verification to Task E. Previous: R113–R117 additions.
+2026-05-07 — Added R126 verification targets. Previous: R125 B-B anchor fix.

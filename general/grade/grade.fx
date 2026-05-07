@@ -168,8 +168,10 @@ float3 FilmCurveApply(float3 x,
     float3 below      = max(float3(ktoe_r, ktoe_g, ktoe_b) - x, 0.0);
     float3 shoulder_w = float3(0.91, 1.00, 1.06);
     float3 toe_w      = float3(0.95, 1.00, 1.04);
-    return x - factor * shoulder_w * above * above
-               + toe_fac * toe_w * below * below;
+    // R126: body S-curve — mild mid-contrast matching H&D film body response (zero at x=0 and x=1)
+    float3 body_s     = x * (1.0 - x) * (1.0 - 2.0 * x) * 0.12;
+    return x + body_s - factor * shoulder_w * above * above
+                      + toe_fac * toe_w * below * below;
 }
 
 float3 RGBtoOklab(float3 rgb)
@@ -514,10 +516,12 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
                     + ROT_CYAN   * HueBandWeight(h_perc, BAND_CYAN)
                     + ROT_BLUE   * HueBandWeight(h_perc, BAND_BLUE)
                     + ROT_MAG    * HueBandWeight(h_perc, BAND_MAGENTA);
-    // R125: Bezold-Brücke — anchored at Oklab invariant hues (h=0.25 yellow, h=0.75 blue)
-    // ch_h zeros at h=0.25/0.75 by construction; sh2_h adds asymmetry via double-angle (4 MAD)
+    // R125/R126: Bezold-Brücke — anchored at Oklab invariant hues (h=0.25 yellow, h=0.75 blue)
+    // ch_h zeros at h=0.25/0.75 by construction. sh2/ch3 via double/triple-angle (7 MAD total).
+    // Asymmetry: teal lobe (0.61) ~1.6× orange lobe (0.38) — matches Kurtenbach 1994 data.
     float sh2_h    = 2.0 * sh_h * ch_h;
-    r21_delta     += (lab.x - 0.50) * 0.015 * (ch_h + 0.9 * sh2_h);
+    float ch3_h    = ch_h * (4.0 * ch_h * ch_h - 3.0);
+    r21_delta     += (lab.x - 0.50) * 0.015 * (0.10 * ch_h + 0.50 * sh2_h + 0.30 * ch3_h);
     float h_out = frac(h_perc + r21_delta * 0.10);
     float hw_o0  = HueBandWeight(h_out, BAND_RED);
     float hw_org = HueBandWeight(h_out, BAND_ORANGE);

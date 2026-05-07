@@ -1,6 +1,6 @@
 # Changelog
 
-## 2026-05-07 — session (R124 illuminant, R125 Bezold-Brücke)
+## 2026-05-07 — session (R124 illuminant, R125–R126 Bezold-Brücke + FilmCurve body)
 
 ### Implemented
 
@@ -14,6 +14,14 @@
   `NeutralIllumTex`, replacing the flat grey world mean as CAT16 illuminant source.
   Falls back to grey world when few neutral pixels present. ~1ms GPU saving observed
   (eliminates spatially-varying per-pixel `lf_mip0` read).
+- **R126 — FilmCurve body S-curve** (`grade.fx FilmCurveApply`) — Body of the film curve
+  was linear (identity) between toe and knee. Added `body_s = x*(1−x)*(1−2x)*0.12` — an
+  S-shaped midtone contrast term that is zero at x=0 and x=1 and peaks at ±1.16% at
+  x≈0.21/0.79. Matches the mild S-characteristic of the H&D body in Kodak 2383 print stock.
+- **R126 — B-B teal asymmetry** (`grade.fx`) — Previous two-harmonic B-B had orange lobe
+  larger than teal (opposite of Kurtenbach 1994 data). Added third harmonic via triple-angle
+  identity `ch3_h = ch_h*(4*ch_h²−3)` (3 MAD). Coefficients A=0.10, B=0.50, C=0.30 give
+  teal lobe 0.61 vs orange 0.38 — ratio 1.6×, within the 1.5–2× empirical range.
 - **R125 — Bezold-Brücke anchor fix + two-harmonic** (`grade.fx`) — Previous formula
   `sh_h * 0.1253 + ch_h * 0.9921` had zeros at h=0.270/0.770 (should be 0.250/0.750)
   and pushed teal/cyan hues toward green instead of toward blue (anti-B-B direction).
