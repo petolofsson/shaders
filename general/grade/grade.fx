@@ -245,11 +245,14 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         float3 lms_px    = mul(M_fwd, col.rgb) * gain;
         float3 cat16     = mul(M_bwd, lms_px);
         cat16            = cat16 * (Luma(col.rgb) / max(Luma(cat16), 0.001));
-        // R116: adaptive blend — near-neutral illuminant estimate is reliable, blend
-        // stronger (0.80); strongly tinted estimate may be scene-biased, stay safe (0.60).
-        float illum_dev  = length(lms_illum_norm - float3(1.0, 1.0, 1.0));
-        float cat_blend  = lerp(0.80, 0.60, smoothstep(0.05, 0.20, illum_dev));
-        col.rgb          = lerp(col.rgb, saturate(cat16), cat_blend);
+        // R116: adaptive blend — near-neutral illuminant reliable (0.80); tinted estimate
+        // may be scene-biased, stay safe (0.60). R124A: achromatic confidence gate — few
+        // neutral pixels means grey world is unreliable; scale blend down proportionally.
+        float illum_dev      = length(lms_illum_norm - float3(1.0, 1.0, 1.0));
+        float cat_confidence = smoothstep(0.02, 0.12, ReadHWY(HWY_ACHROM_FRAC));
+        float cat_blend      = lerp(0.80, 0.60, smoothstep(0.05, 0.20, illum_dev))
+                             * lerp(0.65, 1.0, cat_confidence);
+        col.rgb              = lerp(col.rgb, saturate(cat16), cat_blend);
     }
     // R54 + R83: camera signal floor/ceiling — chromatic pedestal from Kodak 2383 D-min + illuminant
     float3 cfilm_floor = FILM_FLOOR * (lms_illum_norm * float3(1.02, 1.00, 0.97));
