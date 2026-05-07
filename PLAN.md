@@ -1,6 +1,6 @@
 # Pipeline Improvement Plan
 **Goal:** Raise every stage to 90% finished / 75% novel (game-specific sense).
-**Created:** 2026-05-03 | **Updated:** 2026-05-06 (R114 halation chromatic, R115 Pro-Mist shimmer, R116 pipeline audit)
+**Created:** 2026-05-03 | **Updated:** 2026-05-07 (R117A uniform expansion, R117C three-scale Pro-Mist; R117B rejected on film physics; doc corrections)
 
 ---
 
@@ -9,7 +9,7 @@
 What the pipeline actually does, and why each piece is unusual:
 
 **Stage 0 — Input (inverse_grade)**
-The game's tone mapper squashes the original color range into the 0–1 SDR window, compressing vivid colors toward grey. This stage estimates how much compression happened using the scene's own statistics (the IQR — the spread between the 25th and 75th percentile of brightness). It then expands chroma (color saturation) in Oklab space — a perceptual color model where saturation changes don't shift hue. The expansion now follows the scene's *dominant color direction* (e.g. if the scene is warm orange, it expands mostly in the orange direction, not uniformly). Novel: no real-time pipeline does statistics-driven chroma recovery with directional bias from a scene hue angle measured on the fly.
+The game's tone mapper squashes the original color range into the 0–1 SDR window, compressing vivid colors toward grey. This stage estimates how much compression happened using the scene's own statistics (the IQR — the spread between the 25th and 75th percentile of brightness). It then expands chroma (color saturation) uniformly in Oklab space — a perceptual color model where saturation changes don't shift hue. The C-gate and mid_weight bell protect near-neutrals from over-expansion. A per-hue chroma ceiling (HueCeil from hue_bands.fxh) prevents expansion past the natural gamut boundary for each hue. Novel: no real-time pipeline does IQR-based chroma recovery with Kalman-smoothed slope and per-hue gamut ceilings.
 
 **Stage 1 — Film Stock (corrective + grade)**
 Emulates the physical character of Kodak 2383 print stock: a film base that isn't perfectly neutral (chromatic floor), a characteristic density-vs-exposure curve (log-space H&D curve), and the fact that film dyes bleed into adjacent channels (cyan dye absorbs a little green; magenta dye absorbs a little blue). The warm cast and dye coupling are intentional — they come from the print stock knob. Also applies CAT16 chromatic adaptation (white balancing toward D65 using the measured scene illuminant). Novel: per-channel Beer-Lambert dye absorption, inter-channel dye coupling, and log-density H&D curve in real-time are all first-of-kind.
@@ -21,10 +21,10 @@ Adjusts local brightness relationships. A zone-based S-curve (like Ansel Adams' 
 The large color science block. Purkinje shift (scotopic blue sensitivity at low luminance), Helmholtz-Kohlrausch effect (bright colors look brighter than grey at the same luminance), Abney effect (hue shifts when saturation changes), Hunt effect (adapted-field brightness changes apparent saturation), per-hue rotation, chroma lift with spatial modulation, and MacAdam-calibrated gamut ceilings (each hue has a different maximum chromaticity before it crosses a discrimination threshold). Novel: HELMLAB Fourier hue correction, real-time MacAdam ellipse ceilings, Beer-Lambert absorption, and per-pixel Hunt adaptation are all unique in game post-process.
 
 **Stage 3.5 — Halation (halation block inside grade.fx)**
-Film halation is the glow around bright highlights caused by light bouncing off the film base and exposing the emulsion from behind. The model uses a blur-minus-sharp PSF: `max(0, LowFreqMip1 − col)` fires only at dark pixels adjacent to bright sources, producing an annular ring with zero extra texture taps. (True DoG mip2−mip1 doesn't work — mip2 is 4× more diluted than mip1, so the ring is always zero.) A Lorentzian tail function γ²/(γ²+d²+ε) models the heavier-than-Gaussian falloff of deep emulsion base reflections. Red also adds a LowFreqMip2 broad component (+12%, R91 — longer wavelength, deeper dye layer). Chromatic: red gains 1.05 (dominant), green 0.30 (attenuated), blue 0.03 (faint, physically correct — yellow filter blocks most blue). White sources produce an orange/amber fringe. HAL_GAMMA controls the Lorentzian tail half-width. Novel: blur-minus-sharp annular PSF + Lorentzian tail at zero texture taps; chromatic model derived from film emulsion physics (dye layer depth, yellow filter absorption).
+Film halation is the glow around bright highlights caused by light bouncing off the film base and exposing the emulsion from behind. The model uses a blur-minus-sharp PSF: `max(0, LowFreqMip1 − col)` fires only at dark pixels adjacent to bright sources, producing an annular ring with zero extra texture taps. (True DoG mip2−mip1 doesn't work — mip2 is 4× more diluted than mip1, so the ring is always zero.) A Lorentzian tail function `hal_ring_luma / (hal_ring_luma + HAL_GAMMA + 1e-6)` models the heavier-than-Gaussian falloff of deep emulsion base reflections — `hal_lore` is high for bright ring glow, zero where there's no halation. Red adds a LowFreqMip2 broad component (fixed 0.12 — scatter radius is determined by emulsion geometry, not source brightness). Chromatic gains: red 1.05 (dominant, deepest dye layer), green 0.45 (attenuated by Lorentzian 0.78–0.94×), blue 0.03 (faint — yellow filter blocks most blue, `lerp(0.22, 0.38, hal_lore)`). White sources produce orange/amber fringe. HAL_GAMMA controls the Lorentzian knee. Novel: blur-minus-sharp annular PSF + Lorentzian tail at zero texture taps; chromatic model derived from film emulsion physics (dye layer depth, yellow filter absorption).
 
 **Output — Pro-Mist (merged into grade.fx)**
-Pro-Mist is an additive shimmer/bloom effect: the image is downsampled to MistDiffuseTex (1/8-res, MipLevels=2), vkBasalt auto-generates mip1 (1/16-res effective), and ProMistPS composites `max(0, blurred − sharp)` back onto the image — adding only the scatter from highlights, leaving shadows and midtones unaffected. Blend strength is scene-adaptive (IQR + zone_log_key + EXPOSURE proxy). A Reinhard curve (x/(x+0.08)) shapes the bloom for soft toe and shoulder with midrange emphasis. Shadow lift (neutral luma-only, LowFreqMip2-driven) adds ambient scatter that lifts dark areas when broad highlights are present. Pro-Mist is the 4th and 5th passes of OlofssonianColorGrade — NOT a separate effect in the chain. Novel: statistics-driven adaptive additive shimmer on per-pixel highlight extraction with Reinhard bloom shaping.
+Pro-Mist is a three-scale additive shimmer/bloom effect: the image is downsampled to MistDiffuseTex (1/8-res, MipLevels=3), vkBasalt auto-generates mip1 (1/16-res) and mip2 (1/32-res) within-technique. ProMistPS blends three scales — tight (LOD 0), wide (LOD 1, `scale_w = MIST_STRENGTH × 0.25`), broader (LOD 2, `broad_w = saturate(MIST_STRENGTH × 0.20 − 0.10)`) — then composites `max(0, blurred − sharp)` back onto the image, adding scatter from highlights only. Physically motivated: real Pro-Mist filters scatter at multiple radii simultaneously due to polydisperse particle size (ProMist-5K paper, arXiv 2601.19295). Blend strength is scene-adaptive (IQR + zone_log_key + EXPOSURE proxy). A Reinhard curve (x/(x+0.08)) shapes the bloom. Pro-Mist is the 4th and 5th passes of OlofssonianColorGrade (LFDownscale1 → LFDownscale2 → ColorTransform → MistDownsample → ProMist). Novel: statistics-driven adaptive additive shimmer on per-pixel highlight extraction with multi-scale physically-motivated scatter.
 
 ---
 
@@ -47,12 +47,12 @@ Pro-Mist is an additive shimmer/bloom effect: the image is downsampled to MistDi
 
 | Stage | Finished | Novel | Notes |
 |-------|----------|-------|-------|
-| Stage 0 — Input | 97% | 86% | R117: uniform expansion; multi-hue scenes now fully covered |
+| Stage 0 — Input | 97% | 86% | R117A: uniform expansion; directional bias removed; per-hue gamut ceilings |
 | Stage 1 — Corrective | 94% | 83% | Gap: CAT16 illuminant from coarse lf_mip0 average; FilmCurve S-shape simplified (linear between p25/p75) |
-| Stage 2 — Tonal | 93% | 88% | ZONE_STRENGTH retuned in-game (user); R88 VFF Kalman removed from zone smoothing (accepted) |
-| Stage 3 — Chroma | 97% | 92% | HK adaptive exponent already implemented (R101 F2); minor gaps: Abney data from 1984 |
-| Stage 3.5 — Halation | 96% | 91% | R117: broad scatter scales with source brightness; PSF radius now adaptive |
-| Output — Pro-Mist | 95% | 86% | Reinhard bloom shaping + shadow lift; veil removed |
+| Stage 2 — Tonal | 93% | 88% | ZONE_STRENGTH retuned in-game; R88 VFF Kalman removed (accepted); intra-zone variance live |
+| Stage 3 — Chroma | 97% | 92% | HK adaptive exponent (R101 F2); Abney data from 1984 (minor) |
+| Stage 3.5 — Halation | 96% | 91% | R114: chromatic fringe (orange/amber); fixed PSF radius — brightness-scaled rejected on film physics |
+| Output — Pro-Mist | 95% | 86% | R117C: three-scale blur (tight/wide/broader); broad_w ramps above MIST_STRENGTH ~0.5 |
 
 ---
 
@@ -273,21 +273,12 @@ Testbed tuned to 1.20.
 Per-pixel Hunt adaptation removed (knob count reduction). Global hunt_la from
 zone_log_key still drives the Hunt effect — the locality blend is gone.
 
-### R90 directional chroma expansion (HWY_CHROMA_ANGLE)
-Previous R90 expanded chroma uniformly in all Oklab directions. Now biased toward scene
-dominant hue via HWY_CHROMA_ANGLE (highway slot 201, written by analysis_frame):
-
-```hlsl
-float  scene_theta = ReadHWY(HWY_CHROMA_ANGLE) * (2.0 * 3.14159265) - 3.14159265;
-float  sc_s, sc_c;
-sincos(scene_theta, sc_s, sc_c);
-float  dir_weight = saturate(dot(dir, float2(sc_c, sc_s)) * 0.5 + 0.5);
-float  new_C = mean_C + (C - mean_C) * lerp(1.0, factor, dir_weight);
-```
-
-Pixels aligned with scene hue get full expansion; opposite hue gets none. This means
-the recovery follows the actual color palette rather than pushing all colors equally.
-Stage 0 novel: 80%→83%.
+### R90 directional chroma expansion — **Reversed by R117A**
+Was biased toward scene dominant hue via HWY_CHROMA_ANGLE. Removed: multi-hue scenes
+(warm practicals + cool fill) were under-expanding colours orthogonal to the dominant hue.
+The C-gate and mid_weight bell already protect neutrals — directional constraint was redundant.
+`scene_theta`, `sincos`, `dir_weight` removed. Current: `new_C = mean_C + (C - mean_C) * factor` — uniform.
+HWY_CHROMA_ANGLE slot 201 still written by analysis_frame but no longer read by inverse_grade.
 
 ### Film curve named presets
 Documented Vision3 500T, Portra 400, Velvia 50, Ektachrome E100 as named CURVE_* value
@@ -388,8 +379,8 @@ Grade.fx reads with ReadHWY(HWY_STEVENS). Establishes the highway encode/decode 
 for any future value outside [0,1].
 
 ### Pro-Mist merged into grade.fx
-No longer a separate effect in the chain config. OlofssonianColorGrade is now a 3-pass technique:
-ColorTransform → MistDownsample (writes MistDiffuseTex 1/8-res) → ProMist (composites mip1).
+No longer a separate effect in the chain config. OlofssonianColorGrade is a 5-pass technique:
+LFDownscale1 → LFDownscale2 → ColorTransform → MistDownsample → ProMist. LFDownscale passes added by R113 to work around vkBasalt cross-technique mip-generation bug.
 ### Session audit — bugs found and fixed
 - **fc_stevens saturate clamp**: highway write was `saturate(fc_s)`, clipping values >1.0 for
   medium-bright scenes. Fixed with ÷1.3 encode / ×1.3 decode.
@@ -404,10 +395,9 @@ ColorTransform → MistDownsample (writes MistDiffuseTex 1/8-res) → ProMist (c
 
 ### R114 — Halation chromatic fringe
 Halation was producing purely red/green fringe (blue=0 hardcoded). Added `hal_b` component:
-`hal_b = hal_ring.b * lerp(0.38, 0.22, hal_lore)`. Gains: `float3(1.05, 0.30, 0.03)`.
+`hal_b = hal_ring.b * lerp(0.22, 0.38, hal_lore)` — stronger toward bright cores (0.38), lighter in the dark annulus (0.22). Gains: `float3(1.05, 0.45, 0.03)`.
 White surfaces produce orange/amber fringe (red dominant + faint blue). Red dominance preserved
 (deepest emulsion layer; yellow filter layer attenuates blue but passes orange/red).
-HAL_STRENGTH 0.50 → 2.0; HAL_GAMMA 0.40 → 2.50.
 
 ### R115 — Pro-Mist shimmer model
 ProMistPS changed from symmetric lerp diffusion to additive unilateral bloom:
