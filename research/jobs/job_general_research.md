@@ -1,13 +1,13 @@
 # Job — Shader Research Nightly
 
-**Trigger ID:** trig_01X6LEJt3G5xvjUqGiaokRFh
 **Schedule:** 0 1 * * * (1 AM UTC)
 **Output:** `research/R{next}_{YYYY-MM-DD}_{slug}.md`
 
 ## Summary
 
 Domain-rotation literature search. Finds novel findings from adjacent fields and
-filters them for architectural viability. Writes a dated findings file to alpha.
+filters them for architectural viability. Writes a dated findings file to the repo.
+Use native WebSearch for all searches — no Brave MCP.
 
 ## Domain rotation (date +%u)
 1 Mon — Tone mapping & film sensitometry
@@ -16,33 +16,62 @@ filters them for architectural viability. Writes a dated findings file to alpha.
 4 Thu — Zone/histogram analysis
 5 Fri — Film stock spectral emulation
 6 Sat — Color appearance models
-7 Sun — Wild card
+7 Sun — Wild card (adjacent domain of model's choice)
 
 ## Key exclusions (permanent, no exceptions)
-- Clarity / sharpening / local contrast / mid-frequency boost / CLARITY_STRENGTH
+- Clarity / sharpening / local contrast / CLARITY_STRENGTH
 - Film grain
-- Lateral chromatic aberration
+- Lateral chromatic aberration (LCA) — removed permanently; no way to exclude UI text
+- Longitudinal chromatic aberration — same problem
 - Any HDR-only technique
-- OPT-2/3 (zone_log_key guard removal, saturate(lin) removal) — cold-start
-  regression confirmed; do not re-propose without cold-start frame proof
+- Viewing surround / CIECAM02 surround compensation — removed; not pipeline's responsibility
+- OPT-2/3 (zone_log_key guard removal, saturate(lin) removal) — cold-start regression
+  confirmed; do not re-propose without explicit cold-start frame proof
 
-## Already implemented — do not re-propose (Tuesday/chroma domain)
-- **R101 F1 — Bezold-Brücke** (2026-05-05): Replaces R75 uniform hue-by-luminance lerp.
-  Unique-yellow-anchored `-sin(2π(h−0.27))` model using `sh_h`/`ch_h` from HELMLAB.
-  Single-harmonic — slightly over-corrects cyan; two-harmonic extension is a future candidate.
-- **R101 F2 — H-K exponent scene-adaptation** (2026-05-05): `pow(final_C, 0.587)` →
-  `pow(final_C, lerp(0.52, 0.64, saturate(zone_log_key / 0.50)))`. Nayatani 1997 backed.
-- **R101 F3 — Abney C_stim** (2026-05-05): Abney coefficients scale by pre-lift stimulus
-  chroma `C_stim`, not post-lift `final_C`. Burns et al. 1984.
+## Already implemented — do not re-propose
 
-## Pipeline state as of 2026-05-05
-- Chain: analysis_frame → inverse_grade → inverse_grade_debug → corrective (7 passes) → grade → pro_mist → analysis_scope
-- Active knobs: INVERSE_STRENGTH, EXPOSURE, FILM_FLOOR/CEILING, PRINT_STOCK,
-  CURVE_R/B_KNEE/TOE, ZONE_STRENGTH, SHADOW_LIFT_STRENGTH, 3-way CC (6 values),
-  CHROMA_STR, ROT_* (6 values), HAL_STRENGTH, MIST_STRENGTH, VEIL_STRENGTH,
-  VIGN_* (3 values), PURKINJE_STRENGTH, LCA_STRENGTH, VIEWING_SURROUND
-- HUNT_LOCALITY: intentionally removed (e155e6c, 2026-05-04) — not a regression
-- New highway slots: HWY_P90 (200), HWY_CHROMA_ANGLE (201), HWY_ACHROM_FRAC (202)
+**Tuesday/chroma domain:**
+- **R101 F1 — Bezold-Brücke** (2026-05-05): Unique-yellow-anchored `-sin(2π(h−0.27))`.
+  Two-harmonic extension is a future candidate (single-harmonic slightly over-corrects cyan).
+- **R101 F2 — H-K exponent scene-adaptation** (2026-05-05): `lerp(0.52, 0.64, saturate(zone_log_key / 0.50))`. Nayatani 1997 + CIECAM02 F_L backed.
+- **R101 F3 — Abney C_stim** (2026-05-05): Burns et al. 1984; coefficients scale by pre-lift stimulus chroma.
+
+**Tone mapping / film domain:**
+- **R83 — Chromatic FILM_FLOOR** (2026-05-03): Per-channel D-min pedestal modulated by CAT16 illum.
+- **R84 — Log-density FilmCurve** (2026-05-03): CURVE_* knobs as log₂-density offsets.
+- **R85 — Inter-channel dye masking** (2026-05-03): Cyan→green 2.0%, magenta→blue 2.2%.
+- **R90 — Adaptive inverse tone mapping** (2026-05-04): IQR-based Oklab chroma expansion, Kalman-smoothed slope.
+- **F1–F3 — Film sensitometry + Stevens** (2026-05-04): desat_w bounds, midtone chroma bell, cbrt fc_stevens.
+
+**Halation (Stage 3.5):**
+- **R105 — Halation DoG PSF** (2026-05-05): Annular ring via max(mip1 − mip2, 0).
+- **R106 — Lorentzian tail** (2026-05-05): γ²/(γ²+d²+ε). HAL_GAMMA knob.
+- **R114 — Chromatic fringe** (2026-05-06): hal_b component; gains float3(1.05, 0.30, 0.03). White → orange/amber fringe.
+- **R117 — Brightness-scaled PSF** (2026-05-07): hal_broad.r scales with hal_bright; green broad component added.
+
+**Pro-Mist (Output):**
+- **R115 — Additive shimmer model** (2026-05-06): `base + max(0, blurred − base) * strength`. Highlights only.
+- **R117 — Three-scale blur** (2026-05-07): MistDiffuseTex MipLevels 3; broad_w ramps above MIST_STRENGTH ~0.5.
+
+**Pipeline audit:**
+- **R116 — 9-issue color pipeline audit** (2026-05-06): chroma median CDF p50, linear zone_log_key, intra-zone pixel variance, pure global p25/p75, adaptive CAT16 blend, ceiling before vibrance, HWY_SLOPE min clamp.
+- **R117 — Uniform chroma expansion** (2026-05-07): Directional bias removed from inverse_grade — multi-hue scenes were under-expanding off-axis colours.
+
+## Pipeline state as of 2026-05-07
+
+**Chain:** `analysis_frame : inverse_grade : analysis_scope_pre : corrective : grade : analysis_scope`
+
+`grade` is a 5-pass technique: LFDownscale1 → LFDownscale2 → ColorTransform → MistDownsample → ProMist.
+Pro-Mist is merged inside grade.fx — not a separate effect.
+
+**Active knobs:** INVERSE_STRENGTH, EXPOSURE, FILM_FLOOR, FILM_CEILING, PRINT_STOCK,
+CURVE_R/B_KNEE/TOE, ZONE_STRENGTH, SHADOW_LIFT_STRENGTH, SHADOW_TEMP/MID_TEMP/HIGHLIGHT_TEMP,
+COUPLER_STRENGTH, CHROMA_STR, ROT_* (6 values), HAL_STRENGTH, HAL_GAMMA, MIST_STRENGTH, PURKINJE_STRENGTH
+
+**Highway slots:** 0–128 luma hist · 130–193 hue hist · 194–196 p25/p50/p75 · 197 R90 slope ·
+198 median Oklab C · 199 scene cut · 200 p90 · 201 chroma angle · 202 achromatic fraction ·
+210 warm bias · 211 zone key (linear mean) · 212 zone std (intra-zone pixel variance) · 213 fc_stevens (÷1.3 / ×1.3)
 
 ## Last updated
-2026-05-05 — Added R101 F1/F2/F3 to implemented list. Updated pipeline state.
+2026-05-07 — Updated chain, knobs, highway slots. Added R114–R117 to implemented list.
+Removed LCA, VIEWING_SURROUND, VEIL_STRENGTH. Switched to native WebSearch.
