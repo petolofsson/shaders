@@ -266,8 +266,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float zone_std     = zstats.g;
     float eff_p25      = perc.r;   // R116: pure global p25 — was lerp with zone zmin (incompatible statistics)
     float eff_p75      = perc.b;   // R116: pure global p75 — was lerp with zone zmax
-    float ss_08_25     = smoothstep(0.08, 0.25, zone_std);
-    float ss_04_25     = smoothstep(0.04, 0.25, zone_std);
+    float ss_08_25     = smoothstep(0.06, 0.16, zone_std);  // R116: intra-zone std peaks ~0.15; old 0.25 never saturated
+    float ss_04_25     = smoothstep(0.03, 0.16, zone_std);
     float spread_scale = lerp(0.7, 1.1, ss_08_25);
     float lum_att      = smoothstep(0.10, 0.40, zone_log_key);
     float zone_str     = lerp(0.26, 0.16, ss_08_25)
