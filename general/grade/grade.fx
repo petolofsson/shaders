@@ -235,7 +235,6 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float4 col      = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return col;  // data highway
     float  col_luma = Luma(col.rgb);
-    float4 lf_mip0 = tex2Dlod(CreativeLowFreqSamp, float4(uv, 0, 0));  // hoisted — mip0 only (vkBasalt cross-technique mips unpopulated); used by CAT16, Retinex, ambient tint
     // R76A: CAT16 chromatic adaptation — normalise scene illuminant toward D65
     float3 lms_illum_norm;  // lifted for R83 chromatic floor
     {
