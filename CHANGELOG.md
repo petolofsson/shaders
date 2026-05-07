@@ -6,7 +6,7 @@
 
 - **R114 — Halation chromatic fringe** (`grade.fx`) — Halation previously produced pure red/green
   fringe only (blue=0 was hardcoded). Added `hal_b` component with Lorentzian attenuation from
-  `hal_ring.b`. Gains changed from `float3(1.05, 0.50, 0.0)` to `float3(1.05, 0.30, 0.03)`.
+  `hal_ring.b` via `lerp(0.22, 0.38, hal_lore)`. Gains changed from `float3(1.05, 0.50, 0.0)` to `float3(1.05, 0.45, 0.03)`.
   White surfaces now receive the correct orange/amber fringe. Red dominance preserved (deepest
   dye layer, yellow filter blocks blue emission but passes red/orange).
 

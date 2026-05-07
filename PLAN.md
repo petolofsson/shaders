@@ -447,15 +447,11 @@ The C-gate and mid_weight already protect neutrals — the directional constrain
 `scene_theta`, `sincos`, `dir_weight` removed. `new_C = mean_C + (C - mean_C) * factor`.
 Saves 1 sincos + ~4 ALU. Stage 0: 95/85 → 97/86.
 
-**Stage 3.5 — Halation brightness-scaled PSF** (`grade.fx`)
+**Stage 3.5 — Halation brightness-scaled PSF** (`grade.fx`) — *PLANNED, NOT YET IN CODE*
 `hal_broad.r` broad factor scaled by `hal_bright`: `lerp(0.06, 0.18, hal_bright)` instead of
-fixed 0.12. Brighter sources now produce wider scatter (larger effective PSF radius).
-Green broad component added: `hal_ring.g + hal_broad.g * hal_bright * 0.06`. Blue unchanged.
-Stage 3.5: 94/89 → 96/91.
+fixed 0.12. Current code: `hal_ring.r + hal_broad.r * 0.12` (fixed). Candidate for next session.
 
-**Output — Pro-Mist three-scale blur** (`grade.fx`)
-`MistDiffuseTex` MipLevels 2 → 3. vkBasalt auto-generates mip2 within-technique (same rule
-confirmed for mip1). ProMistPS adds `mist_broader = tex2Dlod(MistDiffuseSamp, ..., mip2)`.
-Blended in via `broad_w = saturate(MIST_STRENGTH * 0.20 − 0.10)` — ramps above ~0.5.
-All three scales from post-grade MistDiffuseTex: no pre/post-grade colour mismatch.
-Output Pro-Mist: 93/84 → 95/86.
+**Output — Pro-Mist three-scale blur** (`grade.fx`) — *PLANNED, NOT YET IN CODE*
+`MistDiffuseTex` MipLevels 2 → 3. ProMistPS would add `mist_broader` at LOD 2 blended via
+`broad_w = saturate(MIST_STRENGTH * 0.20 − 0.10)`. Current code: MipLevels=2, two LODs only.
+Candidate for next session.

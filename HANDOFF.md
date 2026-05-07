@@ -91,8 +91,8 @@ scatter optics. New model only adds scatter from highlights; shadows/midtones ar
 
 ### R114 — Halation chromatic fringe (grade.fx)
 
-Added `hal_b` component with Lorentzian attenuation (`hal_ring.b * lerp(0.38, 0.22, hal_lore)`).
-Gains changed from `float3(1.05, 0.50, 0.0)` to `float3(1.05, 0.30, 0.03)`. White surfaces now
+Added `hal_b` component with Lorentzian attenuation (`hal_ring.b * lerp(0.22, 0.38, hal_lore)`).
+Gains changed from `float3(1.05, 0.50, 0.0)` to `float3(1.05, 0.45, 0.03)`. White surfaces now
 produce correct orange/amber fringe. Red dominance preserved (deepest dye layer; yellow filter
 layer attenuates blue but passes red/orange). `HAL_STRENGTH` 0.50 → 2.0, `HAL_GAMMA` 0.40 → 2.50.
 

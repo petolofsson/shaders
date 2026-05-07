@@ -46,8 +46,8 @@ Verify both passes appear before `ColorTransformPS` in the technique definition.
 Verify MipLevels=1 on LowFreqMip1Tex and LowFreqMip2Tex (cross-technique, mip0 only).
 
 **R114 — Halation chromatic fringe (grade.fx)**
-Verify `hal_b = hal_ring.b * lerp(0.38, 0.22, hal_lore)` is present.
-Verify gains: `float3 hal_gains = float3(1.05, 0.30, 0.03)` — not the old `float3(1.05, 0.50, 0.0)`.
+Verify `hal_b = hal_ring.b * lerp(0.22, 0.38, hal_lore)` is present.
+Verify gains: `float3(1.05, 0.45, 0.03)` — not the old `float3(1.05, 0.50, 0.0)`.
 Verify `hal_lore` (Lorentzian tail) is computed before `hal_b` is declared.
 
 **R115 — Pro-Mist shimmer model (grade.fx ProMistPS)**
@@ -66,11 +66,11 @@ Verify `result = base.rgb + bloom * adapt_str`.
 
 **R117 — Stage gap closures (grade.fx, inverse_grade.fx)**
 - `inverse_grade.fx`: verify `scene_theta`, `sincos`, `dir_weight` are ABSENT. Expansion is
-  `new_C = mean_C + (C - mean_C) * factor` — uniform, no directional bias.
-- `grade.fx halation`: verify `hal_broad.r = lerp(0.06, 0.18, hal_bright)` — not fixed 0.12.
-  Verify green broad component: `hal_ring.g + hal_broad.g * hal_bright * 0.06`.
-- `grade.fx MistDiffuseTex`: verify `MipLevels = 3`. Verify `ProMistPS` samples mip2 as
-  `mist_broader` and blends via `broad_w = saturate(MIST_STRENGTH * 0.20 - 0.10)`.
+  `new_C = mean_C + (C - mean_C) * factor` — uniform, no directional bias. (R117A implemented.)
+- `grade.fx halation`: hal_broad.r is **fixed 0.12** — `hal_ring.r + hal_broad.r * 0.12`.
+  Brightness-scaled PSF (lerp(0.06, 0.18, hal_bright)) is NOT yet implemented.
+- `grade.fx MistDiffuseTex`: MipLevels = **2**. ProMistPS samples LOD 0 and LOD 1 only.
+  Three-scale blur (LOD 2 + broad_w ramp) is NOT yet implemented.
 
 ## Important standing notes
 
