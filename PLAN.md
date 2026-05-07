@@ -154,9 +154,9 @@ GPU cost: ~4 ALU total. No new taps.
 **Status: Removed 2026-05-04**
 
 Auto shadow temperature (+15 temp into cool shadows) was the root cause of the orange
-bias in testbed. Testbed has naturally cool, saturated shadows — R47 was
-fighting the explicit grade every frame. Diagnosed by zeroing all knobs and
-zero-ing R47 in shader code: orange disappeared immediately. Removed entirely from
+bias found during calibration. In content with cool, saturated shadows R47 fought the
+explicit grade every frame. Diagnosed by zeroing all knobs then zeroing R47 in shader
+code: orange disappeared immediately. Removed entirely from
 corrective.fx (ShadowBias pass gone; corrective now 7 passes). Do not re-implement
 without a specific game case that benefits.
 
@@ -253,10 +253,10 @@ Auto shadow lift exposed as user scalar (1.0 = calibrated default).
 
 ### Orange hunt + R47 removal
 Systematic zero-everything diagnosis identified R47 (shadow auto-temp) as the root cause
-of the persistent orange cast in testbed. Removal strategy: zeroed all knobs, confirmed
-warm push disappeared when R47 was zeroed in shader code. R47 removed from corrective.fx.
-ShadowBias pass removed — corrective now 7 passes. PRINT_STOCK warm cast and R85 dye
-coupling confirmed as *intentional* film stock character (not part of the orange bug).
+of the persistent orange cast found during calibration. Removal strategy: zeroed all knobs,
+confirmed warm push disappeared when R47 was zeroed in shader code. R47 removed from
+corrective.fx. ShadowBias pass removed — corrective now 7 passes. PRINT_STOCK warm cast
+and R85 dye coupling confirmed as *intentional* film stock character (not part of the orange bug).
 
 ### R22 mid_C_boost increased (0.04 → 0.08)
 Mid-range saturation bell (`L*(1-L)*4` shape, 0.22–0.70 range) was zeroed during orange
@@ -282,8 +282,8 @@ HWY_CHROMA_ANGLE slot 201 still written by analysis_frame but no longer read by 
 
 ### Film curve named presets
 Documented Vision3 500T, Portra 400, Velvia 50, Ektachrome E100 as named CURVE_* value
-sets. Active testbed uses Vision3 500T values (slight warm lift in R toe, cool
-rolloff in B toe — characteristic 500T look in shadows).
+sets. Vision3 500T: slight warm lift in R toe, cool rolloff in B toe — characteristic
+500T shadow look. Portra 400: warmer toe, more open shadows.
 
 ### creative_values.fx restructured
 Reordered all knobs in workflow-logical tuning order:
@@ -331,8 +331,8 @@ Guards restored. Any future proof must include the cold-start frame explicitly.
 
 The rational-function inverse (quadratic formula approach) for UE5 ACES was the original
 plan. R90 instead uses scene statistics (IQR, p25/p75) to measure compression and recover
-chroma without identifying the specific tone mapper. This is more game-agnostic and proved
-sufficient for testbed. R86's ACES hue-shift correction remains a potential future
+chroma without identifying the specific tone mapper. This is game-agnostic and sufficient
+across tested content. R86's ACES hue-shift correction remains a potential future
 addition if orange/magenta cast in ACES content becomes an issue again.
 
 ---
