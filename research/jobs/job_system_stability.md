@@ -60,8 +60,12 @@ Verify `result = base.rgb + bloom * adapt_str`.
 - `corrective.fx SmoothZoneLevelsPS`: verify intra-zone variance `E[X²] − E[X]²` per zone.
   Verify `ZoneHistoryTex.a` stores smoothed `intra_std`, not Kalman P.
 - `grade.fx ColorTransformPS`: verify `eff_p25 = perc.r` and `eff_p75 = perc.b` — no lerp blend.
-- `grade.fx ColorTransformPS`: verify adaptive CAT16 blend `lerp(0.80, 0.60, saturate(illum_dev / 0.3))`.
+- `grade.fx ColorTransformPS`: verify adaptive CAT16 blend with achromatic confidence gate —
+  `cat_blend = lerp(0.80, 0.60, smoothstep(0.05, 0.20, illum_dev)) * lerp(0.65, 1.0, cat_confidence)`
+  where `cat_confidence = smoothstep(0.02, 0.12, ReadHWY(HWY_ACHROM_FRAC))`. (R124A)
 - `grade.fx ColorTransformPS`: verify chroma ceiling applied to `lifted_C` before vibrance masking.
+- `grade.fx ColorTransformPS`: verify zone_std smoothstep thresholds are `smoothstep(0.06, 0.16, zone_std)`
+  and `smoothstep(0.03, 0.16, zone_std)` — not the old `0.08/0.25` and `0.04/0.25`. (Recalibrated post-R116)
 - `inverse_grade.fx`: verify `max(slope_enc * 1.5 + 1.0, 1.15)` minimum clamp.
 
 **R117 — Stage gap closures (grade.fx, inverse_grade.fx)**
