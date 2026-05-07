@@ -31,8 +31,9 @@ Use native WebSearch for all searches — no Brave MCP.
 ## Already implemented — do not re-propose
 
 **Tuesday/chroma domain:**
-- **R101 F1 — Bezold-Brücke** (2026-05-05): Unique-yellow-anchored `-sin(2π(h−0.27))`.
-  Two-harmonic extension is a future candidate (single-harmonic slightly over-corrects cyan).
+- **R101 F1 / R125 — Bezold-Brücke** (2026-05-05 / 2026-05-07): Anchor fixed to Oklab invariant hues
+  (h=0.25 unique yellow, h=0.75 unique blue). Two-harmonic `(ch_h + 0.9*sh2_h)` via double-angle.
+  Teal direction bug corrected. Amplitude 0.006 → 0.015.
 - **R101 F2 — H-K exponent scene-adaptation** (2026-05-05): `lerp(0.52, 0.64, saturate(zone_log_key / 0.50))`. Nayatani 1997 + CIECAM02 F_L backed.
 - **R101 F3 — Abney C_stim** (2026-05-05): Burns et al. 1984; coefficients scale by pre-lift stimulus chroma.
 

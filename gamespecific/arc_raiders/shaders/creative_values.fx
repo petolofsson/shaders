@@ -12,7 +12,7 @@
 // below "sees". Raising this (>1.0) darkens; lowering (<1.0) brightens.
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune
 // the contrast/chroma knobs beneath.
-#define EXPOSURE            0.95
+#define EXPOSURE            0.90
 
 // ── CAMERA SIGNAL RANGE ───────────────────────────────────────────────────────
 // Remaps the raw pixel into [FILM_FLOOR, FILM_CEILING] before EXPOSURE runs.
@@ -35,14 +35,14 @@
 // color dye. Desaturates shadows most (denser silver retention in unexposed areas),
 // steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.
 // 0 = off. 1 = full (near-monochrome shadows). Start: 0.1–0.3.
-#define BLEACH_BYPASS  0.30
+#define BLEACH_BYPASS  0.20
 
 // ── DIR COUPLERS ──────────────────────────────────────────────────────────────
 // Developer-inhibitor-release cross-channel masking. Each dye layer releases
 // inhibitors that suppress adjacent layers, increasing colour separation.
 // Fires after EXPOSURE, before FilmCurve — pure SDR-log effect.
 // 0 = off (default). 0.3 = subtle. 0.6 = visible colour pop. 1.0 = strong.
-#define COUPLER_STRENGTH  0.4
+#define COUPLER_STRENGTH  0.3
 
 // ── FILM CURVE CHARACTER ──────────────────────────────────────────────────────
 // Per-channel knee and toe offsets for the FilmCurve (Stage 1). These encode the
@@ -65,14 +65,14 @@
 // ── SHADOW LIFT ───────────────────────────────────────────────────────────────
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOW_LIFT_STRENGTH  0.8
+#define SHADOW_LIFT_STRENGTH  1.0
 
 // ── 3-WAY COLOR CORRECTOR ────────────────────────────────────────────────────
 // Runs after EXPOSURE and FilmCurve, before zone contrast. Primary color grade.
 // TEMP: positive = warm (R up, B down), negative = cool. Range ±100.
 // TINT: positive = magenta (G down, R+B up slightly), negative = green. Range ±100.
 // All default to 0 — passthrough. No output change at defaults.
-#define SHADOW_TEMP     -8
+#define SHADOW_TEMP     -5
 #define SHADOW_TINT      0
 #define MID_TEMP        +3
 #define MID_TINT         0
@@ -84,7 +84,7 @@
 // near each hue band's scene mean — lift-only, vibrance-masked (already-saturated
 // pixels are attenuated). Spatial R68A modulation is applied on top.
 // 1.0 = calibrated default. 0 = off. Above 2.0 = aggressive.
-#define CHROMA_STR  0.30
+#define CHROMA_STR  0.40
 
 // ── HUE ROTATION ─────────────────────────────────────────────────────────────
 // Per-band rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
@@ -102,7 +102,7 @@
 // (yellow filter layer blocks blue from reaching base). White sources glow orange.
 // Fires inside game bloom radius, not on top of it.
 // 0 = off. 0.35 = calibrated default. 1.0 = Ektachrome-style aggressive.
-#define HAL_STRENGTH  0.5
+#define HAL_STRENGTH  0.40
 // HAL_GAMMA: chromatic crossover threshold (ring luma units, R117).
 // Controls where the inner/outer halation colour character transitions.
 // Inner ring (large ring energy > HAL_GAMMA): spectrally balanced.
@@ -116,7 +116,7 @@
 // Highlight shimmer — bright sources bloom into adjacent dark areas (additive).
 // Shadows stay dark; midtones unaffected. Recalibrate from scratch after R115:
 // old values were tuned for diffusion. Start around 0.1–0.4. 0 = off.
-#define MIST_STRENGTH  0.30
+#define MIST_STRENGTH  0.20
 
 // ── PURKINJE SHIFT ────────────────────────────────────────────────────────────
 // Rod-vision blue-green hue bias across the mesopic range (luma 0–0.30). Physiologically
@@ -124,7 +124,7 @@
 // (C=0 → zero shift). R117: transition widened from luma 0.12 → 0.30 to cover full
 // scotopic-photopic range. Recalibrate from scratch: try 0.6–0.8 (wider range = more
 // integrated effect at same strength). 0 = off.
-#define PURKINJE_STRENGTH  1.0
+#define PURKINJE_STRENGTH  1.2
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.

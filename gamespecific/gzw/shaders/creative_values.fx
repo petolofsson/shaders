@@ -35,7 +35,7 @@
 // color dye. Desaturates shadows most (denser silver retention in unexposed areas),
 // steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.
 // 0 = off. 1 = full (near-monochrome shadows). Start: 0.1–0.3.
-#define BLEACH_BYPASS  0.0
+#define BLEACH_BYPASS  0.1
 
 // ── DIR COUPLERS ──────────────────────────────────────────────────────────────
 // Developer-inhibitor-release cross-channel masking. Each dye layer releases
@@ -65,7 +65,7 @@
 // ── SHADOW LIFT ───────────────────────────────────────────────────────────────
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOW_LIFT_STRENGTH  0.8
+#define SHADOW_LIFT_STRENGTH  0.9
 
 // ── 3-WAY COLOR CORRECTOR ────────────────────────────────────────────────────
 // Runs after EXPOSURE and FilmCurve, before zone contrast. Primary color grade.
@@ -84,7 +84,7 @@
 // near each hue band's scene mean — lift-only, vibrance-masked (already-saturated
 // pixels are attenuated). Spatial R68A modulation is applied on top.
 // 1.0 = calibrated default. 0 = off. Above 2.0 = aggressive.
-#define CHROMA_STR  0.30
+#define CHROMA_STR  0.40
 
 // ── HUE ROTATION ─────────────────────────────────────────────────────────────
 // Per-band rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
@@ -102,7 +102,7 @@
 // (yellow filter layer blocks blue from reaching base). White sources glow orange.
 // Fires inside game bloom radius, not on top of it.
 // 0 = off. 0.35 = calibrated default. 1.0 = Ektachrome-style aggressive.
-#define HAL_STRENGTH  1.0
+#define HAL_STRENGTH  0.5
 // HAL_GAMMA: chromatic crossover threshold (ring luma units, R117).
 // Controls where the inner/outer halation colour character transitions.
 // Inner ring (large ring energy > HAL_GAMMA): spectrally balanced.
@@ -116,7 +116,7 @@
 // Highlight shimmer — bright sources bloom into adjacent dark areas (additive).
 // Shadows stay dark; midtones unaffected. Recalibrate from scratch after R115:
 // old values were tuned for diffusion. Start around 0.1–0.4. 0 = off.
-#define MIST_STRENGTH  0.30
+#define MIST_STRENGTH  0.10
 
 // ── PURKINJE SHIFT ────────────────────────────────────────────────────────────
 // Rod-vision blue-green hue bias across the mesopic range (luma 0–0.30). Physiologically

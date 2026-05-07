@@ -83,6 +83,11 @@ Verify `result = base.rgb + bloom * adapt_str`.
 - **pro_mist.fx** is not in the active chain (merged into grade.fx). Do not audit.
 - **`tex2Dlod(BackBuffer, ...)`** always returns zero in vkBasalt — correct form is `tex2D`. Flag any tex2Dlod on BackBuffer sampler as a bug.
 
+**R125 — Bezold-Brücke anchor fix + two-harmonic (grade.fx)**
+- Verify B-B line reads: `float sh2_h = 2.0 * sh_h * ch_h;` followed by
+  `r21_delta += (lab.x - 0.50) * 0.015 * (ch_h + 0.9 * sh2_h);`
+- Verify old formula `sh_h * 0.1253 + ch_h * 0.9921` is ABSENT.
+- Verify `sh2_h` declaration is in the B-B block, not before (single-use variable).
+
 ## Last updated
-2026-05-07 — Full rewrite of Task E for R113–R117. Updated known-good baseline to R116
-audit state. Updated highway slots to include 211–213. Updated files list and standing notes.
+2026-05-07 — Added R125 B-B verification to Task E. Previous: R113–R117 additions.

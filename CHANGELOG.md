@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-05-07 — session (R124 illuminant, R125 Bezold-Brücke)
+
+### Implemented
+
+- **R124A — CAT16 achromatic confidence gate** (`grade.fx`) — When scene has few neutral
+  pixels (low `HWY_ACHROM_FRAC`), the grey world illuminant estimate is unreliable. CAT16
+  blend now gates via `cat_confidence = smoothstep(0.02, 0.12, achrom_frac)`, scaling blend
+  from 0.60–0.80 down proportionally in saturated scenes. Zero passes, ~3 ALU.
+- **R124B — Neutral-pixel-weighted illuminant** (`grade.fx`) — New `NeutralIllumPS` pass
+  (144-sample 16×9 grid over `CreativeLowFreqSamp` mip0). Weights pixels by
+  `1 − smoothstep(0.04, 0.10, C)` (Oklab chroma). Outputs weighted mean to 1×1
+  `NeutralIllumTex`, replacing the flat grey world mean as CAT16 illuminant source.
+  Falls back to grey world when few neutral pixels present. ~1ms GPU saving observed
+  (eliminates spatially-varying per-pixel `lf_mip0` read).
+- **R125 — Bezold-Brücke anchor fix + two-harmonic** (`grade.fx`) — Previous formula
+  `sh_h * 0.1253 + ch_h * 0.9921` had zeros at h=0.270/0.770 (should be 0.250/0.750)
+  and pushed teal/cyan hues toward green instead of toward blue (anti-B-B direction).
+  New formula `(lab.x − 0.50) * 0.015 * (ch_h + 0.9 * sh2_h)` anchors exactly at the
+  Oklab invariant hues (h=0.25 unique yellow, h=0.75 unique blue). Second harmonic
+  `sh2_h = 2*sh_h*ch_h` adds asymmetry via double-angle identity — 4 MAD, zero new taps.
+  Amplitude raised 0.006 → 0.015 for ~0.25° max shift.
+
+### Recalibrated
+
+- **Zone_std thresholds** (`grade.fx`) — Post-R116, zone_std measures intra-zone pixel
+  variance (peaks ~0.15) not inter-zone median spread (could reach 0.25+). Thresholds
+  updated: `smoothstep(0.08, 0.25)` → `(0.06, 0.16)` and `smoothstep(0.04, 0.25)` →
+  `(0.03, 0.16)`. Slightly tighter contrast response confirmed.
+
 ## 2026-05-06 — session (R114 halation chromatic, R115 Pro-Mist shimmer, R116 pipeline audit)
 
 ### Fixed / Improved
