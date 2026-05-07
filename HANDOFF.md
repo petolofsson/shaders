@@ -115,30 +115,6 @@ Documented fully in `research/R113_2026-05-06_vkbasalt_mip_generation.md`.
 
 ---
 
-## Current creative_values.fx (Arc Raiders)
-
-| Knob | Value | Note |
-|------|-------|------|
-| INVERSE_STRENGTH | 0.55 | Raised after chroma median (median < mean → more headroom) |
-| EXPOSURE | 0.95 | — |
-| FILM_FLOOR | 0.01 | — |
-| FILM_CEILING | 0.95 | — |
-| SHADOW_TEMP / MID_TEMP / HIGHLIGHT_TEMP | -5 / +3 / +6 | — |
-| ZONE_STRENGTH | 1.25 | May need retune after linear zone_log_key change |
-| SHADOW_LIFT_STRENGTH | 1.30 | — |
-| CURVE_R_KNEE / B_KNEE | -0.0102 / 0.0000 | — |
-| CURVE_R_TOE / B_TOE | +0.0100 / -0.0218 | — |
-| PRINT_STOCK | 0.45 | — |
-| COUPLER_STRENGTH | 0.20 | — |
-| HAL_STRENGTH | 2.0 | Recalibrated after R114 chromatic fringe |
-| HAL_GAMMA | 2.50 | Wider Lorentzian tail for broad diffuse scatter |
-| CHROMA_STR | 0.60 | — |
-| ROT_RED/YELLOW/GREEN/CYAN/BLUE/MAG | +0.03/-0.015/-0.02/+0.015/-0.03/0.00 | — |
-| MIST_STRENGTH | 1.5 | Recalibrated after R115 additive shimmer model |
-| PURKINJE_STRENGTH | 1.2 | — |
-
----
-
 ## Known state
 
 - **ZONE_STRENGTH may need retuning** — linear zone_log_key raises key in high-contrast scenes
