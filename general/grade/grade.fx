@@ -121,6 +121,15 @@ sampler2D LowFreqMip2Samp
     MagFilter = LINEAR;
 };
 
+// Neutral-pixel-weighted illuminant estimate — 1×1, written by NeutralIllumPS each frame
+texture2D NeutralIllumTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+sampler2D NeutralIllumSamp
+{
+    Texture   = NeutralIllumTex;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
 // Pro-Mist downsample target — 1/8-res, 3 mips; mip1=1/16-res, mip2=1/32-res (vkBasalt auto-generates within-technique)
 texture2D MistDiffuseTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 3; };
 sampler2D MistDiffuseSamp
@@ -237,7 +246,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
                                          -1.0784,  2.1456, -0.1184,
                                           0.0078, -0.2191,  1.1200);
         const float3 lms_d65 = float3(0.9756, 1.0165, 1.0849);
-        float3 illum_rgb  = lf_mip0.rgb;
+        float3 illum_rgb  = tex2Dlod(NeutralIllumSamp, float4(0.5, 0.5, 0, 0)).rgb;
         float3 illum_norm = illum_rgb / max(Luma(illum_rgb), 0.001);
         float3 lms_illum  = mul(M_fwd, illum_norm);
         lms_illum_norm    = lms_illum / max(lms_illum.g, 0.001);
@@ -695,6 +704,35 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
                      55u, 80u, 77u, 83u, float3(0.9, 0.1, 0.9)); // 7PMS
 }
 
+// ─── R124B: Neutral-pixel-weighted illuminant estimation ───────────────────
+// Samples CreativeLowFreqTex at 16×9 grid (144 points). Near-grey pixels
+// (Oklab C < 0.10) carry illuminant color reliably; saturated pixels are noise.
+// Falls back to grey world when fewer than ~8/144 samples are neutral.
+float4 NeutralIllumPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    float3 neutral_acc = 0.0;
+    float3 grey_acc    = 0.0;
+    float  total_w     = 0.0;
+
+    for (int iy = 0; iy < 9; iy++)
+    for (int ix = 0; ix < 16; ix++)
+    {
+        float2 suv = float2((ix + 0.5) / 16.0, (iy + 0.5) / 9.0);
+        float3 rgb = tex2Dlod(CreativeLowFreqSamp, float4(suv, 0, 0)).rgb;
+        float3 lab = RGBtoOklab(rgb);
+        float  C   = length(lab.yz);
+        float  w   = 1.0 - smoothstep(0.04, 0.10, C);
+        neutral_acc += rgb * w;
+        grey_acc    += rgb;
+        total_w     += w;
+    }
+
+    float3 grey_world   = grey_acc * (1.0 / 144.0);
+    float3 neutral_mean = neutral_acc / max(total_w, 0.001);
+    float  conf         = saturate(total_w / 8.0);
+    return float4(lerp(grey_world, neutral_mean, conf), 1.0);
+}
+
 // ─── Technique ─────────────────────────────────────────────────────────────
 
 technique OlofssonianColorGrade
@@ -710,6 +748,12 @@ technique OlofssonianColorGrade
         VertexShader = PostProcessVS;
         PixelShader  = LFDownscale2PS;
         RenderTarget = LowFreqMip2Tex;
+    }
+    pass NeutralIllum
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = NeutralIllumPS;
+        RenderTarget = NeutralIllumTex;
     }
     pass ColorTransform
     {
