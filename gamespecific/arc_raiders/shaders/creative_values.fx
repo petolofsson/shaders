@@ -35,7 +35,7 @@
 // color dye. Desaturates shadows most (denser silver retention in unexposed areas),
 // steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.
 // 0 = off. 1 = full (near-monochrome shadows). Start: 0.1–0.3.
-#define BLEACH_BYPASS  0.0
+#define BLEACH_BYPASS  0.30
 
 // ── DIR COUPLERS ──────────────────────────────────────────────────────────────
 // Developer-inhibitor-release cross-channel masking. Each dye layer releases
