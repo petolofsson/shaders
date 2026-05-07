@@ -69,8 +69,8 @@ Verify `result = base.rgb + bloom * adapt_str`.
   `new_C = mean_C + (C - mean_C) * factor` — uniform, no directional bias. (R117A implemented.)
 - `grade.fx halation`: hal_broad.r is **fixed 0.12** — `hal_ring.r + hal_broad.r * 0.12`.
   Brightness-scaled PSF (lerp(0.06, 0.18, hal_bright)) is NOT yet implemented.
-- `grade.fx MistDiffuseTex`: MipLevels = **2**. ProMistPS samples LOD 0 and LOD 1 only.
-  Three-scale blur (LOD 2 + broad_w ramp) is NOT yet implemented.
+- `grade.fx MistDiffuseTex`: verify `MipLevels = 3`. Verify `ProMistPS` samples LOD 2 as
+  `mist_broader` and blends via `broad_w = saturate(MIST_STRENGTH * 0.20 - 0.10)`.
 
 ## Important standing notes
 

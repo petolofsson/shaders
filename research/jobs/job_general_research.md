@@ -49,7 +49,8 @@ Use native WebSearch for all searches — no Brave MCP.
 - **R114 — Chromatic fringe** (2026-05-06): hal_b component; gains float3(1.05, 0.45, 0.03). hal_b = hal_ring.b * lerp(0.22, 0.38, hal_lore). White → orange/amber fringe.
 
 **Pro-Mist (Output):**
-- **R115 — Additive shimmer model** (2026-05-06): `base + max(0, blurred − base) * strength`. Highlights only. MistDiffuseTex MipLevels=2.
+- **R115 — Additive shimmer model** (2026-05-06): `base + max(0, blurred − base) * strength`. Highlights only.
+- **R117C — Three-scale blur** (2026-05-07): MistDiffuseTex MipLevels=3; mist_broader at LOD 2; broad_w ramps above MIST_STRENGTH ~0.5.
 
 **Pipeline audit:**
 - **R116 — 9-issue color pipeline audit** (2026-05-06): chroma median CDF p50, linear zone_log_key, intra-zone pixel variance, pure global p25/p75, adaptive CAT16 blend, ceiling before vibrance, HWY_SLOPE min clamp.

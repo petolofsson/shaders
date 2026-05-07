@@ -121,8 +121,8 @@ sampler2D LowFreqMip2Samp
     MagFilter = LINEAR;
 };
 
-// Pro-Mist downsample target — 1/8-res, 2 mips; mip1=1/16-res effective (vkBasalt auto-generates within-technique)
-texture2D MistDiffuseTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 2; };
+// Pro-Mist downsample target — 1/8-res, 3 mips; mip1=1/16-res, mip2=1/32-res (vkBasalt auto-generates within-technique)
+texture2D MistDiffuseTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 3; };
 sampler2D MistDiffuseSamp
 {
     Texture   = MistDiffuseTex;
@@ -665,8 +665,9 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     // R115: shimmer model — additive bloom only where blur > sharp (highlight→shadow bleed).
     // Dark pixels near bright sources glow; midtones and shadows unaffected.
     // Reinhard knee at 0.08: soft shoulder prevents clipping; adapt_str controls overall scale.
-    float3 mist_tight = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 0)).rgb;
-    float3 mist_wide  = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 1)).rgb;
+    float3 mist_tight   = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 0)).rgb;
+    float3 mist_wide    = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 1)).rgb;
+    float3 mist_broader = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 2)).rgb;
 
     float4 perc           = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
     float  iqr            = perc.b - perc.r;
@@ -676,8 +677,9 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float  mist_ap_scale  = lerp(1.10, 0.90, saturate((EXPOSURE - 0.70) / 0.60));
     adapt_str *= mist_key_scale * mist_ap_scale;
 
-    float  scale_w   = saturate(MIST_STRENGTH * 0.25);
-    float3 blurred   = lerp(mist_tight, mist_wide, scale_w);
+    float  scale_w  = saturate(MIST_STRENGTH * 0.25);
+    float  broad_w  = saturate(MIST_STRENGTH * 0.20 - 0.10);
+    float3 blurred  = lerp(lerp(mist_tight, mist_wide, scale_w), mist_broader, broad_w);
     float3 bloom_raw = max(0.0, blurred - base.rgb);
     float3 bloom     = bloom_raw / (bloom_raw + 0.08);
     float3 result    = saturate(base.rgb + bloom * adapt_str);

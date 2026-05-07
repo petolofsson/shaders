@@ -447,11 +447,12 @@ The C-gate and mid_weight already protect neutrals — the directional constrain
 `scene_theta`, `sincos`, `dir_weight` removed. `new_C = mean_C + (C - mean_C) * factor`.
 Saves 1 sincos + ~4 ALU. Stage 0: 95/85 → 97/86.
 
-**Stage 3.5 — Halation brightness-scaled PSF** (`grade.fx`) — *PLANNED, NOT YET IN CODE*
-`hal_broad.r` broad factor scaled by `hal_bright`: `lerp(0.06, 0.18, hal_bright)` instead of
-fixed 0.12. Current code: `hal_ring.r + hal_broad.r * 0.12` (fixed). Candidate for next session.
+**Stage 3.5 — Halation brightness-scaled PSF** — *REJECTED (R124 research)*
+Film halation scatter radius is fixed by emulsion geometry, not source intensity. Brighter
+sources produce stronger amplitude, not a wider kernel — amplitude already scales naturally
+via `hal_ring = max(0, blur − sharp)`. Fixed broad factor 0.12 is physically correct.
 
-**Output — Pro-Mist three-scale blur** (`grade.fx`) — *PLANNED, NOT YET IN CODE*
-`MistDiffuseTex` MipLevels 2 → 3. ProMistPS would add `mist_broader` at LOD 2 blended via
-`broad_w = saturate(MIST_STRENGTH * 0.20 − 0.10)`. Current code: MipLevels=2, two LODs only.
-Candidate for next session.
+**Output — Pro-Mist three-scale blur** (`grade.fx`) — *DONE (R117C)*
+`MistDiffuseTex` MipLevels 2 → 3. vkBasalt auto-generates mip2 within-technique.
+`ProMistPS` adds `mist_broader = tex2Dlod(..., LOD 2)`. Blended via
+`broad_w = saturate(MIST_STRENGTH * 0.20 − 0.10)` — ramps above ~0.5. Output Pro-Mist: 93/84 → 95/86.
