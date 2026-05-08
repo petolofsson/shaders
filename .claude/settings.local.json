@@ -1,7 +1,4 @@
 {
-  "env": {
-    "BRAVE_API_KEY": "BSAhLoPIl0zTKhhycZyXI3eHmxEVdAL"
-  },
   "permissions": {
     "allow": [
       "Bash(gh repo *)",

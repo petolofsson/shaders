@@ -97,7 +97,7 @@ MistDiffuseTex (1/8-res, MipLevels=2), composite mip1 back at full res via addit
 `base + max(0, blurred − base) * strength`. Adds scatter from highlights only — not symmetric diffusion.
 vkBasalt auto-generates mips.
 
-**Data highway (BackBuffer y=0):** x=0–128 luma hist · x=130–193 hue hist · x=194–196 p25/p50/p75 · x=197 R90 slope · x=198 median Oklab C (CDF p50) · x=199 scene cut · x=200 p90 · x=201 chroma angle (atan2 encoded) · x=202 achromatic fraction · x=210 warm bias · x=211 zone key (linear mean of zone medians) · x=212 zone std (mean intra-zone pixel variance) · x=213 fc_stevens (encode ÷1.3, decode ×1.3)
+**Data highway (BackBuffer y=0):** x=0–128 luma hist · x=130–193 hue hist · x=194–196 p25/p50/p75 · x=197 R90 slope · x=198 median Oklab C (CDF p50) · x=199 scene cut · x=200 p90 · x=201 chroma angle (atan2 encoded) · x=202 achromatic fraction · x=203 zone_key · x=204 zone_std · x=205 slow_key · x=210 warm bias · x=213 fc_stevens (encode ÷1.3) · x=214 fc_knee · x=215 zone_str (encode ÷0.30) · x=216 cat_blend · x=217 shadow_lift_str (encode ÷1.5) · x=218 chroma_str base (encode ÷0.10) · x=219 mist adapt_str (encode ÷0.10)
 
 **Highway encoding rule:** 8-bit UNORM highway clips at 1.0. Values that can exceed 1.0 must be
 encoded on write (÷scale) and decoded on read (×scale). Document encode/decode in highway.fxh comment.

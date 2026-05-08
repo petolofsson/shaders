@@ -168,10 +168,11 @@ float3 FilmCurveApply(float3 x,
     float3 below      = max(float3(ktoe_r, ktoe_g, ktoe_b) - x, 0.0);
     float3 shoulder_w = float3(0.91, 1.00, 1.06);
     float3 toe_w      = float3(0.95, 1.00, 1.04);
-    // R126: body S-curve — mild mid-contrast matching H&D film body response (zero at x=0 and x=1)
-    float3 body_s     = x * (1.0 - x) * (1.0 - 2.0 * x) * 0.12;
+    // Upper-mid lift only: midrange-weighted one-sided S (zero at x≤0.5 and x=1, peak ~+1.2% at x≈0.72)
+    float3 xw         = x * (1.0 - x);
+    float3 body_s     = max(0.0, xw * xw * (2.0 * x - 1.0)) * 0.65;
     return x + body_s - factor * shoulder_w * above * above
-                      + toe_fac * toe_w * below * below;
+               + toe_fac * toe_w * below * below;
 }
 
 float3 RGBtoOklab(float3 rgb)

@@ -4,7 +4,7 @@
 // Adaptive inverse tone mapping. Expands display IQR toward the ACES-derived
 // 3.28-stop reference. Works on any S-curve tonemapper. 0 = off. 1.0 = full.
 // 0.30 is the recommended starting point.
-#define INVERSE_STRENGTH  0.50
+#define INVERSE_STRENGTH  0.40
 
 // ── EXPOSURE ─────────────────────────────────────────────────────────────────
 // First thing that runs. Applied as pow(rgb, EXPOSURE) before any zone or curve
@@ -12,7 +12,7 @@
 // below "sees". Raising this (>1.0) darkens; lowering (<1.0) brightens.
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune
 // the contrast/chroma knobs beneath.
-#define EXPOSURE            0.85
+#define EXPOSURE            1.0
 
 // ── CAMERA SIGNAL RANGE ───────────────────────────────────────────────────────
 // Remaps the raw pixel into [FILM_FLOOR, FILM_CEILING] before EXPOSURE runs.
@@ -28,7 +28,7 @@
 // Kodak 2383 print emulsion on top of FilmCurve: lifts blacks, compresses
 // highlights, desaturates mids ~15%, adds warm shadow cast. 0 = off.
 // 1 = full 2383. 0.35 = recommended starting point.
-#define PRINT_STOCK  0.50
+#define PRINT_STOCK  0.45
 
 // ── BLEACH BYPASS ─────────────────────────────────────────────────────────────
 // Skip the bleach step during print development — retains metallic silver alongside
