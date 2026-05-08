@@ -1,6 +1,6 @@
 # Pipeline Improvement Plan
-**Goal:** Raise every stage to 90% finished / 75% novel (game-specific sense).
-**Created:** 2026-05-03 | **Updated:** 2026-05-07 (R117A uniform expansion, R117C three-scale Pro-Mist; R117B rejected on film physics; doc corrections)
+**Goal:** Reach 90%+ novel on every stage. All stages already meet the 90% finished bar. Currently below target: Stage 0 (87%), Stage 1 (87%), Output (87%).
+**Created:** 2026-05-03 | **Updated:** 2026-05-08 (R127 CAT16 removal + R127B FilmCurve body S revised; novelty audit — stages 0/1/2 corrected upward, stage 3 aligned with HANDOFF)
 
 ---
 
@@ -24,7 +24,31 @@ The large color science block. Purkinje shift (scotopic blue sensitivity at low 
 Film halation is the glow around bright highlights caused by light bouncing off the film base and exposing the emulsion from behind. The model uses a blur-minus-sharp PSF: `max(0, LowFreqMip1 − col)` fires only at dark pixels adjacent to bright sources, producing an annular ring with zero extra texture taps. (True DoG mip2−mip1 doesn't work — mip2 is 4× more diluted than mip1, so the ring is always zero.) A Lorentzian tail function `hal_ring_luma / (hal_ring_luma + HAL_GAMMA + 1e-6)` models the heavier-than-Gaussian falloff of deep emulsion base reflections — `hal_lore` is high for bright ring glow, zero where there's no halation. Red adds a LowFreqMip2 broad component (fixed 0.12 — scatter radius is determined by emulsion geometry, not source brightness). Chromatic gains: red 1.05 (dominant, deepest dye layer), green 0.45 (attenuated by Lorentzian 0.78–0.94×), blue 0.03 (faint — yellow filter blocks most blue, `lerp(0.22, 0.38, hal_lore)`). White sources produce orange/amber fringe. HAL_GAMMA controls the Lorentzian knee. Novel: blur-minus-sharp annular PSF + Lorentzian tail at zero texture taps; chromatic model derived from film emulsion physics (dye layer depth, yellow filter absorption).
 
 **Output — Pro-Mist (merged into grade.fx)**
-Pro-Mist is a three-scale additive shimmer/bloom effect: the image is downsampled to MistDiffuseTex (1/8-res, MipLevels=3), vkBasalt auto-generates mip1 (1/16-res) and mip2 (1/32-res) within-technique. ProMistPS blends three scales — tight (LOD 0), wide (LOD 1, `scale_w = MIST_STRENGTH × 0.25`), broader (LOD 2, `broad_w = saturate(MIST_STRENGTH × 0.20 − 0.10)`) — then composites `max(0, blurred − sharp)` back onto the image, adding scatter from highlights only. Physically motivated: real Pro-Mist filters scatter at multiple radii simultaneously due to polydisperse particle size (ProMist-5K paper, arXiv 2601.19295). Blend strength is scene-adaptive (IQR + zone_log_key + EXPOSURE proxy). A Reinhard curve (x/(x+0.08)) shapes the bloom. Pro-Mist is the 4th and 5th passes of OlofssonianColorGrade (LFDownscale1 → LFDownscale2 → ColorTransform → MistDownsample → ProMist). Novel: statistics-driven adaptive additive shimmer on per-pixel highlight extraction with multi-scale physically-motivated scatter.
+Pro-Mist is a three-scale additive shimmer/bloom effect: the image is downsampled to MistDiffuseTex (1/8-res, MipLevels=3), vkBasalt auto-generates mip1 (1/16-res) and mip2 (1/32-res) within-technique. ProMistPS blends three scales — tight (LOD 0), wide (LOD 1, `scale_w = MIST_STRENGTH × 0.25`), broader (LOD 2, `broad_w = saturate(MIST_STRENGTH × 0.20 − 0.10)`) — then composites `max(0, blurred − sharp)` back onto the image, adding scatter from highlights only. Physically motivated: real Pro-Mist filters scatter at multiple radii simultaneously due to polydisperse particle size (ProMist-5K paper, arXiv 2601.19295). Blend strength is scene-adaptive (IQR + zone_log_key + EXPOSURE proxy). A Reinhard curve (x/(x+0.08)) shapes the bloom. Pro-Mist is the 5th and 6th passes of OlofssonianColorGrade (LFDownscale1 → LFDownscale2 → NeutralIllum → ColorTransform → MistDownsample → ProMist). Novel: statistics-driven adaptive additive shimmer on per-pixel highlight extraction with multi-scale physically-motivated scatter.
+
+---
+
+## Novelty gap — paths to 90%+
+
+Three stages are below the new 90% target. The non-novel mass in each is identified; candidate additions are listed with estimated novelty delta.
+
+### Stage 0 — Input (87% → 90%+)
+
+Non-novel mass: uniform chroma boost concept (~10%), mid_weight bell (~3%). The IQR/slope/Kalman/pivot/C-gate/ceilings are all novel — the drag is the base operation itself.
+
+Candidate: **per-hue expansion slopes.** Currently all hues expand by the same `slope`. Different hues have different compression signatures across tone mappers (warm hues clip earlier in ACES; cyans clip later). Driving per-hue slope from the hue histogram × chroma histogram (scene-level observation of which hues are compressed) would make the inverse grade adapt to actual hue-specific compression — genuinely novel, no equivalent anywhere. +3–4% novelty. Zero new taps; ~6 ALU; one additional read of the hue histogram highway slot.
+
+### Stage 1 — Film Stock (87% → 90%+)
+
+Non-novel mass: basic S-curve shape (~5%), bleach bypass concept (~4%), 3-way CC concept (~4%). R104/R85/R81C/R110 are first-of-kind; they carry the current score.
+
+Candidate: **spectral dye density simulation.** Current Beer-Lambert (R81C) uses dominant-channel magnitude as a proxy for dye concentration. Actual Kodak 2383 dye spectral curves are published (red-record/green-record/blue-record absorption peaks and widths). A 3×3 spectral-to-photometric matrix derived from the actual curves would replace the proxy with physically correct absorption. The matrix folds to a compile-time constant — zero runtime cost beyond the existing Beer-Lambert mul. +3% novelty (first real-time post-process to use published dye spectral data directly). Research needed: extract matrix from Kodak 2383 spectrophotometry.
+
+### Output — Pro-Mist (87% → 90%+)
+
+Non-novel mass: bloom/glow concept (~8%), Reinhard knee (~3%), lerp blending (~2%). The additive shimmer + three-scale + scene-adaptive + polydisperse carry the score.
+
+Candidate: **chromatic scatter radii.** Real Pro-Mist filter media are polydisperse — particle size distribution causes longer wavelengths (red) to scatter more broadly than shorter wavelengths (blue). Currently all three channels use the same three mip levels with the same weights. Driving the wide/broader weights per-channel — red uses more mip2, blue uses more mip0 — gives physically-motivated chromatic bloom. Analogous to the halation chromatic model (R114) but for diffuse scatter rather than specular ring. +3% novelty. Zero new taps; ~3 ALU; matches real filter optics.
 
 ---
 
@@ -47,12 +71,12 @@ Pro-Mist is a three-scale additive shimmer/bloom effect: the image is downsample
 
 | Stage | Finished | Novel | Notes |
 |-------|----------|-------|-------|
-| Stage 0 — Input | 97% | 86% | R117A: uniform expansion; directional bias removed; per-hue gamut ceilings |
-| Stage 1 — Corrective | 96% | 85% | R126: FilmCurve body S-curve (H&D midtone contrast, zero at toe/knee); gap: Abney data from 1984 (minor) |
-| Stage 2 — Tonal | 95% | 88% | Zone_std thresholds recalibrated for intra-zone signal (0.08/0.25 → 0.06/0.16); ZONE_STRENGTH unchanged |
-| Stage 3 — Chroma | 99% | 94% | R126: B-B teal lobe 1.6× orange (ch3_h triple-angle asymmetry); HK adaptive exponent already implemented (R101 F2); gap: Abney data from 1984 (minor) |
-| Stage 3.5 — Halation | 96% | 91% | R114: chromatic fringe (orange/amber); fixed PSF radius — brightness-scaled rejected on film physics |
-| Output — Pro-Mist | 95% | 86% | R117C: three-scale blur (tight/wide/broader); broad_w ramps above MIST_STRENGTH ~0.5 |
+| Stage 0 — Input | 97% | 87% | R117A: uniform chroma expansion + mean-C pivot; per-hue gamut ceilings; C-gate uniqueness undercounted in prior audit |
+| Stage 1 — Film Stock | 97% | 87% | R127B: one-sided upper-mid S (zero x≤0.5, peak +1.2% at x≈0.72); CAT16 removed R127; R104 DIR + R85 dye coupling + R81C Beer-Lambert novelty corrected upward |
+| Stage 2 — Tonal | 95% | 90% | Intra-zone variance (R116), Oklab-stable tonal (R62), temporal context (R60), R66 ambient tint — all underweighted in prior audit |
+| Stage 3 — Chroma | 98% | 93% | Aligned with HANDOFF; R117D memory color attraction + simultaneous contrast counted; Abney coefficient gap remains minor |
+| Stage 3.5 — Halation (grade.fx, ColorTransformPS) | 97% | 91% | R114: chromatic fringe (orange/amber); baked into MegaPass — not a separate effect |
+| Output — Pro-Mist (grade.fx, passes 5–6) | 96% | 87% | R117C: three-scale polydisperse; MistDownsample + ProMist inside OlofssonianColorGrade |
 
 ---
 
@@ -446,3 +470,44 @@ via `hal_ring = max(0, blur − sharp)`. Fixed broad factor 0.12 is physically c
 `MistDiffuseTex` MipLevels 2 → 3. vkBasalt auto-generates mip2 within-technique.
 `ProMistPS` adds `mist_broader = tex2Dlod(..., LOD 2)`. Blended via
 `broad_w = saturate(MIST_STRENGTH * 0.20 − 0.10)` — ramps above ~0.5. Output Pro-Mist: 93/84 → 95/86.
+
+---
+
+## Session 2026-05-08 additions (R127 / R127B / novelty audit)
+
+### R127 — CAT16 removed; chroma lift pivot fixed
+
+**CAT16 pixel correction removed** (`grade.fx`) — Game content is display-referred (sRGB→D65).
+CAT16 was treating artistic warm lighting as a calibration error and cooling it. Removed.
+`NeutralIllumTex` / `lms_illum_norm` kept to feed R83 (chromatic floor) and R66 (ambient tint).
+Highway slot 216 (cat_blend) removed.
+
+**Chroma lift pivot fixed** (`corrective.fx UpdateHistoryPS`) — `MIN_WEIGHT = 1.0` was adding
+unconditional weight to every pixel, pulling per-band pivot toward zero and making
+`LiftChroma`'s `t = 1 − C/pivot` saturate to 0 for all colored pixels — lift was silently inert.
+Fixed: weight = `HueBandWeight * smoothstep(0.03, 0.08, C)`. Achromatic pixels contribute zero;
+pivot is now the actual mean chroma of colored pixels. Chroma lift now works as designed.
+
+### R127B — FilmCurve body S-curve revised
+
+R126 formula `x*(1-x)*(1-2x)*0.12` lifted shadows (+9% at x≈0.2) — net image flattening.
+Replaced with one-sided midrange-weighted S: `max(0, (x*(1-x))²*(2x-1))*0.65`.
+Shadows (x≤0.5) untouched by construction. Upper mids peak +1.2% at x≈0.72, zero at x=1.
+
+### R128 — Specular pings — *ATTEMPTED AND REVERTED*
+
+Design: smooth-space detection of isolated specular hotspots by comparing `ping_local` (1/16-res)
+against `ping_broad` (1/32-res). Additive warm lift `float3(1.04, 1.00, 0.92)` at hotspots.
+`SPECULAR_PING` knob in `creative_values.fx`. Zero additional texture reads (hoist of duplicate
+`lf_mip1` tap). Good in theory — detection logic is sound. Bad in practice: did not hold up
+in-game. Research doc: `research/R128_2026-05-08_specular_pings.md`.
+
+### Novelty audit — 2026-05-08
+
+Stage scores corrected after cross-referencing code against game post-process state of the art:
+- **Stage 0** 86% → 87%: C-gate + mean-C pivot uniqueness undercounted
+- **Stage 1** 85% → 87%: R104 DIR couplers + R85 dye coupling + R81C Beer-Lambert all first-of-kind in real-time; undercounted
+- **Stage 2** 88% → 90%: Intra-zone variance (histogram moments), Oklab-stable tonal, R60 temporal context, R66 ambient tint all undercounted
+- **Stage 3** 94% → 93%: Corrected downward to align with HANDOFF (R117D + simultaneous contrast counted; Abney gap still present)
+- **Stage 3.5** finished 96% → 97%: Aligned with HANDOFF (R114 was the closing piece)
+- **Output** finished 95% → 96%, novel 86% → 87%: Polydisperse three-scale novelty now counted
