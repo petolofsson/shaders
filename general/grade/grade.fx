@@ -130,8 +130,9 @@ sampler2D NeutralIllumSamp
     MagFilter = POINT;
 };
 
-// Diffusion downsample target — 1/8-res, 3 mips; mip1=1/16-res, mip2=1/32-res (vkBasalt auto-generates within-technique)
-texture2D DiffusionTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 3; };
+// Diffusion blur chain — 1/4-res. DiffusionTex: downsample target + final V-blur output.
+// DiffusionHorizTex: H-blur intermediate. Both MipLevels=1; no mips needed after Gaussian.
+texture2D DiffusionTex { Width = BUFFER_WIDTH / 4; Height = BUFFER_HEIGHT / 4; Format = RGBA16F; MipLevels = 1; };
 sampler2D DiffusionSamp
 {
     Texture   = DiffusionTex;
@@ -139,7 +140,16 @@ sampler2D DiffusionSamp
     AddressV  = CLAMP;
     MinFilter = LINEAR;
     MagFilter = LINEAR;
-    MipFilter = LINEAR;
+};
+
+texture2D DiffusionHorizTex { Width = BUFFER_WIDTH / 4; Height = BUFFER_HEIGHT / 4; Format = RGBA16F; MipLevels = 1; };
+sampler2D DiffusionHorizSamp
+{
+    Texture   = DiffusionHorizTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
 };
 
 
@@ -444,9 +454,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float zk_safe   = max(zone_log_key, 0.001);
     new_luma = lerp(new_luma, saturate(nl_safe * zk_safe / illum_s0), 0.75 * ss_04_25);
 
-    float local_range_att = 1.0 - smoothstep(0.20, 0.50, zone_iqr);
     float texture_att     = 1.0 - smoothstep(0.005, 0.030, local_var);
-    float detail_protect  = smoothstep(-0.5, 0.0, log_R);
+    float detail_protect  = smoothstep(-2.0, -0.5, log_R);
     // R119: fine-texture gate — 4 diagonal bilinear taps give a cheap 3×3 neighbourhood avg.
     // Detects sub-16px texture (fabric, skin grain) invisible to 1/16-res illuminant maps.
     float2 fine_px         = float2(1.0 / BUFFER_WIDTH, 1.0 / BUFFER_HEIGHT);
@@ -462,8 +471,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float context_lift = exp2(log2(slow_key / zk_safe) * 0.4);
     float _sls_t = saturate((perc.r - 0.025) / 0.175);
     float shadow_lift_str = lerp(1.50, 0.45, _sls_t*_sls_t*_sls_t*(_sls_t*(_sls_t*6.0-15.0)+10.0));
-    float shadow_lift     = shadow_lift_str * (0.149169 / (illum_s0 * illum_s0 + 0.003)) * local_range_att * texture_att * fine_texture_att * detail_protect * context_lift;
-    float lift_w      = new_luma * smoothstep(0.25, 0.0, new_luma);
+    float shadow_lift     = shadow_lift_str * (0.149169 / (illum_s0 * illum_s0 + 0.003)) * texture_att * fine_texture_att * detail_protect * context_lift;
+    float lift_w      = new_luma * smoothstep(0.27, 0.0, new_luma);
     new_luma          = saturate(new_luma + (shadow_lift / 100.0) * 0.75 * lift_w * SHADOW_LIFT_STRENGTH);
     // R62 Finding 3: chroma-stable tonal — apply luma ratio in Oklab L to prevent zone S-curve from shifting chroma
     float3 lab_t  = RGBtoOklab(saturate(lin));
@@ -685,7 +694,45 @@ float4 LFDownscale2PS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
 float4 DiffusionDownsamplePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     if (pos.y < 1.0) return float4(0.0, 0.0, 0.0, 0.0);
-    return float4(tex2D(BackBuffer, uv).rgb, 1.0);
+    float2 d = float2(1.0 / BUFFER_WIDTH, 1.0 / BUFFER_HEIGHT);
+    float3 c  = tex2D(BackBuffer, uv + float2(-d.x, -d.y)).rgb;
+           c += tex2D(BackBuffer, uv + float2(+d.x, -d.y)).rgb;
+           c += tex2D(BackBuffer, uv + float2(-d.x, +d.y)).rgb;
+           c += tex2D(BackBuffer, uv + float2(+d.x, +d.y)).rgb;
+    return float4(c * 0.25, 1.0);
+}
+
+// ─── Diffusion Gaussian blur — separable 9-tap, σ=2 output texels (~8 px at 1080p) ──
+// Weights (normalized): [0.2824, 0.2200, 0.1039, 0.0298, 0.0052]
+
+float4 DiffusionBlurHPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    float dx = 4.0 / BUFFER_WIDTH;
+    float3 c  = tex2D(DiffusionSamp, uv).rgb                              * 0.2824;
+           c += tex2D(DiffusionSamp, uv + float2(+1.0*dx, 0.0)).rgb      * 0.2200;
+           c += tex2D(DiffusionSamp, uv + float2(-1.0*dx, 0.0)).rgb      * 0.2200;
+           c += tex2D(DiffusionSamp, uv + float2(+2.0*dx, 0.0)).rgb      * 0.1039;
+           c += tex2D(DiffusionSamp, uv + float2(-2.0*dx, 0.0)).rgb      * 0.1039;
+           c += tex2D(DiffusionSamp, uv + float2(+3.0*dx, 0.0)).rgb      * 0.0298;
+           c += tex2D(DiffusionSamp, uv + float2(-3.0*dx, 0.0)).rgb      * 0.0298;
+           c += tex2D(DiffusionSamp, uv + float2(+4.0*dx, 0.0)).rgb      * 0.0052;
+           c += tex2D(DiffusionSamp, uv + float2(-4.0*dx, 0.0)).rgb      * 0.0052;
+    return float4(c, 1.0);
+}
+
+float4 DiffusionBlurVPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    float dy = 4.0 / BUFFER_HEIGHT;
+    float3 c  = tex2D(DiffusionHorizSamp, uv).rgb                         * 0.2824;
+           c += tex2D(DiffusionHorizSamp, uv + float2(0.0, +1.0*dy)).rgb * 0.2200;
+           c += tex2D(DiffusionHorizSamp, uv + float2(0.0, -1.0*dy)).rgb * 0.2200;
+           c += tex2D(DiffusionHorizSamp, uv + float2(0.0, +2.0*dy)).rgb * 0.1039;
+           c += tex2D(DiffusionHorizSamp, uv + float2(0.0, -2.0*dy)).rgb * 0.1039;
+           c += tex2D(DiffusionHorizSamp, uv + float2(0.0, +3.0*dy)).rgb * 0.0298;
+           c += tex2D(DiffusionHorizSamp, uv + float2(0.0, -3.0*dy)).rgb * 0.0298;
+           c += tex2D(DiffusionHorizSamp, uv + float2(0.0, +4.0*dy)).rgb * 0.0052;
+           c += tex2D(DiffusionHorizSamp, uv + float2(0.0, -4.0*dy)).rgb * 0.0052;
+    return float4(c, 1.0);
 }
 
 float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
@@ -710,16 +757,16 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     // B) Soft midtone overlay (carbon-gate smoothing) — lerp toward blurred in midtones
     //    only; zero at blacks (luma=0) and highlights (luma=1) by bell construction.
     // Radial gradient: 20% at center → 25 → 75 → 100% at edges (large-format DOF falloff).
-    float  r           = length(uv - 0.5) * 2.0;
+    // Vertical oval (1.4×): X scaled up so diffusion increases faster left/right than top/bottom.
+    float2 c_diff      = uv - 0.5;
+    float  r           = length(float2(c_diff.x * 1.6, c_diff.y * 0.08)) * 2.0;
     float  diff_radial = 0.20;
     diff_radial = lerp(diff_radial, 0.25, smoothstep(0.10, 0.30, r));
     diff_radial = lerp(diff_radial, 0.75, smoothstep(0.30, 0.65, r));
     diff_radial = lerp(diff_radial, 1.00, smoothstep(0.65, 0.85, r));
     float  eff_diff    = DIFFUSION_STRENGTH * diff_radial;
 
-    float3 diff_tight   = tex2Dlod(DiffusionSamp, float4(uv, 0, 0)).rgb;
-    float3 diff_wide    = tex2Dlod(DiffusionSamp, float4(uv, 0, 1)).rgb;
-    float3 diff_broader = tex2Dlod(DiffusionSamp, float4(uv, 0, 2)).rgb;
+    float3 diff_blur = tex2Dlod(DiffusionSamp, float4(uv, 0, 0)).rgb;
 
     float4 perc           = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
     float  iqr            = perc.b - perc.r;
@@ -729,16 +776,14 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float  diff_ap_scale  = lerp(1.10, 0.90, saturate((EXPOSURE - 0.70) / 0.60));
     adapt_str *= diff_key_scale * diff_ap_scale;
 
-    float  scale_w   = saturate(eff_diff * 0.25);
-    float  broad_w   = eff_diff * 0.10;
-    float3 blurred   = lerp(lerp(diff_tight, diff_wide, scale_w), diff_broader, broad_w);
-    float3 bloom_raw = max(0.0, blurred - base.rgb);
-    float3 bloom     = bloom_raw / (bloom_raw + 0.08);
+    float3 bloom_raw = max(0.0, diff_blur - base.rgb);
+    float  src_gate  = smoothstep(0.15, 0.45, Luma(diff_blur));
+    float3 bloom     = bloom_raw / (bloom_raw + 0.08) * src_gate;
     float3 result    = saturate(base.rgb + bloom * adapt_str);
 
     float  luma_r   = Luma(result);
     float  mid_gate = luma_r * (1.0 - luma_r) * 4.0;
-    result          = saturate(lerp(result, diff_tight, eff_diff * 0.06 * mid_gate));
+    result          = saturate(lerp(result, diff_blur, eff_diff * 0.06 * mid_gate));
 
     float dither = frac(52.9829189 * frac(dot(pos.xy, float2(0.06711056, 0.00583715)))) - 0.5;
     result += dither * (1.0 / 255.0);
@@ -808,6 +853,18 @@ technique OlofssonianColorGrade
     {
         VertexShader = PostProcessVS;
         PixelShader  = DiffusionDownsamplePS;
+        RenderTarget = DiffusionTex;
+    }
+    pass DiffusionBlurH
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = DiffusionBlurHPS;
+        RenderTarget = DiffusionHorizTex;
+    }
+    pass DiffusionBlurV
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = DiffusionBlurVPS;
         RenderTarget = DiffusionTex;
     }
     pass Diffusion

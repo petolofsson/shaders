@@ -1,6 +1,6 @@
 # Pipeline Improvement Plan
-**Goal:** Reach 90%+ novel on every stage. All stages already meet the 90% finished bar. Currently below target: Stage 0 (87%), Stage 1 (87%), Output (87%).
-**Created:** 2026-05-03 | **Updated:** 2026-05-08 (R127 CAT16 removal + R127B FilmCurve body S revised; novelty audit — stages 0/1/2 corrected upward, stage 3 aligned with HANDOFF)
+**Goal:** Reach 90%+ novel on every stage. All stages already meet the 90% finished bar. Currently below target: Output (87%). Stage 0 ceiling confirmed at 87% (active testbed too achromatic for further gains). Stage 1 reached 90% via R130.
+**Created:** 2026-05-03 | **Updated:** 2026-05-08 (Diffusion Gaussian blur + vertical oval; shadow lift audit — detail_protect, local_range_att, lift_w)
 
 ---
 
@@ -23,8 +23,8 @@ The large color science block. Purkinje shift (scotopic blue sensitivity at low 
 **Stage 3.5 — Halation (halation block inside grade.fx)**
 Film halation is the glow around bright highlights caused by light bouncing off the film base and exposing the emulsion from behind. The model uses a blur-minus-sharp PSF: `max(0, LowFreqMip1 − col)` fires only at dark pixels adjacent to bright sources, producing an annular ring with zero extra texture taps. (True DoG mip2−mip1 doesn't work — mip2 is 4× more diluted than mip1, so the ring is always zero.) A Lorentzian tail function `hal_ring_luma / (hal_ring_luma + HAL_GAMMA + 1e-6)` models the heavier-than-Gaussian falloff of deep emulsion base reflections — `hal_lore` is high for bright ring glow, zero where there's no halation. Red adds a LowFreqMip2 broad component (fixed 0.12 — scatter radius is determined by emulsion geometry, not source brightness). Chromatic gains: red 1.05 (dominant, deepest dye layer), green 0.45 (attenuated by Lorentzian 0.78–0.94×), blue 0.03 (faint — yellow filter blocks most blue, `lerp(0.22, 0.38, hal_lore)`). White sources produce orange/amber fringe. HAL_GAMMA controls the Lorentzian knee. Novel: blur-minus-sharp annular PSF + Lorentzian tail at zero texture taps; chromatic model derived from film emulsion physics (dye layer depth, yellow filter absorption).
 
-**Output — Pro-Mist (merged into grade.fx)**
-Pro-Mist is a three-scale additive shimmer/bloom effect: the image is downsampled to MistDiffuseTex (1/8-res, MipLevels=3), vkBasalt auto-generates mip1 (1/16-res) and mip2 (1/32-res) within-technique. ProMistPS blends three scales — tight (LOD 0), wide (LOD 1, `scale_w = MIST_STRENGTH × 0.25`), broader (LOD 2, `broad_w = saturate(MIST_STRENGTH × 0.20 − 0.10)`) — then composites `max(0, blurred − sharp)` back onto the image, adding scatter from highlights only. Physically motivated: real Pro-Mist filters scatter at multiple radii simultaneously due to polydisperse particle size (ProMist-5K paper, arXiv 2601.19295). Blend strength is scene-adaptive (IQR + zone_log_key + EXPOSURE proxy). A Reinhard curve (x/(x+0.08)) shapes the bloom. Pro-Mist is the 5th and 6th passes of OlofssonianColorGrade (LFDownscale1 → LFDownscale2 → NeutralIllum → ColorTransform → MistDownsample → ProMist). Novel: statistics-driven adaptive additive shimmer on per-pixel highlight extraction with multi-scale physically-motivated scatter.
+**Output — Diffusion (merged into grade.fx)**
+Diffusion is a HBM (Hollywood Black Magic) dual-component model. The image is downsampled 4× (4-tap box) to DiffusionTex (1/4-res), then blurred by a separable 9-tap Gaussian (σ=2 output texels ≈ 8px at 1080p) in two sub-res passes (DiffusionBlurH → DiffusionHorizTex → DiffusionBlurV → DiffusionTex). DiffusionPS reads the single fully-blurred source and applies: A) additive shimmer `max(0, blurred − sharp) * src_gate * adapt_str` — highlight scatter only (Reinhard knee 0.08); B) soft midtone overlay `lerp(result, diff_blur, eff_diff * 0.06 * mid_gate)` — bell-gated at luma×(1−luma)×4, zero at blacks/whites. Strength adapts to scene IQR, zone_log_key, and EXPOSURE. Radial vertical oval (xs=1.6, ys=0.08): clarity runs full height at center, diffusion increases left/right (~25% screen width at mid-ramp). Diffusion is passes 5–8 of OlofssonianColorGrade. Novel: statistics-driven adaptive additive shimmer on per-pixel highlight extraction with Gaussian-blurred smooth falloff.
 
 ---
 
@@ -32,17 +32,17 @@ Pro-Mist is a three-scale additive shimmer/bloom effect: the image is downsample
 
 Three stages are below the new 90% target. The non-novel mass in each is identified; candidate additions are listed with estimated novelty delta.
 
-### Stage 0 — Input (87% → 90%+)
+### Stage 0 — Input (87% — ceiling confirmed)
 
 Non-novel mass: uniform chroma boost concept (~10%), mid_weight bell (~3%). The IQR/slope/Kalman/pivot/C-gate/ceilings are all novel — the drag is the base operation itself.
 
-Candidate: **per-hue expansion slopes.** Currently all hues expand by the same `slope`. Different hues have different compression signatures across tone mappers (warm hues clip earlier in ACES; cyans clip later). Driving per-hue slope from the hue histogram × chroma histogram (scene-level observation of which hues are compressed) would make the inverse grade adapt to actual hue-specific compression — genuinely novel, no equivalent anywhere. +3–4% novelty. Zero new taps; ~6 ALU; one additional read of the hue histogram highway slot.
+**Cross-band saturation normalisation — ruled out 2026-05-08.** Refined candidate: use per-hue HueCeil as a normaliser to detect which bands are disproportionately compressed (`sat_ratio[b] = pivot[b] / HueCeil(center_b)`), then drive per-band expansion slope from a scene-internal reference ratio. Diagnostically tested via wsum capture: active testbed is ~80% achromatic. All six band wsums ≈ 0 even in the most colorful scene (max wsum=0.015). The technique defaults to global slope every frame — it has nothing to work with. 87% is the real ceiling for this testbed, not a calibration problem. Not viable without content with measurable per-hue chroma (wsum > 0.1 in at least 2 bands).
 
 ### Stage 1 — Film Stock (87% → 90%+)
 
 Non-novel mass: basic S-curve shape (~5%), bleach bypass concept (~4%), 3-way CC concept (~4%). R104/R85/R81C/R110 are first-of-kind; they carry the current score.
 
-Candidate: **spectral dye density simulation.** Current Beer-Lambert (R81C) uses dominant-channel magnitude as a proxy for dye concentration. Actual Kodak 2383 dye spectral curves are published (red-record/green-record/blue-record absorption peaks and widths). A 3×3 spectral-to-photometric matrix derived from the actual curves would replace the proxy with physically correct absorption. The matrix folds to a compile-time constant — zero runtime cost beyond the existing Beer-Lambert mul. +3% novelty (first real-time post-process to use published dye spectral data directly). Research needed: extract matrix from Kodak 2383 spectrophotometry.
+**R130 — Kodak 2383 spectral dye matrix — Done 2026-05-08.** Replaced R81C Beer-Lambert proxy + R85 empirical coupling with a 3×3 matrix derived from Kodak H-1-2383t spectral dye density curves (agx-emulsion digitization / National Archives 2005 PDF, cross-checked, ±0.001 agreement). Matrix coefficients (normalized per-dye, primary=1.00): Cyan R/G/B = 1.00/0.14/0.09; Magenta = 0.15/1.00/0.09; Yellow = 0.01/0.06/1.00. R85 empirical values (30.8%/33.8% of primary) were 2–4× higher than the actual Kodak data; corrected. Four previously absent cross-channel terms added (Cyan→B, Magenta→R, Yellow→G, Yellow→R). +3% novelty: first real-time post-process to use published Kodak 2383 spectrophotometric data as compile-time constants.
 
 ### Output — Pro-Mist (87% → 90%+)
 
@@ -72,7 +72,7 @@ Candidate: **chromatic scatter radii.** Real Pro-Mist filter media are polydispe
 | Stage | Finished | Novel | Notes |
 |-------|----------|-------|-------|
 | Stage 0 — Input | 97% | 87% | R117A: uniform chroma expansion + mean-C pivot; per-hue gamut ceilings; C-gate uniqueness undercounted in prior audit |
-| Stage 1 — Film Stock | 97% | 87% | R127B: one-sided upper-mid S (zero x≤0.5, peak +1.2% at x≈0.72); CAT16 removed R127; R104 DIR + R85 dye coupling + R81C Beer-Lambert novelty corrected upward |
+| Stage 1 — Film Stock | 97% | 90% | R130: Kodak 2383 spectral dye matrix (3×3 from H-1-2383t); replaces R81C proxy + R85 empirical; +3% novelty |
 | Stage 2 — Tonal | 95% | 90% | Intra-zone variance (R116), Oklab-stable tonal (R62), temporal context (R60), R66 ambient tint — all underweighted in prior audit |
 | Stage 3 — Chroma | 98% | 93% | Aligned with HANDOFF; R117D memory color attraction + simultaneous contrast counted; Abney coefficient gap remains minor |
 | Stage 3.5 — Halation (grade.fx, ColorTransformPS) | 97% | 91% | R114: chromatic fringe (orange/amber); baked into MegaPass — not a separate effect |
@@ -502,6 +502,24 @@ against `ping_broad` (1/32-res). Additive warm lift `float3(1.04, 1.00, 0.92)` a
 `lf_mip1` tap). Good in theory — detection logic is sound. Bad in practice: did not hold up
 in-game. Research doc: `research/R128_2026-05-08_specular_pings.md`.
 
+### R130 — Kodak 2383 spectral dye absorption matrix
+Replaced R50/R81C diagonal Beer-Lambert + R85 two-term empirical coupling with a full 3×3
+spectral matrix derived from Kodak H-1-2383t dye density curves. Source: agx-emulsion
+digitization of the official Kodak datasheet (National Archives 2005 PDF, Status A
+densitometry). Matrix normalized per-dye (primary channel = 1.00). R85's cyan→G (30.8%
+of primary) and magenta→B (33.8%) were 2–4× the physical values; corrected to 14% and 9%.
+Four absent terms added: Cyan→B (9%), Magenta→R (15%), Yellow→G (6%), Yellow→R (1%).
+Zero runtime cost change — compile-time constants. Stage 1 novel: 87% → 90%.
+
+### R129 — Cross-band saturation normalisation — *RULED OUT*
+
+Proposed: use HueCeil as scene-internal chroma normaliser to drive per-hue expansion slopes
+in `inverse_grade.fx`. `sat_ratio[b] = pivot[b] / HueCeil(center_b)`. Requires per-band
+wsum > 0 to be meaningful. Diagnostic: 3-file wsum capture (slots 220–225 added to highway,
+PassthroughPS, capture.py). Result: active testbed ~80% achromatic; all band wsums ≈ 0 even in
+most colorful scene (max 0.015). Technique permanently defaults to global slope. Slots removed
+after capture. Stage 0 ceiling confirmed at 87% for this testbed.
+
 ### Novelty audit — 2026-05-08
 
 Stage scores corrected after cross-referencing code against game post-process state of the art:
@@ -511,3 +529,31 @@ Stage scores corrected after cross-referencing code against game post-process st
 - **Stage 3** 94% → 93%: Corrected downward to align with HANDOFF (R117D + simultaneous contrast counted; Abney gap still present)
 - **Stage 3.5** finished 96% → 97%: Aligned with HANDOFF (R114 was the closing piece)
 - **Output** finished 95% → 96%, novel 86% → 87%: Polydisperse three-scale novelty now counted
+
+---
+
+## Session 2026-05-08 additions (Diffusion blur quality + shadow lift audit)
+
+### Diffusion — Gaussian blur architecture (grade.fx)
+
+Replaced mip-based multi-scale shimmer with a separable Gaussian blur chain:
+- **DiffusionTex**: 1/8-res → 1/4-res; MipLevels 3 → 1 (mips no longer needed)
+- **DiffusionDownsamplePS**: single tap → 4-tap box filter for proper 4×4 source coverage
+- **DiffusionBlurHPS** (new pass): 9-tap horizontal Gaussian, σ=2 output texels, DiffusionTex → DiffusionHorizTex
+- **DiffusionBlurVPS** (new pass): 9-tap vertical Gaussian, DiffusionHorizTex → DiffusionTex
+- **DiffusionPS**: simplified from 3 mip samples + mip-blend to single `diff_blur` sample. Both shimmer and midtone overlay use the Gaussian-blurred source. Grade now 8 passes (was 6).
+- **src_gate**: `smoothstep(0.15, 0.45, Luma(blurred))` — suppresses shimmer on dark blurred regions, preventing spots on ground textures.
+
+### Diffusion — vertical oval radial gradient (grade.fx)
+
+Replaced circular `length(uv - 0.5)` with `length(float2(c.x * 1.6, c.y * 0.08))`. Oval extends past screen top/bottom (y boundary at 5.3× screen height — full clarity top-to-bottom); horizontal ramp ~25% screen width at mid-diffusion. Matches large-format lens character: horizontal softening, vertical clarity.
+
+### Shadow lift audit (grade.fx ColorTransformPS)
+
+Three fixes from a full audit of the shadow lift chain:
+
+1. **detail_protect loosened**: `smoothstep(-0.5, 0.0, log_R)` → `smoothstep(-2.0, -0.5, log_R)`. Old gate closed at log_R = -0.5 (pixel 29% below local illuminant) — suppressing actual shadow pixels. New gate allows lift up to 1.5 stops below local illuminant; only genuine dark materials (2+ stops) are suppressed.
+
+2. **local_range_att removed**: `1.0 - smoothstep(0.20, 0.50, zone_iqr)` was a scene-wide IQR gate suppressing lift globally in contrasty scenes (zone_iqr > 0.35 → lift < 50%). Per-pixel gates (texture_att, fine_texture_att, detail_protect) already provide spatial protection — scene-wide gate was redundant and counterproductive.
+
+3. **lift_w ceiling raised**: `smoothstep(0.25, 0.0, new_luma)` → `smoothstep(0.27, 0.0, new_luma)`. Marginal extension of the shadow luma window (0.25 confirmed appropriate in prior testing; 0.27 adds slight headroom).

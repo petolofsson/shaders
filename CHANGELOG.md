@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-05-08 — session (Diffusion Gaussian blur + vertical oval; shadow lift audit)
+
+### Fixed
+
+- **Diffusion shimmer spots on ground** (`grade.fx DiffusionPS`) — Shimmer was firing on medium-tone ground texture via `max(0, blurred − base)` on a 1/8-res blurred source. Fixed with `src_gate = smoothstep(0.15, 0.45, Luma(blurred))` — suppresses shimmer below blurred luma 0.15, ramps to full above 0.45.
+
+- **Diffusion bloom blockiness** (`grade.fx`) — DiffusionTex was 1/8-res (8px blocks) with a single bilinear tap downsample, producing visible grid artifacts in the shimmer. Replaced with full Gaussian blur chain: DiffusionTex raised to 1/4-res (MipLevels=1), 4-tap box downsample, plus two new 9-tap separable Gaussian passes (DiffusionBlurH → DiffusionHorizTex, DiffusionBlurV → DiffusionTex, σ=2 output texels ≈ 8px at 1080p). DiffusionPS simplified from 3 mip samples to single `diff_blur` from the fully Gaussian-blurred source. Grade is now 8 passes.
+
+- **Diffusion radial — vertical oval** (`grade.fx DiffusionPS`) — Replaced circular `length(uv - 0.5)` with `length(float2(c.x * 1.6, c.y * 0.08))`. Oval extends well past screen top/bottom (boundary at 5.3× screen height — full clarity vertically); horizontal ramp peaks at ~25% screen width at mid-diffusion. Matches large-format lens character: softening on sides, clarity in vertical center strip.
+
+- **Shadow lift: detail_protect** (`grade.fx ColorTransformPS`) — `smoothstep(-0.5, 0.0, log_R)` closed at log_R = −0.5 (pixel only 29% below local illuminant), suppressing lift on actual shadow pixels. Widened to `smoothstep(-2.0, -0.5, log_R)` — shadow pixels up to 1.5 stops below local illuminant now receive lift; genuine dark materials (2+ stops below) still suppressed.
+
+- **Shadow lift: local_range_att removed** (`grade.fx ColorTransformPS`) — Scene-wide `1.0 − smoothstep(0.20, 0.50, zone_iqr)` was cutting lift globally whenever scene IQR > 0.35 — routine in mixed outdoor/indoor content. Per-pixel gates (texture_att, fine_texture_att, detail_protect) already protect where needed. Removed from multiplicative chain.
+
+- **Shadow lift: lift_w ceiling** (`grade.fx ColorTransformPS`) — Bell ceiling raised from `smoothstep(0.25, 0.0, new_luma)` to `smoothstep(0.27, 0.0, new_luma)`. Marginal extension of shadow luma window.
+
 ## 2026-05-08 — session (R127 CAT16 removal + chroma pivot fix; R127B FilmCurve body S revised)
 
 ### Removed
