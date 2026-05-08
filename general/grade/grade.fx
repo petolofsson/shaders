@@ -356,7 +356,11 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     {
         float3 ps      = lin * (1.0 - 0.025) + 0.025;
         float3 toe     = ps * ps * 3.2;
-        float3 shoulder = 1.0 - (1.0 - ps) * (1.0 - ps) * 1.8;
+        // R134: Reinhard partial shoulder — compressive above knee 0.65 (+1.83 stops above 18% gray).
+        // Old formula 1-(1-ps)²×1.8 was structurally convex (always expands highlights, never compresses).
+        // New: identity below knee, Reinhard rolloff above. K=0.476 → soft ceiling at 0.95 diffuse white.
+        float3 d        = max(0.0, ps - 0.650);
+        float3 shoulder = ps - d + d / (1.0 + d * 0.476);
         ps = lerp(toe, shoulder, smoothstep(0.0, 0.5, ps));
         float luma_ps = dot(ps, float3(0.2126, 0.7152, 0.0722));
         float desat_w = 0.15 * (1.0 - smoothstep(0.0, fc_knee_toe, luma_ps))
@@ -405,7 +409,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     {
         float3 lab_bb  = RGBtoOklab(lin);
         float  bb_dark = 1.0 - smoothstep(0.0, 0.65, lab_bb.x);
-        float  bb_desat = BLEACH_BYPASS * lerp(0.35, 0.72, bb_dark);
+        float  bb_desat = BLEACH_BYPASS * lerp(0.05, 0.72, bb_dark);
         lab_bb.y *= (1.0 - bb_desat);
         lab_bb.z *= (1.0 - bb_desat);
         float  bb_mid  = lab_bb.x * (1.0 - lab_bb.x) * 4.0;
@@ -523,16 +527,18 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         C = length(lab.yz);
     }
 
-    // R22: saturation by luminance — baked Munsell calibration (shadow 20%, highlight 45%)
+    // R22: saturation by luminance — shadow desaturation 20% (baked Munsell calibration)
     // + midtone expansion bell from cinema SDR mastering data (Žaganeli et al. 2026)
+    // Highlight arm removed — R133 HueBandRollN() owns highlight desaturation.
     float mid_C_boost = 0.08 * smoothstep(0.22, 0.40, lab.x)
                              * (1.0 - smoothstep(0.55, 0.70, lab.x));
-    // R74: highlight desaturation — film shoulder rolloff, silvery highlights (Shift analog intermediate)
-    float r74_desat = 0.30 * saturate((lab.x - 0.80) / 0.20);
     C *= (1.0 + mid_C_boost
-             - 0.20 * saturate(1.0 - lab.x / 0.25)
-             - 0.45 * saturate((lab.x - 0.75) / 0.25)
-             - r74_desat);
+             - 0.20 * saturate(1.0 - lab.x / 0.25));
+    // R133: Munsell per-hue highlight chroma rolloff (replaces R74 linear ramp).
+    // f = (4(1-L))^n: 1 at L≤0.75, 0 at L=1.0. n from HueBandRollN — yellow 0.22,
+    // yellow-green 0.27, orange 0.81 (Munsell Renotation V=8→9→10 ratios).
+    float r133_roll = saturate(pow(max(0.0, 4.0 * (1.0 - lab.x)), HueBandRollN(h_perc)));
+    C *= lerp(1.0, r133_roll, MUNSELL_HIGHLIGHT_ROLLOFF);
 
     // R21: per-band hue rotation — compute h_out from original h before chroma lift
     float r21_delta = ROT_RED    * HueBandWeight(h_perc, BAND_RED)

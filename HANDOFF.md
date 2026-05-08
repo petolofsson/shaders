@@ -1,4 +1,4 @@
-# Handoff — 2026-05-08
+# Handoff — 2026-05-09
 
 > **Purpose (for AI context):** Current session state — active chain, known issues, and next candidates. Read this at the start of a session to orient quickly. Update known state and next candidates at the end of each session. Do not add changelog entries here; those go in CHANGELOG.md.
 
@@ -18,20 +18,20 @@ Diffusion is merged inside grade — not a separate effect in the chain.
 |-------|----------|-------|
 | Stage 0 — Input | 97% | 83% |
 | Stage 1 — Film Stock | 97% | 90% |
-| Stage 2 — Tonal | 95% | 87% |
+| Stage 2 — Tonal | 96% | 91% |
 | Stage 3 — Color + Halation | 98% | 92% |
 | Output — Diffusion | 96% | 85% |
 
 ## Known state
 
 - No known compile errors or visual regressions. Debug log: `/tmp/vkbasalt.log`
-- **R52 Purkinje** now shifts both a* (green) + b* (blue) toward 507nm rod peak and adds scotopic desaturation (`lab.yz *= 1 − 0.12 × w`). PURKINJE_STRENGTH 1.0 — recalibration pass warranted.
-- **R132 Diffusion** polydisperse: red ×1.15, green ×1.00, blue ×0.85. DIFFUSION_STRENGTH 1.0 (red effective ~1.15 vs. old 1.2 baseline). May need tuning.
-- Shadow lift audit complete (detail_protect, local_range_att removed, lift_w ceiling). Lift chain is clean.
-- Stage 3.5 dissolved — halation is part of Stage 3 (same MegaPass, same novelty accounting).
+- **R133 Munsell per-hue highlight rolloff** — `hue_bands.fxh` carries 12 `HB_ROLL_N_*` exponents + `HueBandRollN()`. R22 highlight arm (0.45) removed — R133 is now the sole highlight desaturation mechanism. `MUNSELL_HIGHLIGHT_ROLLOFF 0.75` — calibrated on sand map.
+- **R134 Print stock shoulder corrected** — Reinhard partial replaces broken `1−(1−ps)²×1.8` shoulder. No longer lifts highlights toward white. `PRINT_STOCK 0.50` stable.
+- **Bleach bypass highlight floor** lowered 0.35 → 0.05 — no longer desaturates highlights; shadow/midtone grit character preserved. `BLEACH_BYPASS 0.15` stable.
+- **R52 Purkinje** and **R132 Diffusion** polydisperse still warrant calibration (values set at 1.0 and 1.0 respectively).
+- Shadow lift audit complete. Stage 3.5 dissolved.
 
 ## Next candidates
 
-- **Calibration pass** — PURKINJE_STRENGTH and DIFFUSION_STRENGTH both changed this session; in-game tuning warranted before further code work.
-- **Stage 2 novelty gap** — at 87% with critical eyes. Retinex and zone system carry non-novel mass. R74 Munsell highlight desaturation arm (chroma rolloff approaching white) is unimplemented and would add a genuinely absent physical term.
-- **Output novelty gap** — at 85%. To move the score requires a mechanism distinct from the blur-and-blend chassis, not further parameter refinement.
+- **Calibration pass** — PURKINJE_STRENGTH, DIFFUSION_STRENGTH, and MUNSELL_HIGHLIGHT_ROLLOFF all changed; full in-game tuning pass warranted.
+- **Output novelty gap** — at 85%. Requires a mechanism distinct from the blur-and-blend chassis (grain, anisotropic diffusion, or similar).

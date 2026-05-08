@@ -2,8 +2,15 @@
 
 > **Purpose (for AI context):** Chronological record of code changes, one compacted entry per day. Keep only the last 3–4 days. Older history lives in git log. Do not duplicate entries from HANDOFF.md or PLAN.md here.
 
+## 2026-05-09
+
+- **R134 Print stock shoulder fix** (`grade.fx R51`) — Replaced `1−(1−ps)²×1.8` with Reinhard partial `ps − d + d/(1 + d×0.476)` where `d=max(0, ps−0.65)`. Old formula was structurally convex (always expanded highlights, never compressed — needed coefficient ≥5 to compress at ps=0.80). New formula is identity below knee=0.65, compressive above (ps=0.80 → 0.794 vs old 0.932). Fixes warm highlight whitening on sand/desert maps.
+- **Bleach bypass highlight floor fixed** (`grade.fx`) — Lowered `lerp(0.35, 0.72, bb_dark)` floor from 0.35 → 0.05. Old floor desaturated all pixels above L=0.65 by a constant 35% of full strength. Physical bleach bypass has near-zero effect in highlights (fully-exposed silver is dissolved regardless of bleach step).
+- **R22 highlight arm removed** (`grade.fx`) — Removed `−0.45×saturate((L−0.75)/0.25)` from the R22 saturation block. Was a rough proxy for highlight desaturation, now superseded by R133.
+
 ## 2026-05-08
 
+- **R133 Munsell per-hue highlight chroma rolloff** (`hue_bands.fxh`, `grade.fx`) — Replaces R74 linear ramp (`0.30*sat((L−0.80)/0.20)`) which had a hard gate at L=0.80 and never reached C=0 at L=1.0. New form: `f=(4(1-L))^n` per hue, f=1 at L≤0.75, f=0 at L=1.0. Twelve per-hue exponents in `hue_bands.fxh` from Munsell Renotation V=8→9→10 C_max ratios: yellow n=0.22 (peaks at V=9 — late onset), yellow-green n=0.27 (slowest), orange n=0.81 (fastest). `MUNSELL_HIGHLIGHT_ROLLOFF` knob added to `creative_values.fx`.
 - **R132 polydisperse chromatic scatter** (`grade.fx DiffusionPS`) — `float3 ch_scatter = float3(1.15, 1.00, 0.85)` applied to both shimmer and midtone overlay. Red scatters more broadly, blue less — polydisperse filter media physics. DIFFUSION_STRENGTH 1.2 → 1.0.
 - **R52 Purkinje improved** (`grade.fx`) — Added a* component toward 507nm blue-green (rod peak, not pure blue). Added scotopic desaturation `lab.yz *= 1 − 0.12 × scotopic_w × PURKINJE_STRENGTH` — rods are achromatic.
 - **R131 HBM Gaussian blur** (`grade.fx`) — Replaced mip-based shimmer with separable 9-tap Gaussian chain (DiffusionDownsample → DiffusionBlurH → DiffusionBlurV → Diffusion). DiffusionTex 1/8→1/4-res; MipLevels 3→1. Grade now 8 passes.

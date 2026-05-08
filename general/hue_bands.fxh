@@ -66,3 +66,38 @@ float HueCeil(float hue)
          + HueBandWeight(hue, HB_BAND_MAGENTA) * HB_CEIL_MAGENTA
          + HueBandWeight(hue, HB_BAND_ROSE)    * HB_CEIL_ROSE;
 }
+
+// R133 Munsell highlight rolloff exponents.
+// Power n in f=(4(1-L))^n, calibrated from Munsell Renotation V=8→9→10 C_max ratios.
+// f=1 at L≤0.75 (V≈7.5), f=0 at L=1.0. Larger n = faster rolloff into highlights.
+// Yellow n=0.22: chroma peaks at V=9 (L≈0.90) — rolloff only in the last 10%.
+// Yellow-Green n=0.27: slowest — stays colorful deep into highlights.
+// Orange n=0.81: fastest — strong highlight desaturation, matches Munsell data.
+#define HB_ROLL_N_RED     0.74
+#define HB_ROLL_N_ORANGE  0.81
+#define HB_ROLL_N_AMBER   0.74
+#define HB_ROLL_N_YELLOW  0.22
+#define HB_ROLL_N_GREEN   0.27
+#define HB_ROLL_N_TEAL    0.42
+#define HB_ROLL_N_CYAN    0.59
+#define HB_ROLL_N_AZURE   0.67
+#define HB_ROLL_N_BLUE    0.59
+#define HB_ROLL_N_VIOLET  0.67
+#define HB_ROLL_N_MAGENTA 0.74
+#define HB_ROLL_N_ROSE    0.74
+
+float HueBandRollN(float hue)
+{
+    return HueBandWeight(hue, HB_BAND_RED)     * HB_ROLL_N_RED
+         + HueBandWeight(hue, HB_BAND_ORANGE)  * HB_ROLL_N_ORANGE
+         + HueBandWeight(hue, HB_BAND_AMBER)   * HB_ROLL_N_AMBER
+         + HueBandWeight(hue, HB_BAND_YELLOW)  * HB_ROLL_N_YELLOW
+         + HueBandWeight(hue, HB_BAND_GREEN)   * HB_ROLL_N_GREEN
+         + HueBandWeight(hue, HB_BAND_TEAL)    * HB_ROLL_N_TEAL
+         + HueBandWeight(hue, HB_BAND_CYAN)    * HB_ROLL_N_CYAN
+         + HueBandWeight(hue, HB_BAND_AZURE)   * HB_ROLL_N_AZURE
+         + HueBandWeight(hue, HB_BAND_BLUE)    * HB_ROLL_N_BLUE
+         + HueBandWeight(hue, HB_BAND_VIOLET)  * HB_ROLL_N_VIOLET
+         + HueBandWeight(hue, HB_BAND_MAGENTA) * HB_ROLL_N_MAGENTA
+         + HueBandWeight(hue, HB_BAND_ROSE)    * HB_ROLL_N_ROSE;
+}
