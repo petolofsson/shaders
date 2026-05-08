@@ -63,13 +63,12 @@ reads them for external diagnostics only.
 
 ## Known state
 
-- **Chroma lift now actually works** — CHROMA_STR=1.00 is a live knob for the first time.
-  Values tuned before R127 (e.g. 0.30) were inert. May want to calibrate downward if
-  chroma feels excessive after extended play.
+- **Chroma lift now actually works** — values tuned before R127 were calibrated against
+  a broken (inert) lift. Recalibrate CHROMA_STR from scratch.
 - **CAT16 gone** — warm lighting (fire, lava) is now uncompensated. This is correct.
-  If a scene has strong colour cast from engine fog/colour grading, use 3-way CC instead.
-- **Shadow lift stacked** — SHADOW_LIFT_STRENGTH=1.3 + R119 fixes + FilmCurve toe all
-  lift shadows. If shadows feel too bright, reduce SHADOW_LIFT_STRENGTH toward 0.8 first.
+  If a scene has a strong colour cast from engine fog/colour grading, use 3-way CC instead.
+- **Shadow lift stacked** — SHADOW_LIFT_STRENGTH + R119 fixes + FilmCurve toe all lift
+  shadows. If shadows feel too bright, dial SHADOW_LIFT_STRENGTH down first.
 - No known compile errors or visual regressions.
 
 Debug log: `/tmp/vkbasalt.log` — check first for SPIR-V issues.
