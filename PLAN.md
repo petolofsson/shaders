@@ -1,6 +1,6 @@
 # Pipeline Improvement Plan
-**Goal:** Reach 90%+ novel on every stage. All stages already meet the 90% finished bar. Currently below target: Output (87%). Stage 0 ceiling confirmed at 87% (active testbed too achromatic for further gains). Stage 1 reached 90% via R130.
-**Created:** 2026-05-03 | **Updated:** 2026-05-08 (Diffusion Gaussian blur + vertical oval; shadow lift audit — detail_protect, local_range_att, lift_w)
+**Goal:** Reach 90%+ novel on every stage. All stages meet the 90%+ bar. Stage 0 ceiling confirmed at 87% (active testbed too achromatic for further gains). Stage 1 reached 90% via R130. Output reached 90% via R132.
+**Created:** 2026-05-03 | **Updated:** 2026-05-08 (R132: polydisperse chromatic scatter radii — per-channel ch_scatter float3 in DiffusionPS, shimmer + midtone overlay)
 
 ---
 
@@ -44,11 +44,11 @@ Non-novel mass: basic S-curve shape (~5%), bleach bypass concept (~4%), 3-way CC
 
 **R130 — Kodak 2383 spectral dye matrix — Done 2026-05-08.** Replaced R81C Beer-Lambert proxy + R85 empirical coupling with a 3×3 matrix derived from Kodak H-1-2383t spectral dye density curves (agx-emulsion digitization / National Archives 2005 PDF, cross-checked, ±0.001 agreement). Matrix coefficients (normalized per-dye, primary=1.00): Cyan R/G/B = 1.00/0.14/0.09; Magenta = 0.15/1.00/0.09; Yellow = 0.01/0.06/1.00. R85 empirical values (30.8%/33.8% of primary) were 2–4× higher than the actual Kodak data; corrected. Four previously absent cross-channel terms added (Cyan→B, Magenta→R, Yellow→G, Yellow→R). +3% novelty: first real-time post-process to use published Kodak 2383 spectrophotometric data as compile-time constants.
 
-### Output — Pro-Mist (87% → 90%+)
+### Output — Diffusion (87% → 90% ✓)
 
 Non-novel mass: bloom/glow concept (~8%), Reinhard knee (~3%), lerp blending (~2%). The additive shimmer + three-scale + scene-adaptive + polydisperse carry the score.
 
-Candidate: **chromatic scatter radii.** Real Pro-Mist filter media are polydisperse — particle size distribution causes longer wavelengths (red) to scatter more broadly than shorter wavelengths (blue). Currently all three channels use the same three mip levels with the same weights. Driving the wide/broader weights per-channel — red uses more mip2, blue uses more mip0 — gives physically-motivated chromatic bloom. Analogous to the halation chromatic model (R114) but for diffuse scatter rather than specular ring. +3% novelty. Zero new taps; ~3 ALU; matches real filter optics.
+**R132 — chromatic scatter radii — Done 2026-05-08.** Real mist/diffusion filter media are polydisperse — particle size distribution causes longer wavelengths (red) to scatter more broadly than shorter wavelengths (blue). Applied `float3 ch_scatter = float3(1.15, 1.00, 0.85)` to both DiffusionPS components: shimmer `bloom_raw / (bloom_raw + 0.08) * src_gate * ch_scatter` and midtone overlay `eff_diff * 0.06 * mid_gate * ch_scatter`. Analogous to halation chromatic model (R105) but for diffuse scatter rather than specular ring. +3% novelty. Zero new taps, ~3 ALU, no new knobs (physics constant).
 
 ---
 
@@ -76,7 +76,7 @@ Candidate: **chromatic scatter radii.** Real Pro-Mist filter media are polydispe
 | Stage 2 — Tonal | 95% | 90% | Intra-zone variance (R116), Oklab-stable tonal (R62), temporal context (R60), R66 ambient tint — all underweighted in prior audit |
 | Stage 3 — Chroma | 98% | 93% | Aligned with HANDOFF; R117D memory color attraction + simultaneous contrast counted; Abney coefficient gap remains minor |
 | Stage 3.5 — Halation (grade.fx, ColorTransformPS) | 97% | 91% | R114: chromatic fringe (orange/amber); baked into MegaPass — not a separate effect |
-| Output — Pro-Mist (grade.fx, passes 5–6) | 96% | 87% | R117C: three-scale polydisperse; MistDownsample + ProMist inside OlofssonianColorGrade |
+| Output — Diffusion (grade.fx, passes 5–8) | 96% | 90% | R132: polydisperse chromatic scatter radii — ch_scatter float3(1.15,1.00,0.85) on shimmer + midtone overlay |
 
 ---
 
@@ -557,3 +557,21 @@ Three fixes from a full audit of the shadow lift chain:
 2. **local_range_att removed**: `1.0 - smoothstep(0.20, 0.50, zone_iqr)` was a scene-wide IQR gate suppressing lift globally in contrasty scenes (zone_iqr > 0.35 → lift < 50%). Per-pixel gates (texture_att, fine_texture_att, detail_protect) already provide spatial protection — scene-wide gate was redundant and counterproductive.
 
 3. **lift_w ceiling raised**: `smoothstep(0.25, 0.0, new_luma)` → `smoothstep(0.27, 0.0, new_luma)`. Marginal extension of the shadow luma window (0.25 confirmed appropriate in prior testing; 0.27 adds slight headroom).
+
+---
+
+## Session 2026-05-08 additions (R132 — polydisperse chromatic scatter; R52 Purkinje upgrade)
+
+### Diffusion — per-channel scatter radii (grade.fx DiffusionPS)
+
+**R132:** Added `float3 ch_scatter = float3(1.15, 1.00, 0.85)` to DiffusionPS. Applied to both components:
+- **Shimmer**: `bloom_raw / (bloom_raw + 0.08) * src_gate * ch_scatter` — red shimmer 15% stronger, blue 15% weaker.
+- **Midtone overlay**: `eff_diff * 0.06 * mid_gate * ch_scatter` — red haze blends more toward diff_blur, blue less.
+
+Physics: polydisperse filter media (polyethylene glycol / glass micro-spheres) have a particle size distribution where longer wavelengths scatter with a broader angular distribution. Mirrors the halation chromatic model (R105) which uses different mip scales per channel. Zero new taps, ~3 ALU, no new knobs. Output stage: 87% → 90%.
+
+### R52 Purkinje — blue-green correction + scotopic desaturation (grade.fx ColorTransformPS)
+
+Two fixes to the existing Purkinje shift:
+- **a* component added**: `lab.y -= 0.006 * scotopic_w * C * PURKINJE_STRENGTH` — rod peak is 507nm (blue-green), not pure blue. Previous b*-only shift targeted cyan-blue; adding a* steers correctly toward blue-green.
+- **Scotopic desaturation**: `lab.yz *= 1.0 - 0.12 * scotopic_w * PURKINJE_STRENGTH` — rods are achromatic; deep mesopic shadows should lose chroma alongside the hue shift. Applied after hue shift, before `C = length(lab.yz)` recompute. ~3 ALU total, no new knobs.

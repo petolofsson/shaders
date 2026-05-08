@@ -116,16 +116,17 @@
 // Hollywood Black Magic dual-component model (R131):
 //   A) Additive shimmer — highlight bloom into dark areas only (micro-lenslet).
 //   B) Soft midtone overlay — gentle airbrushed smoothing, zero at blacks/whites.
+// R132 polydisperse: per-channel scatter — red ×1.15, green ×1.00, blue ×0.85.
 // Rough grade mapping: 0.5–0.8 = HBM 1/4, 1.2–1.5 = HBM 1/2, 1.8–2.2 = HBM 1.
 // 1.40 = HBM 1/2 (Hollywood large-format workhorse grade). 0 = off.
-#define DIFFUSION_STRENGTH  1.2
+#define DIFFUSION_STRENGTH  1.0
 
 // ── PURKINJE SHIFT ────────────────────────────────────────────────────────────
-// Rod-vision blue-green hue bias across the mesopic range (luma 0–0.30). Physiologically
-// correct — Cao et al. 2008, implemented in Ghost of Tsushima. Neutrals unaffected
-// (C=0 → zero shift). R117: transition widened from luma 0.12 → 0.30 to cover full
-// scotopic-photopic range. Recalibrate from scratch: try 0.6–0.8 (wider range = more
-// integrated effect at same strength). 0 = off.
+// Rod-vision blue-green bias + scotopic desaturation across mesopic range (luma 0–0.30).
+// Hue: shifts a* (green) + b* (blue) toward 507nm rod peak — blue-green, not pure blue.
+// Desat: lab.yz *= (1 − 0.12 × w) — rods are achromatic; deep shadows lose chroma.
+// Neutrals unaffected (C=0 → zero shift). R117: transition widened luma 0.12 → 0.30.
+// Recalibrate from scratch: try 0.6–0.8. 0 = off.
 #define PURKINJE_STRENGTH  1.00
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────

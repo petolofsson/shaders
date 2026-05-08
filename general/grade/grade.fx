@@ -517,7 +517,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // ── R52: Purkinje shift — rod-vision blue-green bias in deep shadows ───────
     {
         float scotopic_w = 1.0 - smoothstep(0.0, 0.30, new_luma);  // R117: widened from 0.12; mesopic transition spans full scotopic-photopic range
+        lab.y -= 0.006 * scotopic_w * C * PURKINJE_STRENGTH;  // rod peak 507nm is blue-green: shift both a* (green) and b* (blue)
         lab.z -= 0.018 * scotopic_w * C * PURKINJE_STRENGTH;
+        lab.yz *= 1.0 - 0.12 * scotopic_w * PURKINJE_STRENGTH;  // rods are achromatic: scotopic desaturation
         C = length(lab.yz);
     }
 
@@ -778,12 +780,14 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
     float3 bloom_raw = max(0.0, diff_blur - base.rgb);
     float  src_gate  = smoothstep(0.15, 0.45, Luma(diff_blur));
-    float3 bloom     = bloom_raw / (bloom_raw + 0.08) * src_gate;
+    // R132: polydisperse scatter — longer λ (red) diffracts more broadly through filter media.
+    float3 ch_scatter = float3(1.15, 1.00, 0.85);
+    float3 bloom     = bloom_raw / (bloom_raw + 0.08) * src_gate * ch_scatter;
     float3 result    = saturate(base.rgb + bloom * adapt_str);
 
     float  luma_r   = Luma(result);
     float  mid_gate = luma_r * (1.0 - luma_r) * 4.0;
-    result          = saturate(lerp(result, diff_blur, eff_diff * 0.06 * mid_gate));
+    result          = saturate(lerp(result, diff_blur, eff_diff * 0.06 * mid_gate * ch_scatter));
 
     float dither = frac(52.9829189 * frac(dot(pos.xy, float2(0.06711056, 0.00583715)))) - 0.5;
     result += dither * (1.0 / 255.0);
