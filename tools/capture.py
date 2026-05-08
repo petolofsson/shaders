@@ -71,7 +71,6 @@ SCALAR_SLOTS = [
     (213, "hwy.fc_stevens",       lambda v: v * 1.3),                  # encode v/1.3, range [0.72, 1.22]
     (214, "hwy.fc_knee",          lambda v: v),
     (215, "hwy.zone_str",         lambda v: v * 0.30),                 # encode v/0.30
-    (216, "hwy.cat_blend",        lambda v: v),
     (217, "hwy.shadow_lift_str",  lambda v: v * 1.5),                  # encode v/1.5, range [0, 1.5]
     (218, "hwy.chroma_str",       lambda v: v * 0.10),                 # encode v/0.10, range [0, 0.10]
     (219, "hwy.mist_str",         lambda v: v * 0.10),                 # encode v/0.10, range [0, 0.10]
@@ -282,7 +281,6 @@ def dump_highway(scalars: dict, luma_hist: list, hue_hist: list) -> None:
         "hwy.slow_key":        "slow ambient key EMA [0,1]",
         "hwy.fc_knee":         "FilmCurve knee position [0,1]",
         "hwy.zone_str":        "zone contrast strength (effective) [0,0.30]",
-        "hwy.cat_blend":       "CAT16 chromatic adaptation blend [0,1]",
         "hwy.shadow_lift_str": "shadow lift strength (effective) [0,1.5]",
         "hwy.chroma_str":      "chroma lift base (pre-spatial-mod) [0,0.10]",
         "hwy.mist_str":        "pro-mist adapt_str (effective) [0,0.10]",

@@ -22,7 +22,6 @@
 #define KALMAN_R         0.01     // measurement noise
 #define KALMAN_K_INF     0.095    // steady-state gain for secondary channels (EMA)
 #define BAND_WIDTH       8
-#define MIN_WEIGHT       1.0
 #define SAT_THRESHOLD    2
 
 #define BAND_RED     0.083
@@ -351,7 +350,7 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
         float  C    = length(lab.yz);
         float  h    = OklabHueNorm(lab.y, lab.z);
 
-        float w    = HueBandWeight(h, GetBandCenter(band_idx)) + MIN_WEIGHT;
+        float w    = HueBandWeight(h, GetBandCenter(band_idx)) * smoothstep(0.03, 0.08, C);
         sum_w   += w;
         sum_wc  += w * C;
         sum_wc2 += w * C * C;

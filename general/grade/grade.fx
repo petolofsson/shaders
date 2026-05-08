@@ -248,20 +248,6 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
             float zstr = lerp(0.26, 0.16, ss) * lerp(1.10, 0.93, la) * ZONE_STRENGTH;
             return float4(saturate(zstr / 0.30), 0.0, 0.0, 1.0);
         }
-        if (xi == HWY_CAT_BLEND) {
-            const float3x3 M_fwd = float3x3(0.302825, 0.602279, 0.070428,
-                                             0.153818, 0.777214, 0.085341,
-                                             0.027974, 0.147911, 0.908874);
-            float3 illum_rgb  = tex2Dlod(NeutralIllumSamp, float4(0.5, 0.5, 0, 0)).rgb;
-            float3 illum_norm = illum_rgb / max(Luma(illum_rgb), 0.001);
-            float3 lms_illum  = mul(M_fwd, illum_norm);
-            float3 lms_n      = lms_illum / max(lms_illum.g, 0.001);
-            float illum_dev      = length(lms_n - float3(1.0, 1.0, 1.0));
-            float cat_confidence = smoothstep(0.02, 0.12, ReadHWY(HWY_ACHROM_FRAC));
-            float cat_blend      = lerp(0.80, 0.60, smoothstep(0.05, 0.20, illum_dev))
-                                 * lerp(0.65, 1.0, cat_confidence);
-            return float4(cat_blend, 0.0, 0.0, 1.0);
-        }
         if (xi == HWY_SHADOW_LIFT_STR) {
             float4 perc = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
             float t     = saturate((perc.r - 0.025) / 0.175);
@@ -276,32 +262,18 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         return col;
     }
     float  col_luma = Luma(col.rgb);
-    // R76A: CAT16 chromatic adaptation — normalise scene illuminant toward D65
-    float3 lms_illum_norm;  // lifted for R83 chromatic floor
+    // Illuminant normalization — lms_illum_norm used by R83 (chromatic floor) and R66 (ambient tint).
+    // CAT16 pixel correction removed (R127): game content is display-referred (sRGB→D65);
+    // warm lighting is art direction, not a calibration error. NeutralIllumTex still runs.
+    float3 lms_illum_norm;
     {
         const float3x3 M_fwd = float3x3(0.302825, 0.602279, 0.070428,
                                          0.153818, 0.777214, 0.085341,
                                          0.027974, 0.147911, 0.908874);
-        const float3x3 M_bwd = float3x3( 5.4459, -4.2155, -0.0242,
-                                         -1.0784,  2.1456, -0.1184,
-                                          0.0078, -0.2191,  1.1200);
-        const float3 lms_d65 = float3(0.9756, 1.0165, 1.0849);
         float3 illum_rgb  = tex2Dlod(NeutralIllumSamp, float4(0.5, 0.5, 0, 0)).rgb;
         float3 illum_norm = illum_rgb / max(Luma(illum_rgb), 0.001);
         float3 lms_illum  = mul(M_fwd, illum_norm);
         lms_illum_norm    = lms_illum / max(lms_illum.g, 0.001);
-        float3 gain      = clamp(lms_d65 / max(lms_illum, 0.001), 0.5, 2.0);
-        float3 lms_px    = mul(M_fwd, col.rgb) * gain;
-        float3 cat16     = mul(M_bwd, lms_px);
-        cat16            = cat16 * (Luma(col.rgb) / max(Luma(cat16), 0.001));
-        // R116: adaptive blend — near-neutral illuminant reliable (0.80); tinted estimate
-        // may be scene-biased, stay safe (0.60). R124A: achromatic confidence gate — few
-        // neutral pixels means grey world is unreliable; scale blend down proportionally.
-        float illum_dev      = length(lms_illum_norm - float3(1.0, 1.0, 1.0));
-        float cat_confidence = smoothstep(0.02, 0.12, ReadHWY(HWY_ACHROM_FRAC));
-        float cat_blend      = lerp(0.80, 0.60, smoothstep(0.05, 0.20, illum_dev))
-                             * lerp(0.65, 1.0, cat_confidence);
-        col.rgb              = lerp(col.rgb, saturate(cat16), cat_blend);
     }
     // R54 + R83: camera signal floor/ceiling — chromatic pedestal from Kodak 2383 D-min + illuminant
     float3 cfilm_floor = FILM_FLOOR * (lms_illum_norm * float3(1.02, 1.00, 0.97));
