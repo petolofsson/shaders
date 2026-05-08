@@ -417,14 +417,20 @@ float4 PassthroughPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
 {
     float4 c = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) {
-        // R46: write WarmBias EMA to highway (WarmBias pass runs before this — same-frame data).
-        if (int(pos.x) == HWY_WARM_BIAS)
+        int xi = int(pos.x);
+        if (xi == HWY_WARM_BIAS)
             return float4(tex2Dlod(WarmBiasSamp, float4(0.5, 0.5, 0, 0)).r, 0.0, 0.0, 1.0);
-        if (int(pos.x) == HWY_STEVENS) {
+        if (xi == HWY_STEVENS) {
             float zk  = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
             float fc_s = (1.48 + exp2(log2(max(zk, 1e-6)) * (1.0 / 3.0))) / 2.04;
             return float4(saturate(fc_s / 1.3), 0.0, 0.0, 1.0);
         }
+        if (xi == HWY_ZONE_KEY || xi == HWY_ZONE_STD) {
+            float4 ch6 = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0));
+            return float4(xi == HWY_ZONE_KEY ? ch6.r : ch6.g, 0.0, 0.0, 1.0);
+        }
+        if (xi == HWY_SLOW_KEY)
+            return float4(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0.0, 0.0, 1.0);
         return c;
     }
     c = DrawLabel(c, pos.xy, 270.0, 26.0,

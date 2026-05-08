@@ -235,7 +235,46 @@ float GetBandCenter(int b)
 float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float4 col      = tex2D(BackBuffer, uv);
-    if (pos.y < 1.0) return col;  // data highway
+    if (pos.y < 1.0) {
+        int xi = int(pos.x);
+        if (xi == HWY_FC_KNEE) {
+            float4 perc = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
+            return float4(lerp(0.90, 0.80, saturate((perc.b - 0.60) / 0.30)), 0.0, 0.0, 1.0);
+        }
+        if (xi == HWY_ZONE_STR) {
+            float4 zs  = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0));
+            float ss   = smoothstep(0.06, 0.16, zs.g);
+            float la   = smoothstep(0.10, 0.40, zs.r);
+            float zstr = lerp(0.26, 0.16, ss) * lerp(1.10, 0.93, la) * ZONE_STRENGTH;
+            return float4(saturate(zstr / 0.30), 0.0, 0.0, 1.0);
+        }
+        if (xi == HWY_CAT_BLEND) {
+            const float3x3 M_fwd = float3x3(0.302825, 0.602279, 0.070428,
+                                             0.153818, 0.777214, 0.085341,
+                                             0.027974, 0.147911, 0.908874);
+            float3 illum_rgb  = tex2Dlod(NeutralIllumSamp, float4(0.5, 0.5, 0, 0)).rgb;
+            float3 illum_norm = illum_rgb / max(Luma(illum_rgb), 0.001);
+            float3 lms_illum  = mul(M_fwd, illum_norm);
+            float3 lms_n      = lms_illum / max(lms_illum.g, 0.001);
+            float illum_dev      = length(lms_n - float3(1.0, 1.0, 1.0));
+            float cat_confidence = smoothstep(0.02, 0.12, ReadHWY(HWY_ACHROM_FRAC));
+            float cat_blend      = lerp(0.80, 0.60, smoothstep(0.05, 0.20, illum_dev))
+                                 * lerp(0.65, 1.0, cat_confidence);
+            return float4(cat_blend, 0.0, 0.0, 1.0);
+        }
+        if (xi == HWY_SHADOW_LIFT_STR) {
+            float4 perc = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
+            float t     = saturate((perc.r - 0.025) / 0.175);
+            float sls   = lerp(1.50, 0.45, t*t*t*(t*(t*6.0-15.0)+10.0));
+            return float4(saturate(sls * SHADOW_LIFT_STRENGTH / 1.5), 0.0, 0.0, 1.0);
+        }
+        if (xi == HWY_CHROMA_STR) {
+            float zk = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
+            float cb = CHROMA_STR * 0.04 * lerp(0.80, 1.20, smoothstep(0.05, 0.35, zk));
+            return float4(saturate(cb / 0.10), 0.0, 0.0, 1.0);
+        }
+        return col;
+    }
     float  col_luma = Luma(col.rgb);
     // R76A: CAT16 chromatic adaptation — normalise scene illuminant toward D65
     float3 lms_illum_norm;  // lifted for R83 chromatic floor
@@ -677,7 +716,18 @@ float4 MistDownsamplePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float4 base = tex2D(BackBuffer, uv);
-    if (pos.y < 1.0) return base;
+    if (pos.y < 1.0) {
+        if (int(pos.x) == HWY_MIST_STR) {
+            float4 perc = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
+            float iqr   = perc.b - perc.r;
+            float str   = MIST_STRENGTH * 0.15 * lerp(0.8, 1.2, saturate(iqr / 0.5));
+            float zk    = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
+            str *= lerp(1.20, 0.85, smoothstep(0.05, 0.25, zk));
+            str *= lerp(1.10, 0.90, saturate((EXPOSURE - 0.70) / 0.60));
+            return float4(saturate(str / 0.10), 0.0, 0.0, 1.0);
+        }
+        return base;
+    }
 
     // R115: shimmer model — additive bloom only where blur > sharp (highlight→shadow bleed).
     // Dark pixels near bright sources glow; midtones and shadows unaffected.

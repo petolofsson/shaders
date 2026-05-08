@@ -29,8 +29,19 @@
 #define HWY_ACHROM_FRAC     202    // fraction of pixels with Oklab C < 0.05 [0,1]
 
 // ── corrective ────────────────────────────────────────────────────────────────
+#define HWY_ZONE_KEY        203    // zone_log_key — linear mean of zone medians [0,1]
+#define HWY_ZONE_STD        204    // zone_std — mean intra-zone pixel variance [0,1]
+#define HWY_SLOW_KEY        205    // slow ambient key EMA [0,1]
 #define HWY_WARM_BIAS       210    // highlight warm bias EMA [0,1]
 #define HWY_STEVENS         213    // fc_stevens; encode: v/1.3  decode: v*1.3  range [0.72,1.22]
+
+// ── grade ─────────────────────────────────────────────────────────────────────
+#define HWY_FC_KNEE         214    // FilmCurve knee position [0,1]
+#define HWY_ZONE_STR        215    // zone contrast strength; encode: v/0.30  decode: v*0.30
+#define HWY_CAT_BLEND       216    // CAT16 chromatic adaptation blend [0,1]
+#define HWY_SHADOW_LIFT_STR 217    // shadow lift strength; encode: v/1.5  decode: v*1.5  range [0,1.5]
+#define HWY_CHROMA_STR      218    // effective chroma lift base; encode: v/0.10  decode: v*0.10  range [0,0.10]
+#define HWY_MIST_STR        219    // effective pro-mist adapt_str; encode: v/0.10  decode: v*0.10  range [0,0.10]
 
 // ── Helper ───────────────────────────────────────────────────────────────────
 #define ReadHWY(slot) \
