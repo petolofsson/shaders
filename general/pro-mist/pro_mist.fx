@@ -51,10 +51,10 @@ sampler2D BackBuffer
 };
 
 // Full-image downsample at 1/4-res — float16, mips for blur depth
-texture2D MistDiffuseTex { Width = BUFFER_WIDTH / 4; Height = BUFFER_HEIGHT / 4; Format = RGBA16F; MipLevels = 4; };
-sampler2D MistDiffuseSamp
+texture2D DiffusionTex { Width = BUFFER_WIDTH / 4; Height = BUFFER_HEIGHT / 4; Format = RGBA16F; MipLevels = 4; };
+sampler2D DiffusionSamp
 {
-    Texture   = MistDiffuseTex;
+    Texture   = DiffusionTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = LINEAR;
@@ -83,24 +83,24 @@ float4 DownsamplePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
 // ─── Pass 2 — Global diffusion composite ──────────────────────────────────
 
-float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float4 base = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return base;
 
     // Mip 2 of 1/4-res = 1/16-res effective = heavily blurred full image
-    float3 blurred = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 2)).rgb;
+    float3 blurred = tex2Dlod(DiffusionSamp, float4(uv, 0, 2)).rgb;
 
     float4 perc      = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
     float  iqr       = perc.b - perc.r;
     // High-contrast scenes get slightly more diffusion
-    float  adapt_str = MIST_STRENGTH * 0.06 * lerp(0.8, 1.2, saturate(iqr / 0.5));
+    float  adapt_str = DIFFUSION_STRENGTH * 0.06 * lerp(0.8, 1.2, saturate(iqr / 0.5));
     // R80B: scene-key adaptive — dark scenes get more diffusion, bright exteriors less
     float zone_log_key   = tex2Dlod(ChromaHistSamp, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
-    float mist_key_scale = lerp(1.20, 0.85, smoothstep(0.05, 0.25, zone_log_key));
+    float diff_key_scale = lerp(1.20, 0.85, smoothstep(0.05, 0.25, zone_log_key));
     // R80C: aperture proxy — low EXPOSURE (wide aperture equivalent) → more diffusion
-    float mist_ap_scale  = lerp(1.10, 0.90, saturate((EXPOSURE - 0.70) / 0.60));
-    adapt_str *= mist_key_scale * mist_ap_scale;
+    float diff_ap_scale  = lerp(1.10, 0.90, saturate((EXPOSURE - 0.70) / 0.60));
+    adapt_str *= diff_key_scale * diff_ap_scale;
 
     float3 result = lerp(base.rgb, blurred, saturate(adapt_str));
 
@@ -116,17 +116,17 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
 // ─── Technique ────────────────────────────────────────────────────────────
 
-technique ProMist
+technique Diffusion
 {
     pass Downsample
     {
         VertexShader = PostProcessVS;
         PixelShader  = DownsamplePS;
-        RenderTarget = MistDiffuseTex;
+        RenderTarget = DiffusionTex;
     }
     pass Composite
     {
         VertexShader = PostProcessVS;
-        PixelShader  = ProMistPS;
+        PixelShader  = DiffusionPS;
     }
 }

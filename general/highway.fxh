@@ -40,7 +40,7 @@
 #define HWY_ZONE_STR        215    // zone contrast strength; encode: v/0.30  decode: v*0.30
 #define HWY_SHADOW_LIFT_STR 217    // shadow lift strength; encode: v/1.5  decode: v*1.5  range [0,1.5]
 #define HWY_CHROMA_STR      218    // effective chroma lift base; encode: v/0.10  decode: v*0.10  range [0,0.10]
-#define HWY_MIST_STR        219    // effective pro-mist adapt_str; encode: v/0.10  decode: v*0.10  range [0,0.10]
+#define HWY_DIFFUSION_STR   219    // effective diffusion adapt_str; encode: v/0.10  decode: v*0.10  range [0,0.10]
 
 // ── Helper ───────────────────────────────────────────────────────────────────
 #define ReadHWY(slot) \

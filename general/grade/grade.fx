@@ -130,11 +130,11 @@ sampler2D NeutralIllumSamp
     MagFilter = POINT;
 };
 
-// Pro-Mist downsample target — 1/8-res, 3 mips; mip1=1/16-res, mip2=1/32-res (vkBasalt auto-generates within-technique)
-texture2D MistDiffuseTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 3; };
-sampler2D MistDiffuseSamp
+// Diffusion downsample target — 1/8-res, 3 mips; mip1=1/16-res, mip2=1/32-res (vkBasalt auto-generates within-technique)
+texture2D DiffusionTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 3; };
+sampler2D DiffusionSamp
 {
-    Texture   = MistDiffuseTex;
+    Texture   = DiffusionTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = LINEAR;
@@ -368,22 +368,24 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
         lin.b = saturate(lin.b - mc_str * 0.65);
     }
 
-    // ── R50: dye secondary absorption — dominant-channel soft attenuation ─────
+    // ── R130: Kodak 2383 spectral dye absorption matrix ──────────────────────
+    // Replaces R81C Beer-Lambert proxy + R85 empirical coupling. Full 3×3 derived
+    // from Kodak H-1-2383t dye density curves (agx-emulsion / National Archives 2005).
+    // dom_mask: r=cyan dye, g=magenta dye, b=yellow dye. Normalized per-dye (primary=1.00):
+    //   Cyan:    R 1.00  G 0.14  B 0.09
+    //   Magenta: R 0.15  G 1.00  B 0.09
+    //   Yellow:  R 0.01  G 0.06  B 1.00
     {
         float lin_min   = min(lin.r, min(lin.g, lin.b));
         float sat_proxy = max(lin.r, max(lin.g, lin.b)) - lin_min;
         float ramp      = smoothstep(0.0, 0.25, sat_proxy);
         float3 dom_mask = saturate((lin - lin_min) / max(sat_proxy, 0.001));
-        // R81C: Beer-Lambert — exp(−α·c·d) is physically correct at high chroma
-        float3 bl_abs = dom_mask * sat_proxy * ramp;
-        float3 bl_x   = 0.065 * bl_abs;
+        float3 dye      = dom_mask * sat_proxy * ramp * 0.065;
+        float3 bl_x;
+        bl_x.r = dye.r * 1.00 + dye.g * 0.15 + dye.b * 0.01;
+        bl_x.g = dye.r * 0.14 + dye.g * 1.00 + dye.b * 0.06;
+        bl_x.b = dye.r * 0.09 + dye.g * 0.09 + dye.b * 1.00;
         lin = saturate(lin * (1.0 - bl_x + bl_x * bl_x * 0.5));
-        // R85: inter-channel dye coupling — Kodak 2383 spectral dye density curves
-        // cyan dye (red-record) ~2.0% bleed into green; magenta (green-record) ~2.2% into blue
-        float2 dye_cross = float2(dom_mask.r * sat_proxy * ramp * 0.020,
-                                  dom_mask.g * sat_proxy * ramp * 0.022);
-        lin.g = saturate(lin.g * (1.0 - dye_cross.x));
-        lin.b = saturate(lin.b * (1.0 - dye_cross.y));
     }
 
     // ── BLEACH BYPASS: silver retention in print emulsion (P2, R120) ─────────
@@ -678,22 +680,22 @@ float4 LFDownscale2PS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
           + tex2D(LowFreqMip1Samp, uv + float2(-s.x, -s.y))) * 0.25;
 }
 
-// ─── Pro-Mist passes (merged from pro_mist.fx — saves one inter-effect overhead) ──
+// ─── Diffusion passes (merged from pro_mist.fx — saves one inter-effect overhead) ──
 
-float4 MistDownsamplePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+float4 DiffusionDownsamplePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     if (pos.y < 1.0) return float4(0.0, 0.0, 0.0, 0.0);
     return float4(tex2D(BackBuffer, uv).rgb, 1.0);
 }
 
-float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float4 base = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) {
-        if (int(pos.x) == HWY_MIST_STR) {
+        if (int(pos.x) == HWY_DIFFUSION_STR) {
             float4 perc = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
             float iqr   = perc.b - perc.r;
-            float str   = MIST_STRENGTH * 0.15 * lerp(0.8, 1.2, saturate(iqr / 0.5));
+            float str   = DIFFUSION_STRENGTH * 0.15 * lerp(0.8, 1.2, saturate(iqr / 0.5));
             float zk    = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
             str *= lerp(1.20, 0.85, smoothstep(0.05, 0.25, zk));
             str *= lerp(1.10, 0.90, saturate((EXPOSURE - 0.70) / 0.60));
@@ -702,27 +704,41 @@ float4 ProMistPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
         return base;
     }
 
-    // R115: shimmer model — additive bloom only where blur > sharp (highlight→shadow bleed).
-    // Dark pixels near bright sources glow; midtones and shadows unaffected.
-    // Reinhard knee at 0.08: soft shoulder prevents clipping; adapt_str controls overall scale.
-    float3 mist_tight   = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 0)).rgb;
-    float3 mist_wide    = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 1)).rgb;
-    float3 mist_broader = tex2Dlod(MistDiffuseSamp, float4(uv, 0, 2)).rgb;
+    // R115/R131: Two-component HBM model.
+    // A) Additive shimmer (micro-lenslet redirection) — fires only where blur > sharp;
+    //    blacks and saturated colors preserved by construction. Reinhard knee at 0.08.
+    // B) Soft midtone overlay (carbon-gate smoothing) — lerp toward blurred in midtones
+    //    only; zero at blacks (luma=0) and highlights (luma=1) by bell construction.
+    // Radial gradient: 20% at center → 25 → 75 → 100% at edges (large-format DOF falloff).
+    float  r           = length(uv - 0.5) * 2.0;
+    float  diff_radial = 0.20;
+    diff_radial = lerp(diff_radial, 0.25, smoothstep(0.10, 0.30, r));
+    diff_radial = lerp(diff_radial, 0.75, smoothstep(0.30, 0.65, r));
+    diff_radial = lerp(diff_radial, 1.00, smoothstep(0.65, 0.85, r));
+    float  eff_diff    = DIFFUSION_STRENGTH * diff_radial;
+
+    float3 diff_tight   = tex2Dlod(DiffusionSamp, float4(uv, 0, 0)).rgb;
+    float3 diff_wide    = tex2Dlod(DiffusionSamp, float4(uv, 0, 1)).rgb;
+    float3 diff_broader = tex2Dlod(DiffusionSamp, float4(uv, 0, 2)).rgb;
 
     float4 perc           = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
     float  iqr            = perc.b - perc.r;
-    float  adapt_str      = MIST_STRENGTH * 0.15 * lerp(0.8, 1.2, saturate(iqr / 0.5));
+    float  adapt_str      = eff_diff * 0.15 * lerp(0.8, 1.2, saturate(iqr / 0.5));
     float  zone_log_key   = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
-    float  mist_key_scale = lerp(1.20, 0.85, smoothstep(0.05, 0.25, zone_log_key));
-    float  mist_ap_scale  = lerp(1.10, 0.90, saturate((EXPOSURE - 0.70) / 0.60));
-    adapt_str *= mist_key_scale * mist_ap_scale;
+    float  diff_key_scale = lerp(1.20, 0.85, smoothstep(0.05, 0.25, zone_log_key));
+    float  diff_ap_scale  = lerp(1.10, 0.90, saturate((EXPOSURE - 0.70) / 0.60));
+    adapt_str *= diff_key_scale * diff_ap_scale;
 
-    float  scale_w  = saturate(MIST_STRENGTH * 0.25);
-    float  broad_w  = saturate(MIST_STRENGTH * 0.20 - 0.10);
-    float3 blurred  = lerp(lerp(mist_tight, mist_wide, scale_w), mist_broader, broad_w);
+    float  scale_w   = saturate(eff_diff * 0.25);
+    float  broad_w   = eff_diff * 0.10;
+    float3 blurred   = lerp(lerp(diff_tight, diff_wide, scale_w), diff_broader, broad_w);
     float3 bloom_raw = max(0.0, blurred - base.rgb);
     float3 bloom     = bloom_raw / (bloom_raw + 0.08);
     float3 result    = saturate(base.rgb + bloom * adapt_str);
+
+    float  luma_r   = Luma(result);
+    float  mid_gate = luma_r * (1.0 - luma_r) * 4.0;
+    result          = saturate(lerp(result, diff_tight, eff_diff * 0.06 * mid_gate));
 
     float dither = frac(52.9829189 * frac(dot(pos.xy, float2(0.06711056, 0.00583715)))) - 0.5;
     result += dither * (1.0 / 255.0);
@@ -788,15 +804,15 @@ technique OlofssonianColorGrade
         VertexShader = PostProcessVS;
         PixelShader  = ColorTransformPS;
     }
-    pass MistDownsample
+    pass DiffusionDownsample
     {
         VertexShader = PostProcessVS;
-        PixelShader  = MistDownsamplePS;
-        RenderTarget = MistDiffuseTex;
+        PixelShader  = DiffusionDownsamplePS;
+        RenderTarget = DiffusionTex;
     }
-    pass ProMist
+    pass Diffusion
     {
         VertexShader = PostProcessVS;
-        PixelShader  = ProMistPS;
+        PixelShader  = DiffusionPS;
     }
 }

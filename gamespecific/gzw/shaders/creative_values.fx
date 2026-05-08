@@ -112,11 +112,13 @@
 // Range 0.02–0.20. Tune: raise until orange fringe looks physically correct.
 #define HAL_GAMMA     0.01
 
-// ── PRO MIST ──────────────────────────────────────────────────────────────────
-// Highlight shimmer — bright sources bloom into adjacent dark areas (additive).
-// Shadows stay dark; midtones unaffected. Recalibrate from scratch after R115:
-// old values were tuned for diffusion. Start around 0.1–0.4. 0 = off.
-#define MIST_STRENGTH  0.10
+// ── DIFFUSION ─────────────────────────────────────────────────────────────────
+// Hollywood Black Magic dual-component model (R131):
+//   A) Additive shimmer — highlight bloom into dark areas only (micro-lenslet).
+//   B) Soft midtone overlay — gentle airbrushed smoothing, zero at blacks/whites.
+// Rough grade mapping: 0.5–0.8 = HBM 1/4, 1.2–1.5 = HBM 1/2, 1.8–2.2 = HBM 1.
+// 0 = off.
+#define DIFFUSION_STRENGTH  0.10
 
 // ── PURKINJE SHIFT ────────────────────────────────────────────────────────────
 // Rod-vision blue-green hue bias across the mesopic range (luma 0–0.30). Physiologically
