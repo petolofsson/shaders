@@ -1,5 +1,38 @@
 # Changelog
 
+## 2026-05-08 — session (R127 CAT16 removal + chroma pivot fix; R127B FilmCurve body S revised)
+
+### Removed
+
+- **CAT16 pixel correction** (`grade.fx`) — Chromatic adaptation toward D65 removed entirely.
+  Game content is display-referred (already in sRGB→D65); CAT16 was treating artistic warm
+  lighting (fire, lava, torchlight) as a calibration error and cooling it. `NeutralIllumTex`
+  and `lms_illum_norm` kept — still feed R83 (chromatic floor) and R66 (ambient shadow tint).
+  Highway slot 216 (cat_blend) removed.
+
+### Fixed
+
+- **Chroma lift pivot bias** (`corrective.fx UpdateHistoryPS`) — `MIN_WEIGHT = 1.0` was adding
+  unconditional weight to every pixel regardless of chroma, pulling the per-band pivot toward
+  zero. `LiftChroma` uses `t = 1 − C/pivot` — with pivot≈0, t≈0 for all colored pixels,
+  making the chroma lift silently inert. Fixed: weight now
+  `HueBandWeight(h, center) * smoothstep(0.03, 0.08, C)`. Achromatic pixels contribute zero;
+  pivot is the actual mean chroma of colored pixels. Lift now works as designed.
+- **FilmCurve body S-curve** (`grade.fx FilmCurveApply`) — R126 formula `x*(1-x)*(1-2x)*0.12`
+  lifted shadows (+9% at x≈0.2) and barely touched highlights — net image flattening.
+  Replaced with one-sided midrange-weighted S: `max(0, (x*(1-x))²*(2x-1))*0.65`. Shadows
+  (x≤0.5) untouched; upper mids lift peaks +1.2% at x≈0.72, zero at x=1.
+
+### Added
+
+- **Highway extension** — Slots 203 (zone_key), 204 (zone_std), 205 (slow_key) written by
+  corrective PassthroughPS. Slots 214 (fc_knee), 215 (zone_str), 217 (shadow_lift_str),
+  218 (chroma_str), 219 (mist_str) written by grade. All diagnostic-write-only — pipeline
+  reads ChromaHistory directly, not via ReadHWY for these slots.
+- **NeutralIllumPS pass** (`grade.fx`, R124B) — 144-sample neutral-pixel-weighted illuminant
+  estimate (16×9 grid, `CreativeLowFreqSamp` mip0). Replaces flat grey world mean as source
+  for `lms_illum_norm`. Pass runs before ColorTransform within-technique.
+
 ## 2026-05-07 — session (R124 illuminant, R125–R126 Bezold-Brücke + FilmCurve body)
 
 ### Implemented

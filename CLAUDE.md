@@ -8,7 +8,7 @@ vkBasalt auto-linearizes the sRGB swapchain. HDR must be OFF in-game.
 ```
 analysis_frame : inverse_grade : analysis_scope_pre : corrective : grade : analysis_scope
 ```
-`grade` is a 5-pass technique (LFDownscale1 → LFDownscale2 → ColorTransform → MistDownsample → ProMist).
+`grade` is a 6-pass technique (LFDownscale1 → LFDownscale2 → NeutralIllum → ColorTransform → MistDownsample → ProMist).
 Pro-Mist is merged inside grade.fx — it is NOT a separate effect in the chain.
 
 ## Silent-failure gotchas — verify before every shader edit
@@ -74,7 +74,8 @@ Pro-Mist is merged inside grade.fx — it is NOT a separate effect in the chain.
 |---------|------|------|
 | `LowFreqMip1Tex` / `LowFreqMip1Samp` | 1/16-res | Retinex illum_s0, shadow lift denominator |
 | `LowFreqMip2Tex` / `LowFreqMip2Samp` | 1/32-res | Retinex illum_s2, R66 ambient tint, halation outer ring |
-| `MistDiffuseTex` / `MistDiffuseSamp` | 1/8-res, 2 mips | Pro-Mist diffusion blur source |
+| `NeutralIllumTex` / `NeutralIllumSamp` | 1×1 | Neutral-pixel-weighted illuminant estimate for R83 + R66 |
+| `MistDiffuseTex` / `MistDiffuseSamp` | 1/8-res, 3 mips | Pro-Mist three-scale blur source (mip0/1/2) |
 
 ## `ColorTransformPS` stage order (`grade.fx`)
 
@@ -88,16 +89,18 @@ inverse_grade.fx runs before corrective — R90 chroma expansion on pre-correcti
 and `LowFreqMip2Tex` (1/32-res) from `CreativeLowFreqTex` mip0 via 4-tap box filter. Must run
 before ColorTransform. Cross-technique mips are zero — these passes are the fix (R113).
 
-1. **CORRECTIVE** — CAT16 chromatic adaptation (illum from lf_mip0, adaptive blend 0.80 near-neutral / 0.60 tinted) + `pow(rgb, EXPOSURE)` + R104 DIR couplers (log2-space cross-channel inhibition, default off) + FilmCurve (pure global p25/p75, fc_stevens from highway x=213) + R83 chromatic floor + R84 log-density offsets + R85 dye masking + R19 3-way CC
+**NeutralIllum pass (pre-ColorTransform):** 144-sample (16×9) grid over `CreativeLowFreqSamp` mip0, neutral-pixel-weighted (weight = `1−smoothstep(0.04,0.10,C)`). Outputs scene illuminant estimate to 1×1 `NeutralIllumTex`. Used by R83 (chromatic floor) and R66 (ambient shadow tint). CAT16 pixel correction removed R127 — game content is display-referred (sRGB→D65); warm lighting is art direction, not a calibration error.
+
+1. **CORRECTIVE** — `pow(rgb, EXPOSURE)` + R104 DIR couplers (log2-space cross-channel inhibition, default off) + FilmCurve (pure global p25/p75, fc_stevens from highway x=213; upper-mid one-sided body lift `max(0,(x(1-x))²(2x-1))*0.65`) + R83 chromatic floor (lms_illum_norm from NeutralIllumTex) + R84 log-density offsets + R85 dye masking + R19 3-way CC
 2. **TONAL** — Zone S-curve + Spatial norm (auto from zone_std) + R29 Retinex (illum_s0 from LowFreqMip1, illum_s2 from LowFreqMip2) + Shadow lift + R62 Oklab-stable tonal (L-substitution, chroma preserved) + R65 Hunt coupling + R66 ambient shadow tint (illum from LowFreqMip2)
 3. **CHROMA** — HELMLAB Fourier hue correction + R52 Purkinje + R22 sat-by-luma + R21 hue rotation + R75 hue-by-luminance + chroma lift (CHROMA_STR × 0.04 raw, R68A spatial mod) + R15 HK + R69/R12 Abney + density + R71 vibrance self-mask + R73 memory color ceilings (`HueCeil()` from hue_bands.fxh, full 12-hue wheel) + gamut pre-knee + gclip + R105 halation DoG PSF (LowFreqMip1 inner / LowFreqMip2 outer ring) + R106 Lorentzian tail
 
 **MistDownsample + ProMist passes (same technique):** Pro-Mist merged into grade.fx; downsample to
-MistDiffuseTex (1/8-res, MipLevels=2), composite mip1 back at full res via additive shimmer:
+MistDiffuseTex (1/8-res, MipLevels=3), vkBasalt auto-generates mip1+mip2 within-technique. ProMistPS
+blends three scales (tight mip0, wide mip1, broader mip2) via additive shimmer:
 `base + max(0, blurred − base) * strength`. Adds scatter from highlights only — not symmetric diffusion.
-vkBasalt auto-generates mips.
 
-**Data highway (BackBuffer y=0):** x=0–128 luma hist · x=130–193 hue hist · x=194–196 p25/p50/p75 · x=197 R90 slope · x=198 median Oklab C (CDF p50) · x=199 scene cut · x=200 p90 · x=201 chroma angle (atan2 encoded) · x=202 achromatic fraction · x=203 zone_key · x=204 zone_std · x=205 slow_key · x=210 warm bias · x=213 fc_stevens (encode ÷1.3) · x=214 fc_knee · x=215 zone_str (encode ÷0.30) · x=216 cat_blend · x=217 shadow_lift_str (encode ÷1.5) · x=218 chroma_str base (encode ÷0.10) · x=219 mist adapt_str (encode ÷0.10)
+**Data highway (BackBuffer y=0):** x=0–128 luma hist · x=130–193 hue hist · x=194–196 p25/p50/p75 · x=197 R90 slope · x=198 median Oklab C (CDF p50) · x=199 scene cut · x=200 p90 · x=201 chroma angle (atan2 encoded) · x=202 achromatic fraction · x=203 zone_key · x=204 zone_std · x=205 slow_key · x=210 warm bias · x=213 fc_stevens (encode ÷1.3) · x=214 fc_knee · x=215 zone_str (encode ÷0.30) · x=217 shadow_lift_str (encode ÷1.5) · x=218 chroma_str base (encode ÷0.10) · x=219 mist adapt_str (encode ÷0.10)
 
 **Highway encoding rule:** 8-bit UNORM highway clips at 1.0. Values that can exceed 1.0 must be
 encoded on write (÷scale) and decoded on read (×scale). Document encode/decode in highway.fxh comment.

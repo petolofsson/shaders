@@ -1,4 +1,4 @@
-# Handoff — 2026-05-06
+# Handoff — 2026-05-08
 
 ## Current branch
 `alpha` — active development.
@@ -7,14 +7,14 @@
 
 ## Pipeline state
 
-| Stage | Finished | Novel | Gap |
-|-------|----------|-------|-----|
-| Stage 0 — Input | 97% | 84% | — |
-| Stage 1 — Corrective | 96% | 83% | — |
-| Stage 2 — Tonal | 94% | 92% | zone_std/zone_key character change; may need ZONE_STRENGTH retune |
+| Stage | Finished | Novel | Notes |
+|-------|----------|-------|-------|
+| Stage 0 — Input | 97% | 86% | R117A uniform expansion; per-hue gamut ceilings |
+| Stage 1 — Film Stock | 97% | 85% | CAT16 removed R127; FilmCurve body S revised R127B |
+| Stage 2 — Tonal | 95% | 92% | Chroma lift pivot fixed R127; zone_std thresholds recalibrated R116 |
 | Stage 3 — Chroma | 98% | 93% | — |
-| Stage 3.5 — Halation | 97% | 90% | Chromatic fringe tuned; HAL_STRENGTH/HAL_GAMMA at new calibration |
-| Output — Pro-Mist | 95% | 86% | Shimmer model tuned; MIST_STRENGTH at new calibration |
+| Stage 3.5 — Halation | 97% | 90% | — |
+| Output — Pro-Mist | 96% | 87% | Three-scale blur R117C |
 
 ---
 
@@ -24,107 +24,52 @@
 analysis_frame : inverse_grade : analysis_scope_pre : corrective : grade : analysis_scope
 ```
 
-grade is a **5-pass technique**: LFDownscale1 → LFDownscale2 → ColorTransform → MistDownsample → ProMist
+grade is a **6-pass technique**: LFDownscale1 → LFDownscale2 → NeutralIllum → ColorTransform → MistDownsample → ProMist
 
 ---
 
 ## What shipped this session (latest first)
 
-### R116 — Full color pipeline audit (9 issues)
+### R127B — FilmCurve body S-curve revised (`grade.fx`)
 
-Seven statistical/logic improvements across `grade.fx`, `corrective.fx`, `analysis_frame.fx`, and
-`inverse_grade.fx`. Research papers: `research/R116_2026-05-06_color_pipeline_audit.md` and
-`research/R116_2026-05-06_color_pipeline_audit_findings.md`.
+R126 formula `x*(1-x)*(1-2x)*0.12` lifted shadows (+9% at x≈0.2) and barely touched
+highlights — net image flattening. Replaced with one-sided midrange-weighted S:
+`max(0, (x*(1-x))²*(2x-1))*0.65`. Shadows (x≤0.5) untouched. Upper mids lift peaks
++1.2% at x≈0.72, falls to zero at x=1. Effect concentrated in upper midrange,
+not deep shadows.
 
-**Issue 3 — Intra-zone pixel variance** (`corrective.fx`)
-`zone_std` now measures mean intra-zone pixel variance using histogram moments (E[X²] − E[X]²)
-per zone, averaged across 16 zones. Previously measured inter-zone std-dev (spread between zone
-medians) — which responded to the zone structure, not to per-pixel texture. `ZoneHistoryTex.a`
-repurposed from Kalman P (unused downstream) to smoothed `intra_std`. R88 VFF Kalman Q adaptation
-removed from `SmoothZoneLevelsPS`; replaced with fixed-K EMA, scene-cut reset via HWY_SCENE_CUT.
+### R127 — CAT16 removed; chroma lift pivot fixed (`grade.fx`, `corrective.fx`)
 
-**Issue 2 — Zone log key linear mean** (`corrective.fx`)
-`zone_log_key` now uses linear mean of zone medians (`sum/16`) instead of geometric mean
-(`exp2(sum(log2)/16)`). Linear mean gives equal weight to all zones. Geometric mean was
-dark-biased — high-contrast (split interior/window) scenes read too dark. `ZONE_STRENGTH` may
-need adjustment; calibrate from current default.
+**CAT16 removal:** Game content is display-referred (sRGB→D65). CAT16 was treating
+artistic warm lighting (fire, lava, torchlight) as a calibration error and systematically
+cooling it — causing "homeostasis" that fought against deliberate warm lighting design.
+Removed the pixel correction entirely. `NeutralIllumTex` and `lms_illum_norm` kept to
+feed R83 (chromatic floor) and R66 (ambient shadow tint). Highway slot 216 removed.
 
-**Issue 4 — Pure global percentiles** (`grade.fx`)
-`eff_p25`/`eff_p75` now use `perc.r`/`perc.b` directly (pure global histogram p25/p75).
-Previously `lerp(global_p25, zone_zmin, 0.4)` blended a percentile with a spatial zone extreme
-— incompatible statistics. FilmCurve now responds to the histogram only.
+**Chroma lift pivot fix:** `MIN_WEIGHT = 1.0` was adding unconditional weight to every
+pixel regardless of chroma C, pulling the per-band pivot toward zero. With pivot≈0,
+`LiftChroma`'s `t = 1 − C/pivot` saturates to 0 for all colored pixels — chroma lift
+was silently doing nothing. Fixed: weight = `HueBandWeight * smoothstep(0.03, 0.08, C)`.
+Achromatic pixels contribute zero weight; pivot is now the actual mean chroma of colored
+pixels. Chroma lift now works as designed.
 
-**Issue 1 — Chroma median** (`analysis_frame.fx`)
-`MeanChromaPS` replaced with 32-bin CDF-walk p50 (same architecture as `CDFWalkPS`). Arithmetic
-mean was biased by outlier pixels (neons, bright primaries) → over-expansion in shadows.
-Highway x=198 now carries median Oklab C. `INVERSE_STRENGTH` raised from 0.40 → 0.55
-(median is lower than mean → more headroom before saturation).
+### Highway extension (diagnostic)
 
-**Issue 5C — Adaptive CAT16 blend** (`grade.fx`)
-`illum_dev = length(lms_illum_norm − 1)` drives CAT16 blend: 0.80 when illuminant is near-neutral
-(reliable estimate, correct aggressively), 0.60 when strongly tinted (suspect estimate, keep
-safety valve). 3–5 ALU, zero new taps.
-
-**Issue 8 — Chroma ceiling before vibrance** (`grade.fx`)
-Ceiling applied to `lifted_C` before vibrance masking (not after). The ceiling is now a hard
-guarantee on the chroma that enters vibrance. Vibrance masks within the ceiling-bounded range.
-
-**Issue 9 — HWY_SLOPE minimum clamp** (`inverse_grade.fx`)
-`max(slope_enc * 1.5 + 1.0, 1.15)` enforces minimum slope 1.15 at decode. Cold-start frame
-uninit (0) previously decoded as slope=1.0 (below the valid floor), causing one-frame identity
-behaviour. Eliminated.
-
----
-
-### R115 — Pro-Mist shimmer model (grade.fx)
-
-`ProMistPS` changed from symmetric lerp diffusion to additive unilateral bloom:
-```hlsl
-float3 bloom  = max(0.0, blurred - base.rgb);
-float3 result = base.rgb + bloom * adapt_str;
-```
-Previous lerp model muted dark areas alongside brightening highlights — physically incorrect for
-scatter optics. New model only adds scatter from highlights; shadows/midtones are unaffected.
-`MIST_STRENGTH` recalibrated from 5.0 → 1.5.
-
----
-
-### R114 — Halation chromatic fringe (grade.fx)
-
-Added `hal_b` component with Lorentzian attenuation (`hal_ring.b * lerp(0.22, 0.38, hal_lore)`).
-Gains changed from `float3(1.05, 0.50, 0.0)` to `float3(1.05, 0.45, 0.03)`. White surfaces now
-produce correct orange/amber fringe. Red dominance preserved (deepest dye layer; yellow filter
-layer attenuates blue but passes red/orange). `HAL_STRENGTH` 0.50 → 2.0, `HAL_GAMMA` 0.40 → 2.50.
-
----
-
-### R113 — vkBasalt cross-technique mip generation bug (grade.fx)
-
-**The biggest bug found to date.** `CreativeLowFreqTex` mip1 and mip2 were zero
-everywhere — vkBasalt only auto-generates mips for render targets written and read
-within the same technique. This texture crosses the corrective→grade boundary.
-
-Additionally, `tex2Dlod(BackBuffer, ...)` returns zero in vkBasalt regardless of LOD.
-Only `tex2D(BackBuffer, ...)` works on the BackBuffer sampler.
-
-**Fix:** Two explicit downscale passes at the top of OlofssonianColorGrade:
-- `LFDownscale1PS`: reads CreativeLowFreqSamp mip0 → writes `LowFreqMip1Tex` (1/16-res)
-- `LFDownscale2PS`: reads LowFreqMip1Samp → writes `LowFreqMip2Tex` (1/32-res)
-
-Documented fully in `research/R113_2026-05-06_vkbasalt_mip_generation.md`.
+Slots 203–205 (zone_key, zone_std, slow_key) written by corrective PassthroughPS.
+Slots 214, 215, 217–219 written by grade. All write-only from the pipeline — capture.py
+reads them for external diagnostics only.
 
 ---
 
 ## Known state
 
-- **ZONE_STRENGTH may need retuning** — linear zone_log_key raises key in high-contrast scenes
-  → zone contrast may fire less aggressively. Current 1.25 is a reasonable starting point.
-- **INVERSE_STRENGTH at 0.55** — calibrated against median chroma (lower than arithmetic mean).
-  If colours feel under-expanded, try 0.65–0.70.
-- CAT16 adaptive blend live — neutral scenes get stronger correction (0.80), tinted scenes
-  more conservative (0.60).
-- Pro-Mist shimmer: only adds light from highlights. If diffusion (all-tone softening) is
-  wanted, revert to lerp model. Current character is shimmer/glow, not diffusion.
+- **Chroma lift now actually works** — CHROMA_STR=1.00 is a live knob for the first time.
+  Values tuned before R127 (e.g. 0.30) were inert. May want to calibrate downward if
+  chroma feels excessive after extended play.
+- **CAT16 gone** — warm lighting (fire, lava) is now uncompensated. This is correct.
+  If a scene has strong colour cast from engine fog/colour grading, use 3-way CC instead.
+- **Shadow lift stacked** — SHADOW_LIFT_STRENGTH=1.3 + R119 fixes + FilmCurve toe all
+  lift shadows. If shadows feel too bright, reduce SHADOW_LIFT_STRENGTH toward 0.8 first.
 - No known compile errors or visual regressions.
 
 Debug log: `/tmp/vkbasalt.log` — check first for SPIR-V issues.
@@ -133,7 +78,8 @@ Debug log: `/tmp/vkbasalt.log` — check first for SPIR-V issues.
 
 ## Next session candidates
 
-- **ZONE_STRENGTH retune** — calibrate from scratch after linear zone_log_key change
-- **INVERSE_STRENGTH fine-tune** — 0.55 is conservative; test 0.60–0.70 in varied scenes
-- **Nightly job prompt updates** — all 4 scheduled jobs reference stale chain state
-- **Remove inverse_grade_debug from chain** — once halation + inverse grade tuning is stable
+- **Retune creative_values** — many knobs (CHROMA_STR, SHADOW_LIFT_STRENGTH, BLEACH_BYPASS)
+  were calibrated against a broken chroma lift and active CAT16. Fresh calibration pass warranted.
+- **Nightly job prompt updates** — scheduled jobs still reference stale pipeline state (CAT16,
+  old highway slots).
+- **GZW testbed** — conf was updated this session to full pipeline; needs first tuning pass.
