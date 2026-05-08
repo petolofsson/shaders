@@ -34,7 +34,8 @@
       "WebFetch(domain:www.color.io)",
       "WebFetch(domain:www.dehancer.com)",
       "Bash(sort -t/ -k1)",
-      "Bash(python3 -)"
+      "Bash(python3 -)",
+      "Bash(gh api *)"
     ]
   }
 }
