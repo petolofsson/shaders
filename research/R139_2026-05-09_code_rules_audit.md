@@ -1,7 +1,7 @@
 # R139 — Code Rules Audit (Power of Ten, HLSL adaptation)
 
 **Date:** 2026-05-09
-**Status:** Complete — F4-A (MegaPass documented exception) open; all other items resolved
+**Status:** Complete — all items resolved (F4-A implemented 2026-05-10)
 **Scope:** All `.fx` and `.fxh` files under `general/` and `gamespecific/arc_raiders/shaders/`
 
 Files audited:
@@ -72,16 +72,9 @@ No violations. All textures, samplers, and render targets are declared staticall
 
 ## Rule 4 — Functions ≤ 60 lines
 
-### F4-A: `ColorTransformPS` (grade.fx:249–676) — ~427 lines
+### F4-A: `ColorTransformPS` (grade.fx) — ✅ resolved 2026-05-10 (R142)
 
-The most severe violation in the codebase. The entire grading pipeline runs in one function. The function has clearly defined stages (CORRECTIVE, TONAL, CHROMA) but they are not extracted into named helpers. Each stage is 30–80 lines of inline code.
-
-Proposed structure (not implemented):
-```hlsl
-float3 ApplyCorrective(float3 lin, ...);
-float3 ApplyTonal(float3 lin, ...);
-float3 ApplyChroma(float3 lin, ...);
-```
+Extracted `BuildSceneCtx()`, `ApplyCorrective()`, `ApplyTonal()`, `ApplyChroma()` as stage helpers. Scene-uniform data grouped in `SceneCtx` struct; cross-stage pixel outputs (new_luma, local_var) in `TonalOut` struct. ColorTransformPS reduced to ~47-line orchestrator. See `research/R142_2026-05-10_colortransformps_stage_split.md`.
 
 ### F4-B: `ScopePS` (analysis_scope.fx:116–267) — ~152 lines
 

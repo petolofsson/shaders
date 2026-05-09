@@ -10,7 +10,7 @@ All stages at or above target. Stage 0 ceiling is content-limited (testbed ~80% 
 | Stage 1 — Film Stock | 97% | 90% |
 | Stage 2 — Tonal | 96% | 91% |
 | Stage 3 — Color + Halation | 98% | 92% |
-| Output — Diffusion | 96% | 85% |
+| Output — Diffusion + Grain | 97% | 91% |
 
 ## Score reasoning
 
@@ -26,5 +26,5 @@ Novel: Oklab-stable L-substitution (R62), intra-zone pixel variance driver (R116
 **Stage 3 — Color + Halation (92% novel)**
 Densest science in the pipeline. Chroma: HELMLAB Fourier correction, MacAdam ellipse ceilings, HK, Abney, Hunt, Purkinje (a*+b* blue-green shift + scotopic desaturation). Halation: blur-minus-sharp annular PSF, Lorentzian tail, emulsion-derived chromatic gains (all in the same MegaPass — Stage 3.5 dissolved). Drag: R21 hue rotation and basic chroma lift are common in grading tools.
 
-**Output — Diffusion (85% novel)**
-Novel: scene-adaptive strength (IQR + zone_key + EXPOSURE), dual-component split where shimmer fires only on `blurred > sharp` (self-limiting), R132 polydisperse chromatic scatter (red ×1.15, blue ×0.85). Drag: the Gaussian-blur-and-blend chassis is the ubiquitous game bloom mechanism — non-novel mass is larger than initially accounted.
+**Output — Diffusion + Grain (91% novel)**
+Novel: scene-adaptive strength (IQR + zone_key + EXPOSURE), dual-component split where shimmer fires only on `blurred > sharp` (self-limiting), R132 polydisperse chromatic scatter (red ×1.15, blue ×0.85), R136 Selwyn 2383 film grain (pcg3d RGB-decorrelated noise, Selwyn envelope, framerate-independent ~24fps turnover). Drag: the Gaussian-blur-and-blend chassis is the ubiquitous game bloom mechanism.

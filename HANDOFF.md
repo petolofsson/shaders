@@ -1,4 +1,4 @@
-# Handoff — 2026-05-09
+# Handoff — 2026-05-10
 
 > **Purpose (for AI context):** Current session state — active chain, known issues, and next candidates. Read this at the start of a session to orient quickly. Update known state and next candidates at the end of each session. Do not add changelog entries here; those go in CHANGELOG.md.
 
@@ -25,7 +25,9 @@ Diffusion is merged inside grade — not a separate effect in the chain.
 ## Known state
 
 - No known compile errors or visual regressions. Debug log: `/tmp/vkbasalt.log`
-- **common.fxh migration suspect** — R139 audit listed a `0.001e-10` epsilon variant in `RGBtoHSV` across the three scope/frame files; git diff showed all copies were actually `1e-10` at migration time. If scope or histogram output looks off (hue smearing near achromatic/black), check whether an older `0.001e-10` variant existed and was intentional.
+- **R139 code rules audit — fully resolved.** All items closed. F4-A (ColorTransformPS 427→47 lines) resolved via R142. F1-A (`GetBandCenter` if-ladder) documented as intentional — compile-time static under `[unroll]`, no runtime divergence. See `research/R139_2026-05-09_code_rules_audit.md`.
+- **R142 ColorTransformPS stage split** — `BuildSceneCtx()` / `ApplyCorrective()` / `ApplyTonal()` / `ApplyChroma()` extracted. `SceneCtx` struct holds all scene-uniform data; `TonalOut` carries `{lin, new_luma, local_var}` from TONAL→CHROMA. Zero output change — compiler inlines all helpers.
+- **common.fxh epsilon note** — R139 listed a `0.001e-10` RGBtoHSV variant; git diff confirmed all copies were `1e-10` at migration time. If scope/histogram shows hue smearing near achromatic/black, revisit.
 - **R133 Munsell per-hue highlight rolloff** — `hue_bands.fxh` carries 12 `HB_ROLL_N_*` exponents + `HueBandRollN()`. R22 highlight arm (0.45) removed — R133 is now the sole highlight desaturation mechanism. `MUNSELL_HIGHLIGHT_ROLLOFF 0.75` — calibrated on sand map.
 - **R134 Print stock shoulder corrected** — Reinhard partial replaces broken `1−(1−ps)²×1.8` shoulder. No longer lifts highlights toward white. `PRINT_STOCK 0.50` stable.
 - **Bleach bypass highlight floor** lowered 0.35 → 0.05 — no longer desaturates highlights; shadow/midtone grit character preserved. `BLEACH_BYPASS 0.15` stable.
@@ -37,3 +39,4 @@ Diffusion is merged inside grade — not a separate effect in the chain.
 
 - **Calibration pass** — GRAIN_STRENGTH needs testbed dial-in. PURKINJE_STRENGTH, DIFFUSION_STRENGTH, MUNSELL_HIGHLIGHT_ROLLOFF also benefit from a full in-game tuning pass.
 - **Stage 0 novelty gap** — at 83%. Input stage has lowest novelty score; candidates include lens distortion, chromatic aberration without UI mask, or sensor noise model.
+- **ApplyChroma at ~80 lines** — still over the 60-line Rule 4 limit. R142 plan notes a secondary split into `ApplyChromaLift` + `ApplyChromaFinish` (~45+40 lines) as a follow-up if readability becomes an issue.

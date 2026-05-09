@@ -61,7 +61,7 @@ Diffusion is merged inside grade.fx — it is NOT a separate effect in the chain
 |------|------|
 | `gamespecific/arc_raiders/shaders/creative_values.fx` | Only tuning surface |
 | `general/corrective/corrective.fx` | Analysis passes — zone hist, chroma stats, Passthrough |
-| `general/grade/grade.fx` | All color work — `ColorTransformPS` (MegaPass) |
+| `general/grade/grade.fx` | All color work — `ColorTransformPS` orchestrates `BuildSceneCtx` / `ApplyCorrective` / `ApplyTonal` / `ApplyChroma` |
 | `general/inverse-grade/inverse_grade.fx` | R90 adaptive inverse tone mapping (pre-corrective) |
 | `general/analysis-frame/analysis_frame.fx` | Histogram, PercTex, data highway encoding |
 | `general/highway.fxh` | Data highway slot constants + `ReadHWY()` macro |

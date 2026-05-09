@@ -4,6 +4,8 @@
 
 ## 2026-05-10
 
+- **R142 ColorTransformPS stage split** (`grade.fx`) — F4-A implemented. `BuildSceneCtx()` collects all scene-uniform texture fetches + derived scalars into a `SceneCtx` struct (~35 lines). `ApplyCorrective()` owns EXPOSURE→FilmCurve→halation→print stock→dye matrix→bleach bypass→3-way CC (~25 lines). `ApplyTonal()` owns zone S-curve→Retinex→shadow lift→R62/R65→R66 tint, returns `TonalOut {lin, new_luma, local_var}` (~55 lines). `ApplyChroma()` owns HELMLAB→Purkinje→R22→R133→R21→chroma lift→memory colors→HK→Abney→induction→density→gamut (~80 lines). ColorTransformPS becomes a 47-line orchestrator calling the three stages. Zero output change — compiler inlines all helpers.
+- **`code_rules.md` → `CODE_RULES.md`** — renamed to match uppercase convention of other root docs.
 - **R139 code rules audit — low/medium items resolved** (`all effect files`) — All remaining R139 open items closed: F4-B/C/D/E/F (function-length refactors: ScopePS→DrawLumaPost/Pre/HuePanel, UpdateHistoryPS→ComputeZoneStats/ComputeSlowKey/UpdateChromaKalman, DiffusionPS→ApplyDiffusionBloom+ApplyFilmGrain, ScopeCapturePS→CaptureLumaHistPixel+CaptureHueHistPixel, MeanChromaPS→ComputeMedianC); F5-B/C (bounds: P_new saturated, RGBtoOklab clamps input); F6-A (lms_illum_norm declared inline); F7-A/B (HueBandWeight self-defending frac(hue), GetBandCenter clamped); F1-B (conditional→lerp/step). F4-A (MegaPass) and F1-A (if-ladder) deferred; F6-B and F10-C documented as intentional/note-only.
 
 ## 2026-05-09
