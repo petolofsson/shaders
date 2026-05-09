@@ -14,6 +14,9 @@
 
 #include "creative_values.fx"
 
+uniform int   FRAME_COUNT < source = "framecount"; >;
+uniform float FRAME_TIME  < source = "frametime"; >;   // ms per frame
+
 // ─── Chroma lift constants ─────────────────────────────────────────────────
 #define BAND_WIDTH      8       // kept for GetBandCenter only
 #define MIN_WEIGHT      1.0
@@ -356,11 +359,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     {
         float3 ps      = lin * (1.0 - 0.025) + 0.025;
         float3 toe     = ps * ps * 3.2;
-        // R134: Reinhard partial shoulder — compressive above knee 0.65 (+1.83 stops above 18% gray).
-        // Old formula 1-(1-ps)²×1.8 was structurally convex (always expands highlights, never compresses).
-        // New: identity below knee, Reinhard rolloff above. K=0.476 → soft ceiling at 0.95 diffuse white.
-        float3 d        = max(0.0, ps - 0.650);
-        float3 shoulder = ps - d + d / (1.0 + d * 0.476);
+        float3 ps3      = ps * ps * ps;
+        float3 shoulder = 1.0 - (1.0 - ps) * (1.0 - ps) * 1.8 - ps3 * ps3 * 0.06;
         ps = lerp(toe, shoulder, smoothstep(0.0, 0.5, ps));
         float luma_ps = dot(ps, float3(0.2126, 0.7152, 0.0722));
         float desat_w = 0.15 * (1.0 - smoothstep(0.0, fc_knee_toe, luma_ps))
@@ -476,7 +476,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float _sls_t = saturate((perc.r - 0.025) / 0.175);
     float shadow_lift_str = lerp(1.50, 0.45, _sls_t*_sls_t*_sls_t*(_sls_t*(_sls_t*6.0-15.0)+10.0));
     float shadow_lift     = shadow_lift_str * (0.149169 / (illum_s0 * illum_s0 + 0.003)) * texture_att * fine_texture_att * detail_protect * context_lift;
-    float lift_w      = new_luma * smoothstep(0.27, 0.0, new_luma);
+    float lift_w      = new_luma * smoothstep(0.20, 0.0, new_luma);
     new_luma          = saturate(new_luma + (shadow_lift / 100.0) * 0.75 * lift_w * SHADOW_LIFT_STRENGTH);
     // R62 Finding 3: chroma-stable tonal — apply luma ratio in Oklab L to prevent zone S-curve from shifting chroma
     float3 lab_t  = RGBtoOklab(saturate(lin));
@@ -798,7 +798,22 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float dither = frac(52.9829189 * frac(dot(pos.xy, float2(0.06711056, 0.00583715)))) - 0.5;
     result += dither * (1.0 / 255.0);
 
-    float4 out_col = float4(saturate(result), base.a);
+    // R136: Selwyn 2383 film grain — pcg3d RGB-decorrelated, framerate-independent
+    // grain_slot advances at ~24fps regardless of display fps via FRAME_TIME scaling
+    {
+        uint grain_slot = uint(float(FRAME_COUNT) * (FRAME_TIME / 41.667));
+        uint3 seed = uint3(uint2(pos.xy), grain_slot);
+        seed = seed * 1664525u + 1013904223u;
+        seed.x += seed.y * seed.z; seed.y += seed.z * seed.x; seed.z += seed.x * seed.y;
+        seed ^= seed >> 16u;
+        seed.x += seed.y * seed.z; seed.y += seed.z * seed.x; seed.z += seed.x * seed.y;
+        float3 gnoise = float3(seed) * (1.0 / 4294967296.0) - 0.5;
+        float  L_g    = pow(max(Luma(result), 0.0), 1.0 / 2.2);
+        float  env    = GRAIN_STRENGTH * 0.018 * sqrt(max(0.0, 1.0 - L_g));
+        result        = saturate(result + gnoise * env * float3(1.00, 0.80, 1.50));
+    }
+
+    float4 out_col = float4(result, base.a);
     return DrawLabel(out_col, pos.xy, 270.0, 58.0,
                      55u, 80u, 77u, 83u, float3(0.9, 0.1, 0.9)); // 7PMS
 }

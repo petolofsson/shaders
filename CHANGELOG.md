@@ -4,9 +4,12 @@
 
 ## 2026-05-09
 
-- **R134 Print stock shoulder fix** (`grade.fx R51`) — Replaced `1−(1−ps)²×1.8` with Reinhard partial `ps − d + d/(1 + d×0.476)` where `d=max(0, ps−0.65)`. Old formula was structurally convex (always expanded highlights, never compressed — needed coefficient ≥5 to compress at ps=0.80). New formula is identity below knee=0.65, compressive above (ps=0.80 → 0.794 vs old 0.932). Fixes warm highlight whitening on sand/desert maps.
-- **Bleach bypass highlight floor fixed** (`grade.fx`) — Lowered `lerp(0.35, 0.72, bb_dark)` floor from 0.35 → 0.05. Old floor desaturated all pixels above L=0.65 by a constant 35% of full strength. Physical bleach bypass has near-zero effect in highlights (fully-exposed silver is dissolved regardless of bleach step).
-- **R22 highlight arm removed** (`grade.fx`) — Removed `−0.45×saturate((L−0.75)/0.25)` from the R22 saturation block. Was a rough proxy for highlight desaturation, now superseded by R133.
+- **R137 print stock shoulder** (`grade.fx R51`) — Additive `−ps⁶×0.06` correction on the original `1−(1−ps)²×1.8` formula. Preserves shadow/midtone character exactly (ps⁶≈0 below 0.70); progressively compresses highlights above 0.75 (ps=0.85: 0.960→0.937, ps=0.90: 0.982→0.950). Reinhard partial (R134) reverted — it lost midtone body punch. R137 is a targeted correction, not a formula replacement.
+- **R136 film grain** (`grade.fx DiffusionPS`) — Selwyn 2383 granularity model. pcg3d hash gives three fully decorrelated RGB noise streams per pixel. Amplitude envelope `σ = GRAIN_STRENGTH × 0.018 × sqrt(1 − L_gamma)` peaks at Oklab L≈0.50 (upper shadows), falls toward black and highlight extremes. Channel ratios R:G:B = 1.00:0.80:1.50. Framerate-independent: `grain_slot = uint(FRAME_COUNT × (FRAME_TIME/41.667))` — ~24fps turnover at any display fps. Zero new passes. `GRAIN_STRENGTH 0.0` (off, awaiting calibration).
+- **creative_values.fx reordered** (arc_raiders + gzw) — Sections ordered by tuning frequency: EXPOSURE → ZONE → SHADOW_LIFT → 3-WAY CC → CHROMA → PRINT_STOCK → BLEACH_BYPASS → DIFFUSION → GRAIN → HALATION → MUNSELL → PURKINJE → INVERSE → HUE_ROT → CAMERA_RANGE → FILM_CURVE → COUPLERS → STAGE_GATES. gzw: MUNSELL_HIGHLIGHT_ROLLOFF added (was missing).
+- **Shadow lift gate** (`grade.fx`) — `lift_w` ceiling 0.27→0.25→0.20. Lift now gates off at L=0.20, leaving lower mids untouched.
+- **Bleach bypass highlight floor fixed** (`grade.fx`) — Lowered `lerp(0.35, 0.72, bb_dark)` floor 0.35→0.05. Physical bypass has near-zero effect in highlights.
+- **R22 highlight arm removed** (`grade.fx`) — Removed `−0.45×saturate((L−0.75)/0.25)`. Superseded by R133.
 
 ## 2026-05-08
 

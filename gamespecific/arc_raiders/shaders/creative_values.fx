@@ -1,71 +1,23 @@
 // creative_values.fx — tune here
 
-// ── INVERSE GRADE (R90) ───────────────────────────────────────────────────────
-// Adaptive inverse tone mapping. Expands display IQR toward the ACES-derived
-// 3.28-stop reference. Works on any S-curve tonemapper. 0 = off. 1.0 = full.
-// 0.30 is the recommended starting point.
-#define INVERSE_STRENGTH  0.45
-
 // ── EXPOSURE ─────────────────────────────────────────────────────────────────
 // First thing that runs. Applied as pow(rgb, EXPOSURE) before any zone or curve
 // work. Sets where pixels sit tonally — which directly changes what every knob
 // below "sees". Raising this (>1.0) darkens; lowering (<1.0) brightens.
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune
 // the contrast/chroma knobs beneath.
-#define EXPOSURE            0.90
-
-// ── CAMERA SIGNAL RANGE ───────────────────────────────────────────────────────
-// Remaps the raw pixel into [FILM_FLOOR, FILM_CEILING] before EXPOSURE runs.
-// FILM_FLOOR: black pedestal — prevents absolute digital black. 0 = off.
-//   0.005 matches actual linear-light value at the ARRI LogC3 black point.
-// FILM_CEILING: white headroom — pulls true white below clip before EXPOSURE.
-//   0.95 matches ARRI LogC3 usable ceiling (~91-92% of full scale).
-// Both at defaults (0 / 1) = passthrough (identity).
-#define FILM_FLOOR    0.005
-#define FILM_CEILING  1.00
-
-// ── PRINT STOCK ───────────────────────────────────────────────────────────────
-// Kodak 2383 print emulsion on top of FilmCurve: lifts blacks, compresses
-// highlights, desaturates mids ~15%, adds warm shadow cast. 0 = off.
-// 1 = full 2383. 0.35 = recommended starting point.
-#define PRINT_STOCK  0.50
-
-// ── BLEACH BYPASS ─────────────────────────────────────────────────────────────
-// Skip the bleach step during print development — retains metallic silver alongside
-// color dye. Desaturates shadows most (denser silver retention in unexposed areas),
-// steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.
-// 0 = off. 1 = full (near-monochrome shadows). Start: 0.1–0.3.
-#define BLEACH_BYPASS  0.15
-
-// ── DIR COUPLERS ──────────────────────────────────────────────────────────────
-// Developer-inhibitor-release cross-channel masking. Each dye layer releases
-// inhibitors that suppress adjacent layers, increasing colour separation.
-// Fires after EXPOSURE, before FilmCurve — pure SDR-log effect.
-// 0 = off (default). 0.3 = subtle. 0.6 = visible colour pop. 1.0 = strong.
-#define COUPLER_STRENGTH  0.3
-
-// ── FILM CURVE CHARACTER ──────────────────────────────────────────────────────
-// Per-channel knee and toe offsets for the FilmCurve (Stage 1). These encode the
-// physical dye-layer cross-over character of different film stocks: red compresses
-// earlier than green (negative knee offset), blue toe lifts slightly, etc.
-// Default values match ARRI ALEXA latitude. Range approximately ±0.015.
-// R knee < 0 = red compresses earlier (film-like warm shadows).
-// B knee > 0 = blue compresses later (open highlights). B toe < 0 = cool toe.
-#define CURVE_R_KNEE  -0.0102
-#define CURVE_B_KNEE   0.0000
-#define CURVE_R_TOE   +0.0100
-#define CURVE_B_TOE   -0.0218
+#define EXPOSURE            0.85
 
 // ── ZONE CONTRAST ────────────────────────────────────────────────────────────
 // Scales the adaptive zone S-curve strength. 1.0 = calibrated default.
 // Adaptive range is ~0.16–0.26 × ZONE_STRENGTH, driven by zone_std + scene key.
 // 0 = flat image. Above 1.5 = aggressive crushing.
-#define ZONE_STRENGTH  1.00
+#define ZONE_STRENGTH  1.50
 
 // ── SHADOW LIFT ───────────────────────────────────────────────────────────────
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOW_LIFT_STRENGTH  1.3
+#define SHADOW_LIFT_STRENGTH  1.0
 
 // ── 3-WAY COLOR CORRECTOR ────────────────────────────────────────────────────
 // Runs after EXPOSURE and FilmCurve, before zone contrast. Primary color grade.
@@ -84,25 +36,36 @@
 // near each hue band's scene mean — lift-only, vibrance-masked (already-saturated
 // pixels are attenuated). Spatial R68A modulation is applied on top.
 // 1.0 = calibrated default. 0 = off. Above 2.0 = aggressive.
-#define CHROMA_STR  0.90
+#define CHROMA_STR  1.20
 
-// ── MUNSELL HIGHLIGHT ROLLOFF ─────────────────────────────────────────────────
-// R133: per-hue chroma rolloff as Oklab L approaches 1.0, calibrated from Munsell
-// Renotation data. f=(4(1-L))^n per hue: no effect below L=0.75, C→0 at L=1.0.
-// Hue-specific exponents: yellow rolls off late (peaks at V=9), orange rolls off
-// fastest — all from Munsell V=8→9→10 C_max ratios (hue_bands.fxh HB_ROLL_N_*).
-// 1.0 = Munsell-calibrated default. 0 = off.
-#define MUNSELL_HIGHLIGHT_ROLLOFF  0.75
+// ── PRINT STOCK ───────────────────────────────────────────────────────────────
+// Kodak 2383 print emulsion on top of FilmCurve: lifts blacks, compresses
+// highlights, desaturates mids ~15%, adds warm shadow cast. 0 = off.
+// 1 = full 2383. 0.35 = recommended starting point.
+#define PRINT_STOCK  0.55
 
-// ── HUE ROTATION ─────────────────────────────────────────────────────────────
-// Per-band rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
-// (Red→Yellow, Green→Cyan, Blue→Magenta). Default 0.0 = passthrough.
-#define ROT_RED     +0.03
-#define ROT_YELLOW  -0.015
-#define ROT_GREEN   -0.02
-#define ROT_CYAN    +0.015
-#define ROT_BLUE    -0.03
-#define ROT_MAG      0.00
+// ── BLEACH BYPASS ─────────────────────────────────────────────────────────────
+// Skip the bleach step during print development — retains metallic silver alongside
+// color dye. Desaturates shadows most (denser silver retention in unexposed areas),
+// steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.
+// 0 = off. 1 = full (near-monochrome shadows). Start: 0.1–0.3.
+#define BLEACH_BYPASS  0.15
+
+// ── DIFFUSION ─────────────────────────────────────────────────────────────────
+// Hollywood Black Magic dual-component model (R131):
+//   A) Additive shimmer — highlight bloom into dark areas only (micro-lenslet).
+//   B) Soft midtone overlay — gentle airbrushed smoothing, zero at blacks/whites.
+// R132 polydisperse: per-channel scatter — red ×1.15, green ×1.00, blue ×0.85.
+// Rough grade mapping: 0.5–0.8 = HBM 1/4, 1.2–1.5 = HBM 1/2, 1.8–2.2 = HBM 1.
+// 1.40 = HBM 1/2 (Hollywood large-format workhorse grade). 0 = off.
+#define DIFFUSION_STRENGTH  0.65
+
+// ── FILM GRAIN ────────────────────────────────────────────────────────────────
+// R136: Selwyn 2383 granularity — three decorrelated dye layers (R:G:B = 1.00:0.80:1.50).
+// Peaks in upper shadows (Oklab L≈0.50), falls off toward blacks and highlights.
+// Framerate-independent: turns over at ~24fps regardless of display fps.
+// 0 = off. 1.0 = calibrated 2383 amplitude. 1.5 = pushed. 2.0 = stylistic.
+#define GRAIN_STRENGTH  1.0
 
 // ── HALATION ──────────────────────────────────────────────────────────────────
 // Film emulsion scatter from specular highlights — orange/amber fringe around
@@ -120,14 +83,13 @@
 // Range 0.02–0.20. Tune: raise until orange fringe looks physically correct.
 #define HAL_GAMMA     0.02
 
-// ── DIFFUSION ─────────────────────────────────────────────────────────────────
-// Hollywood Black Magic dual-component model (R131):
-//   A) Additive shimmer — highlight bloom into dark areas only (micro-lenslet).
-//   B) Soft midtone overlay — gentle airbrushed smoothing, zero at blacks/whites.
-// R132 polydisperse: per-channel scatter — red ×1.15, green ×1.00, blue ×0.85.
-// Rough grade mapping: 0.5–0.8 = HBM 1/4, 1.2–1.5 = HBM 1/2, 1.8–2.2 = HBM 1.
-// 1.40 = HBM 1/2 (Hollywood large-format workhorse grade). 0 = off.
-#define DIFFUSION_STRENGTH  1.0
+// ── MUNSELL HIGHLIGHT ROLLOFF ─────────────────────────────────────────────────
+// R133: per-hue chroma rolloff as Oklab L approaches 1.0, calibrated from Munsell
+// Renotation data. f=(4(1-L))^n per hue: no effect below L=0.75, C→0 at L=1.0.
+// Hue-specific exponents: yellow rolls off late (peaks at V=9), orange rolls off
+// fastest — all from Munsell V=8→9→10 C_max ratios (hue_bands.fxh HB_ROLL_N_*).
+// 1.0 = Munsell-calibrated default. 0 = off.
+#define MUNSELL_HIGHLIGHT_ROLLOFF  1.0
 
 // ── PURKINJE SHIFT ────────────────────────────────────────────────────────────
 // Rod-vision blue-green bias + scotopic desaturation across mesopic range (luma 0–0.30).
@@ -135,13 +97,54 @@
 // Desat: lab.yz *= (1 − 0.12 × w) — rods are achromatic; deep shadows lose chroma.
 // Neutrals unaffected (C=0 → zero shift). R117: transition widened luma 0.12 → 0.30.
 // Recalibrate from scratch: try 0.6–0.8. 0 = off.
-#define PURKINJE_STRENGTH  1.00
+#define PURKINJE_STRENGTH  1.3
+
+// ── INVERSE GRADE (R90) ───────────────────────────────────────────────────────
+// Adaptive inverse tone mapping. Expands display IQR toward the ACES-derived
+// 3.28-stop reference. Works on any S-curve tonemapper. 0 = off. 1.0 = full.
+// 0.30 is the recommended starting point.
+#define INVERSE_STRENGTH  0.50
+
+// ── HUE ROTATION ─────────────────────────────────────────────────────────────
+// Per-band rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
+// (Red→Yellow, Green→Cyan, Blue→Magenta). Default 0.0 = passthrough.
+#define ROT_RED     +0.03
+#define ROT_YELLOW  -0.015
+#define ROT_GREEN   -0.02
+#define ROT_CYAN    +0.015
+#define ROT_BLUE    -0.03
+#define ROT_MAG      0.00
+
+// ── CAMERA SIGNAL RANGE ───────────────────────────────────────────────────────
+// Remaps the raw pixel into [FILM_FLOOR, FILM_CEILING] before EXPOSURE runs.
+// FILM_FLOOR: black pedestal — prevents absolute digital black. 0 = off.
+//   0.005 matches actual linear-light value at the ARRI LogC3 black point.
+// FILM_CEILING: white headroom — pulls true white below clip before EXPOSURE.
+//   0.95 matches ARRI LogC3 usable ceiling (~91-92% of full scale).
+// Both at defaults (0 / 1) = passthrough (identity).
+#define FILM_FLOOR    0.005
+#define FILM_CEILING  0.95
+
+// ── FILM CURVE CHARACTER ──────────────────────────────────────────────────────
+// Per-channel knee and toe offsets for the FilmCurve (Stage 1). These encode the
+// physical dye-layer cross-over character of different film stocks: red compresses
+// earlier than green (negative knee offset), blue toe lifts slightly, etc.
+// Default values match ARRI ALEXA latitude. Range approximately ±0.015.
+// R knee < 0 = red compresses earlier (film-like warm shadows).
+// B knee > 0 = blue compresses later (open highlights). B toe < 0 = cool toe.
+#define CURVE_R_KNEE  -0.0102
+#define CURVE_B_KNEE   0.0000
+#define CURVE_R_TOE   +0.0100
+#define CURVE_B_TOE   -0.0218
+
+// ── DIR COUPLERS ──────────────────────────────────────────────────────────────
+// Developer-inhibitor-release cross-channel masking. Each dye layer releases
+// inhibitors that suppress adjacent layers, increasing colour separation.
+// Fires after EXPOSURE, before FilmCurve — pure SDR-log effect.
+// 0 = off (default). 0.3 = subtle. 0.6 = visible colour pop. 1.0 = strong.
+#define COUPLER_STRENGTH  0.4
 
 // ── STAGE GATES ──────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.
 #define CORRECTIVE_STRENGTH 100
 #define TONAL_STRENGTH      100
-
-
-
-
