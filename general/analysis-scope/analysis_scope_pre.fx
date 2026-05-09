@@ -1,5 +1,6 @@
 // scope_pre.fx — Pre-correction luma histogram + mean capture
 #include "debug_text.fxh"
+#include "../common.fxh"
 //
 // Must run BEFORE any corrective shaders in the chain.
 // Writes into BackBuffer row y=0 (the data highway):
@@ -28,26 +29,6 @@ sampler2D BackBuffer
     MinFilter = LINEAR;
     MagFilter = LINEAR;
 };
-
-void PostProcessVS(in  uint   id  : SV_VertexID,
-                   out float4 pos : SV_Position,
-                   out float2 uv  : TEXCOORD0)
-{
-    uv.x = (id == 2) ? 2.0 : 0.0;
-    uv.y = (id == 1) ? 2.0 : 0.0;
-    pos  = float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
-}
-
-float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
-
-float3 RGBtoHSV(float3 c)
-{
-    float4 K = float4(0.0, -1.0/3.0, 2.0/3.0, -1.0);
-    float4 p = lerp(float4(c.bg, K.wz), float4(c.gb, K.xy), step(c.b, c.g));
-    float4 q = lerp(float4(p.xyw, c.r), float4(c.r, p.yzx), step(p.x, c.r));
-    float  d = q.x - min(q.w, q.y);
-    return float3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);
-}
 
 float4 ScopeCapturePS(float4 pos : SV_Position,
                       float2 uv  : TEXCOORD0) : SV_Target

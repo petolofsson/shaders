@@ -1,6 +1,8 @@
 // corrective.fx — Game-agnostic corrective analysis chain
 #include "debug_text.fxh"
 #include "../highway.fxh"
+#include "../hue_bands.fxh"
+#include "../common.fxh"
 //
 // Prepares all analysis textures consumed by grade.fx (MegaPass).
 // Single vkBasalt effect — no inter-effect BackBuffer clears, no wasted Passthroughs.
@@ -21,15 +23,7 @@
 #define VFF_E_SIGMA_CHROMA 0.04   // innovation scale for chroma — Oklab a/b magnitudes are smaller
 #define KALMAN_R         0.01     // measurement noise
 #define KALMAN_K_INF     0.095    // steady-state gain for secondary channels (EMA)
-#define BAND_WIDTH       8
 #define SAT_THRESHOLD    2
-
-#define BAND_RED     0.083
-#define BAND_YELLOW  0.305
-#define BAND_GREEN   0.396
-#define BAND_CYAN    0.542
-#define BAND_BLUE    0.735
-#define BAND_MAGENTA 0.913
 
 uniform int FRAME_COUNT < source = "framecount"; >;
 
@@ -118,62 +112,7 @@ sampler2D WarmBiasSamp
 };
 
 
-// ─── Vertex shader ─────────────────────────────────────────────────────────
-
-void PostProcessVS(in  uint   id  : SV_VertexID,
-                   out float4 pos : SV_Position,
-                   out float2 uv  : TEXCOORD0)
-{
-    uv.x = (id == 2) ? 2.0 : 0.0;
-    uv.y = (id == 1) ? 2.0 : 0.0;
-    pos  = float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
-}
-
 // ─── Helpers ───────────────────────────────────────────────────────────────
-
-float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
-
-float3 RGBtoOklab(float3 rgb)
-{
-    float l = dot(rgb, float3(0.4122214708, 0.5363325363, 0.0514459929));
-    float m = dot(rgb, float3(0.2119034982, 0.6806995451, 0.1073969566));
-    float s = dot(rgb, float3(0.0883024619, 0.2817188376, 0.6299787005));
-
-    float3 lms_cbrt = exp2(log2(max(float3(l, m, s), 1e-10)) * (1.0 / 3.0));
-    l = lms_cbrt.x; m = lms_cbrt.y; s = lms_cbrt.z;
-
-    return float3(
-        dot(float3(l, m, s), float3( 0.2104542553,  0.7936177850, -0.0040720468)),
-        dot(float3(l, m, s), float3( 1.9779984951, -2.4285922050,  0.4505937099)),
-        dot(float3(l, m, s), float3( 0.0259040371,  0.7827717662, -0.8086757660))
-    );
-}
-
-float OklabHueNorm(float a, float b)
-{
-    float ay = abs(b) + 1e-10;
-    float r  = (a - sign(a) * ay) / (ay + abs(a));
-    float th = 1.5707963 - sign(a) * 0.7853982;
-    th += (0.1963 * r * r - 0.9817) * r;
-    return frac(sign(b + 1e-10) * th / 6.28318 + 1.0);
-}
-
-float HueBandWeight(float hue, float center)
-{
-    float d = abs(hue - center);
-    d = min(d, 1.0 - d);
-    return saturate(1.0 - d / (BAND_WIDTH / 100.0));
-}
-
-float GetBandCenter(int b)
-{
-    if (b == 0) return BAND_RED;
-    if (b == 1) return BAND_YELLOW;
-    if (b == 2) return BAND_GREEN;
-    if (b == 3) return BAND_CYAN;
-    if (b == 4) return BAND_BLUE;
-    return BAND_MAGENTA;
-}
 
 // ─── Halton(2,3) sequence — procedural, avoids static const array SPIR-V issue ──
 

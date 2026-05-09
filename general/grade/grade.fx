@@ -2,6 +2,7 @@
 #include "debug_text.fxh"
 #include "../highway.fxh"
 #include "../hue_bands.fxh"
+#include "../common.fxh"
 //
 // Eliminates 3 inter-pass VRAM read-write cycles by running in registers:
 //   1. EXPOSURE gamma + scene-adaptive FilmCurve (per-channel knee/toe from creative_values)
@@ -18,23 +19,8 @@ uniform int   FRAME_COUNT < source = "framecount"; >;
 uniform float FRAME_TIME  < source = "frametime"; >;   // ms per frame
 
 // ─── Chroma lift constants ─────────────────────────────────────────────────
-#define BAND_WIDTH      8       // kept for GetBandCenter only
 #define MIN_WEIGHT      1.0
-#define SAT_THRESHOLD   2
 #define GREEN_HUE_COOL  (4.0 / 360.0)
-// Band center aliases — canonical values live in hue_bands.fxh
-#define BAND_RED     HB_BAND_RED
-#define BAND_ORANGE  HB_BAND_ORANGE
-#define BAND_AMBER   HB_BAND_AMBER
-#define BAND_YELLOW  HB_BAND_YELLOW
-#define BAND_GREEN   HB_BAND_GREEN
-#define BAND_TEAL    HB_BAND_TEAL
-#define BAND_CYAN    HB_BAND_CYAN
-#define BAND_AZURE   HB_BAND_AZURE
-#define BAND_BLUE    HB_BAND_BLUE
-#define BAND_VIOLET  HB_BAND_VIOLET
-#define BAND_MAGENTA HB_BAND_MAGENTA
-#define BAND_ROSE    HB_BAND_ROSE
 
 
 // ─── Textures ──────────────────────────────────────────────────────────────
@@ -81,7 +67,7 @@ sampler2D CreativeZoneHistSamp
 };
 
 // 1/8-res low-freq base (from creative_render_chain ComputeLowFreq, luma in .a)
-texture2D CreativeLowFreqTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 3; };
+texture2D CreativeLowFreqTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 1; };
 sampler2D CreativeLowFreqSamp
 {
     Texture   = CreativeLowFreqTex;
@@ -157,20 +143,7 @@ sampler2D DiffusionHorizSamp
 
 
 
-// ─── Vertex shader ─────────────────────────────────────────────────────────
-
-void PostProcessVS(in  uint   id  : SV_VertexID,
-                   out float4 pos : SV_Position,
-                   out float2 uv  : TEXCOORD0)
-{
-    uv.x = (id == 2) ? 2.0 : 0.0;
-    uv.y = (id == 1) ? 2.0 : 0.0;
-    pos  = float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
-}
-
 // ─── Helpers ───────────────────────────────────────────────────────────────
-
-float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
 float3 FilmCurveApply(float3 x,
                       float knee_r, float knee_g, float knee_b,
@@ -188,61 +161,11 @@ float3 FilmCurveApply(float3 x,
                + toe_fac * toe_w * below * below;
 }
 
-float3 RGBtoOklab(float3 rgb)
-{
-    float l = dot(rgb, float3(0.4122214708, 0.5363325363, 0.0514459929));
-    float m = dot(rgb, float3(0.2119034982, 0.6806995451, 0.1073969566));
-    float s = dot(rgb, float3(0.0883024619, 0.2817188376, 0.6299787005));
-    float3 lms_cbrt = exp2(log2(max(float3(l, m, s), 1e-10)) * (1.0 / 3.0));
-    l = lms_cbrt.x; m = lms_cbrt.y; s = lms_cbrt.z;
-    return float3(
-        dot(float3(l, m, s), float3( 0.2104542553,  0.7936177850, -0.0040720468)),
-        dot(float3(l, m, s), float3( 1.9779984951, -2.4285922050,  0.4505937099)),
-        dot(float3(l, m, s), float3( 0.0259040371,  0.7827717662, -0.8086757660))
-    );
-}
-
-float3 OklabToRGB(float3 lab)
-{
-    float l = dot(lab, float3(1.0,  0.3963377774,  0.2158037573));
-    float m = dot(lab, float3(1.0, -0.1055613458, -0.0638541728));
-    float s = dot(lab, float3(1.0, -0.0894841775, -1.2914855480));
-    l = l * l * l;
-    m = m * m * m;
-    s = s * s * s;
-    return float3(
-        dot(float3(l, m, s), float3( 4.0767416621, -3.3077115913,  0.2309699292)),
-        dot(float3(l, m, s), float3(-1.2684380046,  2.6097574011, -0.3413193965)),
-        dot(float3(l, m, s), float3(-0.0041960863, -0.7034186147,  1.7076147010))
-    );
-}
-
-float OklabHueNorm(float a, float b)
-{
-    float ay = abs(b) + 1e-10;
-    float r  = (a - sign(a) * ay) / (ay + abs(a));
-    float th = 1.5707963 - sign(a) * 0.7853982;
-    th += (0.1963 * r * r - 0.9817) * r;
-    return frac(sign(b + 1e-10) * th / 6.28318 + 1.0);
-}
-
-
 float LiftChroma(float C, float pivot, float strength)
 {
     float t = saturate(1.0 - C / max(pivot, 0.001));
     return C * (1.0 + strength * t * t);
 }
-
-float GetBandCenter(int b)
-{
-    if (b == 0) return BAND_RED;
-    if (b == 1) return BAND_YELLOW;
-    if (b == 2) return BAND_GREEN;
-    if (b == 3) return BAND_CYAN;
-    if (b == 4) return BAND_BLUE;
-    return BAND_MAGENTA;
-}
-
 
 // ─── ColorTransform pixel shader ───────────────────────────────────────────
 
@@ -541,12 +464,12 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     C *= lerp(1.0, r133_roll, MUNSELL_HIGHLIGHT_ROLLOFF);
 
     // R21: per-band hue rotation — compute h_out from original h before chroma lift
-    float r21_delta = ROT_RED    * HueBandWeight(h_perc, BAND_RED)
-                    + ROT_YELLOW * HueBandWeight(h_perc, BAND_YELLOW)
-                    + ROT_GREEN  * HueBandWeight(h_perc, BAND_GREEN)
-                    + ROT_CYAN   * HueBandWeight(h_perc, BAND_CYAN)
-                    + ROT_BLUE   * HueBandWeight(h_perc, BAND_BLUE)
-                    + ROT_MAG    * HueBandWeight(h_perc, BAND_MAGENTA);
+    float r21_delta = ROT_RED    * HueBandWeight(h_perc, HB_BAND_RED)
+                    + ROT_YELLOW * HueBandWeight(h_perc, HB_BAND_YELLOW)
+                    + ROT_GREEN  * HueBandWeight(h_perc, HB_BAND_GREEN)
+                    + ROT_CYAN   * HueBandWeight(h_perc, HB_BAND_CYAN)
+                    + ROT_BLUE   * HueBandWeight(h_perc, HB_BAND_BLUE)
+                    + ROT_MAG    * HueBandWeight(h_perc, HB_BAND_MAGENTA);
     // R125/R126: Bezold-Brücke — anchored at Oklab invariant hues (h=0.25 yellow, h=0.75 blue)
     // ch_h zeros at h=0.25/0.75 by construction. sh2/ch3 via double/triple-angle (7 MAD total).
     // Asymmetry: teal lobe (0.61) ~1.6× orange lobe (0.38) — matches Kurtenbach 1994 data.
@@ -554,18 +477,18 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float ch3_h    = ch_h * (4.0 * ch_h * ch_h - 3.0);
     r21_delta     += (lab.x - 0.50) * 0.015 * (0.10 * ch_h + 0.50 * sh2_h + 0.30 * ch3_h);
     float h_out = frac(h_perc + r21_delta * 0.10);
-    float hw_o0  = HueBandWeight(h_out, BAND_RED);
-    float hw_org = HueBandWeight(h_out, BAND_ORANGE);
-    float hw_amb = HueBandWeight(h_out, BAND_AMBER);
-    float hw_o1  = HueBandWeight(h_out, BAND_YELLOW);
-    float hw_o2  = HueBandWeight(h_out, BAND_GREEN);
-    float hw_tel = HueBandWeight(h_out, BAND_TEAL);
-    float hw_o3  = HueBandWeight(h_out, BAND_CYAN);
-    float hw_azr = HueBandWeight(h_out, BAND_AZURE);
-    float hw_o4  = HueBandWeight(h_out, BAND_BLUE);
-    float hw_vio = HueBandWeight(h_out, BAND_VIOLET);
-    float hw_o5  = HueBandWeight(h_out, BAND_MAGENTA);
-    float hw_ros = HueBandWeight(h_out, BAND_ROSE);
+    float hw_o0  = HueBandWeight(h_out, HB_BAND_RED);
+    float hw_org = HueBandWeight(h_out, HB_BAND_ORANGE);
+    float hw_amb = HueBandWeight(h_out, HB_BAND_AMBER);
+    float hw_o1  = HueBandWeight(h_out, HB_BAND_YELLOW);
+    float hw_o2  = HueBandWeight(h_out, HB_BAND_GREEN);
+    float hw_tel = HueBandWeight(h_out, HB_BAND_TEAL);
+    float hw_o3  = HueBandWeight(h_out, HB_BAND_CYAN);
+    float hw_azr = HueBandWeight(h_out, HB_BAND_AZURE);
+    float hw_o4  = HueBandWeight(h_out, HB_BAND_BLUE);
+    float hw_vio = HueBandWeight(h_out, HB_BAND_VIOLET);
+    float hw_o5  = HueBandWeight(h_out, HB_BAND_MAGENTA);
+    float hw_ros = HueBandWeight(h_out, HB_BAND_ROSE);
 
     float chroma_str = CHROMA_STR * 0.04;
     chroma_str *= lerp(1.0, 0.65, smoothstep(0.02, 0.08, local_var));  // R68A: attenuate in textured regions
@@ -669,7 +592,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // dither: break 8-bit BackBuffer quantization — converts banding to imperceptible noise
     // R89: IGN blue-noise dither (Jimenez 2016) — pushes quantization error to high freq
     float dither = frac(52.9829189 * frac(dot(pos.xy, float2(0.06711056, 0.00583715)))) - 0.5;
-    lin += dither * (1.0 / 255.0);
+    lin = saturate(lin + dither * (1.0 / 255.0));
 
     return DrawLabel(float4(lin, col.a), pos.xy, 270.0, 50.0,
                      54u, 71u, 82u, 65u, float3(0.2, 0.50, 1.0)); // 6GRA
@@ -828,8 +751,8 @@ float4 NeutralIllumPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     float3 grey_acc    = 0.0;
     float  total_w     = 0.0;
 
-    for (int iy = 0; iy < 9; iy++)
-    for (int ix = 0; ix < 16; ix++)
+    [unroll] for (int iy = 0; iy < 9; iy++)
+    [unroll] for (int ix = 0; ix < 16; ix++)
     {
         float2 suv = float2((ix + 0.5) / 16.0, (iy + 0.5) / 9.0);
         float3 rgb = tex2Dlod(CreativeLowFreqSamp, float4(suv, 0, 0)).rgb;

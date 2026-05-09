@@ -25,6 +25,7 @@ Diffusion is merged inside grade — not a separate effect in the chain.
 ## Known state
 
 - No known compile errors or visual regressions. Debug log: `/tmp/vkbasalt.log`
+- **common.fxh migration suspect** — R139 audit listed a `0.001e-10` epsilon variant in `RGBtoHSV` across the three scope/frame files; git diff showed all copies were actually `1e-10` at migration time. If scope or histogram output looks off (hue smearing near achromatic/black), check whether an older `0.001e-10` variant existed and was intentional.
 - **R133 Munsell per-hue highlight rolloff** — `hue_bands.fxh` carries 12 `HB_ROLL_N_*` exponents + `HueBandRollN()`. R22 highlight arm (0.45) removed — R133 is now the sole highlight desaturation mechanism. `MUNSELL_HIGHLIGHT_ROLLOFF 0.75` — calibrated on sand map.
 - **R134 Print stock shoulder corrected** — Reinhard partial replaces broken `1−(1−ps)²×1.8` shoulder. No longer lifts highlights toward white. `PRINT_STOCK 0.50` stable.
 - **Bleach bypass highlight floor** lowered 0.35 → 0.05 — no longer desaturates highlights; shadow/midtone grit character preserved. `BLEACH_BYPASS 0.15` stable.

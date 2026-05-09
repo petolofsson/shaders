@@ -1,6 +1,7 @@
 // frame_analysis.fx — Frame-wide histogram analysis
 #include "debug_text.fxh"
 #include "../highway.fxh"
+#include "../common.fxh"
 //
 // Builds per-frame luminance and per-hue saturation histograms.
 // Shared smoothed textures (LumHistTex, SatHistTex) are read by
@@ -35,7 +36,8 @@
 #define BAND_BLUE    (240.0 / 360.0)
 #define BAND_MAGENTA (300.0 / 360.0)
 
-float GetBandCenter(int band)
+// HSV-space band centers (degrees/360) — distinct from Oklab GetBandCenter in hue_bands.fxh
+float GetHSVBandCenter(int band)
 {
     if (band == 0) return BAND_RED;
     if (band == 1) return BAND_YELLOW;
@@ -159,49 +161,14 @@ sampler2D PercHighSamp
     MagFilter = POINT;
 };
 
-// ─── Vertex shader ─────────────────────────────────────────────────────────
-
-void PostProcessVS(in  uint   id  : SV_VertexID,
-                   out float4 pos : SV_Position,
-                   out float2 uv  : TEXCOORD0)
-{
-    uv.x = (id == 2) ? 2.0 : 0.0;
-    uv.y = (id == 1) ? 2.0 : 0.0;
-    pos  = float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
-}
-
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
-
-float3 RGBtoHSV(float3 c)
-{
-    float4 K = float4(0.0, -1.0/3.0, 2.0/3.0, -1.0);
-    float4 p = lerp(float4(c.bg, K.wz), float4(c.gb, K.xy), step(c.b, c.g));
-    float4 q = lerp(float4(p.xyw, c.r), float4(c.r, p.yzx), step(p.x, c.r));
-    float  d = q.x - min(q.w, q.y);
-    float  e = 1.0e-10;
-    return float3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
-}
-
-float HueBandWeight(float hue, float center)
+// HSV-space band weight (BAND_WIDTH=0.15, linear falloff) — distinct from Oklab HueBandWeight in hue_bands.fxh
+float HSVBandWeight(float hue, float center)
 {
     float d = abs(hue - center);
     d = min(d, 1.0 - d);
     return saturate(1.0 - d / BAND_WIDTH);
-}
-
-float3 RGBtoOklab(float3 c)
-{
-    float l = dot(c, float3(0.4122214708, 0.5363325363, 0.0514459929));
-    float m = dot(c, float3(0.2119034982, 0.6806995451, 0.1073969566));
-    float s = dot(c, float3(0.0883024619, 0.2817188376, 0.6299787005));
-    float3 lms = exp2(log2(max(float3(l, m, s), 1e-10)) * (1.0 / 3.0));
-    return float3(
-        dot(lms, float3( 0.2104542553,  0.7936177850, -0.0040720468)),
-        dot(lms, float3( 1.9779984951, -2.4285922050,  0.4505937099)),
-        dot(lms, float3( 0.0259040371,  0.7827717662, -0.8086757660))
-    );
 }
 
 // ─── Pass 1 — Downsample ───────────────────────────────────────────────────
@@ -251,7 +218,7 @@ float4 SatHistGatherPS(float4 pos : SV_Position,
     int   band      = int(pos.y);
     float bucket_lo = float(b)     / float(HIST_BINS);
     float bucket_hi = float(b + 1) / float(HIST_BINS);
-    float center    = GetBandCenter(band);
+    float center    = GetHSVBandCenter(band);
 
     float count   = 0.0;
     float total_w = 0.0;
@@ -265,7 +232,7 @@ float4 SatHistGatherPS(float4 pos : SV_Position,
             float2 s_uv   = float2((x + 0.5) / float(DS_W), (y + 0.5) / float(DS_H));
             float3 col = tex2D(Downsample, s_uv).rgb;
             float3 hsv = RGBtoHSV(col);
-            float  w      = HueBandWeight(hsv.x, center) * step(SAT_THRESHOLD / 100.0, hsv.y);
+            float  w      = HSVBandWeight(hsv.x, center) * step(SAT_THRESHOLD / 100.0, hsv.y);
             float  in_b   = (hsv.y >= bucket_lo && hsv.y < bucket_hi) ? 1.0 : 0.0;
             count   += in_b * w;
             total_w += w;
