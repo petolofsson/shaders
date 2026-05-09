@@ -239,68 +239,54 @@ float4 SmoothZoneLevelsPS(float4 pos : SV_Position,
 
 // ─── Pass 5 — per-band chroma stats ────────────────────────────────────────
 
-float4 UpdateHistoryPS(float4 pos : SV_Position,
-                       float2 uv  : TEXCOORD0) : SV_Target
+float4 ComputeZoneStats()
 {
-    int band_idx = int(pos.x);
-    if (pos.y >= 1.0 || band_idx >= 8) return float4(0, 0, 0, 0);
-
-    // Column 6: zone global stats (zone_log_key, zone_std, zmin, zmax) — free pixel, no chroma work
-    if (band_idx == 6)
+    float m = 0.0, avg_intra_std = 0.0, zmin = 1.0, zmax = 0.0;
+    [unroll] for (int zy = 0; zy < 4; zy++)
+    [unroll] for (int zx = 0; zx < 4; zx++)
     {
-        float m = 0.0, avg_intra_std = 0.0, zmin = 1.0, zmax = 0.0;
-        [unroll] for (int zy = 0; zy < 4; zy++)
-        [unroll] for (int zx = 0; zx < 4; zx++)
-        {
-            float4 zs = tex2Dlod(ZoneHistorySamp,
-                float4((zx + 0.5) / 4.0, (zy + 0.5) / 4.0, 0, 0));
-            m             += zs.r;
-            avg_intra_std += zs.a;   // R116: per-zone intra_std accumulated here
-            zmin = min(zmin, zs.r);
-            zmax = max(zmax, zs.r);
-        }
-        // R116: zone_log_key = linear mean of zone medians (was geometric mean).
-        // zone_std = mean of per-zone intra_std (was std of zone medians — measured
-        // spatial spread between zones, not pixel-level contrast within zones).
-        float zavg = m * 0.0625;
-        return float4(zavg, avg_intra_std * 0.0625, zmin, zmax);
+        float4 zs = tex2Dlod(ZoneHistorySamp,
+            float4((zx + 0.5) / 4.0, (zy + 0.5) / 4.0, 0, 0));
+        m             += zs.r;
+        avg_intra_std += zs.a;
+        zmin = min(zmin, zs.r);
+        zmax = max(zmax, zs.r);
     }
+    // R116: zone_log_key = linear mean of zone medians; zone_std = mean of per-zone intra_std
+    return float4(m * 0.0625, avg_intra_std * 0.0625, zmin, zmax);
+}
 
-    // Column 7: slow ambient key — long time constant EMA for temporal context (R60)
-    if (band_idx == 7)
-    {
-        float zone_log_key = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
-        float prev_slow    = tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
-        if (prev_slow < 0.001) prev_slow = zone_log_key;
-        return float4(lerp(prev_slow, zone_log_key, 0.003), 0, 0, 0);
-    }
+float4 ComputeSlowKey()
+{
+    float zone_log_key = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
+    float prev_slow    = tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
+    prev_slow = lerp(zone_log_key, prev_slow, step(0.001, prev_slow));
+    return float4(lerp(prev_slow, zone_log_key, 0.003), 0, 0, 0);
+}
 
+float4 UpdateChromaKalman(int band_idx)
+{
     uint  base_idx = uint(FRAME_COUNT * 8) % 256u;
     float sum_w    = 0.0;
     float sum_wc   = 0.0;
     float sum_wc2  = 0.0;
-
     [unroll] for (int i = 0; i < 8; i++)
     {
         uint   idx  = (base_idx + uint(i)) % 256u;
         float2 s_uv = float2(Halton2(idx), Halton3(idx));
-        float3 rgb  = tex2D(BackBuffer, s_uv).rgb;
-        float3 lab  = RGBtoOklab(rgb);
+        float3 lab  = RGBtoOklab(tex2D(BackBuffer, s_uv).rgb);
         float  C    = length(lab.yz);
         float  h    = OklabHueNorm(lab.y, lab.z);
-
-        float w    = HueBandWeight(h, GetBandCenter(band_idx)) * smoothstep(0.03, 0.08, C);
+        float  w    = HueBandWeight(h, GetBandCenter(band_idx)) * smoothstep(0.03, 0.08, C);
         sum_w   += w;
         sum_wc  += w * C;
         sum_wc2 += w * C * C;
     }
-
     float mean   = sum_wc  / max(sum_w, 0.001);
     float var    = max(sum_wc2 / max(sum_w, 0.001) - mean * mean, 0.0);
     float stddev = sqrt(var);
 
     float4 prev    = tex2D(ChromaHistory, float2((band_idx + 0.5) / 8.0, 0.5 / 4.0));
-
     // R39: VFF Kalman — chroma mean (.r), P in .a, cold-start when uninitialized
     float P_prev   = (prev.a < 0.001) ? 1.0 : prev.a;
     float e_chroma = mean - prev.r;
@@ -313,13 +299,19 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
     K = lerp(K, 1.0, scene_cut);
     float new_mean = prev.r + K * e_chroma;
     float P_new    = (1.0 - K) * P_pred;
-
     // EMA: std and wsum — steady-state gain
     float k_ema    = lerp(KALMAN_K_INF, 1.0, scene_cut);
-    float new_std  = lerp(prev.g, stddev, k_ema);
-    float new_wsum = lerp(prev.b, sum_w,  k_ema);
+    return float4(new_mean, lerp(prev.g, stddev, k_ema), lerp(prev.b, sum_w, k_ema), P_new);
+}
 
-    return float4(new_mean, new_std, new_wsum, P_new);
+float4 UpdateHistoryPS(float4 pos : SV_Position,
+                       float2 uv  : TEXCOORD0) : SV_Target
+{
+    int band_idx = int(pos.x);
+    if (pos.y >= 1.0 || band_idx >= 8) return float4(0, 0, 0, 0);
+    if (band_idx == 6) return ComputeZoneStats();
+    if (band_idx == 7) return ComputeSlowKey();
+    return UpdateChromaKalman(band_idx);
 }
 
 // ─── Pass 6 — R46: highlight warm bias ────────────────────────────────────
