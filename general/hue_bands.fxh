@@ -98,6 +98,8 @@ float HueCeil(float hue)
 #define HB_ROLL_N_ROSE    0.74
 
 // 6-band Oklab hue dispatcher (normalized 0–1). Used by grade.fx and corrective.fx.
+// If-ladder is fine: always called from [unroll] loops, so b is a compile-time constant
+// and the compiler resolves each branch statically — no runtime divergence.
 float GetBandCenter(int b)
 {
     b = clamp(b, 0, 5);

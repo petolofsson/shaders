@@ -1,7 +1,7 @@
 # R139 — Code Rules Audit (Power of Ten, HLSL adaptation)
 
 **Date:** 2026-05-09
-**Status:** Complete — F4-A (MegaPass documented exception) and F1-A (if-ladder, deferred) open
+**Status:** Complete — F4-A (MegaPass documented exception) open; all other items resolved
 **Scope:** All `.fx` and `.fxh` files under `general/` and `gamespecific/arc_raiders/shaders/`
 
 Files audited:
@@ -270,7 +270,7 @@ Variable-index writes to local (private) arrays compile correctly in DXC/SPIR-V 
 | F8-C | 8 | all files | High — 6 functions duplicated 2–6× | ✅ Resolved — common.fxh + hue_bands.fxh |
 | F8-A | 8 | corrective.fx | High — band constants duplicated, divergence risk | ✅ Resolved — corrective.fx uses HB_BAND_* |
 | F10-A | 10 | grade.fx, corrective.fx | Medium — MipLevels mismatch on cross-technique texture | ✅ Resolved — both MipLevels = 1 |
-| F1-A | 1 | grade.fx, corrective.fx, analysis_frame.fx | Medium — GetBandCenter if-ladder per pixel | Open (deferred — no GPU profiler available) |
+| F1-A | 1 | grade.fx, corrective.fx, analysis_frame.fx | Medium — GetBandCenter if-ladder per pixel | ✅ Resolved — called only from [unroll] loops; b is compile-time constant, branches resolve statically |
 | F4-B | 4 | analysis_scope.fx | Medium — ScopePS at 152 lines | ✅ Resolved — DrawLumaPost/DrawLumaPre/DrawHuePanel extracted |
 | F4-C | 4 | corrective.fx | Medium — UpdateHistoryPS at 82 lines | ✅ Resolved — ComputeZoneStats/ComputeSlowKey/UpdateChromaKalman extracted |
 | F5-A | 5 | grade.fx | Medium — dither added after final saturate | ✅ Resolved — saturate wraps dither in both shaders |
