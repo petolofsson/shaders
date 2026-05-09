@@ -307,16 +307,13 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // Illuminant normalization — lms_illum_norm used by R83 (chromatic floor) and R66 (ambient tint).
     // CAT16 pixel correction removed (R127): game content is display-referred (sRGB→D65);
     // warm lighting is art direction, not a calibration error. NeutralIllumTex still runs.
-    float3 lms_illum_norm;
-    {
-        const float3x3 M_fwd = float3x3(0.302825, 0.602279, 0.070428,
+    const float3x3 M_fwd     = float3x3(0.302825, 0.602279, 0.070428,
                                          0.153818, 0.777214, 0.085341,
                                          0.027974, 0.147911, 0.908874);
-        float3 illum_rgb  = tex2Dlod(NeutralIllumSamp, float4(0.5, 0.5, 0, 0)).rgb;
-        float3 illum_norm = illum_rgb / max(Luma(illum_rgb), 0.001);
-        float3 lms_illum  = mul(M_fwd, illum_norm);
-        lms_illum_norm    = lms_illum / max(lms_illum.g, 0.001);
-    }
+    float3 illum_rgb          = tex2Dlod(NeutralIllumSamp, float4(0.5, 0.5, 0, 0)).rgb;
+    float3 illum_norm         = illum_rgb / max(Luma(illum_rgb), 0.001);
+    float3 lms_illum          = mul(M_fwd, illum_norm);
+    float3 lms_illum_norm     = lms_illum / max(lms_illum.g, 0.001);
     // R54 + R83: camera signal floor/ceiling — chromatic pedestal from Kodak 2383 D-min + illuminant
     float3 cfilm_floor = FILM_FLOOR * (lms_illum_norm * float3(1.02, 1.00, 0.97));
     col.rgb = col.rgb * (FILM_CEILING - cfilm_floor) + cfilm_floor;
@@ -694,6 +691,35 @@ float4 DiffusionBlurVPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     return float4(c, 1.0);
 }
 
+// R132: polydisperse scatter — longer λ (red) diffracts more broadly through filter media.
+// R115/R131: A) additive shimmer (blur>sharp only); B) soft midtone overlay (bell-gated).
+float3 ApplyDiffusionBloom(float3 base_rgb, float3 diff_blur, float adapt_str, float eff_diff)
+{
+    float3 ch_scatter = float3(1.15, 1.00, 0.85);
+    float3 bloom_raw  = max(0.0, diff_blur - base_rgb);
+    float  src_gate   = smoothstep(0.15, 0.45, Luma(diff_blur));
+    float3 bloom      = bloom_raw / (bloom_raw + 0.08) * src_gate * ch_scatter;
+    float3 result     = saturate(base_rgb + bloom * adapt_str);
+    float  luma_r     = Luma(result);
+    float  mid_gate   = luma_r * (1.0 - luma_r) * 4.0;
+    return saturate(lerp(result, diff_blur, eff_diff * 0.06 * mid_gate * ch_scatter));
+}
+
+// R136: Selwyn 2383 film grain — pcg3d RGB-decorrelated, framerate-independent.
+float3 ApplyFilmGrain(float3 rgb, float2 pos_xy)
+{
+    uint grain_slot = uint(float(FRAME_COUNT) * (FRAME_TIME / 41.667));
+    uint3 seed = uint3(uint2(pos_xy), grain_slot);
+    seed = seed * 1664525u + 1013904223u;
+    seed.x += seed.y * seed.z; seed.y += seed.z * seed.x; seed.z += seed.x * seed.y;
+    seed ^= seed >> 16u;
+    seed.x += seed.y * seed.z; seed.y += seed.z * seed.x; seed.z += seed.x * seed.y;
+    float3 gnoise = float3(seed) * (1.0 / 4294967296.0) - 0.5;
+    float  L_g    = pow(max(Luma(rgb), 0.0), 1.0 / 2.2);
+    float  env    = GRAIN_STRENGTH * 0.018 * sqrt(max(0.0, 1.0 - L_g));
+    return saturate(rgb + gnoise * env * float3(1.00, 0.80, 1.50));
+}
+
 float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float4 base = tex2D(BackBuffer, uv);
@@ -710,13 +736,7 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
         return base;
     }
 
-    // R115/R131: Two-component HBM model.
-    // A) Additive shimmer (micro-lenslet redirection) — fires only where blur > sharp;
-    //    blacks and saturated colors preserved by construction. Reinhard knee at 0.08.
-    // B) Soft midtone overlay (carbon-gate smoothing) — lerp toward blurred in midtones
-    //    only; zero at blacks (luma=0) and highlights (luma=1) by bell construction.
-    // Radial gradient: 20% at center → 25 → 75 → 100% at edges (large-format DOF falloff).
-    // Vertical oval (1.4×): X scaled up so diffusion increases faster left/right than top/bottom.
+    // Radial gradient: 20% at center → 100% at edges. Vertical oval (xs=1.6, ys=0.08).
     float2 c_diff      = uv - 0.5;
     float  r           = length(float2(c_diff.x * 1.6, c_diff.y * 0.08)) * 2.0;
     float  diff_radial = 0.20;
@@ -735,34 +755,12 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float  diff_ap_scale  = lerp(1.10, 0.90, saturate((EXPOSURE - 0.70) / 0.60));
     adapt_str *= diff_key_scale * diff_ap_scale;
 
-    float3 bloom_raw = max(0.0, diff_blur - base.rgb);
-    float  src_gate  = smoothstep(0.15, 0.45, Luma(diff_blur));
-    // R132: polydisperse scatter — longer λ (red) diffracts more broadly through filter media.
-    float3 ch_scatter = float3(1.15, 1.00, 0.85);
-    float3 bloom     = bloom_raw / (bloom_raw + 0.08) * src_gate * ch_scatter;
-    float3 result    = saturate(base.rgb + bloom * adapt_str);
-
-    float  luma_r   = Luma(result);
-    float  mid_gate = luma_r * (1.0 - luma_r) * 4.0;
-    result          = saturate(lerp(result, diff_blur, eff_diff * 0.06 * mid_gate * ch_scatter));
+    float3 result = ApplyDiffusionBloom(base.rgb, diff_blur, adapt_str, eff_diff);
 
     float dither = frac(52.9829189 * frac(dot(pos.xy, float2(0.06711056, 0.00583715)))) - 0.5;
     result += dither * (1.0 / 255.0);
 
-    // R136: Selwyn 2383 film grain — pcg3d RGB-decorrelated, framerate-independent
-    // grain_slot advances at ~24fps regardless of display fps via FRAME_TIME scaling
-    {
-        uint grain_slot = uint(float(FRAME_COUNT) * (FRAME_TIME / 41.667));
-        uint3 seed = uint3(uint2(pos.xy), grain_slot);
-        seed = seed * 1664525u + 1013904223u;
-        seed.x += seed.y * seed.z; seed.y += seed.z * seed.x; seed.z += seed.x * seed.y;
-        seed ^= seed >> 16u;
-        seed.x += seed.y * seed.z; seed.y += seed.z * seed.x; seed.z += seed.x * seed.y;
-        float3 gnoise = float3(seed) * (1.0 / 4294967296.0) - 0.5;
-        float  L_g    = pow(max(Luma(result), 0.0), 1.0 / 2.2);
-        float  env    = GRAIN_STRENGTH * 0.018 * sqrt(max(0.0, 1.0 - L_g));
-        result        = saturate(result + gnoise * env * float3(1.00, 0.80, 1.50));
-    }
+    result = ApplyFilmGrain(result, pos.xy);
 
     float4 out_col = float4(result, base.a);
     return DrawLabel(out_col, pos.xy, 270.0, 58.0,

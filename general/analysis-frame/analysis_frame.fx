@@ -379,6 +379,26 @@ float4 SceneCutPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 #define CHROMA_BINS   32
 #define CHROMA_C_MAX  0.30
 
+float ComputeMedianC(float hist[CHROMA_BINS], float count)
+{
+    float target   = max(count, 1.0) * 0.50;
+    float cumul    = 0.0;
+    float median_C = 0.10;
+    float lk       = 0.0;
+    [loop] for (int b = 0; b < CHROMA_BINS; b++)
+    {
+        float prev_c = cumul;
+        cumul       += hist[b];
+        float inv    = (hist[b] > 0.0) ? 1.0 / hist[b] : 0.0;
+        float t      = saturate((target - prev_c) * inv);
+        float bv     = (float(b) + t) / float(CHROMA_BINS) * CHROMA_C_MAX;
+        float at     = step(target, cumul) * (1.0 - lk);
+        median_C     = lerp(median_C, bv, at);
+        lk           = saturate(lk + at);
+    }
+    return median_C;
+}
+
 float4 MeanChromaPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float hist[CHROMA_BINS];
@@ -405,23 +425,7 @@ float4 MeanChromaPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
         }
     }
 
-    // CDF walk → p50 of saturated-pixel C distribution
-    float target   = max(count, 1.0) * 0.50;
-    float cumul    = 0.0;
-    float median_C = 0.10;
-    float lk       = 0.0;
-    [loop] for (int b = 0; b < CHROMA_BINS; b++)
-    {
-        float prev_c = cumul;
-        cumul       += hist[b];
-        float inv    = (hist[b] > 0.0) ? 1.0 / hist[b] : 0.0;
-        float t      = saturate((target - prev_c) * inv);
-        float bv     = (float(b) + t) / float(CHROMA_BINS) * CHROMA_C_MAX;
-        float at     = step(target, cumul) * (1.0 - lk);
-        median_C     = lerp(median_C, bv, at);
-        lk           = saturate(lk + at);
-    }
-
+    float median_C    = ComputeMedianC(hist, count);
     float valid       = step(0.5, count);
     float inv_count   = 1.0 / max(count, 1.0);
     float out_C       = lerp(0.10, median_C, valid);

@@ -2,7 +2,13 @@
 
 > **Purpose (for AI context):** Chronological record of code changes, one compacted entry per day. Keep only the last 3–4 days. Older history lives in git log. Do not duplicate entries from HANDOFF.md or PLAN.md here.
 
+## 2026-05-10
+
+- **R139 code rules audit — low/medium items resolved** (`all effect files`) — All remaining R139 open items closed: F4-B/C/D/E/F (function-length refactors: ScopePS→DrawLumaPost/Pre/HuePanel, UpdateHistoryPS→ComputeZoneStats/ComputeSlowKey/UpdateChromaKalman, DiffusionPS→ApplyDiffusionBloom+ApplyFilmGrain, ScopeCapturePS→CaptureLumaHistPixel+CaptureHueHistPixel, MeanChromaPS→ComputeMedianC); F5-B/C (bounds: P_new saturated, RGBtoOklab clamps input); F6-A (lms_illum_norm declared inline); F7-A/B (HueBandWeight self-defending frac(hue), GetBandCenter clamped); F1-B (conditional→lerp/step). F4-A (MegaPass) and F1-A (if-ladder) deferred; F6-B and F10-C documented as intentional/note-only.
+
 ## 2026-05-09
+
+- **R139 common.fxh migration** (`general/common.fxh`, all effect files) — Consolidated 6 duplicate utility functions into a shared header: `PostProcessVS`, `Luma`, `RGBtoOklab`, `OklabToRGB`, `OklabHueNorm`, `RGBtoHSV`. `GetBandCenter` (Oklab 6-band) moved to `hue_bands.fxh` alongside its constants. `analysis_frame.fx` HSV-space variants renamed `GetHSVBandCenter`/`HSVBandWeight` to distinguish from Oklab counterparts. Resolves F8-A/B/C, F10-A, F2-A, F5-A from the R139 audit.
 
 - **R137 print stock shoulder** (`grade.fx R51`) — Additive `−ps⁶×0.06` correction on the original `1−(1−ps)²×1.8` formula. Preserves shadow/midtone character exactly (ps⁶≈0 below 0.70); progressively compresses highlights above 0.75 (ps=0.85: 0.960→0.937, ps=0.90: 0.982→0.950). Reinhard partial (R134) reverted — it lost midtone body punch. R137 is a targeted correction, not a formula replacement.
 - **R136 film grain** (`grade.fx DiffusionPS`) — Selwyn 2383 granularity model. pcg3d hash gives three fully decorrelated RGB noise streams per pixel. Amplitude envelope `σ = GRAIN_STRENGTH × 0.018 × sqrt(1 − L_gamma)` peaks at Oklab L≈0.50 (upper shadows), falls toward black and highlight extremes. Channel ratios R:G:B = 1.00:0.80:1.50. Framerate-independent: `grain_slot = uint(FRAME_COUNT × (FRAME_TIME/41.667))` — ~24fps turnover at any display fps. Zero new passes. `GRAIN_STRENGTH 0.0` (off, awaiting calibration).

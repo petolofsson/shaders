@@ -298,7 +298,7 @@ float4 UpdateChromaKalman(int band_idx)
     float scene_cut = ReadHWY(HWY_SCENE_CUT);
     K = lerp(K, 1.0, scene_cut);
     float new_mean = prev.r + K * e_chroma;
-    float P_new    = (1.0 - K) * P_pred;
+    float P_new    = saturate((1.0 - K) * P_pred);
     // EMA: std and wsum — steady-state gain
     float k_ema    = lerp(KALMAN_K_INF, 1.0, scene_cut);
     return float4(new_mean, lerp(prev.g, stddev, k_ema), lerp(prev.b, sum_w, k_ema), P_new);

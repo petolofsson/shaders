@@ -100,6 +100,7 @@ float HueCeil(float hue)
 // 6-band Oklab hue dispatcher (normalized 0–1). Used by grade.fx and corrective.fx.
 float GetBandCenter(int b)
 {
+    b = clamp(b, 0, 5);
     if (b == 0) return HB_BAND_RED;
     if (b == 1) return HB_BAND_YELLOW;
     if (b == 2) return HB_BAND_GREEN;

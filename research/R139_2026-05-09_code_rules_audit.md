@@ -1,7 +1,7 @@
 # R139 — Code Rules Audit (Power of Ten, HLSL adaptation)
 
 **Date:** 2026-05-09
-**Status:** Findings only — no fixes implemented
+**Status:** Complete — F4-A (MegaPass documented exception) and F1-A (if-ladder, deferred) open
 **Scope:** All `.fx` and `.fxh` files under `general/` and `gamespecific/arc_raiders/shaders/`
 
 Files audited:
@@ -264,29 +264,29 @@ Variable-index writes to local (private) arrays compile correctly in DXC/SPIR-V 
 
 ## Severity summary
 
-| ID | Rule | File(s) | Severity |
-|---|---|---|---|
-| F4-A | 4 | grade.fx | High — ColorTransformPS at 427 lines |
-| F8-C | 8 | all files | High — 6 functions duplicated 2–6× |
-| F8-A | 8 | corrective.fx | High — band constants duplicated, divergence risk |
-| F10-A | 10 | grade.fx, corrective.fx | Medium — MipLevels mismatch on cross-technique texture |
-| F1-A | 1 | grade.fx, corrective.fx, analysis_frame.fx | Medium — GetBandCenter if-ladder per pixel |
-| F4-B | 4 | analysis_scope.fx | Medium — ScopePS at 152 lines |
-| F4-C | 4 | corrective.fx | Medium — UpdateHistoryPS at 82 lines |
-| F5-A | 5 | grade.fx | Medium — dither added after final saturate |
-| F7-A | 7 | hue_bands.fxh | Medium — HueCeil/HueBandRollN accept unclamped hue |
-| F2-A / F10-B | 2, 10 | grade.fx | Low — NeutralIllumPS loops unannotated |
-| F1-B | 1 | corrective.fx | Low — conditional on history data |
-| F4-D | 4 | grade.fx | Low — DiffusionPS at 74 lines |
-| F4-E | 4 | analysis_scope_pre.fx | Low — ScopeCapturePS at 64 lines |
-| F5-B | 5 | corrective.fx | Low — Kalman P_new unbounded |
-| F5-C | 5 | all files | Low — RGBtoOklab unclamped input |
-| F6-A | 6 | grade.fx | Low — lms_illum_norm outer-scope declaration |
-| F6-B | 6 | grade.fx | Low — lf_mip2 hoisted across function body |
-| F7-B | 7 | grade.fx, corrective.fx | Low — GetBandCenter implicit default for out-of-range b |
-| F8-B | 8 | grade.fx | Low — BAND_* alias macros |
-| F8-D | 8 | corrective.fx, analysis_frame.fx | Low — HueBandWeight two normalisation conventions |
-| F10-C | 10 | analysis_frame.fx | Low — variable-index write to local array |
+| ID | Rule | File(s) | Severity | Status |
+|---|---|---|---|---|
+| F4-A | 4 | grade.fx | High — ColorTransformPS at 427 lines | Open |
+| F8-C | 8 | all files | High — 6 functions duplicated 2–6× | ✅ Resolved — common.fxh + hue_bands.fxh |
+| F8-A | 8 | corrective.fx | High — band constants duplicated, divergence risk | ✅ Resolved — corrective.fx uses HB_BAND_* |
+| F10-A | 10 | grade.fx, corrective.fx | Medium — MipLevels mismatch on cross-technique texture | ✅ Resolved — both MipLevels = 1 |
+| F1-A | 1 | grade.fx, corrective.fx, analysis_frame.fx | Medium — GetBandCenter if-ladder per pixel | Open (deferred — no GPU profiler available) |
+| F4-B | 4 | analysis_scope.fx | Medium — ScopePS at 152 lines | ✅ Resolved — DrawLumaPost/DrawLumaPre/DrawHuePanel extracted |
+| F4-C | 4 | corrective.fx | Medium — UpdateHistoryPS at 82 lines | ✅ Resolved — ComputeZoneStats/ComputeSlowKey/UpdateChromaKalman extracted |
+| F5-A | 5 | grade.fx | Medium — dither added after final saturate | ✅ Resolved — saturate wraps dither in both shaders |
+| F7-A | 7 | hue_bands.fxh | Medium — HueCeil/HueBandRollN accept unclamped hue | ✅ Resolved — frac(hue) guard added to HueBandWeight |
+| F2-A / F10-B | 2, 10 | grade.fx | Low — NeutralIllumPS loops unannotated | ✅ Resolved — [unroll] added |
+| F1-B | 1 | corrective.fx | Low — conditional on history data | ✅ Resolved — lerp(zone_log_key, prev_slow, step(0.001, prev_slow)) |
+| F4-D | 4 | grade.fx | Low — DiffusionPS at 74 lines | ✅ Resolved — ApplyDiffusionBloom + ApplyFilmGrain extracted |
+| F4-E | 4 | analysis_scope_pre.fx | Low — ScopeCapturePS at 64 lines | ✅ Resolved — CaptureLumaHistPixel + CaptureHueHistPixel extracted |
+| F5-B | 5 | corrective.fx | Low — Kalman P_new unbounded | ✅ Resolved — saturate((1.0 - K) * P_pred) |
+| F5-C | 5 | all files | Low — RGBtoOklab unclamped input | ✅ Resolved — rgb = saturate(rgb) at top of RGBtoOklab in common.fxh |
+| F6-A | 6 | grade.fx | Low — lms_illum_norm outer-scope declaration | ✅ Resolved — declared inline at point of computation |
+| F6-B | 6 | grade.fx | Low — lf_mip2 hoisted across function body | Leave intentionally — avoids redundant texture fetch (documented) |
+| F7-B | 7 | grade.fx, corrective.fx | Low — GetBandCenter implicit default for out-of-range b | ✅ Resolved — clamp(b, 0, 5) added in hue_bands.fxh |
+| F8-B | 8 | grade.fx | Low — BAND_* alias macros | ✅ Resolved — aliases removed |
+| F8-D | 8 | corrective.fx, analysis_frame.fx | Low — HueBandWeight two normalisation conventions | ✅ Partial — analysis_frame.fx renamed HSVBandWeight; conventions now distinct by name |
+| F10-C | 10 | analysis_frame.fx | Low — variable-index write to local array | Note only — correctness confirmed; SPIR-V size check needs tooling |
 
 ---
 

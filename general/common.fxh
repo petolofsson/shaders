@@ -15,6 +15,7 @@ float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
 float3 RGBtoOklab(float3 rgb)
 {
+    rgb = saturate(rgb);
     float l = dot(rgb, float3(0.4122214708, 0.5363325363, 0.0514459929));
     float m = dot(rgb, float3(0.2119034982, 0.6806995451, 0.1073969566));
     float s = dot(rgb, float3(0.0883024619, 0.2817188376, 0.6299787005));
