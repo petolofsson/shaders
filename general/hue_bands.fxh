@@ -41,6 +41,7 @@
 
 float HueBandWeight(float hue, float center)
 {
+    hue = frac(hue);
     float d = abs(hue - center);
     d = min(d, 1.0 - d);
     float t = saturate(1.0 - d / HB_BAND_WIDTH);
