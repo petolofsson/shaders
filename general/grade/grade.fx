@@ -167,6 +167,111 @@ float LiftChroma(float C, float pivot, float strength)
     return C * (1.0 + strength * t * t);
 }
 
+// ─── Stage helpers ─────────────────────────────────────────────────────────
+
+float3 ApplyDyeMatrix(float3 lin)
+{
+    float lin_min   = min(lin.r, min(lin.g, lin.b));
+    float sat_proxy = max(lin.r, max(lin.g, lin.b)) - lin_min;
+    float ramp      = smoothstep(0.0, 0.25, sat_proxy);
+    float3 dom_mask = saturate((lin - lin_min) / max(sat_proxy, 0.001));
+    float3 dye      = dom_mask * sat_proxy * ramp * 0.065;
+    float3 bl_x;
+    bl_x.r = dye.r * 1.00 + dye.g * 0.15 + dye.b * 0.01;
+    bl_x.g = dye.r * 0.14 + dye.g * 1.00 + dye.b * 0.06;
+    bl_x.b = dye.r * 0.09 + dye.g * 0.09 + dye.b * 1.00;
+    return saturate(lin * (1.0 - bl_x + bl_x * bl_x * 0.5));
+}
+
+float3 ApplyMaskingCoupler(float3 lin, float print_stock)
+{
+    float mc_luma = dot(lin, float3(0.2126, 0.7152, 0.0722));
+    float mc_w    = saturate(1.0 - mc_luma / 0.75);
+    mc_w         *= mc_w;
+    float mc_str  = print_stock * 0.008 * mc_w;
+    lin.r = saturate(lin.r + mc_str);
+    lin.b = saturate(lin.b - mc_str * 0.65);
+    return lin;
+}
+
+float3 ApplyBleachBypass(float3 lin, float bleach_bypass)
+{
+    float3 lab_bb   = RGBtoOklab(lin);
+    float  bb_dark  = 1.0 - smoothstep(0.0, 0.65, lab_bb.x);
+    float  bb_desat = bleach_bypass * lerp(0.05, 0.72, bb_dark);
+    lab_bb.y *= (1.0 - bb_desat);
+    lab_bb.z *= (1.0 - bb_desat);
+    float  bb_mid  = lab_bb.x * (1.0 - lab_bb.x) * 4.0;
+    lab_bb.x = saturate(lab_bb.x - bleach_bypass * 0.055 * bb_mid);
+    return saturate(OklabToRGB(lab_bb));
+}
+
+float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print_stock)
+{
+    float3 ps       = lin * (1.0 - 0.025) + 0.025;
+    float3 toe      = ps * ps * 3.2;
+    float3 ps3      = ps * ps * ps;
+    float3 shoulder = 1.0 - (1.0 - ps) * (1.0 - ps) * 1.8 - ps3 * ps3 * 0.06;
+    ps = lerp(toe, shoulder, smoothstep(0.0, 0.5, ps));
+    float luma_ps = dot(ps, float3(0.2126, 0.7152, 0.0722));
+    float desat_w = 0.15 * (1.0 - smoothstep(0.0, fc_knee_toe, luma_ps))
+                          * (1.0 - smoothstep(fc_knee, 1.0, luma_ps));
+    ps = lerp(ps, luma_ps.xxx, desat_w);
+    ps.r += 0.010 * (1.0 - ps.r);
+    ps.b -= 0.007 * (1.0 - ps.b);
+    return lerp(lin, saturate(ps), print_stock);
+}
+
+float3 ApplyHalation(float3 lin, float2 uv, float3 lf_mip2, float hal_strength, float hal_gamma)
+{
+    float3 hal_blur      = tex2D(LowFreqMip1Samp, uv).rgb;
+    float3 hal_ring      = max(0.0, hal_blur - lin);
+    float  hal_ring_luma = dot(hal_ring, float3(0.2126, 0.7152, 0.0722));
+    float  hal_lore      = hal_ring_luma / (hal_ring_luma + hal_gamma + 1e-6);
+    float  hal_r         = hal_ring.r + lf_mip2.r * 0.12;
+    float  hal_g         = hal_ring.g * lerp(0.78, 0.94, hal_lore);
+    float  hal_b         = hal_ring.b * lerp(0.22, 0.38, hal_lore);
+    return saturate(lin + float3(hal_r, hal_g, hal_b) * float3(1.05, 0.45, 0.03) * hal_strength);
+}
+
+float3 Apply3WayCC(float3 lin,
+                   float shadow_temp, float shadow_tint,
+                   float mid_temp,    float mid_tint,
+                   float hl_temp,     float hl_tint)
+{
+    float r19_g   = sqrt(dot(lin, float3(0.2126, 0.7152, 0.0722)));
+    float r19_sh  = saturate(1.0 - r19_g / 0.35);
+    float r19_hl  = saturate((r19_g - 0.65) / 0.35);
+    float r19_mid = 1.0 - r19_sh - r19_hl;
+    float3 sh_d  = float3(+shadow_temp + shadow_tint * 0.5, -shadow_tint, -shadow_temp + shadow_tint * 0.5) * 0.0003;
+    float3 mid_d = float3(+mid_temp    + mid_tint    * 0.5, -mid_tint,    -mid_temp    + mid_tint    * 0.5) * 0.0003;
+    float3 hl_d  = float3(+hl_temp     + hl_tint     * 0.5, -hl_tint,     -hl_temp     + hl_tint     * 0.5) * 0.0003;
+    return saturate(lin + sh_d * r19_sh + mid_d * r19_mid + hl_d * r19_hl);
+}
+
+float3 ApplyAmbientTint(float3 lab_t, float3 lf_mip2, float r65_sw, float scene_cut)
+{
+    float3 illum_norm = lf_mip2 / max(dot(lf_mip2, float3(0.2126, 0.7152, 0.0722)), 0.001);
+    float3 lab_amb    = RGBtoOklab(illum_norm * 0.18);
+    float  lab_t_C    = length(lab_t.yz);
+    float  achrom_w   = 1.0 - smoothstep(0.0, 0.05, lab_t_C);
+    float  c_gate     = saturate(1.0 - lab_t_C / 0.10);
+    float  r66_w      = r65_sw * achrom_w * c_gate * (1.0 - scene_cut) * 0.20;
+    lab_t.y = lerp(lab_t.y, lab_amb.y, r66_w);
+    lab_t.z = lerp(lab_t.z, lab_amb.z, r66_w);
+    return lab_t;
+}
+
+float2 ApplyChromaticInduction(float2 ab, float3 lf_mip2, float final_C)
+{
+    float3 surr     = lf_mip2;
+    float3 surr_lab = RGBtoOklab(surr / max(dot(surr, float3(0.2126, 0.7152, 0.0722)), 0.001) * 0.18);
+    float  ind_mask = saturate(1.0 - final_C / 0.06);
+    ab.x -= surr_lab.y * 0.12 * ind_mask;
+    ab.y -= surr_lab.z * 0.12 * ind_mask;
+    return ab;
+}
+
 // ─── ColorTransform pixel shader ───────────────────────────────────────────
 
 float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
@@ -216,7 +321,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float3 cfilm_floor = FILM_FLOOR * (lms_illum_norm * float3(1.02, 1.00, 0.97));
     col.rgb = col.rgb * (FILM_CEILING - cfilm_floor) + cfilm_floor;
 
-    float4 perc = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
+    float4 perc      = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
+    float  scene_cut = ReadHWY(HWY_SCENE_CUT);
 
     // R32: zone global stats — pre-computed in UpdateHistoryPS, stored in ChromaHistoryTex col 6
     float4 zstats      = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0));
@@ -266,44 +372,14 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // ── R105: halation — negative stock property; fires before print stock (P1, R120) ──
     // Physical order: halation occurs in the camera negative before printing.
     // Print stock then compresses and warm-tints the glow — the correct photochemical chain.
-    {
-        float3 hal_blur      = tex2D(LowFreqMip1Samp, uv).rgb;
-        float3 hal_broad     = lf_mip2;
-        float3 hal_ring      = max(0.0, hal_blur - col.rgb);
-        float  hal_ring_luma = dot(hal_ring, float3(0.2126, 0.7152, 0.0722));
-        float  hal_lore      = hal_ring_luma / (hal_ring_luma + HAL_GAMMA + 1e-6);
-        float  hal_r         = hal_ring.r + hal_broad.r * 0.12;
-        float  hal_g         = hal_ring.g * lerp(0.78, 0.94, hal_lore);
-        float  hal_b         = hal_ring.b * lerp(0.22, 0.38, hal_lore);
-        lin = saturate(lin + float3(hal_r, hal_g, hal_b) * float3(1.05, 0.45, 0.03) * HAL_STRENGTH);
-    }
+    lin = ApplyHalation(lin, uv, lf_mip2, HAL_STRENGTH, HAL_GAMMA);
 
     // ── R51: print stock emulsion — Kodak 2383 characteristic curve approximation ──
-    {
-        float3 ps      = lin * (1.0 - 0.025) + 0.025;
-        float3 toe     = ps * ps * 3.2;
-        float3 ps3      = ps * ps * ps;
-        float3 shoulder = 1.0 - (1.0 - ps) * (1.0 - ps) * 1.8 - ps3 * ps3 * 0.06;
-        ps = lerp(toe, shoulder, smoothstep(0.0, 0.5, ps));
-        float luma_ps = dot(ps, float3(0.2126, 0.7152, 0.0722));
-        float desat_w = 0.15 * (1.0 - smoothstep(0.0, fc_knee_toe, luma_ps))
-                              * (1.0 - smoothstep(fc_knee, 1.0, luma_ps));
-        ps = lerp(ps, luma_ps.xxx, desat_w);
-        ps.r += 0.010 * (1.0 - ps.r);   // R110 rebalance: uniform reduced, tonal portion in masking coupler block
-        ps.b -= 0.007 * (1.0 - ps.b);
-        lin = lerp(lin, saturate(ps), PRINT_STOCK);
-    }
+    lin = ApplyPrintStock(lin, fc_knee_toe, fc_knee, PRINT_STOCK);
 
     // ── R110: masking coupler — shadow warm bias; coupler consumed proportional to dye density ──
     // unexposed print areas retain full coupler → warm; highlights consume coupler → neutral
-    {
-        float mc_luma = dot(lin, float3(0.2126, 0.7152, 0.0722));
-        float mc_w    = saturate(1.0 - mc_luma / 0.75);
-        mc_w         *= mc_w;
-        float mc_str  = PRINT_STOCK * 0.008 * mc_w;
-        lin.r = saturate(lin.r + mc_str);
-        lin.b = saturate(lin.b - mc_str * 0.65);
-    }
+    lin = ApplyMaskingCoupler(lin, PRINT_STOCK);
 
     // ── R130: Kodak 2383 spectral dye absorption matrix ──────────────────────
     // Replaces R81C Beer-Lambert proxy + R85 empirical coupling. Full 3×3 derived
@@ -312,51 +388,22 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     //   Cyan:    R 1.00  G 0.14  B 0.09
     //   Magenta: R 0.15  G 1.00  B 0.09
     //   Yellow:  R 0.01  G 0.06  B 1.00
-    {
-        float lin_min   = min(lin.r, min(lin.g, lin.b));
-        float sat_proxy = max(lin.r, max(lin.g, lin.b)) - lin_min;
-        float ramp      = smoothstep(0.0, 0.25, sat_proxy);
-        float3 dom_mask = saturate((lin - lin_min) / max(sat_proxy, 0.001));
-        float3 dye      = dom_mask * sat_proxy * ramp * 0.065;
-        float3 bl_x;
-        bl_x.r = dye.r * 1.00 + dye.g * 0.15 + dye.b * 0.01;
-        bl_x.g = dye.r * 0.14 + dye.g * 1.00 + dye.b * 0.06;
-        bl_x.b = dye.r * 0.09 + dye.g * 0.09 + dye.b * 1.00;
-        lin = saturate(lin * (1.0 - bl_x + bl_x * bl_x * 0.5));
-    }
+    lin = ApplyDyeMatrix(lin);
 
     // ── BLEACH BYPASS: silver retention in print emulsion (P2, R120) ─────────
     // Skipping the bleach step retains metallic silver alongside color dye.
     // Silver is achromatic — desaturates strongest in shadows (denser unexposed areas).
     // Retained silver adds neutral density, steepening midtone contrast.
-    {
-        float3 lab_bb  = RGBtoOklab(lin);
-        float  bb_dark = 1.0 - smoothstep(0.0, 0.65, lab_bb.x);
-        float  bb_desat = BLEACH_BYPASS * lerp(0.05, 0.72, bb_dark);
-        lab_bb.y *= (1.0 - bb_desat);
-        lab_bb.z *= (1.0 - bb_desat);
-        float  bb_mid  = lab_bb.x * (1.0 - lab_bb.x) * 4.0;
-        lab_bb.x = saturate(lab_bb.x - BLEACH_BYPASS * 0.055 * bb_mid);
-        lin = saturate(OklabToRGB(lab_bb));
-    }
+    lin = ApplyBleachBypass(lin, BLEACH_BYPASS);
 
     // ── R19: 3-way color corrector — temp/tint per region ────────────────────
     // R117: region masking in sqrt(luma) ≈ gamma-2 space, matching Resolve-style perceptual
     // split. Linear-luma boundaries (0.35/0.65) placed "shadow" over most of the perceptual
     // image in dark games; sqrt gives intuitive half-pixels-per-region coverage.
-    {
-        float r19_luma = Luma(lin);
-        float r19_g    = sqrt(r19_luma);  // gamma-2 approximation of perceptual lightness
-        float r19_sh   = saturate(1.0 - r19_g / 0.35);
-        float r19_hl   = saturate((r19_g - 0.65) / 0.35);
-        float r19_mid  = 1.0 - r19_sh - r19_hl;
-
-        float3 r19_sh_delta  = float3(+SHADOW_TEMP + SHADOW_TINT * 0.5, -SHADOW_TINT, -SHADOW_TEMP + SHADOW_TINT * 0.5) * 0.0003;
-        float3 r19_mid_delta = float3(+MID_TEMP       + MID_TINT       * 0.5, -MID_TINT,       -MID_TEMP       + MID_TINT       * 0.5) * 0.0003;
-        float3 r19_hl_delta  = float3(+HIGHLIGHT_TEMP + HIGHLIGHT_TINT * 0.5, -HIGHLIGHT_TINT, -HIGHLIGHT_TEMP + HIGHLIGHT_TINT * 0.5) * 0.0003;
-
-        lin = saturate(lin + r19_sh_delta * r19_sh + r19_mid_delta * r19_mid + r19_hl_delta * r19_hl);
-    }
+    lin = Apply3WayCC(lin,
+              SHADOW_TEMP, SHADOW_TINT,
+              MID_TEMP, MID_TINT,
+              HIGHLIGHT_TEMP, HIGHLIGHT_TINT);
 
     // ── 2. TONAL: Zone contrast + Clarity + Shadow lift ───────────────────────
     float luma        = Luma(lin);
@@ -413,19 +460,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     lab_t.y = lab_t.y * lerp(1.0, r65_scale, r65_sw);
     lab_t.z = lab_t.z * lerp(1.0, r65_scale, r65_sw);
     // R66: ambient shadow tint — inject scene-ambient hue into achromatic lifted shadows.
-    // Normalise illum_s2 RGB to extract hue direction at 18% gray (decouples from local luma).
-    {
-        float3 illum_s2_rgb = lf_mip2;
-        float3 illum_norm   = illum_s2_rgb / max(Luma(illum_s2_rgb), 0.001);
-        float3 lab_amb      = RGBtoOklab(illum_norm * 0.18);
-        float  scene_cut    = ReadHWY(HWY_SCENE_CUT);
-        float  lab_t_C      = length(lab_t.yz);
-        float  achrom_w     = 1.0 - smoothstep(0.0, 0.05, lab_t_C);
-        float  c_gate       = saturate(1.0 - lab_t_C / 0.10);  // R119: zero tint for colored objects
-        float  r66_w        = r65_sw * achrom_w * c_gate * (1.0 - scene_cut) * 0.20;
-        lab_t.y = lerp(lab_t.y, lab_amb.y, r66_w);
-        lab_t.z = lerp(lab_t.z, lab_amb.z, r66_w);
-    }
+    lab_t = ApplyAmbientTint(lab_t, lf_mip2, r65_sw, scene_cut);
     lin = saturate(OklabToRGB(lab_t));
 
     // ── 3. CHROMA: Oklab chroma lift ──────────────────────────────────────────
@@ -560,15 +595,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     // R117C: chromatic induction — broad surround hue nudges near-achromatic pixels toward complement.
     // Simultaneous contrast: a grey patch in a coloured surround takes on a slight opposite hue tinge.
     // Uses LowFreqMip2 (1/32-res, already read by R66 + halation) as the spatial surround estimate.
-    // Gate: ind_mask → 0 as pixel chroma rises; full effect only on achromatic / low-chroma pixels.
-    // Strength 0.12: for a moderately warm surround (Oklab a≈0.04), shift ≈ 0.005 in f_oka — subtle.
-    {
-        float3 surr     = lf_mip2;
-        float3 surr_lab = RGBtoOklab(surr / max(Luma(surr), 0.001) * 0.18);
-        float  ind_mask = saturate(1.0 - final_C / 0.06);
-        f_oka -= surr_lab.y * 0.12 * ind_mask;
-        f_okb -= surr_lab.z * 0.12 * ind_mask;
-    }
+    float2 ab_ind = ApplyChromaticInduction(float2(f_oka, f_okb), lf_mip2, final_C);
+    f_oka = ab_ind.x; f_okb = ab_ind.y;
 
     // Gamut-distance density: headroom limits darkening near the sRGB boundary
     float3 rgb_probe  = OklabToRGB(float3(final_L, f_oka, f_okb));
