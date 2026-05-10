@@ -450,7 +450,7 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     float specular_att   = 1.0 - smoothstep(0.50, 0.90, ctx.specular_contrast) * 0.35;
     float shadow_lift    = ctx.shadow_lift_str * (0.149169 / (illum_s0 * illum_s0 + 0.003))
                          * texture_att * fine_texture_att * detail_protect * context_lift * specular_att;
-    float lift_w         = new_luma * smoothstep(0.25, 0.0, new_luma);
+    float lift_w         = new_luma * smoothstep(0.23, 0.0, new_luma);
     new_luma = saturate(new_luma + (shadow_lift / 100.0) * 0.75 * lift_w * SHADOW_LIFT_STRENGTH);
     // R62 Finding 3: chroma-stable tonal — apply luma ratio in Oklab L to prevent zone S-curve from shifting chroma
     float3 lab_t  = RGBtoOklab(saturate(lin));
