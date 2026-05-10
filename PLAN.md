@@ -6,7 +6,7 @@ All stages at or above target. Stage 0 ceiling is content-limited (testbed ~80% 
 
 | Stage | Finished | Novel |
 |-------|----------|-------|
-| Stage 0 — Input (inverse_grade) | 97% | 83% |
+| Stage 0 — Input (inverse_grade) | 98% | 87% |
 | Stage 1 — Film Stock | 97% | 90% |
 | Stage 2 — Tonal | 96% | 91% |
 | Stage 3 — Color + Halation | 98% | 92% |
@@ -14,8 +14,8 @@ All stages at or above target. Stage 0 ceiling is content-limited (testbed ~80% 
 
 ## Score reasoning
 
-**Stage 0 — Input (83% novel)**
-Core op is plain chroma scaling (`lab.yz *= factor`) — the operation itself is non-novel. Novel parts: IQR-based compression estimate, Kalman-smoothed slope, mean-C pivot, per-hue HueCeil gamut ceilings, C-gate. Ceiling confirmed by diagnostic: all per-hue band wsums ≈ 0 even in the most colorful testbed scene. Cannot improve without content with measurable per-hue chroma.
+**Stage 0 — Input (87% novel)**
+Core op is plain chroma scaling (`lab.yz *= factor`) — the operation itself is non-novel. Novel parts: IQR-based compression estimate, Kalman-smoothed slope, mean-C pivot, per-hue HueCeil gamut ceilings, C-gate, R143 highlight reconstruction (Oklab chroma rolloff near SDR clip ceiling — two continuous smoothstep gates, no tuning knob, non-overlapping population with R90). Drag: chroma scaling chassis is standard; per-hue band content still ≈ 0 in colorful testbed scene — expansion stage underutilized by content.
 
 **Stage 1 — Film Stock (90% novel)**
 R130 Kodak 2383 3×3 spectral dye matrix from published H-1-2383t data is first-of-kind in real-time post-process. Full physical chain: log-density H&D curve (R84), chromatic floor (R83), masking coupler (R110), DIR couplers (R104). Drag: S-curve shape and 3-way CC are standard.
