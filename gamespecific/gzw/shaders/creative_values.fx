@@ -1,9 +1,9 @@
 // creative_values.fx — tune here
 
 // ── INPUT ─────────────────────────────────────────────────────────────────────
-// Adaptive inverse tone mapping. Expands Oklab chroma using the IQR-derived
-// compression ratio — restoring chroma the game's tonemapper compressed. Luma is
-// handled by the zone S-curve. Works on any S-curve tonemapper. 0 = off.
+// Adaptive inverse tone mapping. Expands Oklab chroma using the IQR-derived compression
+// ratio — restoring chroma the game's tonemapper compressed. Luma is handled by zone
+// S-curve. Works on any S-curve tonemapper. 0 = off. Start at 0.30–0.50.
 #define INVERSE_STRENGTH  0.45
 
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
@@ -13,14 +13,14 @@
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune beneath.
 #define EXPOSURE  0.85
 
-// Remaps the raw pixel into [FILM_FLOOR, FILM_CEILING] before EXPOSURE runs.
-// FILM_FLOOR: black pedestal — prevents absolute digital black. 0 = off.
+// Remaps the raw pixel into [BLACKS, WHITES] before EXPOSURE runs.
+// BLACKS: black pedestal — prevents absolute digital black. 0 = off.
 //   0.005 matches actual linear-light value at the ARRI LogC3 black point.
-// FILM_CEILING: white headroom — pulls true white below clip before EXPOSURE.
+// WHITES: white headroom — pulls true white below clip before EXPOSURE.
 //   0.95 matches ARRI LogC3 usable ceiling (~91-92% of full scale).
 // Both at defaults (0 / 1) = passthrough (identity).
-#define FILM_FLOOR    0.005
-#define FILM_CEILING  0.97
+#define BLACKS  0.005
+#define WHITES  0.97
 
 // Developer-inhibitor-release cross-channel masking. Each dye layer releases
 // inhibitors that suppress adjacent layers, increasing colour separation.
@@ -38,8 +38,8 @@
 #define CURVE_R_TOE   +0.0100
 #define CURVE_B_TOE   -0.010
 
-// Kodak 2383 print emulsion on top of FilmCurve: lifts blacks, compresses
-// highlights, desaturates mids ~15%, adds warm shadow cast. 0 = off.
+// Kodak 2383 print emulsion on top of FilmCurve: gentle shadow density bow,
+// restrained shoulder, desaturates mids ~15%, adds warm shadow cast. 0 = off.
 // 1 = full 2383. 0.35 = recommended starting point.
 #define PRINT_STOCK  0.45
 
@@ -64,15 +64,27 @@
 
 // ── TONAL ─────────────────────────────────────────────────────────────────────
 // Scales the adaptive zone S-curve strength. 1.0 = calibrated default. 0 = off.
-// Owns luma contrast restoration — inverse_grade is chroma-only. 2.0 = aggressive.
-// Range 0–2.
-#define ZONE_STRENGTH  1.00
+// 2.0 = aggressive. Range 0–2.
+#define CONTRAST  1.00
 
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOW_LIFT_STRENGTH  1.10
+#define SHADOWS  1.10
+
+// Soft luma push/pull in the highlight range (L > 0.55). +1.0 brightens highlights,
+// -1.0 recovers blown highlights. Range ±1.0. Default 0.0 = passthrough.
+#define HIGHLIGHTS  0.0
+
+// R183: pre-flash warm shadow cast. Fixed warm amber additive in deep shadows (L < 0.25),
+// falls to zero at mid-gray. Models Deakins' colored negative pre-flash technique.
+// Positive = warm amber, negative = cool blue-green. Range ±1.0. Default 0.0 = passthrough.
+#define SHADOW_CAST  0.0
 
 // ── CHROMA ────────────────────────────────────────────────────────────────────
+// Global chroma multiplier. -1.0 = greyscale, 0.0 = passthrough, +1.0 = 2× chroma.
+// Applied uniformly — use Vibrance for lift-only behaviour.
+#define SATURATION  0.0
+
 // Per-hue chroma lift strength. Acts as a gain near each hue band's scene mean —
 // lift-only, vibrance-masked (already-saturated pixels are attenuated).
 // 1.0 = calibrated default. 0 = off.
@@ -102,6 +114,15 @@
 #define ROT_BLUE    -0.02
 #define ROT_MAG     +0.01
 
+// ── HUE SATURATION ───────────────────────────────────────────────────────────
+// Per-band chroma scale in Oklab C. ±1.0 → ±80% chroma per hue band.
+// Applied after Vibrance. Default 0.0 = passthrough.
+#define SAT_RED     0.0
+#define SAT_YELLOW  0.0
+#define SAT_GREEN   0.0
+#define SAT_CYAN    0.0
+#define SAT_BLUE    0.0
+#define SAT_MAG     0.0
 
 // Film emulsion scatter from specular highlights — orange/amber fringe around
 // brightest sources. Red dominates (deepest dye layer), green small, blue near-zero
@@ -121,13 +142,13 @@
 // R132 polydisperse: per-channel scatter — red ×1.15, green ×1.00, blue ×0.85.
 // Rough grade mapping: 0.5–0.8 = HBM 1/4, 1.2–1.5 = HBM 1/2, 1.8–2.2 = HBM 1.
 // 1.40 = HBM 1/2 (Hollywood large-format workhorse grade). 0 = off.
-#define DIFFUSION_STRENGTH  0.80
+#define DIFFUSION_STRENGTH  0.70
 
 // R136: Selwyn 2383 granularity — three decorrelated dye layers (R:G:B = 1.00:0.80:1.50).
 // Peaks in upper shadows (Oklab L≈0.50), falls off toward blacks and highlights.
 // Framerate-independent: turns over at ~24fps regardless of display fps.
 // 0 = off. 1.0 = calibrated 2383 amplitude. 1.5 = pushed. 2.0 = stylistic.
-#define GRAIN_STRENGTH 1.0
+#define GRAIN_STRENGTH 0.65
 
 // ── STAGE GATES ───────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.
