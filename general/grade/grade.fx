@@ -719,15 +719,16 @@ float3 ApplyDiffusionBloom(float3 base_rgb, float3 diff_blur, float adapt_str, f
 // R136: Selwyn 2383 film grain — pcg3d RGB-decorrelated, framerate-independent.
 float3 ApplyFilmGrain(float3 rgb, float2 pos_xy)
 {
-    uint grain_slot = uint(float(FRAME_COUNT) * (FRAME_TIME / 41.667));
-    uint3 seed = uint3(uint2(pos_xy), grain_slot);
+    uint   grain_slot = uint(float(FRAME_COUNT) * (FRAME_TIME / 41.667));
+    float  res_scale  = BUFFER_HEIGHT / 1440.0;  // 1.0 at 1440p, 1.5 at 4K — grain calibrated at 1440p
+    uint3  seed = uint3(uint2(pos_xy / res_scale), grain_slot);
     seed = seed * 1664525u + 1013904223u;
     seed.x += seed.y * seed.z; seed.y += seed.z * seed.x; seed.z += seed.x * seed.y;
     seed ^= seed >> 16u;
     seed.x += seed.y * seed.z; seed.y += seed.z * seed.x; seed.z += seed.x * seed.y;
     float3 gnoise = float3(seed) * (1.0 / 4294967296.0) - 0.5;
     float  L_g    = pow(max(Luma(rgb), 0.0), 1.0 / 2.2);
-    float  env    = GRAIN_STRENGTH * 0.018 * sqrt(max(0.0, 1.0 - L_g));
+    float  env    = GRAIN_STRENGTH * 0.05 * sqrt(max(0.0, 1.0 - L_g));
     return saturate(rgb + gnoise * env * float3(1.00, 0.80, 1.50));
 }
 
