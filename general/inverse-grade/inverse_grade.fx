@@ -54,6 +54,18 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     float hue = frac(atan2(lab.z, lab.y) / 6.28318530);
     new_C     = min(new_C, max(HueCeil(hue), C));
     lab.yz    = dir * max(new_C, 0.0);
+
+    // R144: luma expansion — restore L compressed by the game's tonemapper.
+    // Pivot is cbrt(p50_linear): p50 is stored as linear Rec709 luma; Oklab L is
+    // perceptual (cube-root), so raw p50_linear as pivot places zero-crossing at
+    // Oklab L≈0.50 (linear Y≈0.125, deep shadow). cbrt corrects this to ~0.79.
+    // c_weight excluded: tonemapper compressed every pixel's luma, neutrals included.
+    float p50_lin     = ReadHWY(HWY_P50);
+    float p50_lab     = exp2(log2(max(p50_lin, 1e-10)) * (1.0 / 3.0));
+    float luma_factor = lerp(1.0, slope, float(INVERSE_STRENGTH) * mid_weight);
+    float new_L       = p50_lab + (lab.x - p50_lab) * luma_factor;
+    lab.x = max(new_L, 0.0);
+
     col.rgb   = saturate(OklabToRGB(lab));
     return col;
 }

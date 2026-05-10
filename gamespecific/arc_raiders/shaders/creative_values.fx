@@ -99,11 +99,12 @@
 // Recalibrate from scratch: try 0.6–0.8. 0 = off.
 #define PURKINJE_STRENGTH  1.3
 
-// ── INVERSE GRADE (R90) ───────────────────────────────────────────────────────
-// Adaptive inverse tone mapping. Expands display IQR toward the ACES-derived
-// 3.28-stop reference. Works on any S-curve tonemapper. 0 = off. 1.0 = full.
-// 0.30 is the recommended starting point.
-#define INVERSE_STRENGTH  0.50
+// ── INVERSE GRADE (R90 + R144) ───────────────────────────────────────────────
+// Adaptive inverse tone mapping. Expands both Oklab chroma (R90) and luma (R144)
+// using the IQR-derived compression ratio — restoring the joint luma+chroma signal
+// the game's tonemapper compressed. Works on any S-curve tonemapper. 0 = off.
+// Re-tune after R144: start at 0.35–0.40 (joint expansion is stronger than chroma-only).
+#define INVERSE_STRENGTH  0.40
 
 
 // ── HUE ROTATION ─────────────────────────────────────────────────────────────
