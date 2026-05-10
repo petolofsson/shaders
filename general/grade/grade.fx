@@ -795,25 +795,34 @@ float3 GrainValueNoise(float2 p, uint slot)
     return lerp(lerp(n00, n10, u.x), lerp(n01, n11, u.x), u.y) - 0.5;
 }
 
-// R136: Selwyn 2383 film grain — R167 three improvements:
-// 1) Luma-dependent grain size: shadows coarser (2.5px), highlights finer (1.5px).
-// 2) Per-channel dye layer sizing: G finest (×0.90), R mid (×1.00), B coarsest (×1.15).
-// 3) Blue noise 1px octave: difference of two offset hashes removes low-frequency energy.
+// R136: Selwyn 2383 film grain — R169 temporal cross-dissolve between 24fps slots.
+// frac(FRAME_TIMER/41.667) gives sub-frame position within each grain cycle.
+// Cross-fading slot0→slot1 eliminates the screen-space snap that reads as "rain"
+// at high display framerates (>60fps). At 24fps display: blend advances 1.0/frame
+// → identical to hard snap. Fully automatic — no knobs.
+float3 GrainSlot(float2 p, float luma_scale, uint slot)
+{
+    float3 coarse = float3(
+        GrainValueNoise(p / (luma_scale * 1.00), slot     ).r,
+        GrainValueNoise(p / (luma_scale * 0.90), slot + 3u).g,
+        GrainValueNoise(p / (luma_scale * 1.15), slot + 5u).b
+    );
+    float3 ha = pcg3d_hash(uint3(uint(p.x),     uint(p.y),     slot + 7u));
+    float3 hb = pcg3d_hash(uint3(uint(p.x) + 1, uint(p.y) + 1, slot + 7u));
+    return coarse * 0.70 + (ha - hb) * 0.5 * 0.30;
+}
+
 float3 ApplyFilmGrain(float3 rgb, float2 pos_xy)
 {
-    uint   slot       = uint(FRAME_TIMER / 41.667);
+    float  timer      = FRAME_TIMER / 41.667;
+    uint   slot0      = uint(timer);
+    float  blend      = frac(timer);
     float  res_scale  = BUFFER_HEIGHT / 1440.0;
     float2 p          = pos_xy / res_scale;
     float  L_g        = pow(max(Luma(rgb), 0.0), 1.0 / 2.2);
     float  luma_scale = lerp(2.5, 1.5, L_g);
-    float  g_r        = GrainValueNoise(p / (luma_scale * 1.00), slot     ).r;
-    float  g_g        = GrainValueNoise(p / (luma_scale * 0.90), slot + 3u).g;
-    float  g_b        = GrainValueNoise(p / (luma_scale * 1.15), slot + 5u).b;
-    float3 g_coarse   = float3(g_r, g_g, g_b);
-    float3 a          = pcg3d_hash(uint3(uint(p.x),     uint(p.y),     slot + 7u));
-    float3 b          = pcg3d_hash(uint3(uint(p.x) + 1, uint(p.y) + 1, slot + 7u));
-    float3 g1         = (a - b) * 0.5;
-    float3 gnoise     = g_coarse * 0.70 + g1 * 0.30;
+    float3 gnoise     = lerp(GrainSlot(p, luma_scale, slot0),
+                             GrainSlot(p, luma_scale, slot0 + 1u), blend);
     float  env        = GRAIN_STRENGTH * 0.05 * sqrt(max(0.0, 1.0 - L_g));
     return saturate(rgb + gnoise * env * float3(1.00, 0.80, 1.50));
 }
