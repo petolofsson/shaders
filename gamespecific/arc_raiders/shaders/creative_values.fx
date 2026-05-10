@@ -1,11 +1,10 @@
 // creative_values.fx — tune here
 
 // ── INPUT ─────────────────────────────────────────────────────────────────────
-// Adaptive inverse tone mapping. Expands both Oklab chroma (R90) and luma (R144)
-// using the IQR-derived compression ratio — restoring the joint luma+chroma signal
-// the game's tonemapper compressed. Works on any S-curve tonemapper. 0 = off.
-// Re-tune after R144: start at 0.35–0.40 (joint expansion is stronger than chroma-only).
-#define INVERSE_STRENGTH  0.35
+// Adaptive inverse tone mapping. Expands Oklab chroma using the IQR-derived compression
+// ratio — restoring chroma the game's tonemapper compressed. Luma is handled by zone
+// S-curve. Works on any S-curve tonemapper. 0 = off. Start at 0.30–0.50.
+#define INVERSE_STRENGTH  0.40
 
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
 // Applied as pow(rgb, EXPOSURE) before any zone or curve work.
@@ -42,13 +41,13 @@
 // Kodak 2383 print emulsion on top of FilmCurve: lifts blacks, compresses
 // highlights, desaturates mids ~15%, adds warm shadow cast. 0 = off.
 // 1 = full 2383. 0.35 = recommended starting point.
-#define PRINT_STOCK  0.35
+#define PRINT_STOCK  0.37
 
 // Skip the bleach step during print development — retains metallic silver alongside
 // color dye. Desaturates shadows most (denser silver retention in unexposed areas),
 // steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.
 // 0 = off. 1 = full (near-monochrome shadows). Start: 0.1–0.3.
-#define BLEACH_BYPASS  0.15
+#define BLEACH_BYPASS  0.05
 
 // Primary color grade. Runs after FilmCurve, before zone contrast.
 // TEMP: positive = warm (R up, B down), negative = cool. Range ±100.
@@ -63,9 +62,8 @@
 
 // ── TONAL ─────────────────────────────────────────────────────────────────────
 // Scales the adaptive zone S-curve strength. 1.0 = calibrated default. 0 = off.
-// R145: auto-coupled to inverse grade slope — less zone contrast when R144 luma
-// expansion already restored compression. 2.0 = aggressive. Range 0–2.
-#define ZONE_STRENGTH  0.40
+// 2.0 = aggressive. Range 0–2.
+#define ZONE_STRENGTH  1.00
 
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
@@ -75,7 +73,7 @@
 // Strength of the per-hue chroma lift. Acts as a gain near each hue band's scene
 // mean — lift-only, vibrance-masked (already-saturated pixels are attenuated).
 // Spatial R68A modulation applied on top. 1.0 = calibrated default. 0 = off.
-#define CHROMA_STR  1.20
+#define CHROMA_STR  1.05
 
 // R133: per-hue chroma rolloff as Oklab L approaches 1.0, calibrated from Munsell
 // Renotation data. f=(4(1-L))^n per hue: no effect below L=0.75, C→0 at L=1.0.
@@ -89,7 +87,7 @@
 // Desat: lab.yz *= (1 − 0.12 × w) — rods are achromatic; deep shadows lose chroma.
 // Neutrals unaffected (C=0 → zero shift). R117: transition widened luma 0.12 → 0.30.
 // Recalibrate from scratch: try 0.6–0.8. 0 = off.
-#define PURKINJE_STRENGTH  0.90
+#define PURKINJE_STRENGTH  0.70
 
 // Per-band hue rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
 // (Red→Yellow, Green→Cyan, Blue→Magenta). Default 0.0 = passthrough.
@@ -105,11 +103,11 @@
 // (yellow filter layer blocks blue from reaching base). White sources glow orange.
 // Fires inside game bloom radius, not on top of it.
 // 0 = off. 0.35 = calibrated default. 1.0 = Ektachrome-style aggressive.
-#define HAL_STRENGTH  0.30
+#define HAL_STRENGTH  0.00
 // Chromatic crossover threshold (ring luma units). Controls where the inner/outer
 // halation colour character transitions. Lower = more orange overall.
 // Range 0.02–0.20. Tune: raise until orange fringe looks physically correct.
-#define HAL_GAMMA     0.05
+#define HAL_GAMMA     0.00
 
 // ── OUTPUT ────────────────────────────────────────────────────────────────────
 // Hollywood Black Magic dual-component model (R131):

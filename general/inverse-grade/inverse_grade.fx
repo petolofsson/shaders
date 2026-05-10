@@ -39,7 +39,11 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     if (pos.y < 1.0) return col;
     if (INVERSE_STRENGTH <= 0.0) return col;
     float slope_enc  = ReadHWY(HWY_SLOPE);
-    float slope      = max(slope_enc * 1.5 + 1.0, 1.15);  // clamp below valid min; uninit highway (slot=0) decodes to 1.0, clamped to 1.15
+    // R164: LUMA_MEAN_PRE cross-check — bright raw mean = game didn't compress heavily,
+    // cap slope more tightly so IQR-derived expansion doesn't overshoot.
+    float mean_pre   = ReadHWY(HWY_LUMA_MEAN_PRE);
+    float slope_cap  = lerp(2.2, 1.5, saturate((mean_pre - 0.25) / 0.35));
+    float slope      = clamp(slope_enc * 1.5 + 1.0, 1.15, slope_cap);
     float3 lab        = RGBtoOklab(col.rgb);
     float  C          = length(lab.yz);
     float  mid_weight = lab.x * (1.0 - lab.x) * 4.0;
@@ -53,8 +57,16 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     // R156: warm hues (red, orange) are compressed more by ACES-style tonemappers;
     // cool hues (teal, cyan) less. Scale slope per hue before applying expansion.
     float  slope_eff   = clamp(slope * (1.0 + HueSlopeBias(hue)), 1.0, 2.2);
-    float  factor      = lerp(1.0, slope_eff, float(INVERSE_STRENGTH) * mid_weight * c_weight);
     float2 dir         = lab.yz / max(C, 1e-5);
+    // R163: dominant-hue aware expansion — complementary pixels are under-represented
+    // and deserve slightly more expansion; aligned pixels are already plentiful.
+    // CHROMA_ANGLE encodes mean chroma direction (atan2 of scene ab centroid).
+    float  scene_ang   = ReadHWY(HWY_CHROMA_ANGLE) * 6.28318 - 3.14159;
+    float2 scene_dir;
+    sincos(scene_ang, scene_dir.y, scene_dir.x);
+    float  alignment   = dot(dir, scene_dir);          // 1 = aligned, -1 = complementary
+    float  dir_scale   = 1.0 - alignment * 0.15;       // ±15% on expansion weight
+    float  factor      = lerp(1.0, slope_eff, float(INVERSE_STRENGTH) * mid_weight * c_weight * dir_scale);
     float  new_C       = mean_C + (C - mean_C) * factor;
     // Per-hue ceiling — prevents expansion from overshooting natural gamut.
     // Preserves incoming C if already above ceiling (no reduction), but blocks
@@ -62,16 +74,6 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     new_C   = min(new_C, max(HueCeil(hue), C));
     lab.yz  = dir * max(new_C, 0.0);
 
-    // R144: luma expansion — restore L compressed by the game's tonemapper.
-    // Pivot is cbrt(p50_linear): p50 is stored as linear Rec709 luma; Oklab L is
-    // perceptual (cube-root), so raw p50_linear as pivot places zero-crossing at
-    // Oklab L≈0.50 (linear Y≈0.125, deep shadow). cbrt corrects this to ~0.79.
-    // c_weight excluded: tonemapper compressed every pixel's luma, neutrals included.
-    float p50_lin     = ReadHWY(HWY_P50);
-    float p50_lab     = exp2(log2(max(p50_lin, 1e-10)) * (1.0 / 3.0));
-    float luma_factor = lerp(1.0, slope, float(INVERSE_STRENGTH) * mid_weight);
-    float new_L       = p50_lab + (lab.x - p50_lab) * luma_factor;
-    lab.x = max(new_L, 0.0);
 
     col.rgb   = saturate(OklabToRGB(lab));
     return col;

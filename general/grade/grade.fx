@@ -205,12 +205,20 @@ float3 ApplyBleachBypass(float3 lin, float bleach_bypass)
     return saturate(OklabToRGB(lab_bb));
 }
 
-float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print_stock)
+float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print_stock,
+                       float p25, float p75)
 {
-    float3 ps       = lin * (1.0 - 0.025) + 0.025;
+    // R160: adaptive black lift — back off when scene already has raised shadows.
+    // Full 0.025 lift when p25≈0, ramps to zero at p25=0.06 (6% linear).
+    float ps_lift   = 0.025 * saturate(1.0 - p25 / 0.06);
+    float3 ps       = lin * (1.0 - ps_lift) + ps_lift;
     float3 toe      = ps * ps * 3.2;
     float3 ps3      = ps * ps * ps;
-    float3 shoulder = 1.0 - (1.0 - ps) * (1.0 - ps) * 1.8 - ps3 * ps3 * 0.06;
+    // R160: adaptive shoulder — soften compression when scene is bright-heavy.
+    // 1.8 in dark/normal scenes, eases to 1.2 when p75 > 0.70.
+    float ps_shoulder = lerp(1.8, 1.2, saturate((p75 - 0.40) / 0.30));
+    float ps_cubic    = lerp(0.06, 0.02, saturate((p75 - 0.40) / 0.30));
+    float3 shoulder = 1.0 - (1.0 - ps) * (1.0 - ps) * ps_shoulder - ps3 * ps3 * ps_cubic;
     ps = lerp(toe, shoulder, smoothstep(0.0, 0.5, ps));
     float luma_ps = dot(ps, float3(0.2126, 0.7152, 0.0722));
     float desat_w = 0.15 * (1.0 - smoothstep(0.0, fc_knee_toe, luma_ps))
@@ -289,6 +297,7 @@ struct SceneCtx {
     float  chroma_str_base;
     float  bowley;
     float  scene_mode;
+    float  specular_contrast;
 };
 
 struct TonalOut { float3 lin; float new_luma; float local_var; };
@@ -317,12 +326,9 @@ SceneCtx BuildSceneCtx()
     ctx.ss_04_25           = smoothstep(0.03, 0.16, ctx.zone_std);
     float spread_scale     = lerp(0.7, 1.1, ctx.ss_08_25);
     float lum_att          = smoothstep(0.10, 0.40, ctx.zone_log_key);
-    // R145: couple zone_str to inverse grade slope — high tonemapper compression
-    // already restored by R144 luma expansion, so zone adds less on top.
     // ZONE_STRENGTH scale: 1.0 = calibrated default, 0 = off, 2.0 = aggressive.
-    float inv_slope        = 1.0 / max(ReadHWY(HWY_SLOPE) * 1.5 + 1.0, 1.15);
     ctx.zone_str           = lerp(0.26, 0.16, ctx.ss_08_25)
-                           * lerp(1.10, 0.93, lum_att) * (ZONE_STRENGTH * 0.30) * inv_slope;
+                           * lerp(1.10, 0.93, lum_att) * (ZONE_STRENGTH * 0.30);
     ctx.fc_knee            = lerp(0.90, 0.80, saturate((ctx.eff_p75 - 0.60) / 0.30));
     // R147: Bowley skewness — right-skewed (dark dominant, bright tail) → lower knee
     // to catch sparse bright tail that p75-based formula misses when p75 is low.
@@ -342,15 +348,22 @@ SceneCtx BuildSceneCtx()
     ctx.fc_ktoe_r          = clamp(ctx.fc_knee_toe * exp2(CURVE_R_TOE),  0.08, 0.35);
     ctx.fc_ktoe_b          = clamp(ctx.fc_knee_toe * exp2(CURVE_B_TOE),  0.08, 0.35);
     ctx.fc_toe_fac         = 0.03 / (ctx.fc_knee_toe * ctx.fc_knee_toe);
-    float _sls_t           = saturate((ctx.perc.r - 0.025) / 0.175);
-    ctx.shadow_lift_str    = lerp(1.50, 0.45, _sls_t*_sls_t*_sls_t*(_sls_t*(_sls_t*6.0-15.0)+10.0));
+    float _sls_t              = saturate((ctx.perc.r - 0.025) / 0.175);
+    ctx.shadow_lift_str       = lerp(1.50, 0.45, _sls_t*_sls_t*_sls_t*(_sls_t*(_sls_t*6.0-15.0)+10.0));
+    // R162: specular contrast — p90−p50 gap measures isolated bright sources vs scene median.
+    ctx.specular_contrast     = saturate((ReadHWY(HWY_P90) - ctx.perc.g) / 0.40);
     ctx.slow_key           = max(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0.001);
     ctx.scene_mode         = ReadHWY(HWY_MODE);
     // R151: muted scenes (low mean_C) need more chroma lift; vibrant scenes back off.
+    // R161: achromatic fraction gate — high achrom_frac means most pixels are genuinely
+    // colorless; aggressive lift risks pushing near-neutral noise into false color.
+    // Complements mean_C: achrom_frac measures pixel count, mean_C measures magnitude.
     float mean_C_scene     = ReadHWY(HWY_MEAN_CHROMA);
+    float achrom_frac      = ReadHWY(HWY_ACHROM_FRAC);
     ctx.chroma_str_base    = CHROMA_STR * 0.04
                            * lerp(0.80, 1.20, smoothstep(0.05, 0.35, ctx.zone_log_key))
-                           * lerp(1.2, 1.0, saturate(mean_C_scene / 0.12));
+                           * lerp(1.2, 1.0, saturate(mean_C_scene / 0.12))
+                           * lerp(1.0, 0.60, smoothstep(0.60, 0.85, achrom_frac));
     return ctx;
 }
 
@@ -373,11 +386,11 @@ float3 ApplyCorrective(float3 lin, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
     // ── R105: halation — fires before print stock (physical: negative before printing) ──
     // R151: p90−p50 gap measures isolated bright sources against scene median —
     // direct specular-vs-surround contrast, not scene darkness proxy.
-    float specular_contrast = saturate((ReadHWY(HWY_P90) - ctx.perc.g) / 0.40);
-    float eff_hal_str = HAL_STRENGTH * lerp(1.0, 1.4, specular_contrast);
+    float eff_hal_str = HAL_STRENGTH * lerp(1.0, 1.4, ctx.specular_contrast);
     out_lin = ApplyHalation(out_lin, uv, lf_mip2_tex.rgb, eff_hal_str, HAL_GAMMA);
     // ── R51: print stock + R110: masking coupler + R130: dye matrix ──────────
-    out_lin = ApplyPrintStock(out_lin, ctx.fc_knee_toe, ctx.fc_knee, PRINT_STOCK);
+    out_lin = ApplyPrintStock(out_lin, ctx.fc_knee_toe, ctx.fc_knee, PRINT_STOCK,
+                              ctx.eff_p25, ctx.eff_p75);
     out_lin = ApplyMaskingCoupler(out_lin, PRINT_STOCK);
     out_lin = ApplyDyeMatrix(out_lin);
     // ── BLEACH BYPASS + R19: 3-way CC ────────────────────────────────────────
@@ -426,10 +439,13 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     float  fine_var        = abs(col_luma - luma_nb);
     float  fine_texture_att = 1.0 - saturate((fine_var - 0.004) / 0.008);
     // R60: temporal context — slow ambient key boosts lift during dark transitions, suppresses on re-entry
-    float context_lift = exp2(log2(ctx.slow_key / zk_safe) * 0.4);
-    float shadow_lift  = ctx.shadow_lift_str * (0.149169 / (illum_s0 * illum_s0 + 0.003))
-                       * texture_att * fine_texture_att * detail_protect * context_lift;
-    float lift_w       = new_luma * smoothstep(0.20, 0.0, new_luma);
+    float context_lift   = exp2(log2(ctx.slow_key / zk_safe) * 0.4);
+    // R162: suppress shadow lift when isolated bright sources dominate (high specular contrast).
+    // High p90−p50 gap = sun/lamp in frame — lifting shadows flattens depth against the source.
+    float specular_att   = 1.0 - smoothstep(0.50, 0.90, ctx.specular_contrast) * 0.35;
+    float shadow_lift    = ctx.shadow_lift_str * (0.149169 / (illum_s0 * illum_s0 + 0.003))
+                         * texture_att * fine_texture_att * detail_protect * context_lift * specular_att;
+    float lift_w         = new_luma * smoothstep(0.20, 0.0, new_luma);
     new_luma = saturate(new_luma + (shadow_lift / 100.0) * 0.75 * lift_w * SHADOW_LIFT_STRENGTH);
     // R62 Finding 3: chroma-stable tonal — apply luma ratio in Oklab L to prevent zone S-curve from shifting chroma
     float3 lab_t  = RGBtoOklab(saturate(lin));
@@ -625,8 +641,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
             float4 zs  = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0));
             float ss   = smoothstep(0.06, 0.16, zs.g);
             float la   = smoothstep(0.10, 0.40, zs.r);
-            float inv_sl = 1.0 / max(ReadHWY(HWY_SLOPE) * 1.5 + 1.0, 1.15);
-            float zstr = lerp(0.26, 0.16, ss) * lerp(1.10, 0.93, la) * (ZONE_STRENGTH * 0.30) * inv_sl;
+            float zstr = lerp(0.26, 0.16, ss) * lerp(1.10, 0.93, la) * (ZONE_STRENGTH * 0.30);
             return float4(saturate(zstr / 0.30), 0.0, 0.0, 1.0);
         }
         if (xi == HWY_SHADOW_LIFT_STR) {
