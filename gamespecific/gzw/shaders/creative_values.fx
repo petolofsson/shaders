@@ -73,9 +73,11 @@
 #define SHADOW_LIFT_STRENGTH  0.8
 
 // ── CHROMA ────────────────────────────────────────────────────────────────────
-// Strength of the per-hue chroma lift. Acts as a gain near each hue band's scene
+// Master scalar for per-hue chroma lift. Acts as a gain near each hue band's scene
 // mean — lift-only, vibrance-masked (already-saturated pixels are attenuated).
-// Spatial R68A modulation applied on top. 1.0 = calibrated default. 0 = off.
+// R176 auto-modulates ×0.85–1.25 on top based on scene mean chroma: achromatic
+// scenes get more lift (gamut-expansion mode), vibrant scenes back off.
+// This knob scales the full automated range. 1.0 = calibrated default. 0 = off.
 #define CHROMA_STR  1.10
 
 // R133: per-hue chroma rolloff as Oklab L approaches 1.0, calibrated from Munsell
