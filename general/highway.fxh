@@ -41,6 +41,10 @@
 #define HWY_SHADOW_LIFT_STR 217    // shadow lift strength; encode: v/1.5  decode: v*1.5  range [0,1.5]
 #define HWY_CHROMA_STR      218    // effective chroma lift base; encode: v/0.10  decode: v*0.10  range [0,0.10]
 #define HWY_DIFFUSION_STR   219    // effective diffusion adapt_str; encode: v/0.10  decode: v*0.10  range [0,0.10]
+#define HWY_ILLUM_WARM      220    // scene illuminant warmth: L−S in CAT16 LMS, biased +0.5
+                                   // 0=very cool, ~0.39=D65 neutral, 1=very warm; raw [0,1]
+                                   // Written by ColorTransformPS (NeutralIllumTex). One-frame delay
+                                   // for inverse_grade — acceptable; illuminant changes slowly.
 
 // ── Helper ───────────────────────────────────────────────────────────────────
 #define ReadHWY(slot) \

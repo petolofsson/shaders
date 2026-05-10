@@ -56,7 +56,15 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     float  mean_C      = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).r;
     // R156: warm hues (red, orange) are compressed more by ACES-style tonemappers;
     // cool hues (teal, cyan) less. Scale slope per hue before applying expansion.
-    float  slope_eff   = clamp(slope * (1.0 + HueSlopeBias(hue)), 1.0, 2.2);
+    // R165: in warm-lit scenes, warm-hue saturation is correct for the illuminant —
+    // not a tonemapper artifact. Back off positive HueSlopeBias proportionally.
+    // One-frame delay acceptable; illuminant changes slowly. Frame 0: illum_warm=0
+    // → warm_scene=0 → bias unchanged — safe default.
+    float  illum_warm  = ReadHWY(HWY_ILLUM_WARM);
+    float  warm_scene  = saturate((illum_warm - 0.45) / 0.35);
+    float  bias        = HueSlopeBias(hue);
+    float  bias_adj    = max(bias, 0.0) * (1.0 - warm_scene * 0.50) + min(bias, 0.0);
+    float  slope_eff   = clamp(slope * (1.0 + bias_adj), 1.0, 2.2);
     float2 dir         = lab.yz / max(C, 1e-5);
     // R163: dominant-hue aware expansion — complementary pixels are under-represented
     // and deserve slightly more expansion; aligned pixels are already plentiful.

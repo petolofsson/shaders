@@ -655,6 +655,19 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
             float cb = CHROMA_STR * 0.04 * lerp(0.80, 1.20, smoothstep(0.05, 0.35, zk));
             return float4(saturate(cb / 0.10), 0.0, 0.0, 1.0);
         }
+        if (xi == HWY_ILLUM_WARM) {
+            // R165: derive illuminant warmth from NeutralIllumTex via CAT16 LMS.
+            // warmth = L − S (after M-normalization): positive = warm, negative = cool.
+            // Biased +0.5 so D65 ≈ 0.39, very warm ≈ 0.80, very cool ≈ 0.06.
+            float3 ir  = tex2Dlod(NeutralIllumSamp, float4(0.5, 0.5, 0, 0)).rgb;
+            float3 in_ = ir / max(Luma(ir), 0.001);
+            const float3x3 Mf = float3x3(0.302825, 0.602279, 0.070428,
+                                          0.153818, 0.777214, 0.085341,
+                                          0.027974, 0.147911, 0.908874);
+            float3 lms  = mul(Mf, in_);
+            float3 lmsn = lms / max(lms.g, 0.001);
+            return float4(saturate(lmsn.r - lmsn.b + 0.5), 0.0, 0.0, 1.0);
+        }
         return col;
     }
     SceneCtx ctx       = BuildSceneCtx();
