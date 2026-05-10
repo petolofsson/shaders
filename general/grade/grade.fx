@@ -355,15 +355,10 @@ SceneCtx BuildSceneCtx()
     ctx.slow_key           = max(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0.001);
     ctx.scene_mode         = ReadHWY(HWY_MODE);
     // R151: muted scenes (low mean_C) need more chroma lift; vibrant scenes back off.
-    // R161: achromatic fraction gate — high achrom_frac means most pixels are genuinely
-    // colorless; aggressive lift risks pushing near-neutral noise into false color.
-    // Complements mean_C: achrom_frac measures pixel count, mean_C measures magnitude.
     float mean_C_scene     = ReadHWY(HWY_MEAN_CHROMA);
-    float achrom_frac      = ReadHWY(HWY_ACHROM_FRAC);
     ctx.chroma_str_base    = CHROMA_STR * 0.04
                            * lerp(0.80, 1.20, smoothstep(0.05, 0.35, ctx.zone_log_key))
-                           * lerp(1.2, 1.0, saturate(mean_C_scene / 0.12))
-                           * lerp(1.0, 0.60, smoothstep(0.60, 0.85, achrom_frac));
+                           * lerp(1.2, 1.0, saturate(mean_C_scene / 0.12));
     return ctx;
 }
 

@@ -39,11 +39,7 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     if (pos.y < 1.0) return col;
     if (INVERSE_STRENGTH <= 0.0) return col;
     float slope_enc  = ReadHWY(HWY_SLOPE);
-    // R164: LUMA_MEAN_PRE cross-check — bright raw mean = game didn't compress heavily,
-    // cap slope more tightly so IQR-derived expansion doesn't overshoot.
-    float mean_pre   = ReadHWY(HWY_LUMA_MEAN_PRE);
-    float slope_cap  = lerp(2.2, 1.5, saturate((mean_pre - 0.25) / 0.35));
-    float slope      = clamp(slope_enc * 1.5 + 1.0, 1.15, slope_cap);
+    float slope      = clamp(slope_enc * 1.5 + 1.0, 1.15, 2.2);
     float3 lab        = RGBtoOklab(col.rgb);
     float  C          = length(lab.yz);
     float  mid_weight = lab.x * (1.0 - lab.x) * 4.0;
@@ -56,15 +52,8 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     float  mean_C      = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).r;
     // R156: warm hues (red, orange) are compressed more by ACES-style tonemappers;
     // cool hues (teal, cyan) less. Scale slope per hue before applying expansion.
-    // R165: in warm-lit scenes, warm-hue saturation is correct for the illuminant —
-    // not a tonemapper artifact. Back off positive HueSlopeBias proportionally.
-    // One-frame delay acceptable; illuminant changes slowly. Frame 0: illum_warm=0
-    // → warm_scene=0 → bias unchanged — safe default.
-    float  illum_warm  = ReadHWY(HWY_ILLUM_WARM);
-    float  warm_scene  = saturate((illum_warm - 0.45) / 0.35);
     float  bias        = HueSlopeBias(hue);
-    float  bias_adj    = max(bias, 0.0) * (1.0 - warm_scene * 0.50) + min(bias, 0.0);
-    float  slope_eff   = clamp(slope * (1.0 + bias_adj), 1.0, 2.2);
+    float  slope_eff   = clamp(slope * (1.0 + bias), 1.0, 2.2);
     float2 dir         = lab.yz / max(C, 1e-5);
     // R163: dominant-hue aware expansion — complementary pixels are under-represented
     // and deserve slightly more expansion; aligned pixels are already plentiful.
@@ -81,8 +70,6 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     // inverse grade from pushing further. Mirrors R73 ceilings in grade.fx.
     new_C   = min(new_C, max(HueCeil(hue), C));
     lab.yz  = dir * max(new_C, 0.0);
-
-
     col.rgb   = saturate(OklabToRGB(lab));
     return col;
 }
