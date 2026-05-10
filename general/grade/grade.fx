@@ -766,19 +766,40 @@ float3 ApplyDiffusionBloom(float3 base_rgb, float3 diff_blur, float adapt_str, f
     return saturate(lerp(result, diff_blur, eff_diff * 0.06 * mid_gate * ch_scatter));
 }
 
-// R136: Selwyn 2383 film grain — pcg3d RGB-decorrelated, framerate-independent.
+float3 pcg3d_hash(uint3 v)
+{
+    v = v * 1664525u + 1013904223u;
+    v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+    v ^= v >> 16u;
+    v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;
+    return float3(v) * (1.0 / 4294967296.0);
+}
+
+float3 GrainValueNoise(float2 p, uint slot)
+{
+    float2 g = floor(p);
+    float2 f = frac(p);
+    float2 u = f * f * (3.0 - 2.0 * f);
+    float3 n00 = pcg3d_hash(uint3(uint(g.x),     uint(g.y),     slot));
+    float3 n10 = pcg3d_hash(uint3(uint(g.x) + 1, uint(g.y),     slot));
+    float3 n01 = pcg3d_hash(uint3(uint(g.x),     uint(g.y) + 1, slot));
+    float3 n11 = pcg3d_hash(uint3(uint(g.x) + 1, uint(g.y) + 1, slot));
+    return lerp(lerp(n00, n10, u.x), lerp(n01, n11, u.x), u.y) - 0.5;
+}
+
+// R136: Selwyn 2383 film grain — three-octave value noise, RGB-decorrelated.
+// Octaves: 4px blobs (0.20) + 2px primary (0.55) + 1px fine detail (0.25).
 float3 ApplyFilmGrain(float3 rgb, float2 pos_xy)
 {
-    uint   grain_slot = uint(FRAME_TIMER / 41.667);
-    float  res_scale  = BUFFER_HEIGHT / 1440.0;  // 1.0 at 1440p, 1.5 at 4K — grain calibrated at 1440p
-    uint3  seed = uint3(uint2(pos_xy / res_scale), grain_slot);
-    seed = seed * 1664525u + 1013904223u;
-    seed.x += seed.y * seed.z; seed.y += seed.z * seed.x; seed.z += seed.x * seed.y;
-    seed ^= seed >> 16u;
-    seed.x += seed.y * seed.z; seed.y += seed.z * seed.x; seed.z += seed.x * seed.y;
-    float3 gnoise = float3(seed) * (1.0 / 4294967296.0) - 0.5;
-    float  L_g    = pow(max(Luma(rgb), 0.0), 1.0 / 2.2);
-    float  env    = GRAIN_STRENGTH * 0.05 * sqrt(max(0.0, 1.0 - L_g));
+    uint   slot      = uint(FRAME_TIMER / 41.667);
+    float  res_scale = BUFFER_HEIGHT / 1440.0;
+    float2 p         = pos_xy / res_scale;
+    float3 g4        = GrainValueNoise(p / 4.0, slot);
+    float3 g2        = GrainValueNoise(p / 2.0, slot + 7u);
+    float3 g1        = pcg3d_hash(uint3(uint(p.x), uint(p.y), slot + 13u)) - 0.5;
+    float3 gnoise    = g4 * 0.20 + g2 * 0.55 + g1 * 0.25;
+    float  L_g       = pow(max(Luma(rgb), 0.0), 1.0 / 2.2);
+    float  env       = GRAIN_STRENGTH * 0.05 * sqrt(max(0.0, 1.0 - L_g));
     return saturate(rgb + gnoise * env * float3(1.00, 0.80, 1.50));
 }
 
