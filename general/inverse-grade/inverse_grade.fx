@@ -39,9 +39,7 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     if (pos.y < 1.0) return col;
     if (INVERSE_STRENGTH <= 0.0) return col;
     float slope_enc  = ReadHWY(HWY_SLOPE);
-    float mean_pre   = ReadHWY(HWY_LUMA_MEAN_PRE);
-    float slope_cap  = lerp(2.2, 1.5, saturate((mean_pre - 0.25) / 0.35));
-    float slope      = clamp(slope_enc * 1.5 + 1.0, 1.15, slope_cap);
+    float slope      = clamp(slope_enc * 1.5 + 1.0, 1.15, 2.2);
     float3 lab        = RGBtoOklab(col.rgb);
     float  C          = length(lab.yz);
     float  mid_weight = lab.x * (1.0 - lab.x) * 4.0;
