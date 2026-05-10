@@ -73,7 +73,7 @@
 // Per-hue chroma lift strength. Acts as a gain near each hue band's scene mean —
 // lift-only, vibrance-masked (already-saturated pixels are attenuated).
 // 1.0 = calibrated default. 0 = off.
-#define CHROMA_STR  1.25
+#define VIBRANCE  1.25
 
 // R133: per-hue chroma rolloff as Oklab L approaches 1.0, calibrated from Munsell
 // Renotation data. f=(4(1-L))^n per hue: no effect below L=0.75, C→0 at L=1.0.

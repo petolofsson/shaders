@@ -363,7 +363,7 @@ SceneCtx BuildSceneCtx()
     ctx.specular_contrast     = saturate((ReadHWY(HWY_P90) - ctx.perc.g) / 0.40);
     ctx.slow_key           = max(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0.001);
     ctx.scene_mode         = ReadHWY(HWY_MODE);
-    ctx.chroma_str_base    = CHROMA_STR * 0.04;
+    ctx.chroma_str_base    = VIBRANCE * 0.04;
     return ctx;
 }
 
@@ -656,9 +656,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
             float sls   = lerp(1.50, 0.45, t*t*t*(t*(t*6.0-15.0)+10.0));
             return float4(saturate(sls * SHADOW_LIFT_STRENGTH / 1.5), 0.0, 0.0, 1.0);
         }
-        if (xi == HWY_CHROMA_STR) {
+        if (xi == HWY_VIBRANCE) {
             float zk = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
-            float cb = CHROMA_STR * 0.04 * lerp(0.80, 1.20, smoothstep(0.05, 0.35, zk));
+            float cb = VIBRANCE * 0.04 * lerp(0.80, 1.20, smoothstep(0.05, 0.35, zk));
             return float4(saturate(cb / 0.10), 0.0, 0.0, 1.0);
         }
         if (xi == HWY_ILLUM_WARM) {

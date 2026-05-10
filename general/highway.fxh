@@ -39,7 +39,7 @@
 #define HWY_FC_KNEE         214    // FilmCurve knee position [0,1]
 #define HWY_ZONE_STR        215    // zone contrast strength; encode: v/0.30  decode: v*0.30
 #define HWY_SHADOW_LIFT_STR 217    // shadow lift strength; encode: v/1.5  decode: v*1.5  range [0,1.5]
-#define HWY_CHROMA_STR      218    // effective chroma lift base; encode: v/0.10  decode: v*0.10  range [0,0.10]
+#define HWY_VIBRANCE        218    // effective vibrance base; encode: v/0.10  decode: v*0.10  range [0,0.10]
 #define HWY_DIFFUSION_STR   219    // effective diffusion adapt_str; encode: v/0.10  decode: v*0.10  range [0,0.10]
 #define HWY_ILLUM_WARM      220    // scene illuminant warmth: L−S in CAT16 LMS, biased +0.5
                                    // 0=very cool, ~0.39=D65 neutral, 1=very warm; raw [0,1]
