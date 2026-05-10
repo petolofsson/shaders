@@ -510,16 +510,6 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     float r133_roll = saturate(pow(max(0.0, 4.0 * (1.0 - lab.x)), HueBandRollN(h_perc)));
     C *= lerp(1.0, r133_roll, MUNSELL_HIGHLIGHT_ROLLOFF);
 
-    // Per-band luminance — ±1.0 → ±0.12 Oklab L, zero at achromatic (C-gated)
-    float lum_delta = LUM_RED    * HueBandWeight(h_perc, HB_BAND_RED)
-                    + LUM_YELLOW * HueBandWeight(h_perc, HB_BAND_YELLOW)
-                    + LUM_GREEN  * HueBandWeight(h_perc, HB_BAND_GREEN)
-                    + LUM_CYAN   * HueBandWeight(h_perc, HB_BAND_CYAN)
-                    + LUM_BLUE   * HueBandWeight(h_perc, HB_BAND_BLUE)
-                    + LUM_MAG    * HueBandWeight(h_perc, HB_BAND_MAGENTA);
-    float lum_c_gate = smoothstep(0.02, 0.08, C);
-    lab.x = saturate(lab.x + lum_delta * 0.12 * lum_c_gate);
-
     // R21: per-band hue rotation — compute h_out from original h before chroma lift
     float r21_delta = ROT_RED    * HueBandWeight(h_perc, HB_BAND_RED)
                     + ROT_YELLOW * HueBandWeight(h_perc, HB_BAND_YELLOW)

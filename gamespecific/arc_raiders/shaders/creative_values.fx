@@ -106,16 +106,6 @@
 #define ROT_BLUE    -0.03
 #define ROT_MAG      0.00
 
-// ── HUE LUMINANCE ────────────────────────────────────────────────────────────
-// Per-band luminance in Oklab L. ±1.0 → ±0.12 L units. C-gated — zero at
-// achromatic pixels. Default 0.0 = passthrough.
-#define LUM_RED     0.0
-#define LUM_YELLOW  0.0
-#define LUM_GREEN   0.0
-#define LUM_CYAN    0.0
-#define LUM_BLUE    0.0
-#define LUM_MAG     0.0
-
 // ── HUE SATURATION ───────────────────────────────────────────────────────────
 // Per-band chroma scale in Oklab C. ±1.0 → ±80% chroma per hue band.
 // Applied after Vibrance. Default 0.0 = passthrough.

@@ -102,15 +102,6 @@
 #define ROT_BLUE    -0.02
 #define ROT_MAG     +0.01
 
-// ── HUE LUMINANCE ────────────────────────────────────────────────────────────
-// Per-band luminance in Oklab L. ±1.0 → ±0.12 L units. C-gated — zero at
-// achromatic pixels. Default 0.0 = passthrough.
-#define LUM_RED     0.0
-#define LUM_YELLOW  0.0
-#define LUM_GREEN   0.0
-#define LUM_CYAN    0.0
-#define LUM_BLUE    0.0
-#define LUM_MAG     0.0
 
 // Film emulsion scatter from specular highlights — orange/amber fringe around
 // brightest sources. Red dominates (deepest dye layer), green small, blue near-zero
