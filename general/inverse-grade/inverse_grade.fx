@@ -37,23 +37,21 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
 {
     float4 col = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return col;
-    if (INVERSE_STRENGTH <= 0.0 && HIGHLIGHT_RECONSTRUCT <= 0.0) return col;
-
     float3 lab = RGBtoOklab(col.rgb);
     float  C   = length(lab.yz);
 
     // R143: highlight reconstruction — chroma rolloff near SDR clip ceiling.
+    // Always-on: physically correct defect correction, not a stylistic choice.
     // Wide near-clip zone (0.88→0.995): 8-bit has only 3–4 linear levels near clip.
     // C gate (0.18→0.08): skip intentionally saturated colored lights.
     // Desaturates only — never shifts hue, never adds energy.
-    if (HIGHLIGHT_RECONSTRUCT > 0.0) {
-        float max_ch  = max(max(col.r, col.g), col.b);
-        float recon_w = smoothstep(0.88, 0.995, max_ch)
-                      * smoothstep(0.18, 0.08, C)
-                      * HIGHLIGHT_RECONSTRUCT;
-        lab.yz *= (1.0 - recon_w);
-        C       = length(lab.yz);
-    }
+    float max_ch  = max(max(col.r, col.g), col.b);
+    float recon_w = smoothstep(0.88, 0.995, max_ch)
+                  * smoothstep(0.18, 0.08, C);
+    lab.yz *= (1.0 - recon_w);
+    C       = length(lab.yz);
+
+    if (INVERSE_STRENGTH <= 0.0) { col.rgb = saturate(OklabToRGB(lab)); return col; }
 
     // R90: adaptive chroma expansion
     if (INVERSE_STRENGTH > 0.0) {
