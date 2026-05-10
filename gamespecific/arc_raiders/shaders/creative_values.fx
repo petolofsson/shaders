@@ -67,7 +67,7 @@
 
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOW_LIFT_STRENGTH  1.10
+#define SHADOW_LIFT_STRENGTH  1.5
 
 // ── CHROMA ────────────────────────────────────────────────────────────────────
 // Strength of the per-hue chroma lift. Acts as a gain near each hue band's scene
@@ -87,7 +87,7 @@
 // Desat: lab.yz *= (1 − 0.12 × w) — rods are achromatic; deep shadows lose chroma.
 // Neutrals unaffected (C=0 → zero shift). R117: transition widened luma 0.12 → 0.30.
 // Recalibrate from scratch: try 0.6–0.8. 0 = off.
-#define PURKINJE_STRENGTH  0.75
+#define PURKINJE_STRENGTH  0.80
 
 // Per-band hue rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
 // (Red→Yellow, Green→Cyan, Blue→Magenta). Default 0.0 = passthrough.
@@ -122,7 +122,7 @@
 // Peaks in upper shadows (Oklab L≈0.50), falls off toward blacks and highlights.
 // Framerate-independent: turns over at ~24fps regardless of display fps.
 // 0 = off. 1.0 = calibrated 2383 amplitude. 1.5 = pushed. 2.0 = stylistic.
-#define GRAIN_STRENGTH 1.20
+#define GRAIN_STRENGTH 1.0
 
 // ── STAGE GATES ───────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.

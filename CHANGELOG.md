@@ -4,6 +4,16 @@
 
 ## 2026-05-10
 
+- **R174 grain overhaul** (`grade.fx`) — Diagnosed rain artifact root cause: luma-dependent `lerp(2.5,1.5,L_g)` grain cell size caused smooth spatial variation that read as directed motion during camera movement. Fix: fixed `luma_scale = 2.5`, single 24fps slot snap (`uint(FRAME_TIMER/41.667)`) — fps-agnostic, slot updates every 41.667ms regardless of display framerate. Restored 3× per-channel `GrainValueNoise` with physically correct Kodak 2383 dye layer sizing: cyan (R) ×1.15 coarsest, magenta (G) ×1.00, yellow (B) ×0.85 finest. R173 silver_boost retained. 14 hash calls total.
+
+- **R175 shadow lift improvements** (`grade.fx`) — Scene gate switched from p25 to `(p25+mode)×0.5`: mode prevents over-lifting bright outdoor scenes with correct deep shadows, p25 keeps lift active where shadow pixels actually need it. Pixel bell extended from `smoothstep(0.20,0,luma)` to `smoothstep(0.27,0,luma)` — reaches into lower midtones.
+
+- **Diffusion center fix** (`grade.fx`) — Center was 20% minimum diffusion — caused haze/bloom obscuring player view in bright scenes. Now 0% at center. Ramp breakpoints pushed outward: clear zone holds to r=0.30 before building (was r=0.10).
+
+- **arc_raiders tuning** — EXPOSURE 0.90→0.85, FILM_CEILING 1.00→0.97, PRINT_STOCK 0.40→0.50, ZONE_STRENGTH 1.00→1.10, SHADOW_LIFT_STRENGTH →1.0, PURKINJE_STRENGTH 0.70→0.75, HAL_STRENGTH →0.30, DIFFUSION_STRENGTH 0.65→0.70, GRAIN_STRENGTH 1.15→1.1.
+
+- **GZW tuning** — EXPOSURE →0.80, FILM_CEILING →0.97, PRINT_STOCK →0.50, BLEACH_BYPASS 0.10→0.15, ZONE_STRENGTH →1.15, SHADOW_LIFT_STRENGTH 1.15→0.80, PURKINJE_STRENGTH →0.65, HAL_STRENGTH →0.30, DIFFUSION_STRENGTH 0.60→0.65.
+
 - **R170 grain rain fix** (`grade.fx`) — Replaced linear cross-dissolve with variance-preserving dissolve `sqrt(1−t)×slot0 + sqrt(t)×slot1` (linear lerp drops amplitude to 71% at midpoint — visually pulses). Added per-slot lattice jitter: `pcg3d_hash(slot0, 7919u, 0u)` offsets each slot's sample grid by ±½ grain cell — breaks screen-pixel lock that caused rain parallax streaks at >100 FPS.
 
 - **R171 Kalman obs-confidence gate** (`corrective.fx`) — `obs_confidence = saturate(sum_w × 0.5)` applied to K, k_ema, and Q. When a hue band is absent (sum_w≈0), obs_confidence→0 collapses gain and process noise — absent bands freeze in place rather than drifting toward zero mean over time.

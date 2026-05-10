@@ -23,16 +23,12 @@ grade is an **8-pass technique**: LFDownscale1 → LFDownscale2 → NeutralIllum
 ## Known state
 
 - No known compile errors. Debug log: `/tmp/vkbasalt.log`
-- R159–R173 complete. R161 (achrom_frac chroma gate) and R164 (LUMA_MEAN_PRE slope cap) permanently dropped.
-- R165 (HWY_ILLUM_WARM slot 220) and R163 (CHROMA_ANGLE alignment bias) active.
-- R170: variance-preserving grain dissolve + per-slot lattice jitter — eliminates rain artifact at >100 FPS.
-- R171: Kalman obs-confidence gate — absent hue bands freeze in place rather than drifting to zero.
-- Perf: `analysis_scope` and `analysis_scope_pre` removed from chain (~8 FPS). `DrawLabel` stripped from all passes (~4+ FPS). Active chain: `analysis_frame : inverse_grade : corrective : grade`.
-- R172: GrainValueNoise collapsed per-channel — 30→14 pcg3d_hash calls (~53% grain ALU reduction).
-- R173: BLEACH_BYPASS × shadow_mask × 0.30 raises blue-noise grain weight in shadows when bleach bypass engaged.
-- GZW jungle movie grade complete: teal-green shadows, green ambient mids, golden highlights, deep-cyan greens.
-- **arc_raiders** current values: INVERSE_STRENGTH 0.50, SHADOW_LIFT_STRENGTH 1.00, CHROMA_STR 1.10, HAL_STRENGTH 0.20, HAL_GAMMA 0.05, GRAIN_STRENGTH 1.15.
-- **GZW** current values: SHADOW_LIFT_STRENGTH 1.15, DIFFUSION_STRENGTH 0.60, HAL_STRENGTH 0.30, HAL_GAMMA 0.02.
+- R159–R175 complete. R161/R164 permanently dropped.
+- R174: grain rain fixed — root cause was luma-dependent lerp in luma_scale, not temporal slot rate. Fixed luma_scale=2.5, 24fps slot snap, correct 2383 per-channel dye layer sizing (R×1.15/G×1.00/B×0.85).
+- R175: shadow lift gate now (p25+mode)×0.5 — prevents over-lift in bright outdoor scenes; pixel bell extended to smoothstep(0.27,0,luma).
+- Diffusion center: 0% (was 20%) — eliminated center haze. Ramp now starts at r=0.30.
+- **arc_raiders** current values: EXPOSURE 0.85, FILM_CEILING 0.97, PRINT_STOCK 0.50, BLEACH_BYPASS 0.10, ZONE_STRENGTH 1.10, SHADOW_LIFT_STRENGTH 1.0, CHROMA_STR 1.10, PURKINJE_STRENGTH 0.75, HAL_STRENGTH 0.30, HAL_GAMMA 0.05, DIFFUSION_STRENGTH 0.70, GRAIN_STRENGTH 1.1.
+- **GZW** current values: EXPOSURE 0.80, FILM_CEILING 0.97, PRINT_STOCK 0.50, BLEACH_BYPASS 0.15, ZONE_STRENGTH 1.15, SHADOW_LIFT_STRENGTH 0.80, PURKINJE_STRENGTH 0.65, HAL_STRENGTH 0.30, HAL_GAMMA 0.02, DIFFUSION_STRENGTH 0.65.
 - **Mid-shadow off-color** — unverified post R127/R130. Likely resolved. Re-test before marking closed.
 
 ## Next candidates
