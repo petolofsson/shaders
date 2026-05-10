@@ -355,7 +355,7 @@ SceneCtx BuildSceneCtx()
     ctx.fc_ktoe_r          = clamp(ctx.fc_knee_toe * exp2(CURVE_R_TOE),  0.08, 0.35);
     ctx.fc_ktoe_b          = clamp(ctx.fc_knee_toe * exp2(CURVE_B_TOE),  0.08, 0.35);
     ctx.fc_toe_fac         = 0.03 / (ctx.fc_knee_toe * ctx.fc_knee_toe);
-    float _sls_t              = saturate((ctx.perc.r - 0.025) / 0.175);
+    float _sls_t              = saturate((ctx.scene_mode - 0.025) / 0.175);
     ctx.shadow_lift_str       = lerp(1.50, 0.45, _sls_t*_sls_t*_sls_t*(_sls_t*(_sls_t*6.0-15.0)+10.0));
     // R162: specular contrast — p90−p50 gap measures isolated bright sources vs scene median.
     ctx.specular_contrast     = saturate((ReadHWY(HWY_P90) - ctx.perc.g) / 0.40);
