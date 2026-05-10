@@ -1,5 +1,4 @@
 // frame_analysis.fx — Frame-wide histogram analysis
-#include "debug_text.fxh"
 #include "../highway.fxh"
 #include "../common.fxh"
 //
@@ -201,8 +200,7 @@ float4 DebugOverlayPS(float4 pos : SV_Position,
             return float4(tex2Dlod(ModeSamp, float4(0.5, 0.5, 0, 0)).r, 0.0, 0.0, 1.0);
         return c;
     }
-    return DrawLabel(c, pos.xy, 270.0, 10.0,
-                     49u, 65u, 78u, 76u, float3(1.0, 0.95, 0.0)); // 1ANL
+    return c;
 }
 
 // ─── Pass 4 — Smooth luminance histogram ───────────────────────────────────
