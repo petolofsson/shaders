@@ -1,5 +1,4 @@
 // corrective.fx — Game-agnostic corrective analysis chain
-#include "debug_text.fxh"
 #include "../highway.fxh"
 #include "../hue_bands.fxh"
 #include "../common.fxh"
@@ -337,12 +336,6 @@ float4 PassthroughPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
             return float4(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0.0, 0.0, 1.0);
         return c;
     }
-    c = DrawLabel(c, pos.xy, 270.0, 26.0,
-                  51u, 67u, 79u, 82u, float3(0.1, 0.90, 0.1));  // 3COR
-    c = DrawLabel(c, pos.xy, 270.0, 34.0,
-                  52u, 90u, 79u, 78u, float3(0.7, 0.20, 1.0));  // 4ZON
-    c = DrawLabel(c, pos.xy, 270.0, 42.0,
-                  53u, 67u, 72u, 82u, float3(1.0, 0.20, 0.20)); // 5CHR
     return c;
 }
 
