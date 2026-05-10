@@ -793,42 +793,34 @@ float3 GrainValueNoise(float2 p, uint slot)
     return lerp(lerp(n00, n10, u.x), lerp(n01, n11, u.x), u.y) - 0.5;
 }
 
-// R136/R169/R170: Selwyn 2383 film grain.
-// R169: variance-preserving cross-dissolve — sqrt(1-t)*slot0 + sqrt(t)*slot1 keeps
-// grain amplitude constant through the transition (lerp would halve variance at t=0.5).
-// R170: per-slot lattice jitter — each 24fps slot shifts the grain anchor point by a
-// random sub-cell offset, so no screen pixel locks to the same grain crystal across
-// slots. Eliminates the "rain" parallax artifact at fast camera speeds without changing
-// per-frame grain statistics.
-// R172: collapsed per-channel GrainValueNoise calls into one — float3 bilinear corners
-// already decorrelate R/G/B; per-channel size variation (×1.00/0.90/1.15) dropped.
-// Hash calls: 14 → 6 per slot, 30 → 14 total. ~53% grain ALU reduction.
-// R173: silver_boost raises the 1px blue-noise weight in shadows when BLEACH_BYPASS > 0.
-// Retained metallic silver is densest in unexposed (shadow) areas — physically consistent
-// with ApplyBleachBypass shadow mask (1 − smoothstep(0, 0.65, L)).
-float3 GrainSlot(float2 p, float luma_scale, uint slot, float silver_boost)
-{
-    float3 coarse  = GrainValueNoise(p / luma_scale, slot);
-    float3 ha      = pcg3d_hash(uint3(uint(p.x),     uint(p.y),     slot + 7u));
-    float3 hb      = pcg3d_hash(uint3(uint(p.x) + 1, uint(p.y) + 1, slot + 7u));
-    float  fine_w  = 0.30 + silver_boost;
-    return coarse * (1.0 - fine_w) + (ha - hb) * 0.5 * fine_w;
-}
-
+// R174: Selwyn 2383 film grain — physically correct dye layer model.
+// Single 24fps slot snap (uint(FRAME_TIMER/41.667)) — no cross-dissolve, no jitter.
+// Cross-dissolve (R169/R170) caused "rain": smooth per-pixel temporal change in screen
+// space reads as directed motion when the camera moves. Snap transitions are uncorrelated
+// between slots so the eye reads them as grain, not streaking.
+// Three per-channel GrainValueNoise calls at physically correct 2383 dye layer sizes:
+//   cyan (R) coarsest ×1.15 — red-sensitive layer has largest grain clouds
+//   magenta (G) medium ×1.00
+//   yellow (B) finest ×0.85 — blue-sensitive layer is finest in chromogenic print stocks
+// Base luma_scale lerp(1.5, 1.0, L_g) — halved from R167 (was lerp(2.5,1.5)); matches
+// 2383 RMS granularity reference at 1440p (cyan layer ~1.7px shadows, ~1.15px highlights).
+// R173: silver_boost raises 1px blue-noise weight in shadows when BLEACH_BYPASS > 0.
+// Hash calls: 3×GrainValueNoise(4 corners each) + 2 blue-noise = 14 total.
 float3 ApplyFilmGrain(float3 rgb, float2 pos_xy)
 {
-    float  timer      = FRAME_TIMER / 41.667;
-    uint   slot0      = uint(timer);
-    float  blend      = frac(timer);
+    uint   slot       = uint(FRAME_TIMER / 41.667);
     float  res_scale  = BUFFER_HEIGHT / 1440.0;
     float2 p          = pos_xy / res_scale;
     float  L_g        = pow(max(Luma(rgb), 0.0), 1.0 / 2.2);
-    float  luma_scale = lerp(2.5, 1.5, L_g);
+    float  luma_scale = lerp(1.5, 1.0, L_g);
     float  silver_boost = BLEACH_BYPASS * (1.0 - smoothstep(0.0, 0.65, L_g)) * 0.30;
-    float2 jitter0    = (pcg3d_hash(uint3(slot0,      7919u, 0u)).xy - 0.5) * luma_scale;
-    float2 jitter1    = (pcg3d_hash(uint3(slot0 + 1u, 7919u, 0u)).xy - 0.5) * luma_scale;
-    float3 gnoise     = GrainSlot(p + jitter0, luma_scale, slot0,      silver_boost) * sqrt(1.0 - blend)
-                      + GrainSlot(p + jitter1, luma_scale, slot0 + 1u, silver_boost) * sqrt(blend);
+    float  g_r        = GrainValueNoise(p / (luma_scale * 1.15), slot     ).r;
+    float  g_g        = GrainValueNoise(p / (luma_scale * 1.00), slot + 3u).g;
+    float  g_b        = GrainValueNoise(p / (luma_scale * 0.85), slot + 5u).b;
+    float3 ha         = pcg3d_hash(uint3(uint(p.x),     uint(p.y),     slot + 7u));
+    float3 hb         = pcg3d_hash(uint3(uint(p.x) + 1, uint(p.y) + 1, slot + 7u));
+    float  fine_w     = 0.30 + silver_boost;
+    float3 gnoise     = float3(g_r, g_g, g_b) * (1.0 - fine_w) + (ha - hb) * 0.5 * fine_w;
     float  env        = GRAIN_STRENGTH * 0.05 * sqrt(max(0.0, 1.0 - L_g));
     return saturate(rgb + gnoise * env * float3(1.00, 0.80, 1.50));
 }
