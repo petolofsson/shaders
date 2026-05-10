@@ -15,10 +15,10 @@ All stages at or above target. Stage 0 ceiling is content-limited (testbed ~80% 
 ## Score reasoning
 
 **Stage 0 — Input (90% novel)**
-Novel: IQR-based compression estimate (R148 Bowley-corrected), Kalman-smoothed slope, mean-C pivot (scene median), per-hue HueCeil gamut ceilings, R144 joint luma+chroma expansion (cbrt(p50_linear) Oklab pivot), R156 per-hue slope bias (orange +0.20, teal/cyan −0.05), R157 achromatic-fraction adaptive c_gate (0.10→0.06 above 60% achromatic). Drag: chroma scaling chassis is standard.
+Novel: IQR-based compression estimate (R148 Bowley-corrected), Kalman-smoothed slope, mean-C pivot (scene median), per-hue HueCeil gamut ceilings, R156 per-hue slope bias (orange +0.20, teal/cyan −0.05), R157 achromatic-fraction adaptive c_gate (0.10→0.06 above 60% achromatic), R163 dominant-hue alignment bias (±15% complementary/aligned), R164 LUMA_MEAN_PRE slope cap (bright scenes 2.2→1.5), R165 illuminant warmth CCT proxy (CAT16 LMS slot 220 — warm-lit scenes scale back warm-hue bias up to 50%). R159 removed luma expansion (zone S-curve owns luma; pivot-based L expansion caused texture smoothing on bright surfaces). Drag: chroma scaling chassis is standard.
 
 **Stage 1 — Film Stock (91% novel)**
-Novel: Kodak 2383 3×3 spectral dye matrix from H-1-2383t data (first-of-kind real-time), full physical chain (H&D curve R84, chromatic floor R83, masking coupler R110, DIR couplers R104), R153 fc_stevens from histogram mode (physically correct for Stevens calibration — was zone_log_key). Drag: S-curve shape and 3-way CC are standard.
+Novel: Kodak 2383 3×3 spectral dye matrix from H-1-2383t data (first-of-kind real-time), full physical chain (H&D curve R84, chromatic floor R83, masking coupler R110, DIR couplers R104), R153 fc_stevens from histogram mode (physically correct for Stevens calibration — was zone_log_key), R160 adaptive print stock (p25 black lift backs off when shadows already elevated; p75 shoulder softens in bright scenes). Drag: S-curve shape and 3-way CC are standard.
 
 **Stage 2 — Tonal (91% novel)**
 Novel: Oklab-stable L-substitution (R62), intra-zone pixel variance driver (R116), ambient shadow tint (R66), R133 Munsell per-hue highlight rolloff (12-band exponents from Renotation), R152 zone CDF intra-bin interpolation (~8× precision), R147 histogram mode signal. Drag: Retinex and zone system are established techniques.

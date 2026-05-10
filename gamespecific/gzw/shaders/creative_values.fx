@@ -1,10 +1,9 @@
 // creative_values.fx — tune here
 
 // ── INPUT ─────────────────────────────────────────────────────────────────────
-// Adaptive inverse tone mapping. Expands both Oklab chroma (R90) and luma (R144)
-// using the IQR-derived compression ratio — restoring the joint luma+chroma signal
-// the game's tonemapper compressed. Works on any S-curve tonemapper. 0 = off.
-// Re-tune after R144: start at 0.35–0.40 (joint expansion is stronger than chroma-only).
+// Adaptive inverse tone mapping. Expands Oklab chroma using the IQR-derived
+// compression ratio — restoring chroma the game's tonemapper compressed. Luma is
+// handled by the zone S-curve. Works on any S-curve tonemapper. 0 = off.
 #define INVERSE_STRENGTH  0.40
 
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
@@ -63,8 +62,8 @@
 
 // ── TONAL ─────────────────────────────────────────────────────────────────────
 // Scales the adaptive zone S-curve strength. 1.0 = calibrated default. 0 = off.
-// R145: auto-coupled to inverse grade slope — less zone contrast when R144 luma
-// expansion already restored compression. 2.0 = aggressive. Range 0–2.
+// Owns luma contrast restoration — inverse_grade is chroma-only. 2.0 = aggressive.
+// Range 0–2.
 #define ZONE_STRENGTH  1.00
 
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.

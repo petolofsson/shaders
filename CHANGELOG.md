@@ -4,6 +4,16 @@
 
 ## 2026-05-10
 
+- **R159 luma expansion removal + R145 decoupling** (`inverse_grade.fx`, `grade.fx`) — Removed R144 pivot-based luma expansion from inverse_grade (cbrt(p50_linear) Oklab L pivot caused texture smoothing on bright surfaces in dark scenes; zone S-curve owns luma). Removed R145 zone coupling (ZONE_STRENGTH was divided by inv slope — workaround for R144 redundancy). ZONE_STRENGTH is now a clean standalone knob. INVERSE_STRENGTH tuned to 0.40.
+
+- **R160 adaptive print stock** (`grade.fx`) — ApplyPrintStock now receives p25 and p75. Black lift `0.025 × saturate(1 − p25/0.06)` backs off when scene shadows already elevated; shoulder exponent lerps 1.8→1.2 and cubic correction lerps 0.06→0.02 as p75 rises 0.40→0.70.
+
+- **R161–R164 highway audit** (`inverse_grade.fx`, `grade.fx`, `corrective.fx`) — Four previously-unread slots wired to processing decisions: R161 ACHROM_FRAC multiplier on chroma_str_base (desaturated scenes get less chroma lift); R162 P90-derived specular_contrast in SceneCtx suppresses shadow lift 35% max (eliminates duplicate halation ReadHWY); R163 CHROMA_ANGLE alignment bias in inverse_grade `dir_scale = 1 − alignment × 0.15` (complementary hues get ±15% expansion bias); R164 LUMA_MEAN_PRE slope cap `lerp(2.2, 1.5, saturate((mean_pre − 0.25)/0.35))` in inverse_grade (bright raw scenes get tighter expansion ceiling).
+
+- **R165 illuminant warmth CCT proxy** (`grade.fx`, `inverse_grade.fx`, `highway.fxh`) — New slot 220 (HWY_ILLUM_WARM). ColorTransformPS reads NeutralIllumTex, converts to CAT16 LMS, writes `warmth = saturate(L_norm − S_norm + 0.5)` (D65≈0.39, warm>0.5, cool<0.5). InverseGradePS reads one-frame-delayed (acceptable — illuminant changes slowly; frame 0 default 0 → no change). warm_scene gate at 0.45, positive HueSlopeBias reduced up to 50% at very warm illuminant — prevents over-saturating warm hues that are correct for the illuminant.
+
+- **Retune** (arc_raiders creative_values) — PURKINJE_STRENGTH 0.90→0.70, CHROMA_STR →1.05, ZONE_STRENGTH →1.00.
+
 - **R158 grain timer fix** (`grade.fx`, `corrective.fx`) — `source = "framecount"` returns 0 in vkBasalt, freezing grain to a static pattern (invisible to human perception). Replaced with `FRAME_TIMER` (`source = "timer"`, ms since app start). Grain slot: `uint(FRAME_TIMER / 41.667)` — correct ~24fps turnover. Same fix for Halton `base_idx` in `UpdateChromaKalman`. `GRAIN_STRENGTH` reset 2.0→1.0 (was inflated to compensate for static grain).
 
 - **creative_values.fx reorder + retune** (both profiles) — Sections reordered by pipeline stage: INPUT → CORRECTIVE → TONAL → CHROMA → OUTPUT → STAGE GATES. Values: `SHADOW_LIFT_STRENGTH` 1.2→0.85 (R144 luma expansion lifts shadows passively — was double-lifting), `PURKINJE_STRENGTH` 1.3/1.4→0.90 (above 1.0 pushes scotopic desaturation past physical calibration), `CURVE_B_TOE` −0.0218→−0.010 (was excessively compressing blue at toe), `FILM_FLOOR` 0.01→0.005 (arc_raiders only).

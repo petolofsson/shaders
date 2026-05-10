@@ -20,7 +20,7 @@
 //   0.95 matches ARRI LogC3 usable ceiling (~91-92% of full scale).
 // Both at defaults (0 / 1) = passthrough (identity).
 #define FILM_FLOOR    0.005
-#define FILM_CEILING  0.95
+#define FILM_CEILING  1.00
 
 // Developer-inhibitor-release cross-channel masking. Each dye layer releases
 // inhibitors that suppress adjacent layers, increasing colour separation.

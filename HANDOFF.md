@@ -23,10 +23,13 @@ grade is an **8-pass technique**: LFDownscale1 → LFDownscale2 → NeutralIllum
 ## Known state
 
 - No known compile errors. Debug log: `/tmp/vkbasalt.log`
-- R147–R158 complete: statistical signal correctness pass, dead-code removal (4 passes), grain timer fix, inverse_grade hue-aware expansion. Full audit: analysis_frame ✓ corrective ✓ grade ✓ inverse_grade ✓ (analysis_scope/pre are display tools, not transformative).
-- creative_values.fx reordered (INPUT→CORRECTIVE→TONAL→CHROMA→OUTPUT→STAGE GATES) and retuned: SHADOW_LIFT 0.85, PURKINJE 0.90, CURVE_B_TOE −0.010, FILM_FLOOR 0.005, GRAIN_STRENGTH 1.0.
+- R147–R165 complete: statistical signal correctness, grain timer fix, hue-aware expansion, highway audit (R161–R164), illuminant warmth CCT proxy (R165). Full audit: analysis_frame ✓ corrective ✓ grade ✓ inverse_grade ✓.
+- R159: luma expansion removed from inverse_grade (zone S-curve owns luma). R145 zone coupling removed — ZONE_STRENGTH is now a clean knob.
+- R160 adaptive print stock: black lift backs off when p25 elevated, shoulder softens when p75 high.
+- R161–R164 highway wiring: ACHROM_FRAC→chroma_str, P90→shadow lift suppression, CHROMA_ANGLE→expansion alignment bias, LUMA_MEAN_PRE→slope cap.
+- R165 slot 220 (HWY_ILLUM_WARM): CAT16 LMS warmth scalar written by ColorTransformPS, read one-frame-delayed by inverse_grade to scale back warm-hue bias in warm-lit scenes.
+- creative_values.fx (arc_raiders): PURKINJE_STRENGTH 0.70, CHROMA_STR 1.05, ZONE_STRENGTH 1.00.
 - **Mid-shadow off-color** — unverified post R127/R130. Likely resolved. Re-test before marking closed.
-- **Grain** — now animated (R158). GRAIN_STRENGTH 1.0 = calibrated 2383 amplitude; tune up if too subtle.
 
 ## Next candidates
 
