@@ -473,6 +473,10 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
                    float4 lf_mip2_tex, SceneCtx ctx)
 {
     float3 lab    = RGBtoOklab(lin);
+    // R183: pre-flash warm shadow cast — fixed warm additive in deep shadows, zero at mid-gray.
+    // Models Deakins' practice of fogging negatives with warm colored light. Amber direction.
+    lab.y += SHADOW_CAST * 0.020 * (1.0 - smoothstep(0.0, 0.25, lab.x));
+    lab.z += SHADOW_CAST * 0.012 * (1.0 - smoothstep(0.0, 0.25, lab.x));
     float  C      = length(lab.yz);
     float  C_stim = C;
     float  h      = OklabHueNorm(lab.y, lab.z);

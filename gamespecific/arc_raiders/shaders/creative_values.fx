@@ -73,6 +73,11 @@
 // -1.0 recovers blown highlights. Range ±1.0. Default 0.0 = passthrough.
 #define HIGHLIGHTS  0.0
 
+// R183: pre-flash warm shadow cast. Fixed warm amber additive in deep shadows (L < 0.25),
+// falls to zero at mid-gray. Models Deakins' colored negative pre-flash technique.
+// Positive = warm amber, negative = cool blue-green. Range ±1.0. Default 0.0 = passthrough.
+#define SHADOW_CAST  0.0
+
 // ── CHROMA ────────────────────────────────────────────────────────────────────
 // Global chroma multiplier. -1.0 = greyscale, 0.0 = passthrough, +1.0 = 2× chroma.
 // Applied uniformly — use Vibrance for lift-only behaviour.
@@ -99,21 +104,23 @@
 
 // Per-band hue rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
 // (Red→Yellow, Green→Cyan, Blue→Magenta). Default 0.0 = passthrough.
+// O Brother: greens rotated toward olive-yellow, blues shifted warmer.
 #define ROT_RED     +0.03
 #define ROT_YELLOW  -0.015
-#define ROT_GREEN   -0.02
+#define ROT_GREEN   +0.12
 #define ROT_CYAN    +0.015
-#define ROT_BLUE    -0.03
+#define ROT_BLUE    +0.05
 #define ROT_MAG      0.00
 
 // ── HUE SATURATION ───────────────────────────────────────────────────────────
 // Per-band chroma scale in Oklab C. ±1.0 → ±80% chroma per hue band.
 // Applied after Vibrance. Default 0.0 = passthrough.
+// O Brother: blues/cyans/greens stripped — warm tones dominate by perceptual contrast.
 #define SAT_RED     0.0
 #define SAT_YELLOW  0.0
-#define SAT_GREEN   0.0
-#define SAT_CYAN    0.0
-#define SAT_BLUE    0.0
+#define SAT_GREEN  -0.70
+#define SAT_CYAN   -0.60
+#define SAT_BLUE   -0.85
 #define SAT_MAG     0.0
 
 // Film emulsion scatter from specular highlights — orange/amber fringe around
