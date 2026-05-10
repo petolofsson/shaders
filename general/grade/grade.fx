@@ -1,5 +1,4 @@
 // creative_color_grade.fx — Mega-pass: all downstream color work in one full-res pass
-#include "debug_text.fxh"
 #include "../highway.fxh"
 #include "../hue_bands.fxh"
 #include "../common.fxh"
@@ -688,8 +687,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float dither = frac(52.9829189 * frac(dot(pos.xy, float2(0.06711056, 0.00583715)))) - 0.5;
     result = saturate(result + dither * (1.0 / 255.0));
 
-    return DrawLabel(float4(result, col.a), pos.xy, 270.0, 50.0,
-                     54u, 71u, 82u, 65u, float3(0.2, 0.50, 1.0)); // 6GRA
+    return float4(result, col.a);
 }
 
 // ─── LF downscale passes — build mip1 and mip2 within this technique ──────────────
@@ -876,9 +874,7 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
     result = ApplyFilmGrain(result, pos.xy);
 
-    float4 out_col = float4(result, base.a);
-    return DrawLabel(out_col, pos.xy, 270.0, 58.0,
-                     55u, 80u, 77u, 83u, float3(0.9, 0.1, 0.9)); // 7PMS
+    return float4(result, base.a);
 }
 
 // ─── R124B: Neutral-pixel-weighted illuminant estimation ───────────────────
