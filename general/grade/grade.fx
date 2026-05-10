@@ -803,7 +803,7 @@ float3 GrainValueNoise(float2 p, uint slot)
 // Hash calls: 3×GrainValueNoise(4 corners) + 2 blue-noise = 14 total.
 float3 ApplyFilmGrain(float3 rgb, float2 pos_xy)
 {
-    uint   slot       = uint(FRAME_TIMER);
+    uint   slot       = uint(FRAME_TIMER / 41.667);
     float  res_scale  = BUFFER_HEIGHT / 1440.0;
     float2 p          = pos_xy / res_scale;
     float  L_g        = pow(max(Luma(rgb), 0.0), 1.0 / 2.2);
