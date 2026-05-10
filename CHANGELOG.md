@@ -10,6 +10,12 @@
 
 - **Diffusion center fix** (`grade.fx`) — Center was 20% minimum diffusion — caused haze/bloom obscuring player view in bright scenes. Now 0% at center. Ramp breakpoints pushed outward: clear zone holds to r=0.30 before building (was r=0.10).
 
+- **R177 MeanChroma EMA slowdown** (`analysis_frame.fx`) — `alpha = frametime * 0.005` (~200ms τ) was fast enough to track scene composition while walking along a wall — chroma grade visibly shifted. Slowed to `frametime * 0.001` (~1s τ). Scene cuts reset `alpha→1.0` via SceneCutSamp — hard transitions still snap immediately.
+
+- **R178 shadow lift zone_std gate** (`grade.fx`) — High intra-scene contrast (bright window + dark room) signals intentional lighting, not underexposure. Gate: `_std_suppress = smoothstep(0.05, 0.13, zone_std)`, shadow_lift_str multiplied by `(1 − _std_suppress)`. At zone_std ≥ 0.13 lift is fully off. Flat underexposed scenes (low zone_std) unchanged.
+
+- **R179 chroma lift dead zones closed** (`grade.fx`) — Audit found `GetBandCenter` maps only 6 primaries/secondaries (RED, YELLOW, GREEN, CYAN, BLUE, MAGENTA) with ±0.08 weight width. Tertiary hues (ORANGE, AMBER, TEAL, AZURE, VIOLET, ROSE) fell in zero-weight gaps → `total_w≈0` → `lifted_C=C` → no lift applied. Fix: widen pivot weight to ±0.14 inside the lift loop only. All 12 hue regions now interpolate from nearest tracked bands. Confirmed working.
+
 - **R176 CHROMA_STR gamut expansion + Hunt effect** (`grade.fx`) — Extended R151: `chroma_str_base` multiplier now `lerp(1.25, 0.85, smoothstep(0.04, 0.18, mean_C_scene))` — full ×0.85–1.25 range. Old R151 only boosted achromatic scenes (lerp up to ×1.2, no reduction for vibrant). New: vibrant scenes back off to ×0.85 (already chromatically adapted); near-achromatic scenes reach ×1.25 (gamut-expansion mode, Webster & Mollon 1997; Hunt effect FL^0.25, CIECAM02).
 
 - **arc_raiders tuning** — EXPOSURE 0.90→0.85, FILM_CEILING 1.00→0.97, PRINT_STOCK 0.40→0.50, ZONE_STRENGTH 1.00→1.10, SHADOW_LIFT_STRENGTH →1.0, PURKINJE_STRENGTH 0.70→0.75, HAL_STRENGTH →0.30, DIFFUSION_STRENGTH 0.65→0.70, GRAIN_STRENGTH 1.15→1.1.
