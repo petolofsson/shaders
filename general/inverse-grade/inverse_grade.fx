@@ -44,16 +44,10 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     // Always-on: physically correct defect correction, not a stylistic choice.
     // Wide near-clip zone (0.88→0.995): 8-bit has only 3–4 linear levels near clip.
     // C gate (0.18→0.08): skip intentionally saturated colored lights.
-    // Mid-ch gate (0.95→0.80): skip near-white content (sun, sky) where the second-
-    //   highest channel is also near clip — those are warm-whites, not clipping artifacts.
-    //   False cast: R=1.0, G≈0.78 → mid=0.78 → fires. Sun: R=1.0, G≈0.97 → protected.
     // Desaturates only — never shifts hue, never adds energy.
     float max_ch  = max(max(col.r, col.g), col.b);
-    float min_ch  = min(min(col.r, col.g), col.b);
-    float mid_ch  = col.r + col.g + col.b - max_ch - min_ch;
     float recon_w = smoothstep(0.88, 0.995, max_ch)
-                  * smoothstep(0.18, 0.08, C)
-                  * smoothstep(0.95, 0.80, mid_ch);
+                  * smoothstep(0.18, 0.08, C);
     lab.yz *= (1.0 - recon_w);
     C       = length(lab.yz);
 
