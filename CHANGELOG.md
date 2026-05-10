@@ -10,6 +10,8 @@
 
 - **Diffusion center fix** (`grade.fx`) — Center was 20% minimum diffusion — caused haze/bloom obscuring player view in bright scenes. Now 0% at center. Ramp breakpoints pushed outward: clear zone holds to r=0.30 before building (was r=0.10).
 
+- **R176 CHROMA_STR gamut expansion + Hunt effect** (`grade.fx`) — Extended R151: `chroma_str_base` multiplier now `lerp(1.25, 0.85, smoothstep(0.04, 0.18, mean_C_scene))` — full ×0.85–1.25 range. Old R151 only boosted achromatic scenes (lerp up to ×1.2, no reduction for vibrant). New: vibrant scenes back off to ×0.85 (already chromatically adapted); near-achromatic scenes reach ×1.25 (gamut-expansion mode, Webster & Mollon 1997; Hunt effect FL^0.25, CIECAM02).
+
 - **arc_raiders tuning** — EXPOSURE 0.90→0.85, FILM_CEILING 1.00→0.97, PRINT_STOCK 0.40→0.50, ZONE_STRENGTH 1.00→1.10, SHADOW_LIFT_STRENGTH →1.0, PURKINJE_STRENGTH 0.70→0.75, HAL_STRENGTH →0.30, DIFFUSION_STRENGTH 0.65→0.70, GRAIN_STRENGTH 1.15→1.1.
 
 - **GZW tuning** — EXPOSURE →0.80, FILM_CEILING →0.97, PRINT_STOCK →0.50, BLEACH_BYPASS 0.10→0.15, ZONE_STRENGTH →1.15, SHADOW_LIFT_STRENGTH 1.15→0.80, PURKINJE_STRENGTH →0.65, HAL_STRENGTH →0.30, DIFFUSION_STRENGTH 0.60→0.65.
