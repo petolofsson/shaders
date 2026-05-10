@@ -13,14 +13,14 @@
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune beneath.
 #define EXPOSURE  0.85
 
-// Remaps the raw pixel into [FILM_FLOOR, FILM_CEILING] before EXPOSURE runs.
-// FILM_FLOOR: black pedestal — prevents absolute digital black. 0 = off.
+// Remaps the raw pixel into [BLACKS, WHITES] before EXPOSURE runs.
+// BLACKS: black pedestal — prevents absolute digital black. 0 = off.
 //   0.005 matches actual linear-light value at the ARRI LogC3 black point.
-// FILM_CEILING: white headroom — pulls true white below clip before EXPOSURE.
+// WHITES: white headroom — pulls true white below clip before EXPOSURE.
 //   0.95 matches ARRI LogC3 usable ceiling (~91-92% of full scale).
 // Both at defaults (0 / 1) = passthrough (identity).
-#define FILM_FLOOR    0.005
-#define FILM_CEILING  0.97
+#define BLACKS  0.005
+#define WHITES  0.97
 
 // Developer-inhibitor-release cross-channel masking. Each dye layer releases
 // inhibitors that suppress adjacent layers, increasing colour separation.
@@ -63,11 +63,11 @@
 // ── TONAL ─────────────────────────────────────────────────────────────────────
 // Scales the adaptive zone S-curve strength. 1.0 = calibrated default. 0 = off.
 // 2.0 = aggressive. Range 0–2.
-#define ZONE_STRENGTH  1.00
+#define CONTRAST  1.00
 
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOW_LIFT_STRENGTH  1.10
+#define SHADOWS  1.10
 
 // ── CHROMA ────────────────────────────────────────────────────────────────────
 // Per-hue chroma lift strength. Acts as a gain near each hue band's scene mean —

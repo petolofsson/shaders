@@ -321,7 +321,7 @@ SceneCtx BuildSceneCtx()
     float3 illum_norm      = illum_rgb / max(Luma(illum_rgb), 0.001);
     float3 lms_illum       = mul(M_fwd, illum_norm);
     ctx.lms_illum_norm     = lms_illum / max(lms_illum.g, 0.001);
-    ctx.cfilm_floor        = FILM_FLOOR * (ctx.lms_illum_norm * float3(1.02, 1.00, 0.97));
+    ctx.cfilm_floor        = BLACKS * (ctx.lms_illum_norm * float3(1.02, 1.00, 0.97));
     ctx.perc               = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
     ctx.scene_cut          = ReadHWY(HWY_SCENE_CUT);
     float4 zstats          = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0));
@@ -333,9 +333,9 @@ SceneCtx BuildSceneCtx()
     ctx.ss_04_25           = smoothstep(0.03, 0.16, ctx.zone_std);
     float spread_scale     = lerp(0.7, 1.1, ctx.ss_08_25);
     float lum_att          = smoothstep(0.10, 0.40, ctx.zone_log_key);
-    // ZONE_STRENGTH scale: 1.0 = calibrated default, 0 = off, 2.0 = aggressive.
+    // CONTRAST scale: 1.0 = calibrated default, 0 = off, 2.0 = aggressive.
     ctx.zone_str           = lerp(0.26, 0.16, ctx.ss_08_25)
-                           * lerp(1.10, 0.93, lum_att) * (ZONE_STRENGTH * 0.30);
+                           * lerp(1.10, 0.93, lum_att) * (CONTRAST * 0.30);
     ctx.fc_knee            = lerp(0.90, 0.80, saturate((ctx.eff_p75 - 0.60) / 0.30));
     // R147: Bowley skewness — right-skewed (dark dominant, bright tail) → lower knee
     // to catch sparse bright tail that p75-based formula misses when p75 is low.
@@ -446,7 +446,7 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     float shadow_lift    = ctx.shadow_lift_str * (0.149169 / (illum_s0 * illum_s0 + 0.003))
                          * texture_att * fine_texture_att * detail_protect * context_lift * specular_att;
     float lift_w         = new_luma * smoothstep(0.23, 0.0, new_luma);
-    new_luma = saturate(new_luma + (shadow_lift / 100.0) * 0.75 * lift_w * SHADOW_LIFT_STRENGTH);
+    new_luma = saturate(new_luma + (shadow_lift / 100.0) * 0.75 * lift_w * SHADOWS);
     // R62 Finding 3: chroma-stable tonal — apply luma ratio in Oklab L to prevent zone S-curve from shifting chroma
     float3 lab_t  = RGBtoOklab(saturate(lin));
     float r_tonal = new_luma / max(luma, 0.001);
@@ -657,14 +657,14 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
             float4 zs  = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0));
             float ss   = smoothstep(0.06, 0.16, zs.g);
             float la   = smoothstep(0.10, 0.40, zs.r);
-            float zstr = lerp(0.26, 0.16, ss) * lerp(1.10, 0.93, la) * (ZONE_STRENGTH * 0.30);
+            float zstr = lerp(0.26, 0.16, ss) * lerp(1.10, 0.93, la) * (CONTRAST * 0.30);
             return float4(saturate(zstr / 0.30), 0.0, 0.0, 1.0);
         }
         if (xi == HWY_SHADOW_LIFT_STR) {
             float4 perc = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
             float t     = saturate((perc.r - 0.025) / 0.175);
             float sls   = lerp(1.50, 0.45, t*t*t*(t*(t*6.0-15.0)+10.0));
-            return float4(saturate(sls * SHADOW_LIFT_STRENGTH / 1.5), 0.0, 0.0, 1.0);
+            return float4(saturate(sls * SHADOWS / 1.5), 0.0, 0.0, 1.0);
         }
         if (xi == HWY_VIBRANCE) {
             float zk = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
@@ -690,7 +690,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float4 lf_mip2_tex = tex2D(LowFreqMip2Samp, uv);
 
     float  col_luma = Luma(col.rgb);
-    float3 lin      = col.rgb * (FILM_CEILING - ctx.cfilm_floor) + ctx.cfilm_floor;
+    float3 lin      = col.rgb * (WHITES - ctx.cfilm_floor) + ctx.cfilm_floor;
     lin = ApplyCorrective(lin, uv, lf_mip2_tex, ctx);
 
     TonalOut tonal = ApplyTonal(lin, col_luma, uv, lf_mip2_tex, ctx);
