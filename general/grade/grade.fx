@@ -800,13 +800,12 @@ float3 GrainValueNoise(float2 p, uint slot)
 // random sub-cell offset, so no screen pixel locks to the same grain crystal across
 // slots. Eliminates the "rain" parallax artifact at fast camera speeds without changing
 // per-frame grain statistics.
+// R172: collapsed per-channel GrainValueNoise calls into one — float3 bilinear corners
+// already decorrelate R/G/B; per-channel size variation (×1.00/0.90/1.15) dropped.
+// Hash calls: 14 → 6 per slot, 30 → 14 total. ~53% grain ALU reduction.
 float3 GrainSlot(float2 p, float luma_scale, uint slot)
 {
-    float3 coarse = float3(
-        GrainValueNoise(p / (luma_scale * 1.00), slot     ).r,
-        GrainValueNoise(p / (luma_scale * 0.90), slot + 3u).g,
-        GrainValueNoise(p / (luma_scale * 1.15), slot + 5u).b
-    );
+    float3 coarse = GrainValueNoise(p / luma_scale, slot);
     float3 ha = pcg3d_hash(uint3(uint(p.x),     uint(p.y),     slot + 7u));
     float3 hb = pcg3d_hash(uint3(uint(p.x) + 1, uint(p.y) + 1, slot + 7u));
     return coarse * 0.70 + (ha - hb) * 0.5 * 0.30;
