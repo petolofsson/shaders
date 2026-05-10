@@ -780,7 +780,7 @@ float3 ApplyDiffusionBloom(float3 base_rgb, float3 diff_blur, float adapt_str, f
     float3 result     = saturate(base_rgb + bloom * adapt_str);
     float  luma_r     = Luma(result);
     float  mid_gate   = luma_r * (1.0 - luma_r) * 4.0;
-    return saturate(lerp(result, diff_blur, eff_diff * 0.06 * mid_gate * ch_scatter));
+    return saturate(lerp(result, diff_blur, eff_diff * 0.09 * mid_gate * ch_scatter));
 }
 
 float3 pcg3d_hash(uint3 v)
@@ -850,20 +850,24 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
         return base;
     }
 
-    // Radial gradient: 0% at center → 100% at edges. Vertical oval (xs=1.6, ys=0.08).
+    // Eye shape rotated 90°: points off-screen top/bottom (|dy|=0.70 > screen ±0.50),
+    // widest at vertical center = 25% of screen width (±12.5% from center-x).
+    // Diffusion = 0 inside eye, builds from eye boundary to screen edge.
     float2 c_diff      = uv - 0.5;
-    float  r           = length(float2(c_diff.x * 1.6, c_diff.y * 0.08)) * 2.0;
+    float  eye_x_bound = 0.125 * sqrt(max(0.0, 1.0 - (c_diff.y / 0.70) * (c_diff.y / 0.70)));
+    float  dist_out    = max(0.0, abs(c_diff.x) - eye_x_bound);
+    float  r           = saturate(dist_out / 0.375);
     float  diff_radial = 0.0;
-    diff_radial = lerp(diff_radial, 0.25, smoothstep(0.30, 0.50, r));
-    diff_radial = lerp(diff_radial, 0.75, smoothstep(0.50, 0.75, r));
-    diff_radial = lerp(diff_radial, 1.00, smoothstep(0.75, 0.90, r));
+    diff_radial = lerp(diff_radial, 0.25, smoothstep(0.15, 0.40, r));
+    diff_radial = lerp(diff_radial, 0.75, smoothstep(0.40, 0.70, r));
+    diff_radial = lerp(diff_radial, 1.00, smoothstep(0.70, 0.90, r));
     float  eff_diff    = DIFFUSION_STRENGTH * diff_radial;
 
     float3 diff_blur = tex2Dlod(DiffusionSamp, float4(uv, 0, 0)).rgb;
 
     float4 perc           = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
     float  iqr            = perc.b - perc.r;
-    float  adapt_str      = eff_diff * 0.15 * lerp(0.8, 1.2, saturate(iqr / 0.5));
+    float  adapt_str      = eff_diff * 0.22 * lerp(0.8, 1.2, saturate(iqr / 0.5));
     float  zone_log_key   = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
     float  diff_key_scale = lerp(1.20, 0.85, smoothstep(0.05, 0.25, zone_log_key));
     float  diff_ap_scale  = lerp(1.10, 0.90, saturate((EXPOSURE - 0.70) / 0.60));
