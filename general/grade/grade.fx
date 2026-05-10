@@ -447,6 +447,8 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
                          * texture_att * fine_texture_att * detail_protect * context_lift * specular_att;
     float lift_w         = new_luma * smoothstep(0.23, 0.0, new_luma);
     new_luma = saturate(new_luma + (shadow_lift / 100.0) * 0.75 * lift_w * SHADOWS);
+    // Highlights — soft luma push/pull above L≈0.55. +1.0 brightens, -1.0 recovers.
+    new_luma = saturate(new_luma + HIGHLIGHTS * 0.20 * smoothstep(0.55, 0.85, new_luma));
     // R62 Finding 3: chroma-stable tonal — apply luma ratio in Oklab L to prevent zone S-curve from shifting chroma
     float3 lab_t  = RGBtoOklab(saturate(lin));
     float r_tonal = new_luma / max(luma, 0.001);
@@ -584,6 +586,17 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     float vib_mask = saturate(1.0 - C / 0.22);
     float vib_C    = C + max(lifted_C_c - C, 0.0) * vib_mask;
     float final_C  = vib_C;
+
+    // Per-band saturation — ±1.0 → ±80% chroma scale per hue band.
+    float sat_delta = SAT_RED    * HueBandWeight(h_perc, HB_BAND_RED)
+                    + SAT_YELLOW * HueBandWeight(h_perc, HB_BAND_YELLOW)
+                    + SAT_GREEN  * HueBandWeight(h_perc, HB_BAND_GREEN)
+                    + SAT_CYAN   * HueBandWeight(h_perc, HB_BAND_CYAN)
+                    + SAT_BLUE   * HueBandWeight(h_perc, HB_BAND_BLUE)
+                    + SAT_MAG    * HueBandWeight(h_perc, HB_BAND_MAGENTA);
+    final_C = max(0.0, final_C * (1.0 + sat_delta * 0.80));
+    // Global saturation — -1.0 = greyscale, 0 = passthrough, +1.0 = 2× chroma.
+    final_C = max(0.0, final_C * (1.0 + SATURATION));
 
     // Vector-space (a,b) reconstruction — rotate original direction by R21 delta
     float r21_cos, r21_sin;

@@ -69,7 +69,15 @@
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
 #define SHADOWS  1.10
 
+// Soft luma push/pull in the highlight range (L > 0.55). +1.0 brightens highlights,
+// -1.0 recovers blown highlights. Range ±1.0. Default 0.0 = passthrough.
+#define HIGHLIGHTS  0.0
+
 // ── CHROMA ────────────────────────────────────────────────────────────────────
+// Global chroma multiplier. -1.0 = greyscale, 0.0 = passthrough, +1.0 = 2× chroma.
+// Applied uniformly — use Vibrance for lift-only behaviour.
+#define SATURATION  0.0
+
 // Per-hue chroma lift strength. Acts as a gain near each hue band's scene mean —
 // lift-only, vibrance-masked (already-saturated pixels are attenuated).
 // 1.0 = calibrated default. 0 = off.
@@ -107,6 +115,16 @@
 #define LUM_CYAN    0.0
 #define LUM_BLUE    0.0
 #define LUM_MAG     0.0
+
+// ── HUE SATURATION ───────────────────────────────────────────────────────────
+// Per-band chroma scale in Oklab C. ±1.0 → ±80% chroma per hue band.
+// Applied after Vibrance. Default 0.0 = passthrough.
+#define SAT_RED     0.0
+#define SAT_YELLOW  0.0
+#define SAT_GREEN   0.0
+#define SAT_CYAN    0.0
+#define SAT_BLUE    0.0
+#define SAT_MAG     0.0
 
 // Film emulsion scatter from specular highlights — orange/amber fringe around
 // brightest sources. Red dominates (deepest dye layer), green small, blue near-zero
