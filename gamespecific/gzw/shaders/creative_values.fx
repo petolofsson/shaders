@@ -9,10 +9,10 @@
 #define EXPOSURE            0.85
 
 // ── ZONE CONTRAST ────────────────────────────────────────────────────────────
-// Scales the adaptive zone S-curve strength. 1.0 = calibrated default.
-// Adaptive range is ~0.16–0.26 × ZONE_STRENGTH, driven by zone_std + scene key.
-// 0 = flat image. Above 1.5 = aggressive crushing.
-#define ZONE_STRENGTH  1.10
+// Scales the adaptive zone S-curve strength. 1.0 = calibrated default. 0 = off.
+// R145: auto-coupled to inverse grade slope — less zone contrast when R144 luma
+// expansion already restored compression. 2.0 = aggressive. Range 0–2.
+#define ZONE_STRENGTH  1.00
 
 // ── SHADOW LIFT ───────────────────────────────────────────────────────────────
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.

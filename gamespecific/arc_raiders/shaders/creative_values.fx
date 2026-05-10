@@ -6,18 +6,18 @@
 // below "sees". Raising this (>1.0) darkens; lowering (<1.0) brightens.
 // Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune
 // the contrast/chroma knobs beneath.
-#define EXPOSURE            0.90
+#define EXPOSURE            1.00
 
 // ── ZONE CONTRAST ────────────────────────────────────────────────────────────
-// Scales the adaptive zone S-curve strength. 1.0 = calibrated default.
-// Adaptive range is ~0.16–0.26 × ZONE_STRENGTH, driven by zone_std + scene key.
-// 0 = flat image. Above 1.5 = aggressive crushing.
-#define ZONE_STRENGTH  1.30
+// Scales the adaptive zone S-curve strength. 1.0 = calibrated default. 0 = off.
+// R145: auto-coupled to inverse grade slope — less zone contrast when R144 luma
+// expansion already restored compression. 2.0 = aggressive. Range 0–2.
+#define ZONE_STRENGTH  1.00
 
 // ── SHADOW LIFT ───────────────────────────────────────────────────────────────
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOW_LIFT_STRENGTH  1.1
+#define SHADOW_LIFT_STRENGTH  1.2
 
 // ── 3-WAY COLOR CORRECTOR ────────────────────────────────────────────────────
 // Runs after EXPOSURE and FilmCurve, before zone contrast. Primary color grade.
@@ -36,13 +36,13 @@
 // near each hue band's scene mean — lift-only, vibrance-masked (already-saturated
 // pixels are attenuated). Spatial R68A modulation is applied on top.
 // 1.0 = calibrated default. 0 = off. Above 2.0 = aggressive.
-#define CHROMA_STR  1.05
+#define CHROMA_STR  0.90
 
 // ── PRINT STOCK ───────────────────────────────────────────────────────────────
 // Kodak 2383 print emulsion on top of FilmCurve: lifts blacks, compresses
 // highlights, desaturates mids ~15%, adds warm shadow cast. 0 = off.
 // 1 = full 2383. 0.35 = recommended starting point.
-#define PRINT_STOCK  0.45
+#define PRINT_STOCK  0.35
 
 // ── BLEACH BYPASS ─────────────────────────────────────────────────────────────
 // Skip the bleach step during print development — retains metallic silver alongside
@@ -65,7 +65,7 @@
 // Peaks in upper shadows (Oklab L≈0.50), falls off toward blacks and highlights.
 // Framerate-independent: turns over at ~24fps regardless of display fps.
 // 0 = off. 1.0 = calibrated 2383 amplitude. 1.5 = pushed. 2.0 = stylistic.
-#define GRAIN_STRENGTH 0.0
+#define GRAIN_STRENGTH 1.0
 
 // ── HALATION ──────────────────────────────────────────────────────────────────
 // Film emulsion scatter from specular highlights — orange/amber fringe around
@@ -89,7 +89,7 @@
 // Hue-specific exponents: yellow rolls off late (peaks at V=9), orange rolls off
 // fastest — all from Munsell V=8→9→10 C_max ratios (hue_bands.fxh HB_ROLL_N_*).
 // 1.0 = Munsell-calibrated default. 0 = off.
-#define MUNSELL_HIGHLIGHT_ROLLOFF  1.0
+#define MUNSELL_HIGHLIGHT_ROLLOFF  0.4
 
 // ── PURKINJE SHIFT ────────────────────────────────────────────────────────────
 // Rod-vision blue-green bias + scotopic desaturation across mesopic range (luma 0–0.30).
@@ -104,7 +104,7 @@
 // using the IQR-derived compression ratio — restoring the joint luma+chroma signal
 // the game's tonemapper compressed. Works on any S-curve tonemapper. 0 = off.
 // Re-tune after R144: start at 0.35–0.40 (joint expansion is stronger than chroma-only).
-#define INVERSE_STRENGTH  0.40
+#define INVERSE_STRENGTH  0.30
 
 
 // ── HUE ROTATION ─────────────────────────────────────────────────────────────

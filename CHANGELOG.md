@@ -4,6 +4,7 @@
 
 ## 2026-05-10
 
+- **R145 zone strength coupled to inverse grade slope** (`grade.fx`) — Zone S-curve strength automatically scales by `1/slope`: high tonemapper compression (already restored by R144 luma expansion) reduces zone contrast contribution; uncompressed content (slope≈1) gets full zone strength. ZONE_STRENGTH knob rescaled: 1.0 = calibrated default (internally ×0.30), 0 = off, 2.0 = aggressive. Both creative_values.fx updated to 1.00.
 - **R144 luma inverse tonemapping** (`inverse_grade.fx`) — Extends R90 to expand Oklab L alongside C using the same IQR-derived slope, restoring the joint luma+chroma signal the game's tonemapper compressed. Pivot is `cbrt(p50_linear)` (not raw p50_linear) — Oklab L is perceptual/cube-root, so using linear p50 as pivot would place the zero-crossing at L≈0.50 (linear Y≈0.125, deep shadow). c_weight excluded from luma_factor: tonemapper compressed every pixel's luma equally including near-neutrals. mid_weight bell gate preserves L=0 and L=1 exactly. +5 lines to InverseGradePS. INVERSE_STRENGTH retuned 0.50→0.40 (joint expansion is stronger than chroma-only).
 - **R143 reverted** (`inverse_grade.fx`) — Highlight reconstruction removed. Caused sun desaturation: near-clip warm light sources have Oklab C≈0.05 which falls below any viable C gate. Problem it targeted (orange clipping artifacts) is already resolved by R138/R130/R133. R90 mid_weight gate (≈0 at high L) also means near-clip pixels are barely touched by expansion — pre-correction was solving a non-issue.
 

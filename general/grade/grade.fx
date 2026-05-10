@@ -316,8 +316,12 @@ SceneCtx BuildSceneCtx()
     ctx.ss_04_25           = smoothstep(0.03, 0.16, ctx.zone_std);
     float spread_scale     = lerp(0.7, 1.1, ctx.ss_08_25);
     float lum_att          = smoothstep(0.10, 0.40, ctx.zone_log_key);
+    // R145: couple zone_str to inverse grade slope — high tonemapper compression
+    // already restored by R144 luma expansion, so zone adds less on top.
+    // ZONE_STRENGTH scale: 1.0 = calibrated default, 0 = off, 2.0 = aggressive.
+    float inv_slope        = 1.0 / max(ReadHWY(HWY_SLOPE) * 1.5 + 1.0, 1.15);
     ctx.zone_str           = lerp(0.26, 0.16, ctx.ss_08_25)
-                           * lerp(1.10, 0.93, lum_att) * ZONE_STRENGTH;
+                           * lerp(1.10, 0.93, lum_att) * (ZONE_STRENGTH * 0.30) * inv_slope;
     ctx.fc_knee            = lerp(0.90, 0.80, saturate((ctx.eff_p75 - 0.60) / 0.30));
     ctx.fc_stevens         = ReadHWY(HWY_STEVENS) * 1.3;
     ctx.fc_factor          = 0.05 / ((1.0 - ctx.fc_knee) * (1.0 - ctx.fc_knee))
@@ -599,7 +603,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
             float4 zs  = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0));
             float ss   = smoothstep(0.06, 0.16, zs.g);
             float la   = smoothstep(0.10, 0.40, zs.r);
-            float zstr = lerp(0.26, 0.16, ss) * lerp(1.10, 0.93, la) * ZONE_STRENGTH;
+            float inv_sl = 1.0 / max(ReadHWY(HWY_SLOPE) * 1.5 + 1.0, 1.15);
+            float zstr = lerp(0.26, 0.16, ss) * lerp(1.10, 0.93, la) * (ZONE_STRENGTH * 0.30) * inv_sl;
             return float4(saturate(zstr / 0.30), 0.0, 0.0, 1.0);
         }
         if (xi == HWY_SHADOW_LIFT_STR) {
