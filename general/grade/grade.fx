@@ -231,14 +231,22 @@ float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print
 
 float3 ApplyHalation(float3 lin, float2 uv, float3 lf_mip2, float hal_strength, float hal_gamma)
 {
-    float3 hal_blur      = tex2D(LowFreqMip1Samp, uv).rgb;
-    float3 hal_ring      = max(0.0, hal_blur - lin);
-    float  hal_ring_luma = dot(hal_ring, float3(0.2126, 0.7152, 0.0722));
-    float  hal_lore      = hal_ring_luma / (hal_ring_luma + hal_gamma + 1e-6);
-    float  hal_r         = hal_ring.r + lf_mip2.r * 0.12;
-    float  hal_g         = hal_ring.g * lerp(0.78, 0.94, hal_lore);
-    float  hal_b         = hal_ring.b * lerp(0.22, 0.38, hal_lore);
-    return saturate(lin + float3(hal_r, hal_g, hal_b) * float3(1.05, 0.45, 0.03) * hal_strength);
+    // R168: three physical improvements:
+    // 1) Exponential PSF: two-scale DoG (tight 1/16−sharp, broad 1/32−1/16) approximates
+    //    diffusion-equation base scatter better than single Gaussian.
+    // 2) AH layer (2383 rem-jet): attenuates tight direct back-reflection ~40%;
+    //    broad scattered component partially bypasses AH → full color weights.
+    // 3) Color: red dominant (deepest dye, reaches base), blue near-zero (yellow filter).
+    float3 lf_mip1    = tex2D(LowFreqMip1Samp, uv).rgb;
+    float3 ring_tight = max(float3(0,0,0), lf_mip1 - lin);
+    float3 ring_broad = max(float3(0,0,0), lf_mip2 - lf_mip1);
+    float  tight_luma = dot(ring_tight, float3(0.2126, 0.7152, 0.0722));
+    float  hal_lore   = tight_luma / (tight_luma + hal_gamma + 1e-6);
+    float  lore_g     = lerp(0.78, 0.94, hal_lore);
+    float  lore_b     = lerp(0.22, 0.38, hal_lore);
+    float3 col_tight  = float3(0.63, 0.27 * lore_g, 0.02 * lore_b);
+    float3 col_broad  = float3(1.05, 0.45 * lore_g, 0.03 * lore_b);
+    return saturate(lin + (ring_tight * col_tight + ring_broad * col_broad) * hal_strength);
 }
 
 float3 Apply3WayCC(float3 lin,
