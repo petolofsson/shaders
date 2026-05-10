@@ -339,8 +339,9 @@ float4 MeanChromaPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float mean_b      = lerp(0.0,  sum_b * inv_count, valid);
     float achrom_frac = achrom_count / float(DS_W * DS_H);
 
-    float4 prev  = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0));
-    float  alpha = saturate(frametime * 0.005);
+    float4 prev      = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0));
+    float  scene_cut = tex2Dlod(SceneCutSamp,  float4(0.5, 0.5, 0, 0)).r;
+    float  alpha     = lerp(saturate(frametime * 0.001), 1.0, scene_cut);
     return float4(
         lerp(prev.r, out_C,       alpha),
         lerp(prev.g, mean_a,      alpha),
