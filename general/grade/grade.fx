@@ -546,13 +546,19 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     chroma_str *= lerp(1.0, 0.65, smoothstep(0.02, 0.08, local_var));  // R68A: attenuate in textured regions
     float density_str = 50.0;
 
+    // R179: widen pivot weight to 0.14 (was HB_BAND_WIDTH=0.08) so tertiary hues
+    // (orange, amber, teal, azure, violet, rose) interpolate between tracked primaries
+    // instead of falling in zero-weight dead zones and receiving no lift.
     float new_C = 0.0, total_w = 0.0;
     [unroll] for (int band = 0; band < 6; band++)
     {
-        float pivot = tex2Dlod(ChromaHistory, float4((band + 0.5) / 8.0, 0.5 / 4.0, 0, 0)).r;
-        float w = HueBandWeight(h_perc, GetBandCenter(band));
-        new_C   += LiftChroma(C, pivot, chroma_str) * w;
-        total_w += w;
+        float pivot  = tex2Dlod(ChromaHistory, float4((band + 0.5) / 8.0, 0.5 / 4.0, 0, 0)).r;
+        float d_h    = abs(h_perc - GetBandCenter(band));
+        d_h          = min(d_h, 1.0 - d_h);
+        float wt     = saturate(1.0 - d_h / 0.14);
+        float w      = wt * wt * (3.0 - 2.0 * wt);
+        new_C       += LiftChroma(C, pivot, chroma_str) * w;
+        total_w     += w;
     }
     // max(lifted, C) — lift-only; identity limit at C = 0 by construction
     float lifted_C = (total_w > 0.001) ? new_C / total_w : C;
