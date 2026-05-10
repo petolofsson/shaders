@@ -787,18 +787,26 @@ float3 GrainValueNoise(float2 p, uint slot)
     return lerp(lerp(n00, n10, u.x), lerp(n01, n11, u.x), u.y) - 0.5;
 }
 
-// R136: Selwyn 2383 film grain — two-octave value noise, RGB-decorrelated.
-// Octaves: 2px primary (0.70) + 1px fine detail (0.30).
+// R136: Selwyn 2383 film grain — R167 three improvements:
+// 1) Luma-dependent grain size: shadows coarser (2.5px), highlights finer (1.5px).
+// 2) Per-channel dye layer sizing: G finest (×0.90), R mid (×1.00), B coarsest (×1.15).
+// 3) Blue noise 1px octave: difference of two offset hashes removes low-frequency energy.
 float3 ApplyFilmGrain(float3 rgb, float2 pos_xy)
 {
-    uint   slot      = uint(FRAME_TIMER / 41.667);
-    float  res_scale = BUFFER_HEIGHT / 1440.0;
-    float2 p         = pos_xy / res_scale;
-    float3 g2        = GrainValueNoise(p / 2.0, slot);
-    float3 g1        = pcg3d_hash(uint3(uint(p.x), uint(p.y), slot + 7u)) - 0.5;
-    float3 gnoise    = g2 * 0.70 + g1 * 0.30;
-    float  L_g       = pow(max(Luma(rgb), 0.0), 1.0 / 2.2);
-    float  env       = GRAIN_STRENGTH * 0.05 * sqrt(max(0.0, 1.0 - L_g));
+    uint   slot       = uint(FRAME_TIMER / 41.667);
+    float  res_scale  = BUFFER_HEIGHT / 1440.0;
+    float2 p          = pos_xy / res_scale;
+    float  L_g        = pow(max(Luma(rgb), 0.0), 1.0 / 2.2);
+    float  luma_scale = lerp(2.5, 1.5, L_g);
+    float  g_r        = GrainValueNoise(p / (luma_scale * 1.00), slot     ).r;
+    float  g_g        = GrainValueNoise(p / (luma_scale * 0.90), slot + 3u).g;
+    float  g_b        = GrainValueNoise(p / (luma_scale * 1.15), slot + 5u).b;
+    float3 g_coarse   = float3(g_r, g_g, g_b);
+    float3 a          = pcg3d_hash(uint3(uint(p.x),     uint(p.y),     slot + 7u));
+    float3 b          = pcg3d_hash(uint3(uint(p.x) + 1, uint(p.y) + 1, slot + 7u));
+    float3 g1         = (a - b) * 0.5;
+    float3 gnoise     = g_coarse * 0.70 + g1 * 0.30;
+    float  env        = GRAIN_STRENGTH * 0.05 * sqrt(max(0.0, 1.0 - L_g));
     return saturate(rgb + gnoise * env * float3(1.00, 0.80, 1.50));
 }
 
