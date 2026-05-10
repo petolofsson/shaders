@@ -361,11 +361,14 @@ SceneCtx BuildSceneCtx()
     ctx.specular_contrast     = saturate((ReadHWY(HWY_P90) - ctx.perc.g) / 0.40);
     ctx.slow_key           = max(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0.001);
     ctx.scene_mode         = ReadHWY(HWY_MODE);
-    // R151: muted scenes (low mean_C) need more chroma lift; vibrant scenes back off.
+    // R151/R176: gamut expansion + Hunt effect — achromatic scenes get more lift (visual
+    // system in gamut-expansion mode), vibrant scenes back off (already adapted to high C).
+    // Webster & Mollon (1997) variance adaptation; Hunt effect FL^0.25 in CIECAM02.
+    // Range ×0.85–1.25 on CHROMA_STR; smoothstep(0.04,0.18) covers practical game content.
     float mean_C_scene     = ReadHWY(HWY_MEAN_CHROMA);
     ctx.chroma_str_base    = CHROMA_STR * 0.04
                            * lerp(0.80, 1.20, smoothstep(0.05, 0.35, ctx.zone_log_key))
-                           * lerp(1.2, 1.0, saturate(mean_C_scene / 0.12));
+                           * lerp(1.25, 0.85, smoothstep(0.04, 0.18, mean_C_scene));
     return ctx;
 }
 
