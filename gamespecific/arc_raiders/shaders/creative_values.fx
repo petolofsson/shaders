@@ -86,7 +86,7 @@
 // Per-hue chroma lift strength. Acts as a gain near each hue band's scene mean —
 // lift-only, vibrance-masked (already-saturated pixels are attenuated).
 // 1.0 = calibrated default. 0 = off.
-#define VIBRANCE  1.25
+#define VIBRANCE  1.15
 
 // R133: per-hue chroma rolloff as Oklab L approaches 1.0, calibrated from Munsell
 // Renotation data. f=(4(1-L))^n per hue: no effect below L=0.75, C→0 at L=1.0.
@@ -139,13 +139,13 @@
 // R132 polydisperse: per-channel scatter — red ×1.15, green ×1.00, blue ×0.85.
 // Rough grade mapping: 0.5–0.8 = HBM 1/4, 1.2–1.5 = HBM 1/2, 1.8–2.2 = HBM 1.
 // 1.40 = HBM 1/2 (Hollywood large-format workhorse grade). 0 = off.
-#define DIFFUSION_STRENGTH  0.80
+#define DIFFUSION_STRENGTH  0.70
 
 // R136: Selwyn 2383 granularity — three decorrelated dye layers (R:G:B = 1.00:0.80:1.50).
 // Peaks in upper shadows (Oklab L≈0.50), falls off toward blacks and highlights.
 // Framerate-independent: turns over at ~24fps regardless of display fps.
 // 0 = off. 1.0 = calibrated 2383 amplitude. 1.5 = pushed. 2.0 = stylistic.
-#define GRAIN_STRENGTH 1.0
+#define GRAIN_STRENGTH 0.65
 
 // ── STAGE GATES ───────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.

@@ -207,12 +207,13 @@ float3 ApplyBleachBypass(float3 lin, float bleach_bypass)
 float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print_stock,
                        float p25, float p75)
 {
-    // R160: adaptive black lift — back off when scene already has raised shadows.
-    // Full 0.025 lift when p25≈0, ramps to zero at p25=0.06 (6% linear).
-    float ps_lift   = 0.025 * saturate(1.0 - p25 / 0.06);
-    float3 ps       = lin * (1.0 - ps_lift) + ps_lift;
-    float3 toe      = ps * ps * 3.2;
-    float3 ps3      = ps * ps * ps;
+    // Black lift removed — BLACKS pedestal handles the floor; 2383 density comes
+    // from the toe shape, not from lifting the floor (Deakins: keep blacks at zero).
+    float3 ps  = lin;
+    // Gentle toe: linear × ramp from 0.82 at zero to 1.0 at midgray — shadow
+    // density built by tonal bow, not by lifting. ~18% compression at L=0.15.
+    float3 toe = ps * lerp(0.82, 1.0, saturate(ps / 0.5));
+    float3 ps3 = ps * ps * ps;
     // R160: adaptive shoulder — soften compression when scene is bright-heavy.
     // 1.8 in dark/normal scenes, eases to 1.2 when p75 > 0.70.
     float ps_shoulder = lerp(1.8, 1.2, saturate((p75 - 0.40) / 0.30));
