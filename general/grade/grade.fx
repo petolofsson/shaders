@@ -843,9 +843,9 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float2 c_diff      = uv - 0.5;
     float  r           = length(float2(c_diff.x * 1.6, c_diff.y * 0.08)) * 2.0;
     float  diff_radial = 0.0;
-    diff_radial = lerp(diff_radial, 0.25, smoothstep(0.10, 0.30, r));
-    diff_radial = lerp(diff_radial, 0.75, smoothstep(0.30, 0.65, r));
-    diff_radial = lerp(diff_radial, 1.00, smoothstep(0.65, 0.85, r));
+    diff_radial = lerp(diff_radial, 0.25, smoothstep(0.30, 0.50, r));
+    diff_radial = lerp(diff_radial, 0.75, smoothstep(0.50, 0.75, r));
+    diff_radial = lerp(diff_radial, 1.00, smoothstep(0.75, 0.90, r));
     float  eff_diff    = DIFFUSION_STRENGTH * diff_radial;
 
     float3 diff_blur = tex2Dlod(DiffusionSamp, float4(uv, 0, 0)).rgb;
