@@ -1,0 +1,38 @@
+# Handoff — 2026-05-10
+
+> **Purpose (for AI context):** Current session state. Read at session start to orient. Update at session end. Changelog entries go in CHANGELOG.md.
+
+## Active chain (testbed)
+
+```
+analysis_frame : inverse_grade : corrective : grade
+```
+
+grade is an **8-pass technique**: LFDownscale1 → LFDownscale2 → NeutralIllum → ColorTransform → DiffusionDownsample → DiffusionBlurH → DiffusionBlurV → Diffusion
+
+## Pipeline state
+
+| Stage | Finished | Novel |
+|-------|----------|-------|
+| Stage 0 — Input | 98% | 92% |
+| Stage 1 — Film Stock | 98% | 94% |
+| Stage 2 — Tonal | 97% | 91% |
+| Stage 3 — Color + Halation | 98% | 90% |
+| Output — Diffusion + Grain | 97% | 94% |
+
+## Known state
+
+- No known compile errors. Debug log: `/tmp/vkbasalt.log`
+- R159–R175 complete. R161/R164 permanently dropped.
+- R174: grain rain fixed — root cause was luma-dependent lerp in luma_scale, not temporal slot rate. Fixed luma_scale=2.5, 24fps slot snap, correct 2383 per-channel dye layer sizing (R×1.15/G×1.00/B×0.85).
+- R175: shadow lift gate now (p25+mode)×0.5 — prevents over-lift in bright outdoor scenes; pixel bell extended to smoothstep(0.27,0,luma).
+- Diffusion center: 0% (was 20%) — eliminated center haze. Ramp now starts at r=0.30.
+- **arc_raiders** current values: EXPOSURE 0.85, FILM_CEILING 0.97, PRINT_STOCK 0.50, BLEACH_BYPASS 0.10, ZONE_STRENGTH 1.10, SHADOW_LIFT_STRENGTH 1.0, CHROMA_STR 1.10, PURKINJE_STRENGTH 0.75, HAL_STRENGTH 0.30, HAL_GAMMA 0.05, DIFFUSION_STRENGTH 0.70, GRAIN_STRENGTH 1.1.
+- **GZW** current values: EXPOSURE 0.80, FILM_CEILING 0.97, PRINT_STOCK 0.50, BLEACH_BYPASS 0.15, ZONE_STRENGTH 1.15, SHADOW_LIFT_STRENGTH 0.80, PURKINJE_STRENGTH 0.65, HAL_STRENGTH 0.30, HAL_GAMMA 0.02, DIFFUSION_STRENGTH 0.65.
+- **Mid-shadow off-color** — unverified post R127/R130. Likely resolved. Re-test before marking closed.
+
+## Next candidates
+
+- **Re-test mid-shadow off-color** — confirm resolved before vk-colorist Phase 2.
+- **vk-colorist Phase 0** — Rust/Vulkan layer infrastructure is independent of shader quality; can start now.
+- **ApplyChroma** still ~80 lines — over Rule 4 limit. Split into ApplyChromaLift + ApplyChromaFinish deferred.

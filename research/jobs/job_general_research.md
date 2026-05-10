@@ -1,151 +1,77 @@
-# Nightly Job C — Lateral Domain Research
+# Job — Shader Research Nightly
 
-**Schedule:** 04:00 daily (effective domain rotates weekly)
-**Output:** `/home/pol/code/shaders/research/R{next}_{YYYY-MM-DD}_Lateral_{Domain}.md`
-where `{next}` = one more than the highest R-number found in `ls research/R*.md`.
-**Branch:** commit and push output to `alpha`.
-**Do not modify any source files.**
+**Schedule:** 0 1 * * * (1 AM UTC)
+**Output:** `research/R{next}_{YYYY-MM-DD}_{slug}.md`
 
----
+## Summary
 
-## Principle
+Domain-rotation literature search. Finds novel findings from adjacent fields and
+filters them for architectural viability. Writes a dated findings file to the repo.
+Use native WebSearch for all searches — no Brave MCP.
 
-This job searches for improvements to the pipeline by looking in fields that have
-nothing to do with shaders or games. The goal is cross-domain transplants — finding
-solutions that are well-established in a foreign field but entirely absent from
-real-time rendering.
+## Domain rotation (date +%u)
+1 Mon — Tone mapping & film sensitometry
+2 Tue — Perceptual chroma (HK, Hunt, Abney)
+3 Wed — Temporal filtering & state estimation
+4 Thu — Zone/histogram analysis
+5 Fri — Film stock spectral emulation
+6 Sat — Color appearance models
+7 Sun — Wild card (adjacent domain of model's choice)
 
-**Two rules that must be followed:**
+## Key exclusions (permanent, no exceptions)
+- Clarity / sharpening / local contrast / CLARITY_STRENGTH
+- Film grain
+- Lateral chromatic aberration (LCA) — removed permanently; no way to exclude UI text
+- Longitudinal chromatic aberration — same problem
+- Any HDR-only technique
+- Viewing surround / CIECAM02 surround compensation — removed; not pipeline's responsibility
+- OPT-2/3 (zone_log_key guard removal, saturate(lin) removal) — cold-start regression
+  confirmed; do not re-propose without explicit cold-start frame proof
 
-1. **Search the math, not the application.** Never search for "shader", "game", "HDR",
-   "tone mapping", or "rendering". Search for the underlying mathematical problem —
-   "recursive Bayesian estimation", "sparse signal recovery", "illumination separation",
-   "optimal state smoothing". This surfaces work from fields that would never appear
-   in a direct graphics search.
+## Already implemented — do not re-propose
 
-2. **Search in a foreign domain.** Each week rotates to a different field. The domain
-   determines which databases and terminology to use — not the topic to search for.
-   The topic is always one of the pipeline's core mathematical problems.
+**Tuesday/chroma domain:**
+- **R101 F1 / R125 — Bezold-Brücke** (2026-05-05 / 2026-05-07): Anchor fixed to Oklab invariant hues
+  (h=0.25 unique yellow, h=0.75 unique blue). Two-harmonic `(ch_h + 0.9*sh2_h)` via double-angle.
+  Teal direction bug corrected. Amplitude 0.006 → 0.015.
+- **R101 F2 — H-K exponent scene-adaptation** (2026-05-05): `lerp(0.52, 0.64, saturate(zone_log_key / 0.50))`. Nayatani 1997 + CIECAM02 F_L backed.
+- **R101 F3 — Abney C_stim** (2026-05-05): Burns et al. 1984; coefficients scale by pre-lift stimulus chroma.
 
----
+**Tone mapping / film domain:**
+- **R83 — Chromatic FILM_FLOOR** (2026-05-03): Per-channel D-min pedestal modulated by CAT16 illum.
+- **R84 — Log-density FilmCurve** (2026-05-03): CURVE_* knobs as log₂-density offsets.
+- **R85 — Inter-channel dye masking** (2026-05-03): Cyan→green 2.0%, magenta→blue 2.2%.
+- **R90 — Adaptive inverse tone mapping** (2026-05-04): IQR-based Oklab chroma expansion, Kalman-smoothed slope.
+- **F1–F3 — Film sensitometry + Stevens** (2026-05-04): desat_w bounds, midtone chroma bell, cbrt fc_stevens.
 
-## Domain rotation
+**Halation (Stage 3.5):**
+- **R105 — Halation DoG PSF** (2026-05-05): Annular ring via max(mip1 − mip2, 0).
+- **R106 — Lorentzian tail** (2026-05-05): γ²/(γ²+d²+ε). HAL_GAMMA knob.
+- **R114 — Chromatic fringe** (2026-05-06): hal_b component; gains float3(1.05, 0.45, 0.03). hal_b = hal_ring.b * lerp(0.22, 0.38, hal_lore). White → orange/amber fringe.
 
-Determine the domain from the ISO week number of the current date (`week % 7`):
+**Pro-Mist (Output):**
+- **R115 — Additive shimmer model** (2026-05-06): `base + max(0, blurred − base) * strength`. Highlights only.
+- **R117C — Three-scale blur** (2026-05-07): MistDiffuseTex MipLevels=3; mist_broader at LOD 2; broad_w ramps above MIST_STRENGTH ~0.5.
 
-| week % 7 | Domain | Search databases |
-|----------|--------|-----------------|
-| 0 | Radio astronomy / interferometry | arxiv astro-ph, ADS |
-| 1 | Seismic processing / geophysics | arxiv physics.geo-ph, SEG |
-| 2 | Medical imaging (CT, MRI, retinal) | arxiv eess.IV, PubMed |
-| 3 | Remote sensing / satellite imagery | arxiv eess.SP, IEEE TGRS |
-| 4 | Telecommunications / signal comms | arxiv eess.SP, IEEE Trans Comms |
-| 5 | Climate science / data assimilation | arxiv physics.ao-ph, AMS |
-| 6 | Sonar / underwater acoustics | arxiv eess.AS, JASA |
+**Pipeline audit:**
+- **R116 — 9-issue color pipeline audit** (2026-05-06): chroma median CDF p50, linear zone_log_key, intra-zone pixel variance, pure global p25/p75, adaptive CAT16 blend, ceiling before vibrance, HWY_SLOPE min clamp.
+- **R117 — Uniform chroma expansion** (2026-05-07): Directional bias removed from inverse_grade — multi-hue scenes were under-expanding off-axis colours.
 
----
+## Pipeline state as of 2026-05-07
 
-## Pipeline mathematical problems
+**Chain:** `analysis_frame : inverse_grade : analysis_scope_pre : corrective : grade : analysis_scope`
 
-These are the core mathematical challenges in the pipeline. Each search run should
-pick 2–3 and look for how the current domain has solved them:
+`grade` is a 5-pass technique: LFDownscale1 → LFDownscale2 → ColorTransform → MistDownsample → ProMist.
+Pro-Mist is merged inside grade.fx — not a separate effect.
 
-| Problem | Current approach | Where in pipeline |
-|---------|-----------------|------------------|
-| State estimation / temporal filtering | Adaptive EMA (heuristic) | corrective.fx SmoothZoneLevels, UpdateHistory |
-| Illumination/reflectance separation | Coarse 4×4 zone normalization | grade.fx R18 |
-| Sparse scene sampling | 8×8 Halton grid | corrective.fx UpdateHistory, analysis_scope_pre |
-| Multi-scale basis decomposition | 3-mip Laplacian residual | grade.fx Clarity |
-| Local contrast / edge-preserving filter | Zone IQR S-curve | grade.fx Stage 2 |
-| Optimal signal recovery | None — open problem | Future pass |
+**Active knobs:** INVERSE_STRENGTH, EXPOSURE, FILM_FLOOR, FILM_CEILING, PRINT_STOCK,
+CURVE_R/B_KNEE/TOE, ZONE_STRENGTH, SHADOW_LIFT_STRENGTH, SHADOW_TEMP/MID_TEMP/HIGHLIGHT_TEMP,
+COUPLER_STRENGTH, CHROMA_STR, ROT_* (6 values), HAL_STRENGTH, HAL_GAMMA, MIST_STRENGTH, PURKINJE_STRENGTH
 
----
+**Highway slots:** 0–128 luma hist · 130–193 hue hist · 194–196 p25/p50/p75 · 197 R90 slope ·
+198 median Oklab C · 199 scene cut · 200 p90 · 201 chroma angle · 202 achromatic fraction ·
+210 warm bias · 211 zone key (linear mean) · 212 zone std (intra-zone pixel variance) · 213 fc_stevens (÷1.3 / ×1.3)
 
-## Task
-
-### Step 1 — Read context
-Read:
-1. `/home/pol/code/shaders/CLAUDE.md` — pipeline constraints
-2. `/home/pol/code/shaders/research/HANDOFF.md` — current pipeline state
-3. `/home/pol/code/shaders/general/grade/grade.fx` — MegaPass implementation
-4. `/home/pol/code/shaders/general/corrective/corrective.fx` — analysis passes
-
-### Step 2 — Determine domain
-Compute the current ISO week number. Use `week % 7` to select the domain from the
-table above.
-
-### Step 3 — Search (4–6 queries minimum)
-
-For each of 2–3 pipeline problems, run 2 searches:
-- One using **domain-specific terminology** combined with the mathematical abstraction
-- One using **pure mathematical terminology** with no domain anchor
-
-Example (week=0, domain=radio astronomy, problem=state estimation):
-- `"Kalman filter" "radio interferometry" real-time calibration 2023 2024 2025`
-- `"recursive Bayesian estimation" "non-stationary signal" adaptive convergence`
-
-Explicitly avoid: "shader", "game", "rendering", "tone mapping", "HDR", "OpenGL",
-"Vulkan", "GPU". These terms narrow results to the obvious space.
-
-### Step 4 — Assess findings
-
-For each paper or technique found, assess:
-1. **Which pipeline problem does it address?** (from the table above)
-2. **What is the mathematical delta?** What does it do differently from the current approach?
-3. **GPU cost?** Extra passes? Extra texture reads? Pure math change?
-4. **ROI estimate:** Visual impact (Low/Medium/High) vs. implementation cost (Low/Medium/High)
-5. **Novelty in gaming context:** Has this technique appeared in any real-time rendering work?
-
-Flag anything with High visual impact + Low/Medium implementation cost as
-**HIGH PRIORITY** — these should be noted prominently at the top of the output.
-
-### Step 5 — Write output
-
----
-
-## Output format
-
-```markdown
-# Lateral Research — {Domain} — {YYYY-MM-DD}
-
-## Domain this week
-{domain name and why it was selected}
-
-## Pipeline problems targeted
-{2–3 problems from the table, with brief rationale for choosing them}
-
-## HIGH PRIORITY findings
-{Only items with High visual impact + Low/Medium cost. Empty section if none.}
-
-## Findings
-
-### [{Paper/technique title}]
-- **Pipeline target:** {which component}
-- **Mathematical delta:** {what it does differently}
-- **GPU cost:** {passes / taps / pure math}
-- **ROI:** {Visual impact} / {Implementation cost}
-- **Novelty:** {has this appeared in real-time rendering?}
-- **Search that found it:** {the exact query used}
-
-### [...]
-
-## ROI table
-| Finding | Visual impact | GPU cost | Recommended action |
-|---------|--------------|----------|-------------------|
-| ... | | | |
-
-## Searches run
-{list all queries used}
-```
-
----
-
-## After writing the output file
-
-```bash
-cd /home/pol/code/shaders
-git checkout alpha
-git add research/R*_*_Lateral_*.md
-git commit -m "nightly: lateral research {Domain} {YYYY-MM-DD}"
-git push origin alpha
-```
+## Last updated
+2026-05-07 — Updated chain, knobs, highway slots. Added R114–R117 to implemented list.
+Removed LCA, VIEWING_SURROUND, VEIL_STRENGTH. Switched to native WebSearch.

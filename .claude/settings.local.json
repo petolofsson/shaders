@@ -32,7 +32,10 @@
       "WebFetch(domain:pro.sony)",
       "WebFetch(domain:docs.red.com)",
       "WebFetch(domain:www.color.io)",
-      "WebFetch(domain:www.dehancer.com)"
+      "WebFetch(domain:www.dehancer.com)",
+      "Bash(sort -t/ -k1)",
+      "Bash(python3 -)",
+      "Bash(gh api *)"
     ]
   }
 }

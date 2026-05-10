@@ -1,5 +1,6 @@
 // scope.fx — Three-panel scope overlay (512×168px, bottom-left)
 #include "debug_text.fxh"
+#include "../common.fxh"
 //
 // Top 40px    (white bars)     — post-correction luma histogram, digit overlay = post_mean
 // 4px divider
@@ -53,26 +54,6 @@ sampler2D LumHistSamp
     MagFilter = POINT;
 };
 
-void PostProcessVS(in  uint   id  : SV_VertexID,
-                   out float4 pos : SV_Position,
-                   out float2 uv  : TEXCOORD0)
-{
-    uv.x = (id == 2) ? 2.0 : 0.0;
-    uv.y = (id == 1) ? 2.0 : 0.0;
-    pos  = float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
-}
-
-float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
-
-float3 RGBtoHSV(float3 c)
-{
-    float4 K = float4(0.0, -1.0/3.0, 2.0/3.0, -1.0);
-    float4 p = lerp(float4(c.bg, K.wz), float4(c.gb, K.xy), step(c.b, c.g));
-    float4 q = lerp(float4(p.xyw, c.r), float4(c.r, p.yzx), step(p.x, c.r));
-    float  d = q.x - min(q.w, q.y);
-    return float3(abs(q.z + (q.w - q.y) / (6.0 * d + 1e-10)), d / (q.x + 1e-10), q.x);
-}
-
 float3 HueToRGB(float h)
 {
     float3 p = abs(frac(h + float3(0.0, 2.0/3.0, 1.0/3.0)) * 6.0 - 3.0);
@@ -113,6 +94,90 @@ bool ShowNumber(float val, int px, int py)
     return false;
 }
 
+float4 DrawLumaPost(float4 col, float2 pos_xy, int bin, float rel_y, float post_mean, bool ref_90)
+{
+    float3 bg       = float3(0.06, 0.06, 0.06);
+    float pix       = 1.0 - rel_y / float(SCOPE_PH);
+    float bucket_lo = float(bin)     / float(SCOPE_BINS);
+    float bucket_hi = float(bin + 1) / float(SCOPE_BINS);
+    float count = 0.0;
+    [loop] for (int sy = 0; sy < SCOPE_S; sy++)
+    [loop] for (int sx = 0; sx < SCOPE_S; sx++)
+    {
+        float luma = Luma(tex2D(BackBuffer,
+            float2((sx + 0.5) / float(SCOPE_S), (sy + 0.5) / float(SCOPE_S))).rgb);
+        count += (luma >= bucket_lo && luma < bucket_hi) ? 1.0 : 0.0;
+    }
+    float  bar      = saturate(count / float(SCOPE_S * SCOPE_S) * float(SCOPE_BINS) * SCOPE_AMP);
+    bool   ref_mean = (bin == int(post_mean * float(SCOPE_BINS)));
+    float3 scope;
+    if      (ref_mean)   scope = float3(1.0, 0.85, 0.0);
+    else if (ref_90)     scope = float3(0.4, 0.4,  0.4);
+    else if (pix <= bar) scope = float3(0.9, 0.9,  0.9);
+    else                 scope = bg;
+    int dig_x = int(pos_xy.x - SCOPE_X) - (SCOPE_W - 18);
+    int dig_y = int(rel_y) - 2;
+    if (dig_x >= 0 && dig_x < 15 && dig_y >= 0 && dig_y < 5)
+        if (ShowNumber(post_mean, dig_x, dig_y))
+            scope = float3(1.0, 0.85, 0.0);
+    return float4(lerp(col.rgb, scope, 0.92), col.a);
+}
+
+float4 DrawLumaPre(float4 col, float2 pos_xy, int bin, float rel_y, float pre_mean, bool ref_90)
+{
+    float3 bg     = float3(0.06, 0.06, 0.06);
+    float data_v  = 0.5 / float(BUFFER_HEIGHT);
+    float pix     = 1.0 - (rel_y - float(SCOPE_PH + SCOPE_DIV)) / float(SCOPE_PH);
+    float data_u  = (float(bin) + 0.5) / float(BUFFER_WIDTH);
+    float raw_val = tex2D(BackBuffer, float2(data_u, data_v)).r;
+    float bar     = saturate(raw_val * float(SCOPE_BINS) * SCOPE_AMP);
+    bool ref_mean = (bin == int(pre_mean * float(SCOPE_BINS)));
+    float3 scope;
+    if      (ref_mean)   scope = float3(1.0, 0.85, 0.0);
+    else if (ref_90)     scope = float3(0.4, 0.4,  0.4);
+    else if (pix <= bar) scope = float3(0.45, 0.45, 0.45);
+    else                 scope = bg;
+    int dig_x = int(pos_xy.x - SCOPE_X) - (SCOPE_W - 18);
+    int dig_y = int(rel_y) - (SCOPE_PH + SCOPE_DIV + 2);
+    if (dig_x >= 0 && dig_x < 15 && dig_y >= 0 && dig_y < 5)
+        if (ShowNumber(pre_mean, dig_x, dig_y))
+            scope = float3(1.0, 0.85, 0.0);
+    return float4(lerp(col.rgb, scope, 0.92), col.a);
+}
+
+float4 DrawHuePanel(float4 col, float2 pos_xy, float rel_y)
+{
+    float3 bg        = float3(0.06, 0.06, 0.06);
+    int    hue_bin   = clamp(int((pos_xy.x - SCOPE_X) / float(SCOPE_W) * float(HUE_BINS)), 0, HUE_BINS - 1);
+    float3 hue_col   = HueToRGB((float(hue_bin) + 0.5) / float(HUE_BINS));
+    float  hue_off   = float(SCOPE_PH * 2 + SCOPE_DIV * 2);
+    if (rel_y < hue_off + float(SCOPE_HSB))
+    {
+        float pix       = 1.0 - (rel_y - hue_off) / float(SCOPE_HSB);
+        float bucket_lo = float(hue_bin)     / float(HUE_BINS);
+        float bucket_hi = float(hue_bin + 1) / float(HUE_BINS);
+        float count = 0.0, total_w = 0.0;
+        [loop] for (int sy = 0; sy < SCOPE_HS; sy++)
+        [loop] for (int sx = 0; sx < SCOPE_HS; sx++)
+        {
+            float3 hsv = RGBtoHSV(tex2D(BackBuffer,
+                float2((sx + 0.5) / float(SCOPE_HS), (sy + 0.5) / float(SCOPE_HS))).rgb);
+            float w = step(0.04, hsv.y);
+            count   += (hsv.x >= bucket_lo && hsv.x < bucket_hi) ? w : 0.0;
+            total_w += w;
+        }
+        float  bar   = (total_w > 0.5) ? saturate(count / total_w * float(HUE_BINS) * SCOPE_HAMP) : 0.0;
+        float3 scope = (pix <= bar) ? hue_col : bg;
+        return float4(lerp(col.rgb, scope, 0.92), col.a);
+    }
+    float  data_v = 0.5 / float(BUFFER_HEIGHT);
+    float  pix    = 1.0 - (rel_y - hue_off - float(SCOPE_HSB)) / float(SCOPE_HSB);
+    float  hue_u  = (float(HUE_OFFSET + hue_bin) + 0.5) / float(BUFFER_WIDTH);
+    float  bar    = saturate(tex2D(BackBuffer, float2(hue_u, data_v)).r * float(HUE_BINS) * SCOPE_HAMP);
+    float3 scope  = (pix <= bar) ? hue_col * 0.55 : bg;
+    return float4(lerp(col.rgb, scope, 0.92), col.a);
+}
+
 float4 ScopePS(float4 pos : SV_Position,
                float2 uv  : TEXCOORD0) : SV_Target
 {
@@ -121,150 +186,48 @@ float4 ScopePS(float4 pos : SV_Position,
     // Row y=0 — data highway
     if (pos.y < 1.0)
     {
-        // Pixels 0..128: put game content back (highway data not needed after this pass)
         if (int(pos.x) <= SCOPE_BINS)
             return tex2D(BackBuffer, float2(uv.x, 1.5 / float(BUFFER_HEIGHT)));
-
-        // Pixel 129: live post-correction mean (no cross-frame smoothing — vkBasalt has no BB persistence)
         if (int(pos.x) == SCOPE_BINS + 1)
         {
             float live = 0.0;
-            [loop]
-            for (int my = 0; my < SCOPE_S; my++)
-            [loop]
-            for (int mx = 0; mx < SCOPE_S; mx++)
-                live += Luma(tex2Dlod(BackBuffer,
-                    float4((mx + 0.5) / float(SCOPE_S), (my + 0.5) / float(SCOPE_S), 0, 0)).rgb);
+            [loop] for (int my = 0; my < SCOPE_S; my++)
+            [loop] for (int mx = 0; mx < SCOPE_S; mx++)
+                live += Luma(tex2D(BackBuffer,
+                    float2((mx + 0.5) / float(SCOPE_S), (my + 0.5) / float(SCOPE_S))).rgb);
             live /= float(SCOPE_S * SCOPE_S);
             return float4(live, live, live, 1.0);
         }
-
-        return col; // pixels 130+: passthrough (reserved for future stage means)
+        return col;
     }
 
-    col = DrawLabel(col, pos.xy, 270.0, 66.0,
-                    56u, 83u, 67u, 79u, float3(0.0, 0.80, 1.0)); // 8SCO
+    col = DrawLabel(col, pos.xy, 270.0, 82.0,
+                    83u, 67u, 79u, 80u, float3(0.0, 0.80, 1.0)); // SCOP
 
-    float x0 = SCOPE_X;
-    float y0 = SCOPE_Y;
-    float x1 = x0 + SCOPE_W;
-    float y1 = y0 + SCOPE_H;
-
-    if (pos.x < x0 || pos.x >= x1 || pos.y < y0 || pos.y >= y1)
+    if (pos.x < SCOPE_X || pos.x >= SCOPE_X + SCOPE_W || pos.y < SCOPE_Y || pos.y >= SCOPE_Y + SCOPE_H)
         return col;
-
-    // 1px border
-    if (pos.x < x0 + 1 || pos.x >= x1 - 1 || pos.y < y0 + 1 || pos.y >= y1 - 1)
+    if (pos.x < SCOPE_X + 1 || pos.x >= SCOPE_X + SCOPE_W - 1 || pos.y < SCOPE_Y + 1 || pos.y >= SCOPE_Y + SCOPE_H - 1)
         return float4(0.3, 0.3, 0.3, 1.0);
 
-    int   bin   = int((pos.x - x0) / float(SCOPE_W) * float(SCOPE_BINS));
-    float rel_y = pos.y - y0;
+    int   bin   = int((pos.x - SCOPE_X) / float(SCOPE_W) * float(SCOPE_BINS));
+    float rel_y = pos.y - SCOPE_Y;
 
     bool in_top  = rel_y < SCOPE_PH;
-    bool in_div  = rel_y >= SCOPE_PH && rel_y < SCOPE_PH + SCOPE_DIV;
+    bool in_div  = rel_y >= SCOPE_PH         && rel_y < SCOPE_PH + SCOPE_DIV;
     bool in_div2 = rel_y >= SCOPE_PH * 2 + SCOPE_DIV && rel_y < SCOPE_PH * 2 + SCOPE_DIV * 2;
     bool in_hue  = rel_y >= SCOPE_PH * 2 + SCOPE_DIV * 2;
 
     if (in_div || in_div2)
         return float4(0.18, 0.18, 0.18, 1.0);
 
-    float data_v = 0.5 / float(BUFFER_HEIGHT);
+    float data_v    = 0.5 / float(BUFFER_HEIGHT);
+    float pre_mean  = tex2D(BackBuffer, float2((float(SCOPE_BINS)     + 0.5) / float(BUFFER_WIDTH), data_v)).r;
+    float post_mean = tex2D(BackBuffer, float2((float(SCOPE_BINS + 1) + 0.5) / float(BUFFER_WIDTH), data_v)).r;
+    bool  ref_90    = (bin == int(0.90 * float(SCOPE_BINS)));
 
-    // Stage means from data highway
-    float pre_mean_u  = (float(SCOPE_BINS)     + 0.5) / float(BUFFER_WIDTH);
-    float post_mean_u = (float(SCOPE_BINS + 1) + 0.5) / float(BUFFER_WIDTH);
-    float pre_mean    = tex2Dlod(BackBuffer, float4(pre_mean_u,  data_v, 0, 0)).r;
-    float post_mean   = tex2Dlod(BackBuffer, float4(post_mean_u, data_v, 0, 0)).r;
-
-    bool ref_90 = (bin == int(0.90 * float(SCOPE_BINS)));
-    float3 bg = float3(0.06, 0.06, 0.06);
-
-    if (in_top)
-    {
-        float pix       = 1.0 - rel_y / float(SCOPE_PH);
-        float bucket_lo = float(bin)     / float(SCOPE_BINS);
-        float bucket_hi = float(bin + 1) / float(SCOPE_BINS);
-        float count = 0.0;
-        [loop] for (int sy = 0; sy < SCOPE_S; sy++)
-        [loop] for (int sx = 0; sx < SCOPE_S; sx++)
-        {
-            float luma = Luma(tex2Dlod(BackBuffer,
-                float4((sx + 0.5) / float(SCOPE_S), (sy + 0.5) / float(SCOPE_S), 0, 0)).rgb);
-            count += (luma >= bucket_lo && luma < bucket_hi) ? 1.0 : 0.0;
-        }
-        float bar = saturate(count / float(SCOPE_S * SCOPE_S) * float(SCOPE_BINS) * SCOPE_AMP);
-        bool ref_mean = (bin == int(post_mean * float(SCOPE_BINS)));
-        float3 scope;
-        if      (ref_mean)   scope = float3(1.0, 0.85, 0.0);
-        else if (ref_90)     scope = float3(0.4, 0.4,  0.4);
-        else if (pix <= bar) scope = float3(0.9, 0.9,  0.9);
-        else                 scope = bg;
-        int dig_x = int(pos.x - x0) - (SCOPE_W - 18);
-        int dig_y = int(rel_y) - 2;
-        if (dig_x >= 0 && dig_x < 15 && dig_y >= 0 && dig_y < 5)
-            if (ShowNumber(post_mean, dig_x, dig_y))
-                scope = float3(1.0, 0.85, 0.0);
-        return float4(lerp(col.rgb, scope, 0.92), col.a);
-    }
-
-    if (!in_hue)
-    {
-        float pix     = 1.0 - (rel_y - float(SCOPE_PH + SCOPE_DIV)) / float(SCOPE_PH);
-        float data_u  = (float(bin) + 0.5) / float(BUFFER_WIDTH);
-        float raw_val = tex2Dlod(BackBuffer, float4(data_u, data_v, 0, 0)).r;
-        float bar     = saturate(raw_val * float(SCOPE_BINS) * SCOPE_AMP);
-        bool ref_mean = (bin == int(pre_mean * float(SCOPE_BINS)));
-        float3 scope;
-        if      (ref_mean)   scope = float3(1.0, 0.85, 0.0);
-        else if (ref_90)     scope = float3(0.4, 0.4,  0.4);
-        else if (pix <= bar) scope = float3(0.45, 0.45, 0.45);
-        else                 scope = bg;
-        int dig_x = int(pos.x - x0) - (SCOPE_W - 18);
-        int dig_y = int(rel_y) - (SCOPE_PH + SCOPE_DIV + 2);
-        if (dig_x >= 0 && dig_x < 15 && dig_y >= 0 && dig_y < 5)
-            if (ShowNumber(pre_mean, dig_x, dig_y))
-                scope = float3(1.0, 0.85, 0.0);
-        return float4(lerp(col.rgb, scope, 0.92), col.a);
-    }
-
-    // Hue panel — top 40px post-correction, bottom 40px pre-correction
-    {
-        int   hue_bin    = clamp(int((pos.x - x0) / float(SCOPE_W) * float(HUE_BINS)), 0, HUE_BINS - 1);
-        float hue_center = (float(hue_bin) + 0.5) / float(HUE_BINS);
-        float3 hue_col   = HueToRGB(hue_center);
-        float  hue_off   = float(SCOPE_PH * 2 + SCOPE_DIV * 2);
-        bool   in_post   = rel_y < hue_off + float(SCOPE_HSB);
-
-        if (in_post)
-        {
-            float pix = 1.0 - (rel_y - hue_off) / float(SCOPE_HSB);
-            float bucket_lo = float(hue_bin)     / float(HUE_BINS);
-            float bucket_hi = float(hue_bin + 1) / float(HUE_BINS);
-            float count = 0.0, total_w = 0.0;
-            [loop] for (int sy = 0; sy < SCOPE_HS; sy++)
-            [loop] for (int sx = 0; sx < SCOPE_HS; sx++)
-            {
-                float3 s   = tex2Dlod(BackBuffer,
-                    float4((sx + 0.5) / float(SCOPE_HS), (sy + 0.5) / float(SCOPE_HS), 0, 0)).rgb;
-                float3 hsv = RGBtoHSV(s);
-                float  w   = step(0.04, hsv.y);
-                count   += (hsv.x >= bucket_lo && hsv.x < bucket_hi) ? w : 0.0;
-                total_w += w;
-            }
-            float bar = (total_w > 0.5) ? saturate(count / total_w * float(HUE_BINS) * SCOPE_HAMP) : 0.0;
-            float3 scope = (pix <= bar) ? hue_col : bg;
-            return float4(lerp(col.rgb, scope, 0.92), col.a);
-        }
-        else
-        {
-            float pix     = 1.0 - (rel_y - hue_off - float(SCOPE_HSB)) / float(SCOPE_HSB);
-            float hue_u   = (float(HUE_OFFSET + hue_bin) + 0.5) / float(BUFFER_WIDTH);
-            float hue_val = tex2Dlod(BackBuffer, float4(hue_u, data_v, 0, 0)).r;
-            float bar     = saturate(hue_val * float(HUE_BINS) * SCOPE_HAMP);
-            float3 scope  = (pix <= bar) ? hue_col * 0.55 : bg;
-            return float4(lerp(col.rgb, scope, 0.92), col.a);
-        }
-    }
+    if (in_top)  return DrawLumaPost(col, pos.xy, bin, rel_y, post_mean, ref_90);
+    if (!in_hue) return DrawLumaPre (col, pos.xy, bin, rel_y, pre_mean,  ref_90);
+    return DrawHuePanel(col, pos.xy, rel_y);
 }
 
 technique Scope

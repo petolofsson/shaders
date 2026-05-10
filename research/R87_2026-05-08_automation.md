@@ -110,7 +110,7 @@ Behaviour:
 | 0.03  | ≈ 2.20          | Very dark — night / interior |
 | 0.05  | 2.20            | Dark-shadow threshold        |
 | 0.12  | ≈ 1.6           | Normal mixed scene           |
-| 0.20  | ≈ 0.95          | Bright/outdoor                |
+| 0.20  | ≈ 0.95          | Bright/outdoor               |
 | 0.25+ | 0.80            | Bright-shadow ceiling        |
 
 The smoothstep transition window (0.05–0.25 in p25) covers the practical range of Arc Raiders

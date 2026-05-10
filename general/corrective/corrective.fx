@@ -1,5 +1,7 @@
 // corrective.fx — Game-agnostic corrective analysis chain
-#include "debug_text.fxh"
+#include "../highway.fxh"
+#include "../hue_bands.fxh"
+#include "../common.fxh"
 //
 // Prepares all analysis textures consumed by grade.fx (MegaPass).
 // Single vkBasalt effect — no inter-effect BackBuffer clears, no wasted Passthroughs.
@@ -11,6 +13,7 @@
 //   4. SmoothZoneLevels     CreativeZoneLevelsTex → ZoneHistoryTex  temporal smoothing
 //   5. UpdateHistory        BackBuffer → ChromaHistoryTex  per-band Oklab chroma stats
 //   6. Passthrough          BackBuffer → BackBuffer  keeps BB non-black for vkBasalt
+// R152: WarmBias pass removed (dead — no consumer); 6 passes remain.
 
 #include "creative_values.fx"
 
@@ -20,18 +23,9 @@
 #define VFF_E_SIGMA_CHROMA 0.04   // innovation scale for chroma — Oklab a/b magnitudes are smaller
 #define KALMAN_R         0.01     // measurement noise
 #define KALMAN_K_INF     0.095    // steady-state gain for secondary channels (EMA)
-#define BAND_WIDTH       8
-#define MIN_WEIGHT       1.0
 #define SAT_THRESHOLD    2
 
-#define BAND_RED     0.083
-#define BAND_YELLOW  0.305
-#define BAND_GREEN   0.396
-#define BAND_CYAN    0.542
-#define BAND_BLUE    0.735
-#define BAND_MAGENTA 0.913
-
-uniform int FRAME_COUNT < source = "framecount"; >;
+uniform float FRAME_TIMER < source = "timer"; >;        // ms since app start
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
@@ -45,7 +39,7 @@ sampler2D BackBuffer
     MagFilter = LINEAR;
 };
 
-texture2D CreativeLowFreqTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 3; };
+texture2D CreativeLowFreqTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 1; };  // R117: mip1/2 never used (grade.fx builds LowFreqMip1/2Tex explicitly)
 sampler2D CreativeLowFreqSamp
 {
     Texture   = CreativeLowFreqTex;
@@ -106,96 +100,8 @@ sampler2D PercSamp
     MagFilter = POINT;
 };
 
-// R53: scene-cut signal — r=scene_cut [0,1] (written by analysis_frame SceneCut pass)
-texture2D SceneCutTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
-sampler2D SceneCutSamp
-{
-    Texture   = SceneCutTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
-
-// R46: highlight-restricted warm bias EMA — read by grade + pro_mist
-texture2D WarmBiasTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
-sampler2D WarmBiasSamp
-{
-    Texture   = WarmBiasTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
-
-// R47: shadow-restricted warm bias EMA — read by grade
-texture2D ShadowBiasTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
-sampler2D ShadowBiasSamp
-{
-    Texture   = ShadowBiasTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
-
-// ─── Vertex shader ─────────────────────────────────────────────────────────
-
-void PostProcessVS(in  uint   id  : SV_VertexID,
-                   out float4 pos : SV_Position,
-                   out float2 uv  : TEXCOORD0)
-{
-    uv.x = (id == 2) ? 2.0 : 0.0;
-    uv.y = (id == 1) ? 2.0 : 0.0;
-    pos  = float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
-}
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
-
-float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
-
-float3 RGBtoOklab(float3 rgb)
-{
-    float l = dot(rgb, float3(0.4122214708, 0.5363325363, 0.0514459929));
-    float m = dot(rgb, float3(0.2119034982, 0.6806995451, 0.1073969566));
-    float s = dot(rgb, float3(0.0883024619, 0.2817188376, 0.6299787005));
-
-    l = pow(l, 1.0 / 3.0);
-    m = pow(m, 1.0 / 3.0);
-    s = pow(s, 1.0 / 3.0);
-
-    return float3(
-        dot(float3(l, m, s), float3( 0.2104542553,  0.7936177850, -0.0040720468)),
-        dot(float3(l, m, s), float3( 1.9779984951, -2.4285922050,  0.4505937099)),
-        dot(float3(l, m, s), float3( 0.0259040371,  0.7827717662, -0.8086757660))
-    );
-}
-
-float OklabHueNorm(float a, float b)
-{
-    float ay = abs(b) + 1e-10;
-    float r  = (a - sign(a) * ay) / (ay + abs(a));
-    float th = 1.5707963 - sign(a) * 0.7853982;
-    th += (0.1963 * r * r - 0.9817) * r;
-    return frac(sign(b + 1e-10) * th / 6.28318 + 1.0);
-}
-
-float HueBandWeight(float hue, float center)
-{
-    float d = abs(hue - center);
-    d = min(d, 1.0 - d);
-    return saturate(1.0 - d / (BAND_WIDTH / 100.0));
-}
-
-float GetBandCenter(int b)
-{
-    if (b == 0) return BAND_RED;
-    if (b == 1) return BAND_YELLOW;
-    if (b == 2) return BAND_GREEN;
-    if (b == 3) return BAND_CYAN;
-    if (b == 4) return BAND_BLUE;
-    return BAND_MAGENTA;
-}
 
 // ─── Halton(2,3) sequence — procedural, avoids static const array SPIR-V issue ──
 
@@ -220,10 +126,10 @@ float4 ComputeLowFreqPS(float4 pos : SV_Position,
 {
     float2 px = float2(1.0 / BUFFER_WIDTH, 1.0 / BUFFER_HEIGHT);
     float3 rgb = 0.0;
-    rgb += tex2Dlod(BackBuffer, float4(uv + float2(-1.5, -1.5) * px, 0, 0)).rgb;
-    rgb += tex2Dlod(BackBuffer, float4(uv + float2( 1.5, -1.5) * px, 0, 0)).rgb;
-    rgb += tex2Dlod(BackBuffer, float4(uv + float2(-1.5,  1.5) * px, 0, 0)).rgb;
-    rgb += tex2Dlod(BackBuffer, float4(uv + float2( 1.5,  1.5) * px, 0, 0)).rgb;
+    rgb += tex2D(BackBuffer, uv + float2(-1.5, -1.5) * px).rgb;
+    rgb += tex2D(BackBuffer, uv + float2( 1.5, -1.5) * px).rgb;
+    rgb += tex2D(BackBuffer, uv + float2(-1.5,  1.5) * px).rgb;
+    rgb += tex2D(BackBuffer, uv + float2( 1.5,  1.5) * px).rgb;
     rgb *= 0.25;
     return float4(rgb, Luma(rgb));
 }
@@ -269,26 +175,40 @@ float4 BuildZoneLevelsPS(float4 pos : SV_Position,
     float cumulative = 0.0;
     float p25 = 0.25, median = 0.5, p75 = 0.75;
     float lock25 = 0.0, lock50 = 0.0, lock75 = 0.0;
+    float sum_x = 0.0, sum_x2 = 0.0;  // R116: histogram moments for intra-zone variance
 
     [loop] for (int b = 0; b < 32; b++)
     {
-        float bv   = float(b) / 32.0;
+        float bc   = (float(b) + 0.5) / 32.0;  // bin centre for variance moments
         float frac = tex2Dlod(CreativeZoneHistSamp,
             float4((float(b) + 0.5) / 32.0, (float(zone) + 0.5) / 16.0, 0, 0)).r;
+        float prev = cumulative;
         cumulative += frac;
+        sum_x      += bc * frac;
+        sum_x2     += bc * bc * frac;
 
+        // Intra-bin interpolation — matches CDFWalkPS precision (~8× vs raw bin edge)
+        float inv  = (frac > 0.0) ? 1.0 / frac : 0.0;
+        float t25  = saturate((0.25 - prev) * inv);
+        float t50  = saturate((0.50 - prev) * inv);
+        float t75  = saturate((0.75 - prev) * inv);
+        float bv25 = (float(b) + t25) / 32.0;
+        float bv50 = (float(b) + t50) / 32.0;
+        float bv75 = (float(b) + t75) / 32.0;
         float at25 = step(0.25, cumulative) * (1.0 - lock25);
         float at50 = step(0.50, cumulative) * (1.0 - lock50);
         float at75 = step(0.75, cumulative) * (1.0 - lock75);
-        p25    = lerp(p25,    bv, at25);
-        median = lerp(median, bv, at50);
-        p75    = lerp(p75,    bv, at75);
+        p25    = lerp(p25,    bv25, at25);
+        median = lerp(median, bv50, at50);
+        p75    = lerp(p75,    bv75, at75);
         lock25 = saturate(lock25 + at25);
         lock50 = saturate(lock50 + at50);
         lock75 = saturate(lock75 + at75);
     }
 
-    return float4(median, p25, p75, 1.0);
+    // E[X²] - E[X]² = per-pixel luma variance within this zone
+    float intra_std = sqrt(max(sum_x2 - sum_x * sum_x, 0.0));
+    return float4(median, p25, p75, intra_std);
 }
 
 // ─── Pass 4 — temporal smoothing ───────────────────────────────────────────
@@ -299,165 +219,123 @@ float4 SmoothZoneLevelsPS(float4 pos : SV_Position,
     float4 current = tex2D(CreativeZoneLevelsSamp, uv);
     float4 prev    = tex2D(ZoneHistorySamp, uv);
 
-    // R39: VFF Kalman — zone median (.r), P in .a, cold-start when uninitialized
-    float P_prev = (prev.a < 0.001) ? 1.0 : prev.a;
-    float e_zone = current.r - prev.r;
-    float Q_vff  = lerp(KALMAN_Q_MIN, KALMAN_Q_MAX, smoothstep(0.0, VFF_E_SIGMA, abs(e_zone)));
-    float P_pred = P_prev + Q_vff;
-    float K      = P_pred / (P_pred + KALMAN_R);
-    // R53: scene-cut override — spike K toward 1.0 on hard cuts
-    float scene_cut = tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0)).r;
-    K = lerp(K, 1.0, scene_cut);
-    float median = prev.r + K * e_zone;
-    float P_new  = (1.0 - K) * P_pred;
+    float scene_cut = ReadHWY(HWY_SCENE_CUT);
+    float k         = lerp(KALMAN_K_INF, 1.0, scene_cut);
+    float median    = lerp(prev.r, current.r, k);
+    float p25       = lerp(prev.g, current.g, k);
+    float p75       = lerp(prev.b, current.b, k);
+    float intra_std = lerp(prev.a, current.a, k);  // R116: per-zone intra_std
 
-    // EMA: p25/p75 — steady-state gain
-    float k_ema = lerp(KALMAN_K_INF, 1.0, scene_cut);
-    float p25 = lerp(prev.g, current.g, k_ema);
-    float p75 = lerp(prev.b, current.b, k_ema);
-
-    return float4(median, p25, p75, P_new);
+    return float4(median, p25, p75, intra_std);
 }
 
 // ─── Pass 5 — per-band chroma stats ────────────────────────────────────────
+
+float4 ComputeZoneStats()
+{
+    float m = 0.0, avg_intra_std = 0.0;
+    [unroll] for (int zy = 0; zy < 4; zy++)
+    [unroll] for (int zx = 0; zx < 4; zx++)
+    {
+        float4 zs = tex2Dlod(ZoneHistorySamp,
+            float4((zx + 0.5) / 4.0, (zy + 0.5) / 4.0, 0, 0));
+        m             += zs.r;
+        avg_intra_std += zs.a;
+    }
+    // R116: zone_log_key = linear mean of zone medians; zone_std = mean of per-zone intra_std
+    return float4(m * 0.0625, avg_intra_std * 0.0625, 0.0, 0.0);
+}
+
+float4 ComputeSlowKey()
+{
+    float zone_log_key = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
+    float prev_slow    = tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
+    prev_slow = lerp(zone_log_key, prev_slow, step(0.001, prev_slow));
+    return float4(lerp(prev_slow, zone_log_key, 0.003), 0, 0, 0);
+}
+
+float4 UpdateChromaKalman(int band_idx)
+{
+    uint  base_idx = (uint(FRAME_TIMER / 41.667) * 8u) % 256u;
+    float sum_w    = 0.0;
+    float sum_wc   = 0.0;
+    float sum_wc2  = 0.0;
+    [unroll] for (int i = 0; i < 8; i++)
+    {
+        uint   idx  = (base_idx + uint(i)) % 256u;
+        float2 s_uv = float2(Halton2(idx), Halton3(idx));
+        float3 lab  = RGBtoOklab(tex2D(BackBuffer, s_uv).rgb);
+        float  C    = length(lab.yz);
+        float  h    = OklabHueNorm(lab.y, lab.z);
+        float  w    = HueBandWeight(h, GetBandCenter(band_idx)) * smoothstep(0.03, 0.08, C);
+        float  C_c  = min(C, 0.20);  // clamp outliers (neon, fire) from biasing the pivot
+        sum_w   += w;
+        sum_wc  += w * C_c;
+        sum_wc2 += w * C_c * C_c;
+    }
+    float mean   = sum_wc  / max(sum_w, 0.001);
+    float var    = max(sum_wc2 / max(sum_w, 0.001) - mean * mean, 0.0);
+    float stddev = sqrt(var);
+    // R171: observation confidence — how much of sum_w came from real hue matches.
+    // Absent bands (sum_w≈0) get obs_confidence≈0: Q collapses to Q_MIN, K→0, EMA→0.
+    // State freezes; P still inflates via Q_MIN so re-entry adapts immediately.
+    float obs_confidence = saturate(sum_w * 0.5);
+
+    float4 prev    = tex2D(ChromaHistory, float2((band_idx + 0.5) / 8.0, 0.5 / 4.0));
+    // R39: VFF Kalman — chroma mean (.r), P in .a, cold-start when uninitialized
+    float P_prev   = (prev.a < 0.001) ? 1.0 : prev.a;
+    float e_chroma = mean - prev.r;
+    // R88: Sage-Husa Q — driven by posterior P, not instantaneous innovation spike
+    // R171: gate by obs_confidence — no Q inflation when band absent
+    float Q_vff_c  = lerp(KALMAN_Q_MIN,
+                          lerp(KALMAN_Q_MIN, KALMAN_Q_MAX,
+                               smoothstep(KALMAN_R * 0.5, KALMAN_R * 5.0, P_prev)),
+                          obs_confidence);
+    float P_pred   = P_prev + Q_vff_c;
+    float K        = P_pred / (P_pred + KALMAN_R);
+    // R53: scene-cut override — spike K toward 1.0 on hard cuts
+    float scene_cut = ReadHWY(HWY_SCENE_CUT);
+    K = lerp(K, 1.0, scene_cut) * obs_confidence;
+    float new_mean = prev.r + K * e_chroma;
+    float P_new    = saturate((1.0 - K) * P_pred);
+    // EMA: std and wsum — gate by obs_confidence so absent bands don't decay
+    float k_ema    = lerp(KALMAN_K_INF, 1.0, scene_cut) * obs_confidence;
+    return float4(new_mean, lerp(prev.g, stddev, k_ema), lerp(prev.b, sum_w, k_ema), P_new);
+}
 
 float4 UpdateHistoryPS(float4 pos : SV_Position,
                        float2 uv  : TEXCOORD0) : SV_Target
 {
     int band_idx = int(pos.x);
-    if (pos.y >= 1.0 || band_idx >= 7) return float4(0, 0, 0, 0);
-
-    // Column 6: zone global stats (zone_log_key, zone_std, zmin, zmax) — free pixel, no chroma work
-    if (band_idx == 6)
-    {
-        float lk = 0.0, m = 0.0, m2 = 0.0, zmin = 1.0, zmax = 0.0;
-        [unroll] for (int zy = 0; zy < 4; zy++)
-        [unroll] for (int zx = 0; zx < 4; zx++)
-        {
-            float zm = tex2Dlod(ZoneHistorySamp,
-                float4((zx + 0.5) / 4.0, (zy + 0.5) / 4.0, 0, 0)).r;
-            lk  += log(max(zm, 0.001));
-            m   += zm;
-            m2  += zm * zm;
-            zmin = min(zmin, zm);
-            zmax = max(zmax, zm);
-        }
-        float zavg = m * 0.0625;
-        return float4(exp(lk * 0.0625),
-                      sqrt(max(m2 * 0.0625 - zavg * zavg, 0.0)),
-                      zmin, zmax);
-    }
-
-    uint  base_idx = uint(FRAME_COUNT * 8) % 256u;
-    float sum_w    = 0.0;
-    float sum_wc   = 0.0;
-    float sum_wc2  = 0.0;
-
-    [unroll] for (int i = 0; i < 8; i++)
-    {
-        uint   idx  = (base_idx + uint(i)) % 256u;
-        float2 s_uv = float2(Halton2(idx), Halton3(idx));
-        float3 rgb  = tex2Dlod(BackBuffer, float4(s_uv, 0, 0)).rgb;
-        float3 lab  = RGBtoOklab(rgb);
-        float  C    = length(lab.yz);
-        float  h    = OklabHueNorm(lab.y, lab.z);
-
-        float w    = HueBandWeight(h, GetBandCenter(band_idx)) + MIN_WEIGHT;
-        sum_w   += w;
-        sum_wc  += w * C;
-        sum_wc2 += w * C * C;
-    }
-
-    float mean   = sum_wc  / max(sum_w, 0.001);
-    float var    = max(sum_wc2 / max(sum_w, 0.001) - mean * mean, 0.0);
-    float stddev = sqrt(var);
-
-    float4 prev    = tex2D(ChromaHistory, float2((band_idx + 0.5) / 8.0, 0.5 / 4.0));
-
-    // R39: VFF Kalman — chroma mean (.r), P in .a, cold-start when uninitialized
-    float P_prev   = (prev.a < 0.001) ? 1.0 : prev.a;
-    float e_chroma = mean - prev.r;
-    float Q_vff_c  = lerp(KALMAN_Q_MIN, KALMAN_Q_MAX, smoothstep(0.0, VFF_E_SIGMA_CHROMA, abs(e_chroma)));
-    float P_pred   = P_prev + Q_vff_c;
-    float K        = P_pred / (P_pred + KALMAN_R);
-    // R53: scene-cut override — spike K toward 1.0 on hard cuts
-    float scene_cut = tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0)).r;
-    K = lerp(K, 1.0, scene_cut);
-    float new_mean = prev.r + K * e_chroma;
-    float P_new    = (1.0 - K) * P_pred;
-
-    // EMA: std and wsum — steady-state gain
-    float k_ema    = lerp(KALMAN_K_INF, 1.0, scene_cut);
-    float new_std  = lerp(prev.g, stddev, k_ema);
-    float new_wsum = lerp(prev.b, sum_w,  k_ema);
-
-    return float4(new_mean, new_std, new_wsum, P_new);
+    if (pos.y >= 1.0 || band_idx >= 8) return float4(0, 0, 0, 0);
+    if (band_idx == 6) return ComputeZoneStats();
+    if (band_idx == 7) return ComputeSlowKey();
+    return UpdateChromaKalman(band_idx);
 }
 
-// ─── Pass 6 — R46: highlight warm bias ────────────────────────────────────
-
-float4 WarmBiasPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
-{
-    float p75     = tex2Dlod(PercSamp,     float4(0.5, 0.5, 0, 0)).b;
-    float prev_wb = tex2Dlod(WarmBiasSamp, float4(0.5, 0.5, 0, 0)).r;
-
-    float sum_r = 0.0, sum_b = 0.0, sum_w = 0.0;
-    [unroll] for (int sy = 0; sy < 8; sy++)
-    [unroll] for (int sx = 0; sx < 8; sx++)
-    {
-        float2 uv_s = float2((sx + 0.5) / 8.0, (sy + 0.5) / 8.0);
-        float4 s    = tex2Dlod(CreativeLowFreqSamp, float4(uv_s, 0, 0));
-        float  wt   = step(p75, s.a);
-        sum_r += s.r * wt;
-        sum_b += s.b * wt;
-        sum_w += wt;
-    }
-
-    float mean_r    = sum_r / max(sum_w, 1.0);
-    float mean_b    = sum_b / max(sum_w, 1.0);
-    float wb_curr   = (mean_r - mean_b) / max(mean_r + mean_b, 0.001);
-    float wb_smooth = lerp(prev_wb, wb_curr, KALMAN_K_INF);
-    return float4(wb_smooth, 0.0, 0.0, 1.0);
-}
-
-// ─── Pass 7 — R47: shadow warm bias ───────────────────────────────────────
-
-float4 ShadowBiasPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
-{
-    float p25      = tex2Dlod(PercSamp,      float4(0.5, 0.5, 0, 0)).r;
-    float prev_sb  = tex2Dlod(ShadowBiasSamp, float4(0.5, 0.5, 0, 0)).r;
-
-    float sum_r = 0.0, sum_b = 0.0, sum_w = 0.0;
-    [unroll] for (int sy = 0; sy < 8; sy++)
-    [unroll] for (int sx = 0; sx < 8; sx++)
-    {
-        float2 uv_s = float2((sx + 0.5) / 8.0, (sy + 0.5) / 8.0);
-        float4 s    = tex2Dlod(CreativeLowFreqSamp, float4(uv_s, 0, 0));
-        float  wt   = step(s.a, p25);
-        sum_r += s.r * wt;
-        sum_b += s.b * wt;
-        sum_w += wt;
-    }
-
-    float mean_r    = sum_r / max(sum_w, 1.0);
-    float mean_b    = sum_b / max(sum_w, 1.0);
-    float sb_curr   = (mean_r - mean_b) / max(mean_r + mean_b, 0.001);
-    float sb_smooth = lerp(prev_sb, sb_curr, KALMAN_K_INF);
-    return float4(sb_smooth, 0.0, 0.0, 1.0);
-}
 
 // ─── Pass 8 — Passthrough ──────────────────────────────────────────────────
 
 float4 PassthroughPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float4 c = tex2D(BackBuffer, uv);
-    if (pos.y < 1.0) return c;  // data highway
-    c = DrawLabel(c, pos.xy, 270.0, 26.0,
-                  51u, 67u, 79u, 82u, float3(0.1, 0.90, 0.1));  // 3COR
-    c = DrawLabel(c, pos.xy, 270.0, 34.0,
-                  52u, 90u, 79u, 78u, float3(0.7, 0.20, 1.0));  // 4ZON
-    c = DrawLabel(c, pos.xy, 270.0, 42.0,
-                  53u, 67u, 72u, 82u, float3(1.0, 0.20, 0.20)); // 5CHR
+    if (pos.y < 1.0) {
+        int xi = int(pos.x);
+        if (xi == HWY_STEVENS) {
+            // R153: mode is the dominant scene luminance — more accurate Stevens calibration
+            // than zone_log_key (mean of zone medians), which is pulled up by bright zones.
+            float mode = ReadHWY(HWY_MODE);
+            float fc_s = (1.48 + exp2(log2(max(mode, 1e-6)) * (1.0 / 3.0))) / 2.04;
+            return float4(saturate(fc_s / 1.3), 0.0, 0.0, 1.0);
+        }
+        if (xi == HWY_ZONE_KEY || xi == HWY_ZONE_STD) {
+            float4 ch6 = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0));
+            return float4(xi == HWY_ZONE_KEY ? ch6.r : ch6.g, 0.0, 0.0, 1.0);
+        }
+        if (xi == HWY_SLOW_KEY)
+            return float4(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0.0, 0.0, 1.0);
+        return c;
+    }
     return c;
 }
 
@@ -494,18 +372,6 @@ technique Corrective
         VertexShader = PostProcessVS;
         PixelShader  = UpdateHistoryPS;
         RenderTarget = ChromaHistoryTex;
-    }
-    pass WarmBias
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = WarmBiasPS;
-        RenderTarget = WarmBiasTex;
-    }
-    pass ShadowBias
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = ShadowBiasPS;
-        RenderTarget = ShadowBiasTex;
     }
     pass Passthrough
     {

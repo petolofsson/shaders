@@ -196,7 +196,7 @@ reappears, the full VFF range is restored.
 ## ROI table
 
 | Finding | Visual impact | GPU cost | Recommended action |
-|---------|--------------|----------|--------------------||
+|---------|--------------|----------|--------------------|
 | Obs-weight-gated Kalman P inflation (HIGH PRIORITY) | High | Zero passes, 3 lines | Implement — R91 candidate |
 | Directional EMA freeze for absent hue bands | Medium | Zero passes, 2 lines | Bundle with above into R91 |
 | Innovation-derived adaptive Q_MAX (EnKF-N analogue) | Medium | Zero passes, 1 divide | Implement after R91, verify convergence |
