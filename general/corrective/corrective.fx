@@ -277,22 +277,30 @@ float4 UpdateChromaKalman(int band_idx)
     float mean   = sum_wc  / max(sum_w, 0.001);
     float var    = max(sum_wc2 / max(sum_w, 0.001) - mean * mean, 0.0);
     float stddev = sqrt(var);
+    // R171: observation confidence — how much of sum_w came from real hue matches.
+    // Absent bands (sum_w≈0) get obs_confidence≈0: Q collapses to Q_MIN, K→0, EMA→0.
+    // State freezes; P still inflates via Q_MIN so re-entry adapts immediately.
+    float obs_confidence = saturate(sum_w * 0.5);
 
     float4 prev    = tex2D(ChromaHistory, float2((band_idx + 0.5) / 8.0, 0.5 / 4.0));
     // R39: VFF Kalman — chroma mean (.r), P in .a, cold-start when uninitialized
     float P_prev   = (prev.a < 0.001) ? 1.0 : prev.a;
     float e_chroma = mean - prev.r;
     // R88: Sage-Husa Q — driven by posterior P, not instantaneous innovation spike
-    float Q_vff_c  = lerp(KALMAN_Q_MIN, KALMAN_Q_MAX, smoothstep(KALMAN_R * 0.5, KALMAN_R * 5.0, P_prev));
+    // R171: gate by obs_confidence — no Q inflation when band absent
+    float Q_vff_c  = lerp(KALMAN_Q_MIN,
+                          lerp(KALMAN_Q_MIN, KALMAN_Q_MAX,
+                               smoothstep(KALMAN_R * 0.5, KALMAN_R * 5.0, P_prev)),
+                          obs_confidence);
     float P_pred   = P_prev + Q_vff_c;
     float K        = P_pred / (P_pred + KALMAN_R);
     // R53: scene-cut override — spike K toward 1.0 on hard cuts
     float scene_cut = ReadHWY(HWY_SCENE_CUT);
-    K = lerp(K, 1.0, scene_cut);
+    K = lerp(K, 1.0, scene_cut) * obs_confidence;
     float new_mean = prev.r + K * e_chroma;
     float P_new    = saturate((1.0 - K) * P_pred);
-    // EMA: std and wsum — steady-state gain
-    float k_ema    = lerp(KALMAN_K_INF, 1.0, scene_cut);
+    // EMA: std and wsum — gate by obs_confidence so absent bands don't decay
+    float k_ema    = lerp(KALMAN_K_INF, 1.0, scene_cut) * obs_confidence;
     return float4(new_mean, lerp(prev.g, stddev, k_ema), lerp(prev.b, sum_w, k_ema), P_new);
 }
 
