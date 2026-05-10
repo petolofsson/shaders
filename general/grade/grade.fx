@@ -775,12 +775,12 @@ float3 ApplyDiffusionBloom(float3 base_rgb, float3 diff_blur, float adapt_str, f
 {
     float3 ch_scatter = float3(1.15, 1.00, 0.85);
     float3 bloom_raw  = max(0.0, diff_blur - base_rgb);
-    float  src_gate   = smoothstep(0.15, 0.45, Luma(diff_blur));
+    float  src_gate   = smoothstep(0.10, 0.40, Luma(diff_blur));
     float3 bloom      = bloom_raw / (bloom_raw + 0.08) * src_gate * ch_scatter;
     float3 result     = saturate(base_rgb + bloom * adapt_str);
     float  luma_r     = Luma(result);
     float  mid_gate   = luma_r * (1.0 - luma_r) * 4.0;
-    return saturate(lerp(result, diff_blur, eff_diff * 0.09 * mid_gate * ch_scatter));
+    return saturate(lerp(result, diff_blur, (0.10 + eff_diff * 0.09) * mid_gate * ch_scatter));
 }
 
 float3 pcg3d_hash(uint3 v)
