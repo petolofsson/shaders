@@ -16,6 +16,14 @@
 
 - **R179 chroma lift dead zones closed** (`grade.fx`) — Audit found `GetBandCenter` maps only 6 primaries/secondaries (RED, YELLOW, GREEN, CYAN, BLUE, MAGENTA) with ±0.08 weight width. Tertiary hues (ORANGE, AMBER, TEAL, AZURE, VIOLET, ROSE) fell in zero-weight gaps → `total_w≈0` → `lifted_C=C` → no lift applied. Fix: widen pivot weight to ±0.14 inside the lift loop only. All 12 hue regions now interpolate from nearest tracked bands. Confirmed working.
 
+- **Shadow lift bell tuned to 0.23** (`grade.fx`) — Pixel bell upper bound walked 0.27→0.25→0.23. At 0.27 dark particle/schmutz detail was over-lifted into muddy grey. At 0.23 dark details retain depth while shadows still get lift.
+
+- **R180 eye-shape diffusion** (`grade.fx`) — Old radial oval (xs=1.6, ys=0.08) produced visible left/right edge bands with clear center — center was 0% diffusion, which nullified artistic intent. Replaced with 90°-rotated eye shape: foci off-screen at |dy|=0.70, widest at vertical center ±12.5% of screen width. `eye_x_bound = 0.125 × sqrt(1−(dy/0.70)²)`, `r = saturate(dist_out/0.375)`. Ramp: 0→0.25 at r=0.15–0.40, 0.25→0.75 at r=0.40–0.70, 0.75→1.00 at r=0.70–0.90. Center now receives 10% midtone baseline (`0.10 × mid_gate × ch_scatter`). src_gate lowered to `smoothstep(0.10,0.40,Luma)` — more bloom in dark scenes. Additive adapt_str boosted 0.15→0.22, midtone scalar 0.06→0.09.
+
+- **Autochroma removed — VIBRANCE is pure creative knob** (`grade.fx`) — R176 adaptive multiplier (`lerp(1.25,0.85,smoothstep(0.04,0.18,mean_C_scene))`) removed. `chroma_str_base = VIBRANCE × 0.04` directly. Scene-adaptive behaviour was unpredictable from a creative standpoint; VIBRANCE now maps exactly to Lightroom Vibrance semantics (lift-only, protects already-saturated pixels).
+
+- **CHROMA_STR → VIBRANCE rename** (all files) — `CHROMA_STR` renamed `VIBRANCE` in `creative_values.fx` (all three profiles), `grade.fx`, `highway.fxh` (HWY_CHROMA_STR→HWY_VIBRANCE, slot 218). Matches Lightroom Vibrance semantics: lift-only chroma gain, vibrance-self-masked.
+
 - **R176 CHROMA_STR gamut expansion + Hunt effect** (`grade.fx`) — Extended R151: `chroma_str_base` multiplier now `lerp(1.25, 0.85, smoothstep(0.04, 0.18, mean_C_scene))` — full ×0.85–1.25 range. Old R151 only boosted achromatic scenes (lerp up to ×1.2, no reduction for vibrant). New: vibrant scenes back off to ×0.85 (already chromatically adapted); near-achromatic scenes reach ×1.25 (gamut-expansion mode, Webster & Mollon 1997; Hunt effect FL^0.25, CIECAM02).
 
 - **arc_raiders tuning** — EXPOSURE 0.90→0.85, FILM_CEILING 1.00→0.97, PRINT_STOCK 0.40→0.50, ZONE_STRENGTH 1.00→1.10, SHADOW_LIFT_STRENGTH →1.0, PURKINJE_STRENGTH 0.70→0.75, HAL_STRENGTH →0.30, DIFFUSION_STRENGTH 0.65→0.70, GRAIN_STRENGTH 1.15→1.1.
