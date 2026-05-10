@@ -5,7 +5,7 @@
 ## Active chain (testbed)
 
 ```
-analysis_frame : inverse_grade : analysis_scope_pre : corrective : grade : analysis_scope
+analysis_frame : inverse_grade : corrective : grade
 ```
 
 grade is an **8-pass technique**: LFDownscale1 → LFDownscale2 → NeutralIllum → ColorTransform → DiffusionDownsample → DiffusionBlurH → DiffusionBlurV → Diffusion
@@ -23,11 +23,13 @@ grade is an **8-pass technique**: LFDownscale1 → LFDownscale2 → NeutralIllum
 ## Known state
 
 - No known compile errors. Debug log: `/tmp/vkbasalt.log`
-- R159–R169 complete. R161 (achrom_frac chroma gate) and R164 (LUMA_MEAN_PRE slope cap) permanently dropped — degraded blacks character, redundant with existing signals.
+- R159–R173 complete. R161 (achrom_frac chroma gate) and R164 (LUMA_MEAN_PRE slope cap) permanently dropped.
 - R165 (HWY_ILLUM_WARM slot 220) and R163 (CHROMA_ANGLE alignment bias) active.
-- R166/R167: three-octave grain replaced with two-octave (2px smooth + 1px blue noise) + luma-dependent size + per-channel dye layer scaling.
-- R168: physical halation — two-scale DoG PSF (tight 1/16−sharp, broad 1/32−1/16), AH layer attenuation on tight ring (2383 rem-jet ~40%), per-layer color weights.
-- R169: grain temporal cross-dissolve — `frac(FRAME_TIMER/41.667)` sub-frame blend between grain slots eliminates screen-space snap at high FPS (>60fps rain artifact).
+- R170: variance-preserving grain dissolve + per-slot lattice jitter — eliminates rain artifact at >100 FPS.
+- R171: Kalman obs-confidence gate — absent hue bands freeze in place rather than drifting to zero.
+- Perf: `analysis_scope` and `analysis_scope_pre` removed from chain (~8 FPS). `DrawLabel` stripped from all passes (~4+ FPS). Active chain: `analysis_frame : inverse_grade : corrective : grade`.
+- R172: GrainValueNoise collapsed per-channel — 30→14 pcg3d_hash calls (~53% grain ALU reduction).
+- R173: BLEACH_BYPASS × shadow_mask × 0.30 raises blue-noise grain weight in shadows when bleach bypass engaged.
 - GZW jungle movie grade complete: teal-green shadows, green ambient mids, golden highlights, deep-cyan greens.
 - **arc_raiders** current values: INVERSE_STRENGTH 0.50, SHADOW_LIFT_STRENGTH 1.00, CHROMA_STR 1.10, HAL_STRENGTH 0.20, HAL_GAMMA 0.05, GRAIN_STRENGTH 1.15.
 - **GZW** current values: SHADOW_LIFT_STRENGTH 1.15, DIFFUSION_STRENGTH 0.60, HAL_STRENGTH 0.30, HAL_GAMMA 0.02.

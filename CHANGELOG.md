@@ -4,6 +4,16 @@
 
 ## 2026-05-10
 
+- **R170 grain rain fix** (`grade.fx`) — Replaced linear cross-dissolve with variance-preserving dissolve `sqrt(1−t)×slot0 + sqrt(t)×slot1` (linear lerp drops amplitude to 71% at midpoint — visually pulses). Added per-slot lattice jitter: `pcg3d_hash(slot0, 7919u, 0u)` offsets each slot's sample grid by ±½ grain cell — breaks screen-pixel lock that caused rain parallax streaks at >100 FPS.
+
+- **R171 Kalman obs-confidence gate** (`corrective.fx`) — `obs_confidence = saturate(sum_w × 0.5)` applied to K, k_ema, and Q. When a hue band is absent (sum_w≈0), obs_confidence→0 collapses gain and process noise — absent bands freeze in place rather than drifting toward zero mean over time.
+
+- **Perf: chain simplification + DrawLabel removal** (`arc_raiders.conf`, `corrective.fx`, `analysis_frame.fx`, `grade.fx`) — Removed `analysis_scope` and `analysis_scope_pre` from chain (~8 FPS recovered total). Stripped `DrawLabel` from PassthroughPS ("3COR/4ZON/5CHR"), DebugOverlayPS ("1ANL"), ColorTransformPS ("6GRA"), and DiffusionPS ("7PMS") — ~4+ FPS recovered. Removed all `#include "debug_text.fxh"` includes. Active chain simplified to `analysis_frame : inverse_grade : corrective : grade`.
+
+- **R172 GrainValueNoise collapse** (`grade.fx`) — Collapsed 3× per-channel `GrainValueNoise` calls inside `GrainSlot` into 1× call with per-channel scale offsets (R×1.00/G×0.90/B×1.15). pcg3d_hash calls reduced 30→14 per pixel (~53% grain ALU reduction). No perceptual change — per-channel sizing preserved via luma_scale multiplier.
+
+- **R173 BLEACH_BYPASS silver grain coupling** (`grade.fx`) — `GrainSlot` accepts `silver_boost` param; blue-noise weight rises from base 0.30 to `0.30 + BLEACH_BYPASS × shadow_mask × 0.30`. Shadow mask `1 − smoothstep(0.0, 0.65, L_g)` matches ApplyBleachBypass rolloff exactly — retained silver halide grain (1px blue-noise texture) adds grit in shadows when bleach bypass is engaged.
+
 - **R159 luma expansion removal + R145 decoupling** (`inverse_grade.fx`, `grade.fx`) — Removed R144 pivot-based luma expansion from inverse_grade (cbrt(p50_linear) Oklab L pivot caused texture smoothing on bright surfaces in dark scenes; zone S-curve owns luma). Removed R145 zone coupling (ZONE_STRENGTH was divided by inv slope — workaround for R144 redundancy). ZONE_STRENGTH is now a clean standalone knob. INVERSE_STRENGTH tuned to 0.40.
 
 - **R160 adaptive print stock** (`grade.fx`) — ApplyPrintStock now receives p25 and p75. Black lift `0.025 × saturate(1 − p25/0.06)` backs off when scene shadows already elevated; shoulder exponent lerps 1.8→1.2 and cubic correction lerps 0.06→0.02 as p75 rises 0.40→0.70.
