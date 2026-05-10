@@ -39,21 +39,28 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     if (pos.y < 1.0) return col;
     if (INVERSE_STRENGTH <= 0.0) return col;
     float slope_enc  = ReadHWY(HWY_SLOPE);
-    float slope      = max(slope_enc * 1.5 + 1.0, 1.15);  // R116: clamp below valid min; uninit highway decodes as 1.0
-    float3 lab       = RGBtoOklab(col.rgb);
-    float  C         = length(lab.yz);
+    float slope      = max(slope_enc * 1.5 + 1.0, 1.15);  // clamp below valid min; uninit highway (slot=0) decodes to 1.0, clamped to 1.15
+    float3 lab        = RGBtoOklab(col.rgb);
+    float  C          = length(lab.yz);
     float  mid_weight = lab.x * (1.0 - lab.x) * 4.0;
-    float  c_weight   = saturate((C - 0.10) / 0.15);
-    float  mean_C     = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).r;
-    float  factor     = lerp(1.0, slope, float(INVERSE_STRENGTH) * mid_weight * c_weight);
-    float2 dir        = lab.yz / max(C, 1e-5);
-    float  new_C      = mean_C + (C - mean_C) * factor;
+    float  hue        = frac(atan2(lab.z, lab.y) / 6.28318530);
+    // R157: in highly achromatic scenes the remaining colored pixels are genuine
+    // signal — lower the chroma gate so they see full expansion.
+    float  achrom_frac = ReadHWY(HWY_ACHROM_FRAC);
+    float  c_gate      = lerp(0.10, 0.06, smoothstep(0.60, 0.85, achrom_frac));
+    float  c_weight    = saturate((C - c_gate) / 0.15);
+    float  mean_C      = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).r;
+    // R156: warm hues (red, orange) are compressed more by ACES-style tonemappers;
+    // cool hues (teal, cyan) less. Scale slope per hue before applying expansion.
+    float  slope_eff   = clamp(slope * (1.0 + HueSlopeBias(hue)), 1.0, 2.2);
+    float  factor      = lerp(1.0, slope_eff, float(INVERSE_STRENGTH) * mid_weight * c_weight);
+    float2 dir         = lab.yz / max(C, 1e-5);
+    float  new_C       = mean_C + (C - mean_C) * factor;
     // Per-hue ceiling — prevents expansion from overshooting natural gamut.
     // Preserves incoming C if already above ceiling (no reduction), but blocks
     // inverse grade from pushing further. Mirrors R73 ceilings in grade.fx.
-    float hue = frac(atan2(lab.z, lab.y) / 6.28318530);
-    new_C     = min(new_C, max(HueCeil(hue), C));
-    lab.yz    = dir * max(new_C, 0.0);
+    new_C   = min(new_C, max(HueCeil(hue), C));
+    lab.yz  = dir * max(new_C, 0.0);
 
     // R144: luma expansion — restore L compressed by the game's tonemapper.
     // Pivot is cbrt(p50_linear): p50 is stored as linear Rec709 luma; Oklab L is

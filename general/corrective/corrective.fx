@@ -14,6 +14,7 @@
 //   4. SmoothZoneLevels     CreativeZoneLevelsTex → ZoneHistoryTex  temporal smoothing
 //   5. UpdateHistory        BackBuffer → ChromaHistoryTex  per-band Oklab chroma stats
 //   6. Passthrough          BackBuffer → BackBuffer  keeps BB non-black for vkBasalt
+// R152: WarmBias pass removed (dead — no consumer); 6 passes remain.
 
 #include "creative_values.fx"
 
@@ -25,7 +26,7 @@
 #define KALMAN_K_INF     0.095    // steady-state gain for secondary channels (EMA)
 #define SAT_THRESHOLD    2
 
-uniform int FRAME_COUNT < source = "framecount"; >;
+uniform float FRAME_TIMER < source = "timer"; >;        // ms since app start
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
@@ -94,17 +95,6 @@ texture2D PercTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
 sampler2D PercSamp
 {
     Texture   = PercTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
-
-// R46: highlight-restricted warm bias EMA — read by grade + pro_mist
-texture2D WarmBiasTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
-sampler2D WarmBiasSamp
-{
-    Texture   = WarmBiasTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = POINT;
@@ -190,20 +180,28 @@ float4 BuildZoneLevelsPS(float4 pos : SV_Position,
 
     [loop] for (int b = 0; b < 32; b++)
     {
-        float bv   = float(b) / 32.0;
         float bc   = (float(b) + 0.5) / 32.0;  // bin centre for variance moments
         float frac = tex2Dlod(CreativeZoneHistSamp,
             float4((float(b) + 0.5) / 32.0, (float(zone) + 0.5) / 16.0, 0, 0)).r;
+        float prev = cumulative;
         cumulative += frac;
         sum_x      += bc * frac;
         sum_x2     += bc * bc * frac;
 
+        // Intra-bin interpolation — matches CDFWalkPS precision (~8× vs raw bin edge)
+        float inv  = (frac > 0.0) ? 1.0 / frac : 0.0;
+        float t25  = saturate((0.25 - prev) * inv);
+        float t50  = saturate((0.50 - prev) * inv);
+        float t75  = saturate((0.75 - prev) * inv);
+        float bv25 = (float(b) + t25) / 32.0;
+        float bv50 = (float(b) + t50) / 32.0;
+        float bv75 = (float(b) + t75) / 32.0;
         float at25 = step(0.25, cumulative) * (1.0 - lock25);
         float at50 = step(0.50, cumulative) * (1.0 - lock50);
         float at75 = step(0.75, cumulative) * (1.0 - lock75);
-        p25    = lerp(p25,    bv, at25);
-        median = lerp(median, bv, at50);
-        p75    = lerp(p75,    bv, at75);
+        p25    = lerp(p25,    bv25, at25);
+        median = lerp(median, bv50, at50);
+        p75    = lerp(p75,    bv75, at75);
         lock25 = saturate(lock25 + at25);
         lock50 = saturate(lock50 + at50);
         lock75 = saturate(lock75 + at75);
@@ -222,17 +220,12 @@ float4 SmoothZoneLevelsPS(float4 pos : SV_Position,
     float4 current = tex2D(CreativeZoneLevelsSamp, uv);
     float4 prev    = tex2D(ZoneHistorySamp, uv);
 
-    // R39: fixed-gain Kalman for zone median — R88 VFF Q removed; .a now holds intra_std.
-    // Scene-cut override preserved. Steady-state behaviour identical to VFF at convergence.
     float scene_cut = ReadHWY(HWY_SCENE_CUT);
-    float k_med  = lerp(KALMAN_K_INF, 1.0, scene_cut);
-    float median = prev.r + k_med * (current.r - prev.r);
-
-    // EMA: p25 / p75 / intra_std — steady-state gain, scene-cut snap
-    float k_ema     = lerp(KALMAN_K_INF, 1.0, scene_cut);
-    float p25       = lerp(prev.g, current.g, k_ema);
-    float p75       = lerp(prev.b, current.b, k_ema);
-    float intra_std = lerp(prev.a, current.a, k_ema);  // R116: per-zone intra_std
+    float k         = lerp(KALMAN_K_INF, 1.0, scene_cut);
+    float median    = lerp(prev.r, current.r, k);
+    float p25       = lerp(prev.g, current.g, k);
+    float p75       = lerp(prev.b, current.b, k);
+    float intra_std = lerp(prev.a, current.a, k);  // R116: per-zone intra_std
 
     return float4(median, p25, p75, intra_std);
 }
@@ -241,7 +234,7 @@ float4 SmoothZoneLevelsPS(float4 pos : SV_Position,
 
 float4 ComputeZoneStats()
 {
-    float m = 0.0, avg_intra_std = 0.0, zmin = 1.0, zmax = 0.0;
+    float m = 0.0, avg_intra_std = 0.0;
     [unroll] for (int zy = 0; zy < 4; zy++)
     [unroll] for (int zx = 0; zx < 4; zx++)
     {
@@ -249,11 +242,9 @@ float4 ComputeZoneStats()
             float4((zx + 0.5) / 4.0, (zy + 0.5) / 4.0, 0, 0));
         m             += zs.r;
         avg_intra_std += zs.a;
-        zmin = min(zmin, zs.r);
-        zmax = max(zmax, zs.r);
     }
     // R116: zone_log_key = linear mean of zone medians; zone_std = mean of per-zone intra_std
-    return float4(m * 0.0625, avg_intra_std * 0.0625, zmin, zmax);
+    return float4(m * 0.0625, avg_intra_std * 0.0625, 0.0, 0.0);
 }
 
 float4 ComputeSlowKey()
@@ -266,7 +257,7 @@ float4 ComputeSlowKey()
 
 float4 UpdateChromaKalman(int band_idx)
 {
-    uint  base_idx = uint(FRAME_COUNT * 8) % 256u;
+    uint  base_idx = (uint(FRAME_TIMER / 41.667) * 8u) % 256u;
     float sum_w    = 0.0;
     float sum_wc   = 0.0;
     float sum_wc2  = 0.0;
@@ -278,9 +269,10 @@ float4 UpdateChromaKalman(int band_idx)
         float  C    = length(lab.yz);
         float  h    = OklabHueNorm(lab.y, lab.z);
         float  w    = HueBandWeight(h, GetBandCenter(band_idx)) * smoothstep(0.03, 0.08, C);
+        float  C_c  = min(C, 0.20);  // clamp outliers (neon, fire) from biasing the pivot
         sum_w   += w;
-        sum_wc  += w * C;
-        sum_wc2 += w * C * C;
+        sum_wc  += w * C_c;
+        sum_wc2 += w * C_c * C_c;
     }
     float mean   = sum_wc  / max(sum_w, 0.001);
     float var    = max(sum_wc2 / max(sum_w, 0.001) - mean * mean, 0.0);
@@ -314,32 +306,6 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
     return UpdateChromaKalman(band_idx);
 }
 
-// ─── Pass 6 — R46: highlight warm bias ────────────────────────────────────
-
-float4 WarmBiasPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
-{
-    float p75     = tex2Dlod(PercSamp,     float4(0.5, 0.5, 0, 0)).b;
-    float prev_wb = tex2Dlod(WarmBiasSamp, float4(0.5, 0.5, 0, 0)).r;
-
-    float sum_r = 0.0, sum_b = 0.0, sum_w = 0.0;
-    [unroll] for (int sy = 0; sy < 8; sy++)
-    [unroll] for (int sx = 0; sx < 8; sx++)
-    {
-        float2 uv_s = float2((sx + 0.5) / 8.0, (sy + 0.5) / 8.0);
-        float4 s    = tex2Dlod(CreativeLowFreqSamp, float4(uv_s, 0, 0));
-        float  wt   = step(p75, s.a);
-        sum_r += s.r * wt;
-        sum_b += s.b * wt;
-        sum_w += wt;
-    }
-
-    float mean_r    = sum_r / max(sum_w, 1.0);
-    float mean_b    = sum_b / max(sum_w, 1.0);
-    float wb_curr   = (mean_r - mean_b) / max(mean_r + mean_b, 0.001);
-    float wb_smooth = lerp(prev_wb, wb_curr, KALMAN_K_INF);
-    return float4(wb_smooth, 0.0, 0.0, 1.0);
-}
-
 
 // ─── Pass 8 — Passthrough ──────────────────────────────────────────────────
 
@@ -348,11 +314,11 @@ float4 PassthroughPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
     float4 c = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) {
         int xi = int(pos.x);
-        if (xi == HWY_WARM_BIAS)
-            return float4(tex2Dlod(WarmBiasSamp, float4(0.5, 0.5, 0, 0)).r, 0.0, 0.0, 1.0);
         if (xi == HWY_STEVENS) {
-            float zk  = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
-            float fc_s = (1.48 + exp2(log2(max(zk, 1e-6)) * (1.0 / 3.0))) / 2.04;
+            // R153: mode is the dominant scene luminance — more accurate Stevens calibration
+            // than zone_log_key (mean of zone medians), which is pulled up by bright zones.
+            float mode = ReadHWY(HWY_MODE);
+            float fc_s = (1.48 + exp2(log2(max(mode, 1e-6)) * (1.0 / 3.0))) / 2.04;
             return float4(saturate(fc_s / 1.3), 0.0, 0.0, 1.0);
         }
         if (xi == HWY_ZONE_KEY || xi == HWY_ZONE_STD) {
@@ -405,12 +371,6 @@ technique Corrective
         VertexShader = PostProcessVS;
         PixelShader  = UpdateHistoryPS;
         RenderTarget = ChromaHistoryTex;
-    }
-    pass WarmBias
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = WarmBiasPS;
-        RenderTarget = WarmBiasTex;
     }
     pass Passthrough
     {

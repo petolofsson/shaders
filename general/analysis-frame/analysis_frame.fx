@@ -3,20 +3,8 @@
 #include "../highway.fxh"
 #include "../common.fxh"
 //
-// Builds per-frame luminance and per-hue saturation histograms.
-// Shared smoothed textures (LumHistTex, SatHistTex) are read by
-// ZoneContrast and ChromaContrast for true percentile pivots.
-//
-// Five passes:
-//   1. Downsample BackBuffer to 32x18
-//   2. Gather luminance histogram (64 buckets, 64x1 R32F)
-//   3. Gather per-hue saturation histogram (64 buckets x 6 bands, 64x6 R32F)
-//   4. Temporally smooth luminance histogram
-//   5. Temporally smooth saturation histogram
-//
-// Samples are linearized (pow 2.2) before binning so percentile values
-// are in linear light — consistent with ZoneContrast and ChromaContrast
-// which operate in linear space.
+// Builds per-frame luminance histogram and scene statistics.
+// All samples are in linear light — vkBasalt linearizes the sRGB swapchain on read.
 
 #define DS_W          32
 #define DS_H          18
@@ -26,26 +14,6 @@
 #define KALMAN_Q_PERC_MAX  0.05
 #define KALMAN_R_PERC      0.005
 #define VFF_E_SIGMA_PERC   0.06
-#define SAT_THRESHOLD 4         // 0–100; minimum saturation to include in histogram
-#define BAND_WIDTH    0.15
-
-#define BAND_RED     (0.0   / 360.0)
-#define BAND_YELLOW  (60.0  / 360.0)
-#define BAND_GREEN   (120.0 / 360.0)
-#define BAND_CYAN    (180.0 / 360.0)
-#define BAND_BLUE    (240.0 / 360.0)
-#define BAND_MAGENTA (300.0 / 360.0)
-
-// HSV-space band centers (degrees/360) — distinct from Oklab GetBandCenter in hue_bands.fxh
-float GetHSVBandCenter(int band)
-{
-    if (band == 0) return BAND_RED;
-    if (band == 1) return BAND_YELLOW;
-    if (band == 2) return BAND_GREEN;
-    if (band == 3) return BAND_CYAN;
-    if (band == 4) return BAND_BLUE;
-    return BAND_MAGENTA;
-}
 
 uniform float frametime < source = "frametime"; >;
 
@@ -81,32 +49,11 @@ sampler2D LumHistRaw
     MagFilter = POINT;
 };
 
-texture2D SatHistRawTex { Width = HIST_BINS; Height = 6; Format = R16F; MipLevels = 1; };
-sampler2D SatHistRaw
-{
-    Texture   = SatHistRawTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
-
-// Shared smoothed textures — re-declared with identical descriptors in
-// olofssonian_zone_contrast.fx and olofssonian_chroma_lift.fx
+// Shared smoothed luma histogram
 texture2D LumHistTex { Width = HIST_BINS; Height = 1; Format = R16F; MipLevels = 1; };
 sampler2D LumHist
 {
     Texture   = LumHistTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
-
-texture2D SatHistTex { Width = HIST_BINS; Height = 6; Format = R16F; MipLevels = 1; };
-sampler2D SatHist
-{
-    Texture   = SatHistTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = POINT;
@@ -161,15 +108,16 @@ sampler2D PercHighSamp
     MagFilter = POINT;
 };
 
-// ─── Helpers ───────────────────────────────────────────────────────────────
-
-// HSV-space band weight (BAND_WIDTH=0.15, linear falloff) — distinct from Oklab HueBandWeight in hue_bands.fxh
-float HSVBandWeight(float hue, float center)
+// R147: histogram mode (argmax bin center), EMA-smoothed
+texture2D ModeTex { Width = 1; Height = 1; Format = R16F; MipLevels = 1; };
+sampler2D ModeSamp
 {
-    float d = abs(hue - center);
-    d = min(d, 1.0 - d);
-    return saturate(1.0 - d / BAND_WIDTH);
-}
+    Texture   = ModeTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
 
 // ─── Pass 1 — Downsample ───────────────────────────────────────────────────
 
@@ -207,43 +155,7 @@ float4 LumHistGatherPS(float4 pos : SV_Position,
     return float4(count / float(DS_W * DS_H), 0.0, 0.0, 1.0);
 }
 
-// ─── Pass 3 — Saturation histogram gather ──────────────────────────────────
-// Each output pixel (bucket b, band row) counts hue-weighted saturation samples.
-// Normalized by total band weight so per-row CDF sums to 1.0.
-
-float4 SatHistGatherPS(float4 pos : SV_Position,
-                       float2 uv  : TEXCOORD0) : SV_Target
-{
-    int   b         = int(pos.x);
-    int   band      = int(pos.y);
-    float bucket_lo = float(b)     / float(HIST_BINS);
-    float bucket_hi = float(b + 1) / float(HIST_BINS);
-    float center    = GetHSVBandCenter(band);
-
-    float count   = 0.0;
-    float total_w = 0.0;
-
-    [loop]
-    for (int y = 0; y < DS_H; y++)
-    {
-        [loop]
-        for (int x = 0; x < DS_W; x++)
-        {
-            float2 s_uv   = float2((x + 0.5) / float(DS_W), (y + 0.5) / float(DS_H));
-            float3 col = tex2D(Downsample, s_uv).rgb;
-            float3 hsv = RGBtoHSV(col);
-            float  w      = HSVBandWeight(hsv.x, center) * step(SAT_THRESHOLD / 100.0, hsv.y);
-            float  in_b   = (hsv.y >= bucket_lo && hsv.y < bucket_hi) ? 1.0 : 0.0;
-            count   += in_b * w;
-            total_w += w;
-        }
-    }
-
-    float normalized = (total_w > 0.001) ? count / total_w : 0.0;
-    return float4(normalized, 0.0, 0.0, 1.0);
-}
-
-// ─── Pass 4 — Debug indicator (yellow, slot 0) ────────────────────────────
+// ─── Pass 3 — Debug indicator (yellow, slot 0) ────────────────────────────
 
 float4 DebugOverlayPS(float4 pos : SV_Position,
                       float2 uv  : TEXCOORD0) : SV_Target
@@ -261,7 +173,11 @@ float4 DebugOverlayPS(float4 pos : SV_Position,
         if (xi == 197) {
             // R90: encode Kalman-smoothed slope from float16 PercTex.
             // slope = clamp(2.5 / log_iqr, 1.15, 1.8), normalised to [0,1] for 8-bit highway.
+            // R148: Bowley correction — right-skewed scenes have naturally wide log_iqr
+            // independent of tonemapper compression; inflate log_iqr to discount it.
             float log_iqr  = log2(max(perc.b, 0.01)) - log2(max(perc.r, 0.01));
+            float bowley   = (perc.b + perc.r - 2.0 * perc.g) / max(perc.b - perc.r, 0.01);
+            log_iqr       += saturate(bowley) * 0.6;
             float slope    = clamp(2.5 / max(log_iqr, 0.5), 1.15, 1.8);
             return float4((slope - 1.0) / 1.5, 0.0, 0.0, 1.0);
         }
@@ -281,13 +197,15 @@ float4 DebugOverlayPS(float4 pos : SV_Position,
         }
         if (xi == HWY_ACHROM_FRAC)
             return float4(tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).a, 0.0, 0.0, 1.0);
+        if (xi == HWY_MODE)
+            return float4(tex2Dlod(ModeSamp, float4(0.5, 0.5, 0, 0)).r, 0.0, 0.0, 1.0);
         return c;
     }
     return DrawLabel(c, pos.xy, 270.0, 10.0,
                      49u, 65u, 78u, 76u, float3(1.0, 0.95, 0.0)); // 1ANL
 }
 
-// ─── Pass 5 — Smooth luminance histogram ───────────────────────────────────
+// ─── Pass 4 — Smooth luminance histogram ───────────────────────────────────
 
 float4 LumHistSmoothPS(float4 pos : SV_Position,
                        float2 uv  : TEXCOORD0) : SV_Target
@@ -297,17 +215,7 @@ float4 LumHistSmoothPS(float4 pos : SV_Position,
     return float4(lerp(prev, raw, saturate((LERP_SPEED / 100.0) * (frametime / 10.0))), 0.0, 0.0, 1.0);
 }
 
-// ─── Pass 6 — Smooth saturation histogram ──────────────────────────────────
-
-float4 SatHistSmoothPS(float4 pos : SV_Position,
-                       float2 uv  : TEXCOORD0) : SV_Target
-{
-    float raw  = tex2D(SatHistRaw, uv).r;
-    float prev = tex2D(SatHist,    uv).r;
-    return float4(lerp(prev, raw, saturate((LERP_SPEED / 100.0) * (frametime / 10.0))), 0.0, 0.0, 1.0);
-}
-
-// ─── Pass 7 — CDF walk → 1×1 percentile cache ─────────────────────────────
+// ─── Pass 5 — CDF walk → 1×1 percentile cache ─────────────────────────────
 // Trimmed: targets 0.275/0.50/0.725 exclude the bottom and top 5% of mass,
 // making anchors immune to specular spikes and crushed-black collapse.
 // Intra-bin interpolation raises effective resolution from 1/64 to ~1/512.
@@ -359,7 +267,7 @@ float4 CDFWalkPS(float4 pos : SV_Position,
                   P_new);
 }
 
-// ─── Pass 8 — R53: scene-cut detection ────────────────────────────────────
+// ─── Pass 6 — R53: scene-cut detection ────────────────────────────────────
 
 float4 SceneCutPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
@@ -369,7 +277,7 @@ float4 SceneCutPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     return float4(scene_cut, p50_now, 0.0, 1.0);
 }
 
-// ─── Pass 9 — Scene median Oklab chroma ───────────────────────────────────
+// ─── Pass 7 — Scene median Oklab chroma ───────────────────────────────────
 // R116: replaced arithmetic mean_C with histogram p50 (median). Mean was biased
 // toward saturated outliers (neon, fire, UI), causing inverse_grade to over-expand
 // globally and wash out shadows. Median tracks typical scene chroma.
@@ -443,7 +351,7 @@ float4 MeanChromaPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     );
 }
 
-// ─── Pass 10 — p90 luma percentile ────────────────────────────────────────
+// ─── Pass 8 — p90 luma percentile ────────────────────────────────────────
 // Same 64-bin CDF walk as CDFWalkPS but targets the 90th percentile.
 // No Kalman — simple EMA is sufficient for a coarse highlight threshold signal.
 
@@ -472,6 +380,30 @@ float4 CDFWalkHighPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
     return float4(lerp(prev, p90, alpha), 0.0, 0.0, 1.0);
 }
 
+// ─── Pass 9 — R147: histogram mode (argmax bin center) ───────────────────
+// Branchless argmax: step(best_val + 1e-6, frc) gates a lerp that tracks the
+// running maximum bin across the 64-bin loop. EMA-smoothed; scene-cut resets.
+
+float4 CDFWalkModePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    float best_val = 0.0;
+    float mode = 0.5 / float(HIST_BINS);
+
+    [loop] for (int b = 0; b < HIST_BINS; b++)
+    {
+        float frc    = tex2Dlod(LumHist, float4((float(b) + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
+        float better = step(best_val + 1e-6, frc);
+        best_val     = lerp(best_val, frc, better);
+        mode         = lerp(mode, (float(b) + 0.5) / float(HIST_BINS), better);
+    }
+
+    float prev       = tex2Dlod(ModeSamp, float4(0.5, 0.5, 0, 0)).r;
+    float scene_cut  = tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0)).r;
+    float alpha      = saturate(frametime * 0.005);
+    alpha            = lerp(alpha, 1.0, scene_cut);
+    return float4(lerp(prev, mode, alpha), 0.0, 0.0, 1.0);
+}
+
 // ─── Technique ─────────────────────────────────────────────────────────────
 
 technique FrameAnalysis
@@ -488,12 +420,6 @@ technique FrameAnalysis
         PixelShader  = LumHistGatherPS;
         RenderTarget = LumHistRawTex;
     }
-    pass SatHistGather
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = SatHistGatherPS;
-        RenderTarget = SatHistRawTex;
-    }
     pass DebugOverlay
     {
         VertexShader = PostProcessVS;
@@ -504,12 +430,6 @@ technique FrameAnalysis
         VertexShader = PostProcessVS;
         PixelShader  = LumHistSmoothPS;
         RenderTarget = LumHistTex;
-    }
-    pass SatHistSmooth
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = SatHistSmoothPS;
-        RenderTarget = SatHistTex;
     }
     pass CDFWalk
     {
@@ -534,5 +454,11 @@ technique FrameAnalysis
         VertexShader = PostProcessVS;
         PixelShader  = MeanChromaPS;
         RenderTarget = MeanChromaTex;
+    }
+    pass CDFWalkMode
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = CDFWalkModePS;
+        RenderTarget = ModeTex;
     }
 }

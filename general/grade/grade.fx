@@ -15,8 +15,7 @@
 
 #include "creative_values.fx"
 
-uniform int   FRAME_COUNT < source = "framecount"; >;
-uniform float FRAME_TIME  < source = "frametime"; >;   // ms per frame
+uniform float FRAME_TIMER < source = "timer"; >;        // ms since app start
 
 // ─── Chroma lift constants ─────────────────────────────────────────────────
 #define MIN_WEIGHT      1.0
@@ -288,6 +287,8 @@ struct SceneCtx {
     float  fc_factor,   fc_toe_fac, fc_stevens;
     float  shadow_lift_str;
     float  chroma_str_base;
+    float  bowley;
+    float  scene_mode;
 };
 
 struct TonalOut { float3 lin; float new_luma; float local_var; };
@@ -323,10 +324,19 @@ SceneCtx BuildSceneCtx()
     ctx.zone_str           = lerp(0.26, 0.16, ctx.ss_08_25)
                            * lerp(1.10, 0.93, lum_att) * (ZONE_STRENGTH * 0.30) * inv_slope;
     ctx.fc_knee            = lerp(0.90, 0.80, saturate((ctx.eff_p75 - 0.60) / 0.30));
+    // R147: Bowley skewness — right-skewed (dark dominant, bright tail) → lower knee
+    // to catch sparse bright tail that p75-based formula misses when p75 is low.
+    ctx.bowley             = (ctx.perc.b + ctx.perc.r - 2.0 * ctx.perc.g)
+                           / max(ctx.perc.b - ctx.perc.r, 0.01);
+    ctx.fc_knee            = saturate(ctx.fc_knee - saturate(ctx.bowley) * 0.06);
     ctx.fc_stevens         = ReadHWY(HWY_STEVENS) * 1.3;
     ctx.fc_factor          = 0.05 / ((1.0 - ctx.fc_knee) * (1.0 - ctx.fc_knee))
                            * ctx.fc_stevens * spread_scale;
     ctx.fc_knee_toe        = lerp(0.15, 0.25, saturate((0.40 - ctx.eff_p25) / 0.30));
+    // R147: mode anchor — when toe sits well above peak dark density, pull it down.
+    float mode             = ReadHWY(HWY_MODE);
+    float toe_gap          = saturate((ctx.fc_knee_toe - mode - 0.05) / 0.10);
+    ctx.fc_knee_toe        = lerp(ctx.fc_knee_toe, mode + 0.05, toe_gap * 0.4);
     ctx.fc_knee_r          = clamp(ctx.fc_knee     * exp2(CURVE_R_KNEE), 0.70, 0.95);
     ctx.fc_knee_b          = clamp(ctx.fc_knee     * exp2(CURVE_B_KNEE), 0.70, 0.95);
     ctx.fc_ktoe_r          = clamp(ctx.fc_knee_toe * exp2(CURVE_R_TOE),  0.08, 0.35);
@@ -335,8 +345,12 @@ SceneCtx BuildSceneCtx()
     float _sls_t           = saturate((ctx.perc.r - 0.025) / 0.175);
     ctx.shadow_lift_str    = lerp(1.50, 0.45, _sls_t*_sls_t*_sls_t*(_sls_t*(_sls_t*6.0-15.0)+10.0));
     ctx.slow_key           = max(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0.001);
+    ctx.scene_mode         = ReadHWY(HWY_MODE);
+    // R151: muted scenes (low mean_C) need more chroma lift; vibrant scenes back off.
+    float mean_C_scene     = ReadHWY(HWY_MEAN_CHROMA);
     ctx.chroma_str_base    = CHROMA_STR * 0.04
-                           * lerp(0.80, 1.20, smoothstep(0.05, 0.35, ctx.zone_log_key));
+                           * lerp(0.80, 1.20, smoothstep(0.05, 0.35, ctx.zone_log_key))
+                           * lerp(1.2, 1.0, saturate(mean_C_scene / 0.12));
     return ctx;
 }
 
@@ -357,7 +371,11 @@ float3 ApplyCorrective(float3 lin, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
                                     ctx.fc_ktoe_r, ctx.fc_knee_toe, ctx.fc_ktoe_b,
                                     ctx.fc_factor, ctx.fc_toe_fac);
     // ── R105: halation — fires before print stock (physical: negative before printing) ──
-    out_lin = ApplyHalation(out_lin, uv, lf_mip2_tex.rgb, HAL_STRENGTH, HAL_GAMMA);
+    // R151: p90−p50 gap measures isolated bright sources against scene median —
+    // direct specular-vs-surround contrast, not scene darkness proxy.
+    float specular_contrast = saturate((ReadHWY(HWY_P90) - ctx.perc.g) / 0.40);
+    float eff_hal_str = HAL_STRENGTH * lerp(1.0, 1.4, specular_contrast);
+    out_lin = ApplyHalation(out_lin, uv, lf_mip2_tex.rgb, eff_hal_str, HAL_GAMMA);
     // ── R51: print stock + R110: masking coupler + R130: dye matrix ──────────
     out_lin = ApplyPrintStock(out_lin, ctx.fc_knee_toe, ctx.fc_knee, PRINT_STOCK);
     out_lin = ApplyMaskingCoupler(out_lin, PRINT_STOCK);
@@ -450,10 +468,14 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
 
     // ── R52: Purkinje shift — rod-vision blue-green bias in deep shadows ───────
     {
+        // R150: dark-dominant scenes (low mode) are physically dim — scotopic vision
+        // more active; scale Purkinje up toward the genuine mesopic threshold.
+        float eff_purkinje = PURKINJE_STRENGTH
+                           * lerp(1.0, 1.3, saturate((0.15 - ctx.scene_mode) / 0.15));
         float scotopic_w = 1.0 - smoothstep(0.0, 0.30, new_luma);  // R117: widened from 0.12; mesopic transition spans full scotopic-photopic range
-        lab.y -= 0.006 * scotopic_w * C * PURKINJE_STRENGTH;  // rod peak 507nm is blue-green: shift both a* (green) and b* (blue)
-        lab.z -= 0.018 * scotopic_w * C * PURKINJE_STRENGTH;
-        lab.yz *= 1.0 - 0.12 * scotopic_w * PURKINJE_STRENGTH;  // rods are achromatic: scotopic desaturation
+        lab.y -= 0.006 * scotopic_w * C * eff_purkinje;  // rod peak 507nm is blue-green: shift both a* (green) and b* (blue)
+        lab.z -= 0.018 * scotopic_w * C * eff_purkinje;
+        lab.yz *= 1.0 - 0.12 * scotopic_w * eff_purkinje;  // rods are achromatic: scotopic desaturation
         C = length(lab.yz);
     }
 
@@ -724,7 +746,7 @@ float3 ApplyDiffusionBloom(float3 base_rgb, float3 diff_blur, float adapt_str, f
 // R136: Selwyn 2383 film grain — pcg3d RGB-decorrelated, framerate-independent.
 float3 ApplyFilmGrain(float3 rgb, float2 pos_xy)
 {
-    uint   grain_slot = uint(float(FRAME_COUNT) * (FRAME_TIME / 41.667));
+    uint   grain_slot = uint(FRAME_TIMER / 41.667);
     float  res_scale  = BUFFER_HEIGHT / 1440.0;  // 1.0 at 1440p, 1.5 at 4K — grain calibrated at 1440p
     uint3  seed = uint3(uint2(pos_xy / res_scale), grain_slot);
     seed = seed * 1664525u + 1013904223u;
@@ -748,6 +770,8 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
             float zk    = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
             str *= lerp(1.20, 0.85, smoothstep(0.05, 0.25, zk));
             str *= lerp(1.10, 0.90, saturate((EXPOSURE - 0.70) / 0.60));
+            float diff_bwl = (perc.b + perc.r - 2.0 * perc.g) / max(perc.b - perc.r, 0.01);
+            str *= lerp(1.0, 1.3, saturate(diff_bwl));
             return float4(saturate(str / 0.10), 0.0, 0.0, 1.0);
         }
         return base;
@@ -770,7 +794,8 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float  zone_log_key   = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
     float  diff_key_scale = lerp(1.20, 0.85, smoothstep(0.05, 0.25, zone_log_key));
     float  diff_ap_scale  = lerp(1.10, 0.90, saturate((EXPOSURE - 0.70) / 0.60));
-    adapt_str *= diff_key_scale * diff_ap_scale;
+    float  diff_bowley    = (perc.b + perc.r - 2.0 * perc.g) / max(perc.b - perc.r, 0.01);
+    adapt_str *= diff_key_scale * diff_ap_scale * lerp(1.0, 1.3, saturate(diff_bowley));
 
     float3 result = ApplyDiffusionBloom(base.rgb, diff_blur, adapt_str, eff_diff);
 

@@ -27,12 +27,12 @@
 #define HWY_P90             200    // scene p90 luma (specular floor tracker); raw [0,1]
 #define HWY_CHROMA_ANGLE    201    // dominant hue angle; encode: (atan2(b,a)+π)/(2π)  decode: v*2π-π
 #define HWY_ACHROM_FRAC     202    // fraction of pixels with Oklab C < 0.05 [0,1]
+#define HWY_MODE            206    // histogram mode (argmax bin center), EMA-smoothed [0,1]
 
 // ── corrective ────────────────────────────────────────────────────────────────
 #define HWY_ZONE_KEY        203    // zone_log_key — linear mean of zone medians [0,1]
 #define HWY_ZONE_STD        204    // zone_std — mean intra-zone pixel variance [0,1]
 #define HWY_SLOW_KEY        205    // slow ambient key EMA [0,1]
-#define HWY_WARM_BIAS       210    // highlight warm bias EMA [0,1]
 #define HWY_STEVENS         213    // fc_stevens; encode: v/1.3  decode: v*1.3  range [0.72,1.22]
 
 // ── grade ─────────────────────────────────────────────────────────────────────

@@ -134,3 +134,44 @@ float HueBandRollN(float hue)
               + w10 * HB_ROLL_N_MAGENTA + w11 * HB_ROLL_N_ROSE;
     return num / max(w0+w1+w2+w3+w4+w5+w6+w7+w8+w9+w10+w11, 1e-6);
 }
+
+// R156: per-hue inverse-grade slope bias.
+// Encodes warm-hue compression excess in ACES/filmic tonemappers — warm highlights
+// clip earlier, so reds/oranges need more expansion than the global luma IQR implies.
+// Applied as: slope_eff = clamp(slope × (1 + HueSlopeBias(hue)), 1.0, 2.2).
+#define HB_SLOPE_BIAS_RED      0.15
+#define HB_SLOPE_BIAS_ORANGE   0.20
+#define HB_SLOPE_BIAS_AMBER    0.15
+#define HB_SLOPE_BIAS_YELLOW   0.08
+#define HB_SLOPE_BIAS_GREEN    0.00
+#define HB_SLOPE_BIAS_TEAL    -0.05
+#define HB_SLOPE_BIAS_CYAN    -0.05
+#define HB_SLOPE_BIAS_AZURE   -0.03
+#define HB_SLOPE_BIAS_BLUE     0.05
+#define HB_SLOPE_BIAS_VIOLET   0.03
+#define HB_SLOPE_BIAS_MAGENTA  0.08
+#define HB_SLOPE_BIAS_ROSE     0.10
+
+float HueSlopeBias(float hue)
+{
+    hue = frac(hue);
+    float w0  = HueBandWeight(hue, HB_BAND_RED);
+    float w1  = HueBandWeight(hue, HB_BAND_ORANGE);
+    float w2  = HueBandWeight(hue, HB_BAND_AMBER);
+    float w3  = HueBandWeight(hue, HB_BAND_YELLOW);
+    float w4  = HueBandWeight(hue, HB_BAND_GREEN);
+    float w5  = HueBandWeight(hue, HB_BAND_TEAL);
+    float w6  = HueBandWeight(hue, HB_BAND_CYAN);
+    float w7  = HueBandWeight(hue, HB_BAND_AZURE);
+    float w8  = HueBandWeight(hue, HB_BAND_BLUE);
+    float w9  = HueBandWeight(hue, HB_BAND_VIOLET);
+    float w10 = HueBandWeight(hue, HB_BAND_MAGENTA);
+    float w11 = HueBandWeight(hue, HB_BAND_ROSE);
+    float num = w0  * HB_SLOPE_BIAS_RED     + w1  * HB_SLOPE_BIAS_ORANGE
+              + w2  * HB_SLOPE_BIAS_AMBER   + w3  * HB_SLOPE_BIAS_YELLOW
+              + w4  * HB_SLOPE_BIAS_GREEN   + w5  * HB_SLOPE_BIAS_TEAL
+              + w6  * HB_SLOPE_BIAS_CYAN    + w7  * HB_SLOPE_BIAS_AZURE
+              + w8  * HB_SLOPE_BIAS_BLUE    + w9  * HB_SLOPE_BIAS_VIOLET
+              + w10 * HB_SLOPE_BIAS_MAGENTA + w11 * HB_SLOPE_BIAS_ROSE;
+    return num / max(w0+w1+w2+w3+w4+w5+w6+w7+w8+w9+w10+w11, 1e-6);
+}
