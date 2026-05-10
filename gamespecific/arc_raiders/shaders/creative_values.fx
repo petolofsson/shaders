@@ -20,7 +20,7 @@
 //   0.95 matches ARRI LogC3 usable ceiling (~91-92% of full scale).
 // Both at defaults (0 / 1) = passthrough (identity).
 #define BLACKS  0.005
-#define WHITES  0.97
+#define WHITES  0.95
 
 // Developer-inhibitor-release cross-channel masking. Each dye layer releases
 // inhibitors that suppress adjacent layers, increasing colour separation.
@@ -63,11 +63,11 @@
 // ── TONAL ─────────────────────────────────────────────────────────────────────
 // Scales the adaptive zone S-curve strength. 1.0 = calibrated default. 0 = off.
 // 2.0 = aggressive. Range 0–2.
-#define CONTRAST  1.00
+#define CONTRAST  0.75
 
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOWS  0.50
+#define SHADOWS  0.25
 
 // Soft luma push/pull in the highlight range (L > 0.55). +1.0 brightens highlights,
 // -1.0 recovers blown highlights. Range ±1.0. Default 0.0 = passthrough.
@@ -145,7 +145,7 @@
 // Peaks in upper shadows (Oklab L≈0.50), falls off toward blacks and highlights.
 // Framerate-independent: turns over at ~24fps regardless of display fps.
 // 0 = off. 1.0 = calibrated 2383 amplitude. 1.5 = pushed. 2.0 = stylistic.
-#define GRAIN_STRENGTH 0.65
+#define GRAIN_STRENGTH 0.40
 
 // ── STAGE GATES ───────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.
