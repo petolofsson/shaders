@@ -787,17 +787,16 @@ float3 GrainValueNoise(float2 p, uint slot)
     return lerp(lerp(n00, n10, u.x), lerp(n01, n11, u.x), u.y) - 0.5;
 }
 
-// R136: Selwyn 2383 film grain — three-octave value noise, RGB-decorrelated.
-// Octaves: 4px blobs (0.20) + 2px primary (0.55) + 1px fine detail (0.25).
+// R136: Selwyn 2383 film grain — two-octave value noise, RGB-decorrelated.
+// Octaves: 2px primary (0.70) + 1px fine detail (0.30).
 float3 ApplyFilmGrain(float3 rgb, float2 pos_xy)
 {
     uint   slot      = uint(FRAME_TIMER / 41.667);
     float  res_scale = BUFFER_HEIGHT / 1440.0;
     float2 p         = pos_xy / res_scale;
-    float3 g4        = GrainValueNoise(p / 4.0, slot);
-    float3 g2        = GrainValueNoise(p / 2.0, slot + 7u);
-    float3 g1        = pcg3d_hash(uint3(uint(p.x), uint(p.y), slot + 13u)) - 0.5;
-    float3 gnoise    = g4 * 0.20 + g2 * 0.55 + g1 * 0.25;
+    float3 g2        = GrainValueNoise(p / 2.0, slot);
+    float3 g1        = pcg3d_hash(uint3(uint(p.x), uint(p.y), slot + 7u)) - 0.5;
+    float3 gnoise    = g2 * 0.70 + g1 * 0.30;
     float  L_g       = pow(max(Luma(rgb), 0.0), 1.0 / 2.2);
     float  env       = GRAIN_STRENGTH * 0.05 * sqrt(max(0.0, 1.0 - L_g));
     return saturate(rgb + gnoise * env * float3(1.00, 0.80, 1.50));
