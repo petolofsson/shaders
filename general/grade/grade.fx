@@ -803,12 +803,16 @@ float3 GrainValueNoise(float2 p, uint slot)
 // R172: collapsed per-channel GrainValueNoise calls into one — float3 bilinear corners
 // already decorrelate R/G/B; per-channel size variation (×1.00/0.90/1.15) dropped.
 // Hash calls: 14 → 6 per slot, 30 → 14 total. ~53% grain ALU reduction.
-float3 GrainSlot(float2 p, float luma_scale, uint slot)
+// R173: silver_boost raises the 1px blue-noise weight in shadows when BLEACH_BYPASS > 0.
+// Retained metallic silver is densest in unexposed (shadow) areas — physically consistent
+// with ApplyBleachBypass shadow mask (1 − smoothstep(0, 0.65, L)).
+float3 GrainSlot(float2 p, float luma_scale, uint slot, float silver_boost)
 {
-    float3 coarse = GrainValueNoise(p / luma_scale, slot);
-    float3 ha = pcg3d_hash(uint3(uint(p.x),     uint(p.y),     slot + 7u));
-    float3 hb = pcg3d_hash(uint3(uint(p.x) + 1, uint(p.y) + 1, slot + 7u));
-    return coarse * 0.70 + (ha - hb) * 0.5 * 0.30;
+    float3 coarse  = GrainValueNoise(p / luma_scale, slot);
+    float3 ha      = pcg3d_hash(uint3(uint(p.x),     uint(p.y),     slot + 7u));
+    float3 hb      = pcg3d_hash(uint3(uint(p.x) + 1, uint(p.y) + 1, slot + 7u));
+    float  fine_w  = 0.30 + silver_boost;
+    return coarse * (1.0 - fine_w) + (ha - hb) * 0.5 * fine_w;
 }
 
 float3 ApplyFilmGrain(float3 rgb, float2 pos_xy)
@@ -820,10 +824,11 @@ float3 ApplyFilmGrain(float3 rgb, float2 pos_xy)
     float2 p          = pos_xy / res_scale;
     float  L_g        = pow(max(Luma(rgb), 0.0), 1.0 / 2.2);
     float  luma_scale = lerp(2.5, 1.5, L_g);
+    float  silver_boost = BLEACH_BYPASS * (1.0 - smoothstep(0.0, 0.65, L_g)) * 0.30;
     float2 jitter0    = (pcg3d_hash(uint3(slot0,      7919u, 0u)).xy - 0.5) * luma_scale;
     float2 jitter1    = (pcg3d_hash(uint3(slot0 + 1u, 7919u, 0u)).xy - 0.5) * luma_scale;
-    float3 gnoise     = GrainSlot(p + jitter0, luma_scale, slot0)      * sqrt(1.0 - blend)
-                      + GrainSlot(p + jitter1, luma_scale, slot0 + 1u) * sqrt(blend);
+    float3 gnoise     = GrainSlot(p + jitter0, luma_scale, slot0,      silver_boost) * sqrt(1.0 - blend)
+                      + GrainSlot(p + jitter1, luma_scale, slot0 + 1u, silver_boost) * sqrt(blend);
     float  env        = GRAIN_STRENGTH * 0.05 * sqrt(max(0.0, 1.0 - L_g));
     return saturate(rgb + gnoise * env * float3(1.00, 0.80, 1.50));
 }
