@@ -14,26 +14,27 @@ grade is an **8-pass technique**: LFDownscale1 → LFDownscale2 → NeutralIllum
 
 | Stage | Finished | Novel |
 |-------|----------|-------|
-| Stage 0 — Input | 98% | 90% |
-| Stage 1 — Film Stock | 98% | 91% |
+| Stage 0 — Input | 98% | 92% |
+| Stage 1 — Film Stock | 98% | 94% |
 | Stage 2 — Tonal | 97% | 91% |
-| Stage 3 — Color + Halation | 98% | 92% |
-| Output — Diffusion + Grain | 97% | 91% |
+| Stage 3 — Color + Halation | 98% | 90% |
+| Output — Diffusion + Grain | 97% | 94% |
 
 ## Known state
 
 - No known compile errors. Debug log: `/tmp/vkbasalt.log`
-- R147–R165 complete: statistical signal correctness, grain timer fix, hue-aware expansion, highway audit (R161–R164), illuminant warmth CCT proxy (R165). Full audit: analysis_frame ✓ corrective ✓ grade ✓ inverse_grade ✓.
-- R159: luma expansion removed from inverse_grade (zone S-curve owns luma). R145 zone coupling removed — ZONE_STRENGTH is now a clean knob.
-- R160 adaptive print stock: black lift backs off when p25 elevated, shoulder softens when p75 high.
-- R161–R164 highway wiring: ACHROM_FRAC→chroma_str, P90→shadow lift suppression, CHROMA_ANGLE→expansion alignment bias, LUMA_MEAN_PRE→slope cap.
-- R165 slot 220 (HWY_ILLUM_WARM): CAT16 LMS warmth scalar written by ColorTransformPS, read one-frame-delayed by inverse_grade to scale back warm-hue bias in warm-lit scenes.
-- creative_values.fx (arc_raiders): PURKINJE_STRENGTH 0.70, CHROMA_STR 1.05, ZONE_STRENGTH 1.00.
+- R159–R169 complete. R161 (achrom_frac chroma gate) and R164 (LUMA_MEAN_PRE slope cap) permanently dropped — degraded blacks character, redundant with existing signals.
+- R165 (HWY_ILLUM_WARM slot 220) and R163 (CHROMA_ANGLE alignment bias) active.
+- R166/R167: three-octave grain replaced with two-octave (2px smooth + 1px blue noise) + luma-dependent size + per-channel dye layer scaling.
+- R168: physical halation — two-scale DoG PSF (tight 1/16−sharp, broad 1/32−1/16), AH layer attenuation on tight ring (2383 rem-jet ~40%), per-layer color weights.
+- R169: grain temporal cross-dissolve — `frac(FRAME_TIMER/41.667)` sub-frame blend between grain slots eliminates screen-space snap at high FPS (>60fps rain artifact).
+- GZW jungle movie grade complete: teal-green shadows, green ambient mids, golden highlights, deep-cyan greens.
+- **arc_raiders** current values: INVERSE_STRENGTH 0.50, SHADOW_LIFT_STRENGTH 1.00, CHROMA_STR 1.10, HAL_STRENGTH 0.20, HAL_GAMMA 0.05, GRAIN_STRENGTH 1.15.
+- **GZW** current values: SHADOW_LIFT_STRENGTH 1.15, DIFFUSION_STRENGTH 0.60, HAL_STRENGTH 0.30, HAL_GAMMA 0.02.
 - **Mid-shadow off-color** — unverified post R127/R130. Likely resolved. Re-test before marking closed.
 
 ## Next candidates
 
 - **Re-test mid-shadow off-color** — confirm resolved before vk-colorist Phase 2.
-- **Second game calibration** — GZW profile is an uncalibrated copy. Validate game-agnosticism on different content.
 - **vk-colorist Phase 0** — Rust/Vulkan layer infrastructure is independent of shader quality; can start now.
 - **ApplyChroma** still ~80 lines — over Rule 4 limit. Split into ApplyChromaLift + ApplyChromaFinish deferred.

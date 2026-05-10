@@ -8,7 +8,7 @@
 | Stage 1 — Film Stock | 98% | 94% |
 | Stage 2 — Tonal | 97% | 91% |
 | Stage 3 — Color + Halation | 98% | 90% |
-| Output — Diffusion + Grain | 97% | 93% |
+| Output — Diffusion + Grain | 97% | 94% |
 
 ## Score reasoning
 
@@ -24,5 +24,5 @@ Games have auto-exposure. Nothing else in this stage exists in game pipelines: z
 **Stage 3 — Color + Halation (90% novel)**
 Purkinje shift, Abney effect, Hunt effect, Helmholtz-Kohlrausch, HELMLAB Fourier hue correction — none of these are implemented in any commercial game engine. Halation as emulsion physics (p90−p50 specular gap, per-layer dye depth) is not found in games; bloom is. MacAdam ellipse gamut ceilings are not in games. Drag: hue rotation exists in UE5 and most grading stacks; basic saturation/vibrance is universal. The perceptual effects are novel in the domain; their individual components are textbook color science.
 
-**Output — Diffusion + Grain (93% novel)**
-Game grain is universally simple: white noise or at best single-octave blue noise with a flat amplitude. The Selwyn 2383 granularity envelope, three-octave value noise, luma-dependent grain size, per-channel dye layer sizing (G finest, B coarsest) — not found in any game. HBM dual-component diffusion split (shimmer self-limiting, midtone overlay separately gated) is not a pattern in game bloom/diffusion. Polydisperse chromatic scatter per channel is not in games. Drag: film grain and bloom both exist as concepts; the Gaussian blur chassis is universal.
+**Output — Diffusion + Grain (94% novel)**
+Game grain is universally simple: white noise or at best single-octave blue noise with a flat amplitude. The Selwyn 2383 granularity envelope, two-octave value+blue-noise, luma-dependent grain size, per-channel dye layer sizing (G finest, B coarsest), and temporal cross-dissolve eliminating screen-space snap — none of this exists in any game. R168 physical halation as a DoG PSF with separate AH-layer (rem-jet) attenuation on the tight ring is an emulsion physics model, not a bloom effect; no game implements it. HBM dual-component diffusion split (shimmer self-limiting, midtone overlay separately gated) is not a pattern in game bloom/diffusion. Polydisperse chromatic scatter per channel is not in games. Drag: film grain and bloom both exist as concepts; the Gaussian blur chassis is universal.

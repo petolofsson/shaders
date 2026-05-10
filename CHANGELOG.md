@@ -10,6 +10,20 @@
 
 - **R161–R164 highway audit** (`inverse_grade.fx`, `grade.fx`, `corrective.fx`) — Four previously-unread slots wired to processing decisions: R161 ACHROM_FRAC multiplier on chroma_str_base (desaturated scenes get less chroma lift); R162 P90-derived specular_contrast in SceneCtx suppresses shadow lift 35% max (eliminates duplicate halation ReadHWY); R163 CHROMA_ANGLE alignment bias in inverse_grade `dir_scale = 1 − alignment × 0.15` (complementary hues get ±15% expansion bias); R164 LUMA_MEAN_PRE slope cap `lerp(2.2, 1.5, saturate((mean_pre − 0.25)/0.35))` in inverse_grade (bright raw scenes get tighter expansion ceiling).
 
+- **R161 + R164 permanently dropped** (`grade.fx`, `inverse_grade.fx`) — R161 achrom_frac multiplier on chroma_str_base flattened simultaneous contrast and degraded blacks character (mean_C inverse already handles scene desaturation). R164 LUMA_MEAN_PRE slope cap `lerp(2.2,1.5,...)` degraded colour richness and blacks; print stock shoulder already owns that tonal compression. Both reverted to baseline logic.
+
+- **R166 grain size variety** (`grade.fx`) — Added `pcg3d_hash()` helper and `GrainValueNoise()` three-octave value noise (4px coarse, 2px mid, 1px fine). Replaces single-octave pcg3d. Coarse:mid:fine = 0.50:0.30:0.20.
+
+- **R167 grain luma-size + dye scaling** (`grade.fx`) — Dropped 4px coarse octave (visible banding on flat areas). Luma-dependent grain size `lerp(2.5, 1.5, L_g)` — shadows get larger grains, highlights finer. Per-channel dye sizing: R×1.00, G×0.90, B×1.15 (matches 2383 dye layer physical depth ordering). Blue-noise high-frequency octave mixed at 0.30 weight. Two-octave final: value noise coarse + blue noise fine.
+
+- **R168 physical halation** (`grade.fx`) — ApplyHalation rewritten. Two-scale DoG PSF: tight ring = `lf_mip1 − lin`, broad ring = `lf_mip2 − lf_mip1`. AH layer (rem-jet) attenuates tight ring ~40%: col_tight = `(0.63, 0.27×lore_g, 0.02×lore_b)`, col_broad = `(1.05, 0.45×lore_g, 0.03×lore_b)`. Lorentzian chromatic crossover `tight_luma / (tight_luma + hal_gamma)` per ring.
+
+- **R169 grain temporal cross-dissolve** (`grade.fx`) — GrainSlot() helper extracted. ApplyFilmGrain blends `GrainSlot(slot0)` → `GrainSlot(slot0+1u)` using `frac(FRAME_TIMER/41.667)` — eliminates screen-space snap ("rain" artifact) visible at >60 FPS when grain slot advances by one full frame. 28 hash calls, arithmetic-only, no extra texture samples.
+
+- **GZW jungle movie grade** (`gzw/creative_values.fx`) — Synced from arc_raiders base; colour grade tuned for jungle movie aesthetic: teal-green shadows (SHADOW_TEMP −10, TINT −6), green ambient mids (MID_TINT −3), golden highlights (HIGHLIGHT_TEMP +15, TINT +2). Hue rotations: reds warm toward orange (+0.04), greens deep toward cyan (−0.04). HAL_STRENGTH 0.30, HAL_GAMMA 0.02.
+
+- **Halation recalibration** (both profiles) — GZW: HAL_STRENGTH 0.30 / HAL_GAMMA 0.02 (jungle diffuse-dominant, tight ring denser). arc_raiders: HAL_STRENGTH 0.20 / HAL_GAMMA 0.05 reverted (reverted to pre-R168 calibration after user comparison).
+
 - **R165 illuminant warmth CCT proxy** (`grade.fx`, `inverse_grade.fx`, `highway.fxh`) — New slot 220 (HWY_ILLUM_WARM). ColorTransformPS reads NeutralIllumTex, converts to CAT16 LMS, writes `warmth = saturate(L_norm − S_norm + 0.5)` (D65≈0.39, warm>0.5, cool<0.5). InverseGradePS reads one-frame-delayed (acceptable — illuminant changes slowly; frame 0 default 0 → no change). warm_scene gate at 0.45, positive HueSlopeBias reduced up to 50% at very warm illuminant — prevents over-saturating warm hues that are correct for the illuminant.
 
 - **Retune** (arc_raiders creative_values) — PURKINJE_STRENGTH 0.90→0.70, CHROMA_STR →1.05, ZONE_STRENGTH →1.00.

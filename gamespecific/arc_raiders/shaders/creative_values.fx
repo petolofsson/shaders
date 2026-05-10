@@ -67,7 +67,7 @@
 
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOW_LIFT_STRENGTH  1.40
+#define SHADOW_LIFT_STRENGTH  1.00
 
 // ── CHROMA ────────────────────────────────────────────────────────────────────
 // Strength of the per-hue chroma lift. Acts as a gain near each hue band's scene
@@ -103,11 +103,11 @@
 // (yellow filter layer blocks blue from reaching base). White sources glow orange.
 // Fires inside game bloom radius, not on top of it.
 // 0 = off. 0.35 = calibrated default. 1.0 = Ektachrome-style aggressive.
-#define HAL_STRENGTH  0.25
+#define HAL_STRENGTH  0.20
 // Chromatic crossover threshold (ring luma units). Controls where the inner/outer
 // halation colour character transitions. Lower = more orange overall.
 // Range 0.02–0.20. Tune: raise until orange fringe looks physically correct.
-#define HAL_GAMMA     0.06
+#define HAL_GAMMA     0.05
 
 // ── OUTPUT ────────────────────────────────────────────────────────────────────
 // Hollywood Black Magic dual-component model (R131):
