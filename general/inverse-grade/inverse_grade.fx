@@ -37,28 +37,43 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
 {
     float4 col = tex2D(BackBuffer, uv);
     if (pos.y < 1.0) return col;
-    if (INVERSE_STRENGTH <= 0.0) return col;
-    float slope_enc = ReadHWY(HWY_SLOPE);
-    float slope     = max(slope_enc * 1.5 + 1.0, 1.15);  // R116: clamp below valid min; uninit highway decodes as 1.0
+    if (INVERSE_STRENGTH <= 0.0 && HIGHLIGHT_RECONSTRUCT <= 0.0) return col;
 
-    float3 lab       = RGBtoOklab(col.rgb);
-    float mid_weight = lab.x * (1.0 - lab.x) * 4.0;
-    float C          = length(lab.yz);
-    float c_weight   = saturate((C - 0.10) / 0.15);
+    float3 lab = RGBtoOklab(col.rgb);
+    float  C   = length(lab.yz);
 
-    float  mean_C  = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).r;
-    float  factor  = lerp(1.0, slope, float(INVERSE_STRENGTH) * mid_weight * c_weight);
-    float2 dir     = lab.yz / max(C, 1e-5);
-    float  new_C   = mean_C + (C - mean_C) * factor;
+    // R143: highlight reconstruction — chroma rolloff near SDR clip ceiling.
+    // Wide near-clip zone (0.88→0.995): 8-bit has only 3–4 linear levels near clip.
+    // C gate (0.18→0.08): skip intentionally saturated colored lights.
+    // Desaturates only — never shifts hue, never adds energy.
+    if (HIGHLIGHT_RECONSTRUCT > 0.0) {
+        float max_ch  = max(max(col.r, col.g), col.b);
+        float recon_w = smoothstep(0.88, 0.995, max_ch)
+                      * smoothstep(0.18, 0.08, C)
+                      * HIGHLIGHT_RECONSTRUCT;
+        lab.yz *= (1.0 - recon_w);
+        C       = length(lab.yz);
+    }
 
-    // Per-hue ceiling — prevents expansion from overshooting natural gamut.
-    // Preserves incoming C if already above ceiling (no reduction), but blocks
-    // inverse grade from pushing further. Mirrors R73 ceilings in grade.fx.
-    float hue    = frac(atan2(lab.z, lab.y) / 6.28318530);
-    new_C        = min(new_C, max(HueCeil(hue), C));
+    // R90: adaptive chroma expansion
+    if (INVERSE_STRENGTH > 0.0) {
+        float slope_enc  = ReadHWY(HWY_SLOPE);
+        float slope      = max(slope_enc * 1.5 + 1.0, 1.15);  // R116: clamp below valid min; uninit highway decodes as 1.0
+        float mid_weight = lab.x * (1.0 - lab.x) * 4.0;
+        float c_weight   = saturate((C - 0.10) / 0.15);
+        float mean_C     = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).r;
+        float factor     = lerp(1.0, slope, float(INVERSE_STRENGTH) * mid_weight * c_weight);
+        float2 dir       = lab.yz / max(C, 1e-5);
+        float  new_C     = mean_C + (C - mean_C) * factor;
+        // Per-hue ceiling — prevents expansion from overshooting natural gamut.
+        // Preserves incoming C if already above ceiling (no reduction), but blocks
+        // inverse grade from pushing further. Mirrors R73 ceilings in grade.fx.
+        float hue = frac(atan2(lab.z, lab.y) / 6.28318530);
+        new_C     = min(new_C, max(HueCeil(hue), C));
+        lab.yz    = dir * max(new_C, 0.0);
+    }
 
-    lab.yz         = dir * max(new_C, 0.0);
-    col.rgb        = saturate(OklabToRGB(lab));
+    col.rgb = saturate(OklabToRGB(lab));
     return col;
 }
 

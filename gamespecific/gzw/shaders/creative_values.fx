@@ -104,6 +104,12 @@
 // 3.28-stop reference. Works on any S-curve tonemapper. 0 = off. 1.0 = full.
 // 0.30 is the recommended starting point.
 #define INVERSE_STRENGTH  0.50
+// R143: highlight reconstruction — desaturates near-clipped highlights to remove
+// false color casts caused by channel clipping (e.g., warm specular clipping R first
+// leaves an orange tint where the surface should be near-white). Fires in Oklab
+// before R90 expansion. C gate protects intentionally saturated colored lights.
+// 0 = off. Default 0.0 (awaiting calibration). Start: 0.5–0.8.
+#define HIGHLIGHT_RECONSTRUCT  0.00
 
 // ── HUE ROTATION ─────────────────────────────────────────────────────────────
 // Per-band rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
