@@ -809,9 +809,9 @@ float3 ApplyFilmGrain(float3 rgb, float2 pos_xy)
     float  L_g        = pow(max(Luma(rgb), 0.0), 1.0 / 2.2);
     float  luma_scale = 2.5;
     float  silver_boost = BLEACH_BYPASS * (1.0 - smoothstep(0.0, 0.65, L_g)) * 0.30;
-    float  g_r        = GrainValueNoise(p / (luma_scale * 1.00), slot     ).r;
-    float  g_g        = GrainValueNoise(p / (luma_scale * 0.90), slot + 3u).g;
-    float  g_b        = GrainValueNoise(p / (luma_scale * 1.15), slot + 5u).b;
+    float  g_r        = GrainValueNoise(p / (luma_scale * 1.15), slot     ).r;
+    float  g_g        = GrainValueNoise(p / (luma_scale * 1.00), slot + 3u).g;
+    float  g_b        = GrainValueNoise(p / (luma_scale * 0.85), slot + 5u).b;
     float3 g_coarse   = float3(g_r, g_g, g_b);
     float3 ha         = pcg3d_hash(uint3(uint(p.x),     uint(p.y),     slot + 7u));
     float3 hb         = pcg3d_hash(uint3(uint(p.x) + 1, uint(p.y) + 1, slot + 7u));
