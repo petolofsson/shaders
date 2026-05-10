@@ -122,7 +122,7 @@
 // Peaks in upper shadows (Oklab L≈0.50), falls off toward blacks and highlights.
 // Framerate-independent: turns over at ~24fps regardless of display fps.
 // 0 = off. 1.0 = calibrated 2383 amplitude. 1.5 = pushed. 2.0 = stylistic.
-#define GRAIN_STRENGTH 1.5
+#define GRAIN_STRENGTH 1.20
 
 // ── STAGE GATES ───────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.
