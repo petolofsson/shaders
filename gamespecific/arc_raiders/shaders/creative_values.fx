@@ -75,7 +75,7 @@
 // ── CHROMA ────────────────────────────────────────────────────────────────────
 // Global chroma multiplier. -1.0 = greyscale, 0.0 = passthrough, +1.0 = 2× chroma.
 // Applied uniformly — use Vibrance for lift-only behaviour.
-#define SATURATION 0.05
+#define SATURATION 0.15
 
 // Per-hue chroma lift strength. Acts as a gain near each hue band's scene mean —
 // lift-only, vibrance-masked (already-saturated pixels are attenuated).
