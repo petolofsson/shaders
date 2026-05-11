@@ -510,8 +510,9 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     // R133: Munsell per-hue highlight chroma rolloff (replaces R74 linear ramp).
     // f = (4(1-L))^n: 1 at L≤0.75, 0 at L=1.0. n from HueBandRollN — yellow 0.22,
     // yellow-green 0.27, orange 0.81 (Munsell Renotation V=8→9→10 ratios).
+    // Hardcoded — calibration from measured data, not a creative choice.
     float r133_roll = saturate(pow(max(0.0, 4.0 * (1.0 - lab.x)), HueBandRollN(h_perc)));
-    C *= lerp(1.0, r133_roll, MUNSELL_HIGHLIGHT_ROLLOFF);
+    C *= r133_roll;
 
     // R21: per-band hue rotation — compute h_out from original h before chroma lift
     float r21_delta = ROT_RED    * HueBandWeight(h_perc, HB_BAND_RED)

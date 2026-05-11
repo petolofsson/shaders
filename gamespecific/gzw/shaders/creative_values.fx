@@ -90,13 +90,6 @@
 // 1.0 = calibrated default. 0 = off.
 #define VIBRANCE  1.00
 
-// R133: per-hue chroma rolloff as Oklab L approaches 1.0, calibrated from Munsell
-// Renotation data. f=(4(1-L))^n per hue: no effect below L=0.75, C→0 at L=1.0.
-// Hue-specific exponents: yellow rolls off late (peaks at V=9), orange rolls off
-// fastest — all from Munsell V=8→9→10 C_max ratios (hue_bands.fxh HB_ROLL_N_*).
-// 1.0 = Munsell-calibrated default. 0 = off.
-#define MUNSELL_HIGHLIGHT_ROLLOFF  1.0
-
 // R185: ACES 2.0-inspired highlight chroma rolloff. L²-weighted Michaelis-Menten toe:
 // near-neutral highlights bleed toward white first, saturated highlights resist longest.
 // Fills the gap left by R22 highlight arm removal — globally progressive, hue-agnostic.
