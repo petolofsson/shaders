@@ -377,7 +377,7 @@ float3 ApplyCorrective(float3 lin, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
         float3 cpl   = float3(act.g * 0.12 + act.b * 0.06,
                               act.r * 0.10 + act.b * 0.04,
                               act.r * 0.06 + act.g * 0.08);
-        lin_e = saturate(exp2(log_e - cpl * COUPLER_STRENGTH));
+        lin_e = saturate(exp2(log_e - cpl * 0.3));
     }
     float3 out_lin = FilmCurveApply(lin_e,
                                     ctx.fc_knee_r, ctx.fc_knee, ctx.fc_knee_b,

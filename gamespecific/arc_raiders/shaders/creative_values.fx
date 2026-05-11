@@ -11,7 +11,7 @@
 // Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.
 // Sets where pixels sit tonally — which directly changes what every knob below "sees".
 // Rule of thumb: dial until overall brightness feels right, then tune beneath.
-#define EXPOSURE  0.15
+#define EXPOSURE  0.17
 
 // Remaps the raw pixel into [BLACKS, WHITES] before EXPOSURE runs.
 // BLACKS: black pedestal — prevents absolute digital black. 0 = off.
@@ -21,12 +21,6 @@
 // Both at defaults (0 / 1) = passthrough (identity).
 #define BLACKS  0.005
 #define WHITES  0.90
-
-// Developer-inhibitor-release cross-channel masking. Each dye layer releases
-// inhibitors that suppress adjacent layers, increasing colour separation.
-// Fires after EXPOSURE, before FilmCurve — pure SDR-log effect.
-// 0 = off (default). 0.3 = subtle. 0.6 = visible colour pop. 1.0 = strong.
-#define COUPLER_STRENGTH  0.5
 
 // Per-channel knee and toe offsets for the FilmCurve. Encodes the physical dye-layer
 // cross-over character of different film stocks.
@@ -47,7 +41,7 @@
 // color dye. Desaturates shadows most (denser silver retention in unexposed areas),
 // steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.
 // 0 = off. 1 = full (near-monochrome shadows). Start: 0.1–0.3.
-#define BLEACH_BYPASS  0.0
+#define BLEACH_BYPASS  0.10
 
 // Primary color grade. Runs after FilmCurve, before zone contrast.
 // TEMP: positive = warm (R up, B down), negative = cool. Range ±100.
@@ -63,11 +57,11 @@
 // ── TONAL ─────────────────────────────────────────────────────────────────────
 // Scales the adaptive zone S-curve strength. 1.0 = calibrated default. 0 = off.
 // 2.0 = aggressive. Range 0–2.
-#define CONTRAST  0.75
+#define CONTRAST  1.0
 
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOWS  0.50
+#define SHADOWS  0.60
 
 // Soft luma push/pull in the highlight range (L > 0.55). +1.0 brightens highlights,
 // -1.0 recovers blown highlights. Range ±1.0. Default 0.0 = passthrough.
@@ -76,17 +70,17 @@
 // R183: pre-flash warm shadow cast. Fixed warm amber additive in deep shadows (L < 0.25),
 // falls to zero at mid-gray. Models Deakins' colored negative pre-flash technique.
 // Positive = warm amber, negative = cool blue-green. Range ±1.0. Default 0.0 = passthrough.
-#define SHADOW_CAST  0.0
+#define SHADOW_CAST  0.00
 
 // ── CHROMA ────────────────────────────────────────────────────────────────────
 // Global chroma multiplier. -1.0 = greyscale, 0.0 = passthrough, +1.0 = 2× chroma.
 // Applied uniformly — use Vibrance for lift-only behaviour.
-#define SATURATION 0.10
+#define SATURATION 0.05
 
 // Per-hue chroma lift strength. Acts as a gain near each hue band's scene mean —
 // lift-only, vibrance-masked (already-saturated pixels are attenuated).
 // 1.0 = calibrated default. 0 = off.
-#define VIBRANCE  0.05
+#define VIBRANCE  0.15
 
 // R185: ACES 2.0-inspired highlight chroma rolloff. L²-weighted Michaelis-Menten toe:
 // near-neutral highlights bleed toward white first, saturated highlights resist longest.
@@ -115,9 +109,9 @@
 // Applied after Vibrance. Default 0.0 = passthrough.
 #define SAT_RED     0.0
 #define SAT_YELLOW  0.0
-#define SAT_GREEN   0.0
-#define SAT_CYAN    0.0
-#define SAT_BLUE    0.0
+#define SAT_GREEN  -0.70
+#define SAT_CYAN   -0.60
+#define SAT_BLUE   -0.85
 #define SAT_MAG     0.0
 
 // Film emulsion scatter from specular highlights — orange/amber fringe around

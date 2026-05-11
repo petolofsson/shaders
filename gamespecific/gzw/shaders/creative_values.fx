@@ -22,12 +22,6 @@
 #define BLACKS  0.005
 #define WHITES  0.97
 
-// Developer-inhibitor-release cross-channel masking. Each dye layer releases
-// inhibitors that suppress adjacent layers, increasing colour separation.
-// Fires after EXPOSURE, before FilmCurve — pure SDR-log effect.
-// 0 = off (default). 0.3 = subtle. 0.6 = visible colour pop. 1.0 = strong.
-#define COUPLER_STRENGTH  0.4
-
 // Per-channel knee and toe offsets for the FilmCurve. Encodes the physical dye-layer
 // cross-over character of different film stocks.
 // Default values match ARRI ALEXA latitude. Range approximately ±0.015.
