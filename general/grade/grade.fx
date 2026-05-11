@@ -591,6 +591,16 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     // Global saturation — -1.0 = greyscale, 0 = passthrough, +1.0 = 2× chroma.
     final_C = max(0.0, final_C * (1.0 + SATURATION));
 
+    // R185: ACES 2.0-inspired highlight chroma rolloff.
+    // L²-weighted Michaelis-Menten toe on C: near-neutral highlights bleach toward white
+    // first; deeply saturated highlights resist. Hue angle preserved — C magnitude only.
+    // Uses incoming C for the toe factor so the knee tracks the original scene chroma.
+    {
+        float hcr_lf   = lab.x * lab.x;
+        float hcr_ctoe = 0.20 / max(C + 0.20, 1e-5);
+        final_C = max(0.0, final_C * (1.0 - saturate(hcr_lf * hcr_ctoe * HCHROMA_ROLLOFF)));
+    }
+
     // Vector-space (a,b) reconstruction — rotate original direction by R21 delta
     float r21_cos, r21_sin;
     sincos(r21_delta * (0.10 * 6.28318), r21_sin, r21_cos);

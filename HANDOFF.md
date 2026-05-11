@@ -29,6 +29,7 @@ grade is an **8-pass technique**: LFDownscale1 → LFDownscale2 → NeutralIllum
 - **body_s bug** (R126, latent since 2026-05-07) fixed — clamped to `saturate(x)` before xw computation.
 - CURVE_B_KNEE +0.008, CURVE_B_TOE −0.005 (rebalanced after shoulder_w/toe_w removal).
 - **Current creative_values** — read live from `creative_values.fx` files; do not cache here.
+- **R185 HCHROMA_ROLLOFF** — implemented, default 0.0 in both profiles. Start at 0.35 to calibrate.
 - **Mid-shadow off-color** — unverified post R127/R130. Likely resolved. Re-test before marking closed.
 
 ## Next candidates

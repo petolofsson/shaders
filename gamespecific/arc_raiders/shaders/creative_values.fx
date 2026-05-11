@@ -4,14 +4,14 @@
 // Adaptive inverse tone mapping. Expands Oklab chroma using the IQR-derived compression
 // ratio — restoring chroma the game's tonemapper compressed. Luma is handled by zone
 // S-curve. Works on any S-curve tonemapper. 0 = off. Start at 0.30–0.50.
-#define INVERSE_STRENGTH  0.45
+#define INVERSE_STRENGTH  0.00
 
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
 // Exposure in stops. 0 = neutral, +1 = one stop brighter, -1 = one stop darker.
 // Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.
 // Sets where pixels sit tonally — which directly changes what every knob below "sees".
 // Rule of thumb: dial until overall brightness feels right, then tune beneath.
-#define EXPOSURE  0.20
+#define EXPOSURE  0.35
 
 // Remaps the raw pixel into [BLACKS, WHITES] before EXPOSURE runs.
 // BLACKS: black pedestal — prevents absolute digital black. 0 = off.
@@ -26,7 +26,7 @@
 // inhibitors that suppress adjacent layers, increasing colour separation.
 // Fires after EXPOSURE, before FilmCurve — pure SDR-log effect.
 // 0 = off (default). 0.3 = subtle. 0.6 = visible colour pop. 1.0 = strong.
-#define COUPLER_STRENGTH  01.0
+#define COUPLER_STRENGTH  0.0
 
 // Per-channel knee and toe offsets for the FilmCurve. Encodes the physical dye-layer
 // cross-over character of different film stocks.
@@ -41,7 +41,7 @@
 // Kodak 2383 print emulsion on top of FilmCurve: gentle shadow density bow,
 // restrained shoulder, desaturates mids ~15%, adds warm shadow cast. 0 = off.
 // 1 = full 2383. 0.35 = recommended starting point.
-#define PRINT_STOCK  0.50
+#define PRINT_STOCK  0.00
 
 // Skip the bleach step during print development — retains metallic silver alongside
 // color dye. Desaturates shadows most (denser silver retention in unexposed areas),
@@ -81,7 +81,7 @@
 // ── CHROMA ────────────────────────────────────────────────────────────────────
 // Global chroma multiplier. -1.0 = greyscale, 0.0 = passthrough, +1.0 = 2× chroma.
 // Applied uniformly — use Vibrance for lift-only behaviour.
-#define SATURATION  0.10
+#define SATURATION  -0.10
 
 // Per-hue chroma lift strength. Acts as a gain near each hue band's scene mean —
 // lift-only, vibrance-masked (already-saturated pixels are attenuated).
@@ -94,6 +94,12 @@
 // fastest — all from Munsell V=8→9→10 C_max ratios (hue_bands.fxh HB_ROLL_N_*).
 // 1.0 = Munsell-calibrated default. 0 = off.
 #define MUNSELL_HIGHLIGHT_ROLLOFF  1.0
+
+// R185: ACES 2.0-inspired highlight chroma rolloff. L²-weighted Michaelis-Menten toe:
+// near-neutral highlights bleed toward white first, saturated highlights resist longest.
+// Fills the gap left by R22 highlight arm removal — globally progressive, hue-agnostic.
+// 0 = off. 0.35 = calibrated default. 1.0 = aggressive.
+#define HCHROMA_ROLLOFF  0.0
 
 // Rod-vision blue-green bias + scotopic desaturation across mesopic range (luma 0–0.30).
 // Hue: shifts a* (green) + b* (blue) toward 507nm rod peak — blue-green, not pure blue.

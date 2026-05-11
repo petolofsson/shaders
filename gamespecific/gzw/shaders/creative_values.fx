@@ -97,6 +97,12 @@
 // 1.0 = Munsell-calibrated default. 0 = off.
 #define MUNSELL_HIGHLIGHT_ROLLOFF  1.0
 
+// R185: ACES 2.0-inspired highlight chroma rolloff. L²-weighted Michaelis-Menten toe:
+// near-neutral highlights bleed toward white first, saturated highlights resist longest.
+// Fills the gap left by R22 highlight arm removal — globally progressive, hue-agnostic.
+// 0 = off. 0.35 = calibrated default. 1.0 = aggressive.
+#define HCHROMA_ROLLOFF  0.0
+
 // Rod-vision blue-green bias + scotopic desaturation across mesopic range (luma 0–0.30).
 // Hue: shifts a* (green) + b* (blue) toward 507nm rod peak — blue-green, not pure blue.
 // Desat: lab.yz *= (1 − 0.12 × w) — rods are achromatic; deep shadows lose chroma.

@@ -4,6 +4,8 @@
 
 ## 2026-05-12
 
+- **R185: ACES 2.0-inspired highlight chroma rolloff** (`grade.fx`, both `creative_values.fx`) — L²-weighted Michaelis-Menten toe on Oklab C: suppression = L² × (0.20/(C+0.20)) × HCHROMA_ROLLOFF. Near-neutral highlights bleed toward white first (C small → toe factor → 1); deeply saturated highlights resist longest (C large → toe factor → 0). Fills gap left by R22 highlight-arm removal. Default 0.0 in both profiles. ~7 ALU, 0 taps. Applied after global saturation, before vector reconstruction in ApplyChroma.
+
 - **Stops-based EXPOSURE** (`grade.fx`, both `creative_values.fx`) — Replaced `pow(rgb, EXPOSURE)` gamma operator with `rgb * pow(2, EXPOSURE)` stops-based linear multiplication. Old gamma formula distorted tonal shape at extreme values; linear multiplication is physically correct and uniform across all luminance levels. Both profiles reset to `EXPOSURE = 0.0` (neutral); testbed re-tuned to 0.15 EV.
 
 - **Rational film curve shoulder + toe** (`grade.fx`) — Replaced quadratic shoulder `factor * shoulder_w * above²` and toe `toe_fac * toe_w * below²` with rational forms. Shoulder: `above² / (headroom + above)` — C1 at knee, asymptotes to 1.0 (SDR ceiling by construction, no clipping possible for any input). Toe: `(0.06/ktoe) * below² / (ktoe + below)` — C1 at ktoe, calibrated to preserve prior 0.03 max lift at x=0. Removed `fc_factor`, `fc_toe_fac`, `fc_stevens`, `spread_scale`, `shoulder_w`, `toe_w` — all redundant with rational parameterisation. `SceneCtx` struct and `BuildSceneCtx` cleaned accordingly. Necessary because stops-based exposure can push values above 1.0; rational shoulder handles arbitrary inputs gracefully whereas quadratic caused runaway output (body_s blew up to ~7.8 at x=2.0).
