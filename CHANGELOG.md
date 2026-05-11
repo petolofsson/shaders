@@ -2,6 +2,18 @@
 
 > **Purpose (for AI context):** Chronological record of code changes, one compacted entry per day. Keep only the last 3–4 days. Older history lives in git log. Do not duplicate entries from HANDOFF.md or PLAN.md here.
 
+## 2026-05-12
+
+- **Stops-based EXPOSURE** (`grade.fx`, both `creative_values.fx`) — Replaced `pow(rgb, EXPOSURE)` gamma operator with `rgb * pow(2, EXPOSURE)` stops-based linear multiplication. Old gamma formula distorted tonal shape at extreme values; linear multiplication is physically correct and uniform across all luminance levels. Both profiles reset to `EXPOSURE = 0.0` (neutral); testbed re-tuned to 0.15 EV.
+
+- **Rational film curve shoulder + toe** (`grade.fx`) — Replaced quadratic shoulder `factor * shoulder_w * above²` and toe `toe_fac * toe_w * below²` with rational forms. Shoulder: `above² / (headroom + above)` — C1 at knee, asymptotes to 1.0 (SDR ceiling by construction, no clipping possible for any input). Toe: `(0.06/ktoe) * below² / (ktoe + below)` — C1 at ktoe, calibrated to preserve prior 0.03 max lift at x=0. Removed `fc_factor`, `fc_toe_fac`, `fc_stevens`, `spread_scale`, `shoulder_w`, `toe_w` — all redundant with rational parameterisation. `SceneCtx` struct and `BuildSceneCtx` cleaned accordingly. Necessary because stops-based exposure can push values above 1.0; rational shoulder handles arbitrary inputs gracefully whereas quadratic caused runaway output (body_s blew up to ~7.8 at x=2.0).
+
+- **body_s latent bug fixed** (`grade.fx`) — `FilmCurveApply` body S-curve used `x * (1-x)` which goes negative for x>1, producing massive positive body_s (runaway). Fixed by clamping to `saturate(x)` before computing xw. Bug present since R126 (2026-05-07), undetectable while pow(rgb, EXPOSURE) kept inputs in [0,1].
+
+- **Munsell rolloff comment fix** (`hue_bands.fxh`) — Comment incorrectly called GREEN (n=0.27) "slowest"; YELLOW (n=0.22) is the actual slowest rolloff. Comment corrected.
+
+- **CURVE_B_KNEE / CURVE_B_TOE rebalance** (testbed `creative_values.fx`) — `CURVE_B_KNEE` 0.0000→+0.008 (restore blue shoulder headroom lost with removal of `shoulder_w=1.06`). `CURVE_B_TOE` −0.010→−0.005 (widen blue toe slightly; `toe_w=1.04` depth bonus for blue is gone, narrower toe under-lifts blue shadows).
+
 ## 2026-05-10
 
 - **R174 grain overhaul** (`grade.fx`) — Diagnosed rain artifact root cause: luma-dependent `lerp(2.5,1.5,L_g)` grain cell size caused smooth spatial variation that read as directed motion during camera movement. Fix: fixed `luma_scale = 2.5`, single 24fps slot snap (`uint(FRAME_TIMER/41.667)`) — fps-agnostic, slot updates every 41.667ms regardless of display framerate. Restored 3× per-channel `GrainValueNoise` with physically correct Kodak 2383 dye layer sizing: cyan (R) ×1.15 coarsest, magenta (G) ×1.00, yellow (B) ×0.85 finest. R173 silver_boost retained. 14 hash calls total.

@@ -145,18 +145,23 @@ sampler2D DiffusionHorizSamp
 
 float3 FilmCurveApply(float3 x,
                       float knee_r, float knee_g, float knee_b,
-                      float ktoe_r, float ktoe_g, float ktoe_b,
-                      float factor, float toe_fac)
+                      float ktoe_r, float ktoe_g, float ktoe_b)
 {
-    float3 above      = max(x - float3(knee_r, knee_g, knee_b), 0.0);
-    float3 below      = max(float3(ktoe_r, ktoe_g, ktoe_b) - x, 0.0);
-    float3 shoulder_w = float3(0.91, 1.00, 1.06);
-    float3 toe_w      = float3(0.95, 1.00, 1.04);
+    float3 knee_rgb  = float3(knee_r, knee_g, knee_b);
+    float3 ktoe_rgb  = max(float3(ktoe_r, ktoe_g, ktoe_b), 0.001);
+    float3 above     = max(x - knee_rgb, 0.0);
+    float3 below     = max(ktoe_rgb - x, 0.0);
+    float3 headroom  = max(1.0 - knee_rgb, 0.001);
     // Upper-mid lift only: midrange-weighted one-sided S (zero at x≤0.5 and x=1, peak ~+1.2% at x≈0.72)
-    float3 xw         = x * (1.0 - x);
-    float3 body_s     = max(0.0, xw * xw * (2.0 * x - 1.0)) * 0.65;
-    return x + body_s - factor * shoulder_w * above * above
-               + toe_fac * toe_w * below * below;
+    // body_s clamped to [0,1] input — formula produces runaway positive values for x>1.
+    float3 xs        = saturate(x);
+    float3 xw        = xs * (1.0 - xs);
+    float3 body_s    = max(0.0, xw * xw * (2.0 * xs - 1.0)) * 0.65;
+    // Rational shoulder: C1 at knee, asymptotes to 1.0 (SDR ceiling by construction).
+    float3 sh_comp   = above * above / (headroom + above);
+    // Rational toe: C1 at ktoe, scaled to match prior quadratic toe depth at x=0.
+    float3 tc_comp   = (0.06 / ktoe_rgb) * below * below / (ktoe_rgb + below);
+    return x + body_s - sh_comp + tc_comp;
 }
 
 float LiftChroma(float C, float pivot, float strength)
@@ -300,7 +305,6 @@ struct SceneCtx {
     float  slow_key;
     float  fc_knee,     fc_knee_r,  fc_knee_b;
     float  fc_knee_toe, fc_ktoe_r,  fc_ktoe_b;
-    float  fc_factor,   fc_toe_fac, fc_stevens;
     float  shadow_lift_str;
     float  chroma_str_base;
     float  bowley;
@@ -332,7 +336,6 @@ SceneCtx BuildSceneCtx()
     ctx.eff_p75            = ctx.perc.b;
     ctx.ss_08_25           = smoothstep(0.06, 0.16, ctx.zone_std);
     ctx.ss_04_25           = smoothstep(0.03, 0.16, ctx.zone_std);
-    float spread_scale     = lerp(0.7, 1.1, ctx.ss_08_25);
     float lum_att          = smoothstep(0.10, 0.40, ctx.zone_log_key);
     // CONTRAST scale: 1.0 = calibrated default, 0 = off, 2.0 = aggressive.
     ctx.zone_str           = lerp(0.26, 0.16, ctx.ss_08_25)
@@ -343,9 +346,6 @@ SceneCtx BuildSceneCtx()
     ctx.bowley             = (ctx.perc.b + ctx.perc.r - 2.0 * ctx.perc.g)
                            / max(ctx.perc.b - ctx.perc.r, 0.01);
     ctx.fc_knee            = saturate(ctx.fc_knee - saturate(ctx.bowley) * 0.06);
-    ctx.fc_stevens         = ReadHWY(HWY_STEVENS) * 1.3;
-    ctx.fc_factor          = 0.05 / ((1.0 - ctx.fc_knee) * (1.0 - ctx.fc_knee))
-                           * ctx.fc_stevens * spread_scale;
     ctx.fc_knee_toe        = lerp(0.15, 0.25, saturate((0.40 - ctx.eff_p25) / 0.30));
     // R147: mode anchor — when toe sits well above peak dark density, pull it down.
     float mode             = ReadHWY(HWY_MODE);
@@ -355,7 +355,6 @@ SceneCtx BuildSceneCtx()
     ctx.fc_knee_b          = clamp(ctx.fc_knee     * exp2(CURVE_B_KNEE), 0.70, 0.95);
     ctx.fc_ktoe_r          = clamp(ctx.fc_knee_toe * exp2(CURVE_R_TOE),  0.08, 0.35);
     ctx.fc_ktoe_b          = clamp(ctx.fc_knee_toe * exp2(CURVE_B_TOE),  0.08, 0.35);
-    ctx.fc_toe_fac         = 0.03 / (ctx.fc_knee_toe * ctx.fc_knee_toe);
     float _sls_t              = saturate(((ctx.perc.r + ctx.scene_mode) * 0.5 - 0.025) / 0.175);
     float _std_suppress       = smoothstep(0.05, 0.13, ReadHWY(HWY_ZONE_STD));
     ctx.shadow_lift_str       = lerp(1.50, 0.45, _sls_t*_sls_t*_sls_t*(_sls_t*(_sls_t*6.0-15.0)+10.0))
@@ -370,7 +369,7 @@ SceneCtx BuildSceneCtx()
 
 float3 ApplyCorrective(float3 lin, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
 {
-    float3 lin_e = pow(max(lin, 0.0), EXPOSURE);
+    float3 lin_e = max(lin, 0.0) * pow(2.0, EXPOSURE);
     // R104: DIR couplers — developer-inhibitor-release cross-channel masking
     {
         float3 log_e = log2(lin_e + 1e-5);
@@ -382,8 +381,7 @@ float3 ApplyCorrective(float3 lin, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
     }
     float3 out_lin = FilmCurveApply(lin_e,
                                     ctx.fc_knee_r, ctx.fc_knee, ctx.fc_knee_b,
-                                    ctx.fc_ktoe_r, ctx.fc_knee_toe, ctx.fc_ktoe_b,
-                                    ctx.fc_factor, ctx.fc_toe_fac);
+                                    ctx.fc_ktoe_r, ctx.fc_knee_toe, ctx.fc_ktoe_b);
     // ── R105: halation — fires before print stock (physical: negative before printing) ──
     // R151: p90−p50 gap measures isolated bright sources against scene median —
     // direct specular-vs-surround contrast, not scene darkness proxy.

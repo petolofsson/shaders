@@ -7,11 +7,11 @@
 #define INVERSE_STRENGTH  0.45
 
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
-// Applied as pow(rgb, EXPOSURE) before any zone or curve work.
+// Exposure in stops. 0 = neutral, +1 = one stop brighter, -1 = one stop darker.
+// Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.
 // Sets where pixels sit tonally — which directly changes what every knob below "sees".
-// Raising this (>1.0) darkens; lowering (<1.0) brightens.
-// Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune beneath.
-#define EXPOSURE  0.85
+// Rule of thumb: dial until overall brightness feels right, then tune beneath.
+#define EXPOSURE  0.20
 
 // Remaps the raw pixel into [BLACKS, WHITES] before EXPOSURE runs.
 // BLACKS: black pedestal — prevents absolute digital black. 0 = off.
@@ -26,28 +26,28 @@
 // inhibitors that suppress adjacent layers, increasing colour separation.
 // Fires after EXPOSURE, before FilmCurve — pure SDR-log effect.
 // 0 = off (default). 0.3 = subtle. 0.6 = visible colour pop. 1.0 = strong.
-#define COUPLER_STRENGTH  0.4
+#define COUPLER_STRENGTH  01.0
 
 // Per-channel knee and toe offsets for the FilmCurve. Encodes the physical dye-layer
 // cross-over character of different film stocks.
 // Default values match ARRI ALEXA latitude. Range approximately ±0.015.
 // R knee < 0 = red compresses earlier (film-like warm shadows).
 // B knee > 0 = blue compresses later (open highlights). B toe < 0 = cool toe.
-#define CURVE_R_KNEE  -0.0102
-#define CURVE_B_KNEE   0.0000
-#define CURVE_R_TOE   +0.0100
-#define CURVE_B_TOE   -0.010
+#define CURVE_R_KNEE  -0.010
+#define CURVE_B_KNEE  +0.008
+#define CURVE_R_TOE   +0.010
+#define CURVE_B_TOE   -0.005
 
 // Kodak 2383 print emulsion on top of FilmCurve: gentle shadow density bow,
 // restrained shoulder, desaturates mids ~15%, adds warm shadow cast. 0 = off.
 // 1 = full 2383. 0.35 = recommended starting point.
-#define PRINT_STOCK  0.45
+#define PRINT_STOCK  0.50
 
 // Skip the bleach step during print development — retains metallic silver alongside
 // color dye. Desaturates shadows most (denser silver retention in unexposed areas),
 // steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.
 // 0 = off. 1 = full (near-monochrome shadows). Start: 0.1–0.3.
-#define BLEACH_BYPASS  0.05
+#define BLEACH_BYPASS  0.0
 
 // Primary color grade. Runs after FilmCurve, before zone contrast.
 // TEMP: positive = warm (R up, B down), negative = cool. Range ±100.
@@ -67,7 +67,7 @@
 
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOWS  0.25
+#define SHADOWS  0.50
 
 // Soft luma push/pull in the highlight range (L > 0.55). +1.0 brightens highlights,
 // -1.0 recovers blown highlights. Range ±1.0. Default 0.0 = passthrough.
@@ -81,12 +81,12 @@
 // ── CHROMA ────────────────────────────────────────────────────────────────────
 // Global chroma multiplier. -1.0 = greyscale, 0.0 = passthrough, +1.0 = 2× chroma.
 // Applied uniformly — use Vibrance for lift-only behaviour.
-#define SATURATION  0.0
+#define SATURATION  0.10
 
 // Per-hue chroma lift strength. Acts as a gain near each hue band's scene mean —
 // lift-only, vibrance-masked (already-saturated pixels are attenuated).
 // 1.0 = calibrated default. 0 = off.
-#define VIBRANCE  1.15
+#define VIBRANCE  0.05
 
 // R133: per-hue chroma rolloff as Oklab L approaches 1.0, calibrated from Munsell
 // Renotation data. f=(4(1-L))^n per hue: no effect below L=0.75, C→0 at L=1.0.
@@ -126,11 +126,11 @@
 // (yellow filter layer blocks blue from reaching base). White sources glow orange.
 // Fires inside game bloom radius, not on top of it.
 // 0 = off. 0.35 = calibrated default. 1.0 = Ektachrome-style aggressive.
-#define HAL_STRENGTH  0.35
+#define HAL_STRENGTH  0.30
 // Chromatic crossover threshold (ring luma units). Controls where the inner/outer
 // halation colour character transitions. Lower = more orange overall.
 // Range 0.02–0.20. Tune: raise until orange fringe looks physically correct.
-#define HAL_GAMMA     0.05
+#define HAL_GAMMA     0.04
 
 // ── OUTPUT ────────────────────────────────────────────────────────────────────
 // Hollywood Black Magic dual-component model (R131):
@@ -139,13 +139,13 @@
 // R132 polydisperse: per-channel scatter — red ×1.15, green ×1.00, blue ×0.85.
 // Rough grade mapping: 0.5–0.8 = HBM 1/4, 1.2–1.5 = HBM 1/2, 1.8–2.2 = HBM 1.
 // 1.40 = HBM 1/2 (Hollywood large-format workhorse grade). 0 = off.
-#define DIFFUSION_STRENGTH  0.70
+#define DIFFUSION_STRENGTH  0.50
 
 // R136: Selwyn 2383 granularity — three decorrelated dye layers (R:G:B = 1.00:0.80:1.50).
 // Peaks in upper shadows (Oklab L≈0.50), falls off toward blacks and highlights.
 // Framerate-independent: turns over at ~24fps regardless of display fps.
 // 0 = off. 1.0 = calibrated 2383 amplitude. 1.5 = pushed. 2.0 = stylistic.
-#define GRAIN_STRENGTH 0.40
+#define GRAIN_STRENGTH 0.50
 
 // ── STAGE GATES ───────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.

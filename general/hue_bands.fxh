@@ -81,8 +81,8 @@ float HueCeil(float hue)
 // R133 Munsell highlight rolloff exponents.
 // Power n in f=(4(1-L))^n, calibrated from Munsell Renotation V=8→9→10 C_max ratios.
 // f=1 at L≤0.75 (V≈7.5), f=0 at L=1.0. Larger n = faster rolloff into highlights.
-// Yellow n=0.22: chroma peaks at V=9 (L≈0.90) — rolloff only in the last 10%.
-// Yellow-Green n=0.27: slowest — stays colorful deep into highlights.
+// Yellow n=0.22: slowest — chroma peaks at V=9 (L≈0.90), rolloff only in the last 10%.
+// Green n=0.27: second slowest — stays colorful deep into highlights.
 // Orange n=0.81: fastest — strong highlight desaturation, matches Munsell data.
 #define HB_ROLL_N_RED     0.74
 #define HB_ROLL_N_ORANGE  0.81

@@ -7,11 +7,11 @@
 #define INVERSE_STRENGTH  0.45
 
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
-// Applied as pow(rgb, EXPOSURE) before any zone or curve work.
+// Exposure in stops. 0 = neutral, +1 = one stop brighter, -1 = one stop darker.
+// Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.
 // Sets where pixels sit tonally — which directly changes what every knob below "sees".
-// Raising this (>1.0) darkens; lowering (<1.0) brightens.
-// Rule of thumb: dial EXPOSURE until overall brightness feels right, then tune beneath.
-#define EXPOSURE  0.85
+// Rule of thumb: dial until overall brightness feels right, then tune beneath.
+#define EXPOSURE  0.0
 
 // Remaps the raw pixel into [BLACKS, WHITES] before EXPOSURE runs.
 // BLACKS: black pedestal — prevents absolute digital black. 0 = off.
