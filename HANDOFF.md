@@ -12,13 +12,7 @@ grade is an **8-pass technique**: LFDownscale1 → LFDownscale2 → NeutralIllum
 
 ## Pipeline state
 
-| Stage | Finished | Novel |
-|-------|----------|-------|
-| Stage 0 — Input | 99% | 92% |
-| Stage 1 — Film Stock | 98% | 94% |
-| Stage 2 — Tonal | 97% | 91% |
-| Stage 3 — Color + Halation | 99% | 92% |
-| Output — Diffusion + Grain | 97% | 94% |
+See PLAN.md for authoritative scores and reasoning.
 
 ## Known state
 
