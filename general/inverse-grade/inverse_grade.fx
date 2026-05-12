@@ -154,7 +154,7 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     // Tonemapper compresses highlights most, shadows least → zone weights are asymmetric.
     float  L_base      = tex2D(LocalLumaSamp, uv).r;
     float  w_shadow    = 1.0 - smoothstep(0.0,  0.25, L_base);
-    float  w_highlight = smoothstep(0.60, 0.85, L_base);
+    float  w_highlight = smoothstep(0.60, 0.85, L_base) * (1.0 - smoothstep(0.80, 1.0, L_base));
     float  w_mid       = 1.0 - w_shadow - w_highlight;
     float  zone_weight = w_shadow * 0.4 + w_mid * 1.0 + w_highlight * 1.4;
     float  lerp_t      = saturate(float(INVERSE_STRENGTH) * zone_weight * c_weight * dir_scale);
