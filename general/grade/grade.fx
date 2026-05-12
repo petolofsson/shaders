@@ -245,7 +245,8 @@ float3 ApplyHalation(float3 lin, float2 uv, float3 lf_mip2, float hal_strength, 
     // 3) Color: red dominant (deepest dye, reaches base), blue near-zero (yellow filter).
     // Illuminant-adaptive rem-jet: incident spectral content shifts halo G weight.
     // Warm scene (illum_warm > 0.39) → more R energy reaches base → relatively less G scatter.
-    // Cool scene → G weight rises slightly. Scale 0.40 → ±10% G at practical illuminant extremes.
+    // Scale 0.25: emulsion stack pre-filtering removes most short-wavelength variation;
+    // residual G modulation ~20-30% of a G-component already ~1/10 of R (SPD analysis).
     float3 lf_mip1    = tex2D(LowFreqMip1Samp, uv).rgb;
     float3 ring_tight = max(float3(0,0,0), lf_mip1 - lin);
     float3 ring_broad = max(float3(0,0,0), lf_mip2 - lf_mip1);
@@ -253,7 +254,7 @@ float3 ApplyHalation(float3 lin, float2 uv, float3 lf_mip2, float hal_strength, 
     float  hal_lore   = tight_luma / (tight_luma + hal_gamma + 1e-6);
     float  lore_g     = lerp(0.78, 0.94, hal_lore);
     float  lore_b     = lerp(0.22, 0.38, hal_lore);
-    float  g_mod      = 1.0 - (illum_warm - 0.39) * 0.40;
+    float  g_mod      = 1.0 - (illum_warm - 0.39) * 0.25;
     float3 col_tight  = float3(0.63, 0.27 * lore_g * g_mod, 0.02 * lore_b);
     float3 col_broad  = float3(1.05, 0.45 * lore_g * g_mod, 0.03 * lore_b);
     return saturate(lin + (ring_tight * col_tight + ring_broad * col_broad) * hal_strength);
@@ -624,8 +625,9 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     float2 ab_s   = ab_in * (final_C / C_safe);
 
     // Abney scene-chroma scale: chromatic adaptation amplifies hue shifts in vivid scenes.
-    // median_C [0,0.30] → scale [1.0, 1.18] — inert in near-achromatic, +18% max in vivid.
-    float abney_scale = 1.0 + ctx.median_C * 0.60;
+    // median_C [0,0.30] → scale [1.0, 1.075] — inert in near-achromatic, +7.5% max in vivid.
+    // 0.25 calibrated from surround-chroma induction literature (Kirschmann, Pridmore 2007).
+    float abney_scale = 1.0 + ctx.median_C * 0.25;
     float abney  = (+hw_o0 * 0.06    // RED     — shifts toward yellow
                    - hw_o1 * 0.05    // YELLOW  — shifts toward red
                    + hw_o2 * 0.02    // GREEN   — shifts toward yellow-green (R69)
