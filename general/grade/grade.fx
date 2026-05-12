@@ -255,8 +255,10 @@ float3 ApplyHalation(float3 lin, float2 uv, float3 lf_mip2, float hal_strength, 
     float  lore_g     = lerp(0.78, 0.94, hal_lore);
     float  lore_b     = lerp(0.22, 0.38, hal_lore);
     float  g_mod      = 1.0 - (illum_warm - 0.39) * 0.25;
-    float3 col_tight  = float3(0.63, 0.27 * lore_g * g_mod, 0.02 * lore_b);
-    float3 col_broad  = float3(1.05, 0.45 * lore_g * g_mod, 0.03 * lore_b);
+    // G weights calibrated to emulsion-physics R:G:B ≈ 30:3:1 (pixls.us spectral model).
+    // Previous 0.27/0.45 gave G/R ≈ 0.43 — ~4× too high. 0.07/0.11 → G/R ≈ 0.10.
+    float3 col_tight  = float3(0.63, 0.07 * lore_g * g_mod, 0.02 * lore_b);
+    float3 col_broad  = float3(1.05, 0.11 * lore_g * g_mod, 0.03 * lore_b);
     return saturate(lin + (ring_tight * col_tight + ring_broad * col_broad) * hal_strength);
 }
 
@@ -629,9 +631,9 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     // 0.25 calibrated from surround-chroma induction literature (Kirschmann, Pridmore 2007).
     float abney_scale = 1.0 + ctx.median_C * 0.25;
     float abney  = (+hw_o0 * 0.06    // RED     — shifts toward yellow
-                   - hw_o1 * 0.05    // YELLOW  — shifts toward red
+                   - hw_o1 * 0.01    // YELLOW  — near null (Pridmore 2007: smallest Abney shift)
                    + hw_o2 * 0.02    // GREEN   — shifts toward yellow-green (R69)
-                   - hw_o3 * 0.08    // CYAN    — shifts toward yellow-green
+                   - hw_o3 * 0.08    // CYAN    — shifts toward yellow-green (Pridmore: largest)
                    + hw_o4 * 0.04    // BLUE    — shifts toward purple
                    + hw_o5 * 0.03) * C_stim * abney_scale;
     float dtheta = +(GREEN_HUE_COOL * 2.0 * 3.14159265) * hw_o2 * final_C + abney;
@@ -649,12 +651,13 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     float ch   = ch_p * r21_cos - sh_p * r21_sin;
     float f_hk     = -0.160 * ch + 0.132 * (ch*ch - sh*sh) - 0.405 * sh + 0.080 * (2.0*sh*ch) + 0.792;
     float hk_exp   = lerp(0.52, 0.64, saturate(ctx.zone_log_key / 0.50));
-    // Hellwig 2022: H-K magnitude scales with adapting luminance — photopic maximum at bright key.
-    // Current exponent adaptation reduces C^n in bright scenes (wrong direction); magnitude
-    // correction restores net HK increasing with scene brightness as the physics requires.
-    float hk_coeff = lerp(0.18, 0.32, saturate(ctx.zone_log_key / 0.50));
+    // Hellwig 2022 + Nayatani: H-K effect is STRONGER at low adapting luminance (mesopic) and
+    // weakens toward bright photopic — lerp goes high→low with scene key (inverted from prior).
+    // Gate inverted: H-K strongest in darks/mids, fades above L=0.55 (highlights need less
+    // correction — consistent with f₁J = 1.52 − 0.013J from laser-display calibration study).
+    float hk_coeff = lerp(0.32, 0.18, saturate(ctx.zone_log_key / 0.50));
     float hk_boost = 1.0 + hk_coeff * f_hk * pow(max(final_C, 0.0), hk_exp);
-    float final_L  = saturate(lab.x / lerp(1.0, hk_boost, smoothstep(0.0, 0.35, lab.x)));
+    float final_L  = saturate(lab.x / lerp(1.0, hk_boost, 1.0 - smoothstep(0.55, 0.90, lab.x)));
 
     // R117C: chromatic induction — broad surround hue nudges near-achromatic pixels toward complement.
     // Simultaneous contrast: a grey patch in a coloured surround takes on a slight opposite hue tinge.
