@@ -23,6 +23,7 @@ grade is an **8-pass technique**: LFDownscale1 → LFDownscale2 → NeutralIllum
 ## Known state
 
 - No known compile errors. Debug log: `/tmp/vkbasalt.log`
+- **Data highway** lives in `HighwayTex` (256×1 R16F, declared in `highway.fxh`). BackBuffer is a pure image surface — no y=0 data, no guards needed. `ReadHWY` reads from `HighwaySamp` via `tex2Dlod`. Write passes (`HighwayWritePS`, `RenderTarget=HighwayTex`) are last in `analysis_frame` and `corrective` techniques. `inverse_grade` reads `illum_warm` from `NeutralIllumTex` directly.
 - R187 complete and validated. Inverse grade is **single-pass** — bilateral blur passes (LocalLumaDownH/V), LocalLumaHTex/LocalLumaTex, and MeanChromaTex all removed.
 - **R187 formula**: `C * factor` (zero-anchored). `lerp_t = saturate(INVERSE_STRENGTH * (1 - lab.x) * c_weight * dir_scale)`. Full expansion at L=0, zero at L=1. No contraction possible.
 - **Luma-gated EXPOSURE** in grade.fx: `gain = lerp(E, 1.0, smoothstep(0.55, 0.85, lum))` — highlights preserved, no white-out from stops-based multiplication on pre-tonemapped SDR.

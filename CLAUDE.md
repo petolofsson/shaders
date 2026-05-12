@@ -26,11 +26,11 @@ Diffusion is merged inside grade.fx — it is NOT a separate effect in the chain
 
 **BackBuffer chain rule:**
 - Inter-effect BackBuffer is 8-bit UNORM. Values >1.0 clip silently between effects.
-- Row y=0 is the data highway: `analysis_scope_pre` writes histogram there; every
-  BackBuffer-writing pass must guard `if (pos.y < 1.0) return col;`
+- BackBuffer is a pure image surface — no data embedded in any row. No y=0 guards needed.
+- Data highway lives in `HighwayTex` (256×1 R16F, declared in `highway.fxh`). Read via `ReadHWY(slot)`. Written by `HighwayWritePS` (last pass, `RenderTarget=HighwayTex`) in `analysis_frame` and `corrective`.
 - Any effect where all passes use explicit RenderTargets must add a Passthrough pass
   that writes BackBuffer, or vkBasalt clears it for the next effect.
-- `corrective.fx` is one effect with 7 passes — the final Passthrough keeps BB alive
+- `corrective.fx` is one effect with 8 passes — the final Passthrough keeps BB alive
   for `grade.fx`. No inter-effect clears between corrective passes.
 
 ## How I work
