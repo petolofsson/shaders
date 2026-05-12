@@ -1,4 +1,4 @@
-# Handoff — 2026-05-12
+# Handoff — 2026-05-13
 
 > **Purpose (for AI context):** Current session state. Read at session start to orient. Update at session end. Changelog entries go in CHANGELOG.md.
 
@@ -17,7 +17,7 @@ grade is an **8-pass technique**: LFDownscale1 → LFDownscale2 → NeutralIllum
 | Stage 0 — Input | 99% | 92% |
 | Stage 1 — Film Stock | 98% | 94% |
 | Stage 2 — Tonal | 97% | 91% |
-| Stage 3 — Color + Halation | 98% | 90% |
+| Stage 3 — Color + Halation | 99% | 92% |
 | Output — Diffusion + Grain | 97% | 94% |
 
 ## Known state
@@ -33,8 +33,9 @@ grade is an **8-pass technique**: LFDownscale1 → LFDownscale2 → NeutralIllum
 - **CHROMA_SHOULDER** (renamed from HCHROMA_ROLLOFF) — ACES 2.0-inspired L²-weighted Michaelis-Menten toe. Default 0.0 in both profiles.
 - **VIBRANCE** first in CHROMA section (lift-only, reach for this first). **SATURATION** below it (global, uniform).
 - **Skin tone fix** in testbed: ROT_RED 0.00, SAT_RED −0.10, SAT_YELLOW −0.10. R156 warm-hue bias compresses orange/skin more than neutral hues — reducing chroma in those bands restores skin character.
-- **Illuminant-adaptive halation** — `ApplyHalation` G weights modulated by `ctx.illum_warm` (CAT16 L/M − S/M + 0.5 from NeutralIllumTex). `g_mod = 1 − (illum_warm − 0.39) × 0.65`. D65 neutral = no change.
-- **Scene-adaptive HK + Abney** — `hk_coeff = lerp(0.18, 0.32, zone_log_key / 0.50)` (was fixed 0.25). Abney scale `1 + ctx.median_C × 0.60` (median_C clamped [0, 0.30] in SceneCtx).
+- **Illuminant-adaptive halation** — `ApplyHalation` G weights modulated by `ctx.illum_warm`. `g_mod = 1 − (illum_warm − 0.39) × 0.25`. G weights corrected to emulsion physics R:G:B ≈ 30:3:1 (was ~4× too high). D65 neutral = no change.
+- **Scene-adaptive HK + Abney** — `hk_coeff = lerp(0.32, 0.18, zone_log_key / 0.50)` — direction corrected (H-K stronger at low luminance per Hellwig 2022 + Nayatani 1997). HK gate inverted: fades above L=0.55, not below. Abney scale `1 + ctx.median_C × 0.25`. Abney per-hue corrected per Pridmore 2007 (YELLOW near-null, CYAN largest).
+- **Physics audit complete (2026-05-13)** — all stages (0–3, Output) audited. No direction bugs in Stages 0, 1, 2, Output. Stage 3 bugs were corrected in prior session. All physics-direction constants sourced from literature; calibration amplitudes empirically tuned (standard practice). One doc correction: grain envelope `sqrt(1−L_gamma)` peaks mathematically at pure black, not L≈0.50 — perceived peak is upper shadows (grain at pure black is invisible).
 - **Current creative_values** — read live from `creative_values.fx` files; do not cache here. GZW profile tuned for jungle movie aesthetic (teal-green shadows, green mids, golden highlights) — separate from arc_raiders testbed.
 - **Mid-shadow off-color** — unverified post R127/R130. Likely resolved. Re-test before marking closed.
 
