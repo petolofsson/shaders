@@ -4,7 +4,7 @@
 
 | Stage | Finished | Novel |
 |-------|----------|-------|
-| Stage 0 — Input (inverse_grade) | 98% | 92% |
+| Stage 0 — Input (inverse_grade) | 99% | 92% |
 | Stage 1 — Film Stock | 98% | 94% |
 | Stage 2 — Tonal | 97% | 91% |
 | Stage 3 — Color + Halation | 98% | 90% |
@@ -13,7 +13,7 @@
 ## Score reasoning
 
 **Stage 0 — Input (92% novel)**
-No game post-processing pipeline attempts to undo tonemapper compression. The IQR-based chroma recovery, Bowley-corrected slope, per-hue HueCeil ceilings, R156 hue-specific slope bias, R163 dominant-hue alignment, R165 illuminant warmth CCT proxy — none of this exists in any game engine. R186 bilateral local luma (separable 9-tap at 1/8-res) replaces the per-pixel bell with a three-zone asymmetric expansion (shadow×0.4, mid×1.0, highlight×1.4), correctly reflecting that game tonemappers compress highlights most. The data highway architecture itself (passing scene statistics via BackBuffer row 0) is not a pattern found in game post-processing. Drag: "chroma boost" as a concept exists in saturation knobs; the expansion direction is the same even if the mechanism is different.
+No game post-processing pipeline attempts to undo tonemapper compression. The IQR-based chroma recovery, Bowley-corrected slope, per-hue HueCeil ceilings, R156 hue-specific slope bias, R163 dominant-hue alignment, R165 illuminant warmth CCT proxy — none of this exists in any game engine. R187 zero-anchored expansion (`C × factor`, ACES toe_inv-matched) with `(1 − lab.x)` continuous luma weight — full expansion at L=0, zero at L=1 — replaces the R186 bilateral zone system and correctly reflects that highlights cannot recover chroma due to gamut geometry at high luminance (cinema mastering data: highlight ΔC = −0.008, shadows/mids gain ~67% chroma). Single-pass; no bilateral blur textures. The data highway architecture itself (passing scene statistics via BackBuffer row 0) is not a pattern found in game post-processing. Drag: "chroma boost" as a concept exists in saturation knobs; the expansion direction is the same even if the mechanism is different.
 
 **Stage 1 — Film Stock (94% novel)**
 Games approximate film stocks with LUTs — even RDR2's celebrated film look is LUT-based. The 2383 3×3 spectral dye matrix from H-1-2383t primary data, H&D curve, DIR couplers, masking coupler, and chromatic floor are not found anywhere in game post-processing. fc_stevens driven by histogram mode, adaptive print stock from p25/p75 — not in games. Drag: 3-way CC exists in UE5's color grading stack; S-curve tone shaping is universal.

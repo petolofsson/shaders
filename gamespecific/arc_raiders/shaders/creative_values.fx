@@ -4,14 +4,14 @@
 // Adaptive inverse tone mapping. Expands Oklab chroma using the IQR-derived compression
 // ratio — restoring chroma the game's tonemapper compressed. Luma is handled by zone
 // S-curve. Works on any S-curve tonemapper. 0 = off. Start at 0.30–0.50.
-#define INVERSE_STRENGTH  0.30
+#define INVERSE_STRENGTH  0.40
 
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
 // Exposure in stops. 0 = neutral, +1 = one stop brighter, -1 = one stop darker.
 // Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.
 // Sets where pixels sit tonally — which directly changes what every knob below "sees".
 // Rule of thumb: dial until overall brightness feels right, then tune beneath.
-#define EXPOSURE  0.26
+#define EXPOSURE  0.17
 
 // Remaps the raw pixel into [BLACKS, WHITES] before EXPOSURE runs.
 // BLACKS: black pedestal — prevents absolute digital black. 0 = off.
@@ -35,13 +35,13 @@
 // Kodak 2383 print emulsion on top of FilmCurve: gentle shadow density bow,
 // restrained shoulder, desaturates mids ~15%, adds warm shadow cast. 0 = off.
 // 1 = full 2383. 0.35 = recommended starting point.
-#define PRINT_STOCK  0.30
+#define PRINT_STOCK  0.35
 
 // Skip the bleach step during print development — retains metallic silver alongside
 // color dye. Desaturates shadows most (denser silver retention in unexposed areas),
 // steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.
 // 0 = off. 1 = full (near-monochrome shadows). Start: 0.1–0.3.
-#define BLEACH_BYPASS  0.00
+#define BLEACH_BYPASS  0.05
 
 // Primary color grade. Runs after FilmCurve, before zone contrast.
 // TEMP: positive = warm (R up, B down), negative = cool. Range ±100.
@@ -51,13 +51,13 @@
 #define SHADOW_TINT      0
 #define MID_TEMP        +3
 #define MID_TINT         0
-#define HIGHLIGHT_TEMP  +8
+#define HIGHLIGHT_TEMP  +5
 #define HIGHLIGHT_TINT   0
 
 // ── TONAL ─────────────────────────────────────────────────────────────────────
 // Scales the adaptive zone S-curve strength. 1.0 = calibrated default. 0 = off.
 // 2.0 = aggressive. Range 0–2.
-#define CONTRAST  0.45
+#define CONTRAST  0.95
 
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
@@ -73,31 +73,32 @@
 #define SHADOW_CAST  0.00
 
 // ── CHROMA ────────────────────────────────────────────────────────────────────
-// Global chroma multiplier. -1.0 = greyscale, 0.0 = passthrough, +1.0 = 2× chroma.
-// Applied uniformly — use Vibrance for lift-only behaviour.
-#define SATURATION 0.0
-
 // Per-hue chroma lift strength. Acts as a gain near each hue band's scene mean —
 // lift-only, vibrance-masked (already-saturated pixels are attenuated).
+// Reach for this first — lifts flat/dull areas without pushing vivid pixels further.
 // 1.0 = calibrated default. 0 = off.
-#define VIBRANCE  0.00
+#define VIBRANCE  0.15
 
-// R185: ACES 2.0-inspired highlight chroma rolloff. L²-weighted Michaelis-Menten toe:
+// Global chroma multiplier. -1.0 = greyscale, 0.0 = passthrough, +1.0 = 2× chroma.
+// Applied uniformly — use after Vibrance when you want a deliberate global push.
+#define SATURATION 0.0
+
+// R185: ACES 2.0-inspired highlight chroma compression. L²-weighted Michaelis-Menten toe:
 // near-neutral highlights bleed toward white first, saturated highlights resist longest.
 // Fills the gap left by R22 highlight arm removal — globally progressive, hue-agnostic.
 // 0 = off. 0.35 = calibrated default. 1.0 = aggressive.
-#define HCHROMA_ROLLOFF  0.15
+#define CHROMA_SHOULDER  0.00
 
 // Rod-vision blue-green bias + scotopic desaturation across mesopic range (luma 0–0.30).
 // Hue: shifts a* (green) + b* (blue) toward 507nm rod peak — blue-green, not pure blue.
 // Desat: lab.yz *= (1 − 0.12 × w) — rods are achromatic; deep shadows lose chroma.
 // Neutrals unaffected (C=0 → zero shift). R117: transition widened luma 0.12 → 0.30.
 // Recalibrate from scratch: try 0.6–0.8. 0 = off.
-#define PURKINJE_STRENGTH  0.70
+#define PURKINJE_STRENGTH  0.50
 
 // Per-band hue rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
 // (Red→Yellow, Green→Cyan, Blue→Magenta). Default 0.0 = passthrough.
-#define ROT_RED     +0.03
+#define ROT_RED      0.00
 #define ROT_YELLOW  -0.015
 #define ROT_GREEN   -0.02
 #define ROT_CYAN    +0.015
@@ -107,11 +108,11 @@
 // ── HUE SATURATION ───────────────────────────────────────────────────────────
 // Per-band chroma scale in Oklab C. ±1.0 → ±80% chroma per hue band.
 // Applied after Vibrance. Default 0.0 = passthrough.
-#define SAT_RED     0.0
-#define SAT_YELLOW  0.0
-#define SAT_GREEN  -0.70
-#define SAT_CYAN   -0.20
-#define SAT_BLUE   -0.30
+#define SAT_RED    -0.10
+#define SAT_YELLOW -0.10
+#define SAT_GREEN   0.0
+#define SAT_CYAN    0.0
+#define SAT_BLUE    0.0
 #define SAT_MAG     0.0
 
 // Film emulsion scatter from specular highlights — orange/amber fringe around
@@ -132,7 +133,7 @@
 // R132 polydisperse: per-channel scatter — red ×1.15, green ×1.00, blue ×0.85.
 // Rough grade mapping: 0.5–0.8 = HBM 1/4, 1.2–1.5 = HBM 1/2, 1.8–2.2 = HBM 1.
 // 1.40 = HBM 1/2 (Hollywood large-format workhorse grade). 0 = off.
-#define DIFFUSION_STRENGTH  0.60
+#define DIFFUSION_STRENGTH  0.50
 
 // R136: Selwyn 2383 granularity — three decorrelated dye layers (R:G:B = 1.00:0.80:1.50).
 // Peaks in upper shadows (Oklab L≈0.50), falls off toward blacks and highlights.

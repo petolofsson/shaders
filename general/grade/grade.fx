@@ -603,7 +603,7 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     {
         float hcr_lf   = lab.x * lab.x;
         float hcr_ctoe = 0.20 / max(C + 0.20, 1e-5);
-        final_C = max(0.0, final_C * (1.0 - saturate(hcr_lf * hcr_ctoe * HCHROMA_ROLLOFF)));
+        final_C = max(0.0, final_C * (1.0 - saturate(hcr_lf * hcr_ctoe * CHROMA_SHOULDER)));
     }
 
     // Vector-space (a,b) reconstruction — rotate original direction by R21 delta

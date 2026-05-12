@@ -88,7 +88,7 @@
 // near-neutral highlights bleed toward white first, saturated highlights resist longest.
 // Fills the gap left by R22 highlight arm removal — globally progressive, hue-agnostic.
 // 0 = off. 0.35 = calibrated default. 1.0 = aggressive.
-#define HCHROMA_ROLLOFF  0.0
+#define CHROMA_SHOULDER  0.0
 
 // Rod-vision blue-green bias + scotopic desaturation across mesopic range (luma 0–0.30).
 // Hue: shifts a* (green) + b* (blue) toward 507nm rod peak — blue-green, not pure blue.
