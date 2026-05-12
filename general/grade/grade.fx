@@ -234,7 +234,8 @@ float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print
     return lerp(lin, saturate(ps), print_stock);
 }
 
-float3 ApplyHalation(float3 lin, float2 uv, float3 lf_mip2, float hal_strength, float hal_gamma)
+float3 ApplyHalation(float3 lin, float2 uv, float3 lf_mip2, float hal_strength, float hal_gamma,
+                     float illum_warm)
 {
     // R168: three physical improvements:
     // 1) Exponential PSF: two-scale DoG (tight 1/16−sharp, broad 1/32−1/16) approximates
@@ -242,6 +243,9 @@ float3 ApplyHalation(float3 lin, float2 uv, float3 lf_mip2, float hal_strength, 
     // 2) AH layer (2383 rem-jet): attenuates tight direct back-reflection ~40%;
     //    broad scattered component partially bypasses AH → full color weights.
     // 3) Color: red dominant (deepest dye, reaches base), blue near-zero (yellow filter).
+    // Illuminant-adaptive rem-jet: incident spectral content shifts halo G weight.
+    // Warm scene (illum_warm > 0.39) → more R energy reaches base → relatively less G scatter.
+    // Cool scene → G weight rises slightly. Scale 0.40 → ±10% G at practical illuminant extremes.
     float3 lf_mip1    = tex2D(LowFreqMip1Samp, uv).rgb;
     float3 ring_tight = max(float3(0,0,0), lf_mip1 - lin);
     float3 ring_broad = max(float3(0,0,0), lf_mip2 - lf_mip1);
@@ -249,8 +253,9 @@ float3 ApplyHalation(float3 lin, float2 uv, float3 lf_mip2, float hal_strength, 
     float  hal_lore   = tight_luma / (tight_luma + hal_gamma + 1e-6);
     float  lore_g     = lerp(0.78, 0.94, hal_lore);
     float  lore_b     = lerp(0.22, 0.38, hal_lore);
-    float3 col_tight  = float3(0.63, 0.27 * lore_g, 0.02 * lore_b);
-    float3 col_broad  = float3(1.05, 0.45 * lore_g, 0.03 * lore_b);
+    float  g_mod      = 1.0 - (illum_warm - 0.39) * 0.40;
+    float3 col_tight  = float3(0.63, 0.27 * lore_g * g_mod, 0.02 * lore_b);
+    float3 col_broad  = float3(1.05, 0.45 * lore_g * g_mod, 0.03 * lore_b);
     return saturate(lin + (ring_tight * col_tight + ring_broad * col_broad) * hal_strength);
 }
 
@@ -310,6 +315,8 @@ struct SceneCtx {
     float  bowley;
     float  scene_mode;
     float  specular_contrast;
+    float  illum_warm;   // CAT16 L/M − S/M + 0.5; D65≈0.39, warm>0.39, cool<0.39
+    float  median_C;     // scene median Oklab C (highway HWY_MEDIAN_C) [0, 0.30]
 };
 
 struct TonalOut { float3 lin; float new_luma; float local_var; };
@@ -326,6 +333,8 @@ SceneCtx BuildSceneCtx()
     float3 illum_norm      = illum_rgb / max(Luma(illum_rgb), 0.001);
     float3 lms_illum       = mul(M_fwd, illum_norm);
     ctx.lms_illum_norm     = lms_illum / max(lms_illum.g, 0.001);
+    ctx.illum_warm         = saturate(ctx.lms_illum_norm.r - ctx.lms_illum_norm.b + 0.5);
+    ctx.median_C           = clamp(ReadHWY(HWY_MEDIAN_C), 0.0, 0.30);
     ctx.cfilm_floor        = BLACKS * (ctx.lms_illum_norm * float3(1.02, 1.00, 0.97));
     ctx.perc               = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
     ctx.scene_cut          = ReadHWY(HWY_SCENE_CUT);
@@ -390,7 +399,7 @@ float3 ApplyCorrective(float3 lin, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
     // R151: p90−p50 gap measures isolated bright sources against scene median —
     // direct specular-vs-surround contrast, not scene darkness proxy.
     float eff_hal_str = HAL_STRENGTH * lerp(1.0, 1.4, ctx.specular_contrast);
-    out_lin = ApplyHalation(out_lin, uv, lf_mip2_tex.rgb, eff_hal_str, HAL_GAMMA);
+    out_lin = ApplyHalation(out_lin, uv, lf_mip2_tex.rgb, eff_hal_str, HAL_GAMMA, ctx.illum_warm);
     // ── R51: print stock + R110: masking coupler + R130: dye matrix ──────────
     out_lin = ApplyPrintStock(out_lin, ctx.fc_knee_toe, ctx.fc_knee, PRINT_STOCK,
                               ctx.eff_p25, ctx.eff_p75);
@@ -614,12 +623,15 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     float  C_safe = max(C, 1e-6);
     float2 ab_s   = ab_in * (final_C / C_safe);
 
+    // Abney scene-chroma scale: chromatic adaptation amplifies hue shifts in vivid scenes.
+    // median_C [0,0.30] → scale [1.0, 1.18] — inert in near-achromatic, +18% max in vivid.
+    float abney_scale = 1.0 + ctx.median_C * 0.60;
     float abney  = (+hw_o0 * 0.06    // RED     — shifts toward yellow
                    - hw_o1 * 0.05    // YELLOW  — shifts toward red
                    + hw_o2 * 0.02    // GREEN   — shifts toward yellow-green (R69)
                    - hw_o3 * 0.08    // CYAN    — shifts toward yellow-green
                    + hw_o4 * 0.04    // BLUE    — shifts toward purple
-                   + hw_o5 * 0.03) * C_stim;
+                   + hw_o5 * 0.03) * C_stim * abney_scale;
     float dtheta = +(GREEN_HUE_COOL * 2.0 * 3.14159265) * hw_o2 * final_C + abney;
     float cos_dt = 1.0 - dtheta * dtheta * 0.5;
     float sin_dt = dtheta;
@@ -635,7 +647,11 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     float ch   = ch_p * r21_cos - sh_p * r21_sin;
     float f_hk     = -0.160 * ch + 0.132 * (ch*ch - sh*sh) - 0.405 * sh + 0.080 * (2.0*sh*ch) + 0.792;
     float hk_exp   = lerp(0.52, 0.64, saturate(ctx.zone_log_key / 0.50));
-    float hk_boost = 1.0 + 0.25 * f_hk * pow(max(final_C, 0.0), hk_exp);
+    // Hellwig 2022: H-K magnitude scales with adapting luminance — photopic maximum at bright key.
+    // Current exponent adaptation reduces C^n in bright scenes (wrong direction); magnitude
+    // correction restores net HK increasing with scene brightness as the physics requires.
+    float hk_coeff = lerp(0.18, 0.32, saturate(ctx.zone_log_key / 0.50));
+    float hk_boost = 1.0 + hk_coeff * f_hk * pow(max(final_C, 0.0), hk_exp);
     float final_L  = saturate(lab.x / lerp(1.0, hk_boost, smoothstep(0.0, 0.35, lab.x)));
 
     // R117C: chromatic induction — broad surround hue nudges near-achromatic pixels toward complement.

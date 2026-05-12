@@ -83,9 +83,8 @@ sampler2D SceneCutSamp
     MagFilter = POINT;
 };
 
-// Scene mean Oklab chroma — r=mean_C, g=mean_a, b=mean_b, a=achromatic_fraction
-// mean_a/mean_b give the scene chroma centroid direction in Oklab.
-// Read by inverse_grade.fx (.r only).
+// Scene chroma stats — r=median_C, g=mean_a, b=mean_b, a=achromatic_fraction
+// median_C: histogram p50 over all pixels (R116). mean_a/b: arithmetic centroid of ab plane.
 texture2D MeanChromaTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
 sampler2D MeanChromaSamp
 {
@@ -174,7 +173,7 @@ float4 HighwayWritePS(float4 pos : SV_Position,
     if (xi == HWY_P25) return float4(perc.r, 0, 0, 1);
     if (xi == HWY_P50) return float4(perc.g, 0, 0, 1);
     if (xi == HWY_P75) return float4(perc.b, 0, 0, 1);
-    if (xi == HWY_SLOPE) {
+    if (xi == HWY_CHROMA_SLOPE) {
         float log_iqr = log2(max(perc.b, 0.01)) - log2(max(perc.r, 0.01));
         float bowley  = (perc.b + perc.r - 2.0 * perc.g) / max(perc.b - perc.r, 0.01);
         log_iqr      += saturate(bowley) * 0.6;
@@ -183,7 +182,7 @@ float4 HighwayWritePS(float4 pos : SV_Position,
     }
     if (xi == HWY_SCENE_CUT)
         return float4(tex2Dlod(SceneCutSamp,  float4(0.5, 0.5, 0, 0)).r, 0, 0, 1);
-    if (xi == HWY_MEAN_CHROMA)
+    if (xi == HWY_MEDIAN_C)
         return float4(tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).r, 0, 0, 1);
     if (xi == HWY_P90)
         return float4(tex2Dlod(PercHighSamp,  float4(0.5, 0.5, 0, 0)).r, 0, 0, 1);

@@ -327,12 +327,6 @@ float4 PassthroughPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
 float4 HighwayWritePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     int xi = int(pos.x);
-    if (xi == HWY_STEVENS) {
-        // R153: mode is the dominant scene luminance — more accurate than zone_log_key.
-        float mode = ReadHWY(HWY_MODE);
-        float fc_s = (1.48 + exp2(log2(max(mode, 1e-6)) * (1.0 / 3.0))) / 2.04;
-        return float4(saturate(fc_s / 1.3), 0, 0, 1);
-    }
     if (xi == HWY_ZONE_KEY || xi == HWY_ZONE_STD) {
         float4 ch6 = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0));
         return float4(xi == HWY_ZONE_KEY ? ch6.r : ch6.g, 0, 0, 1);

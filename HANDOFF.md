@@ -24,6 +24,7 @@ grade is an **8-pass technique**: LFDownscale1 → LFDownscale2 → NeutralIllum
 
 - No known compile errors. Debug log: `/tmp/vkbasalt.log`
 - **Data highway** lives in `HighwayTex` (256×1 R16F, declared in `highway.fxh`). BackBuffer is a pure image surface — no y=0 data, no guards needed. `ReadHWY` reads from `HighwaySamp` via `tex2Dlod`. Write passes (`HighwayWritePS`, `RenderTarget=HighwayTex`) are last in `analysis_frame` and `corrective` techniques. `inverse_grade` reads `illum_warm` from `NeutralIllumTex` directly.
+- **Highway slots renamed:** `HWY_CHROMA_SLOPE` (was `HWY_SLOPE`), `HWY_MEDIAN_C` (was `HWY_MEAN_CHROMA`). `HWY_STEVENS` removed (dead slot).
 - R187 complete and validated. Inverse grade is **single-pass** — bilateral blur passes (LocalLumaDownH/V), LocalLumaHTex/LocalLumaTex, and MeanChromaTex all removed.
 - **R187 formula**: `C * factor` (zero-anchored). `lerp_t = saturate(INVERSE_STRENGTH * (1 - lab.x) * c_weight * dir_scale)`. Full expansion at L=0, zero at L=1. No contraction possible.
 - **Luma-gated EXPOSURE** in grade.fx: `gain = lerp(E, 1.0, smoothstep(0.55, 0.85, lum))` — highlights preserved, no white-out from stops-based multiplication on pre-tonemapped SDR.
@@ -32,6 +33,8 @@ grade is an **8-pass technique**: LFDownscale1 → LFDownscale2 → NeutralIllum
 - **CHROMA_SHOULDER** (renamed from HCHROMA_ROLLOFF) — ACES 2.0-inspired L²-weighted Michaelis-Menten toe. Default 0.0 in both profiles.
 - **VIBRANCE** first in CHROMA section (lift-only, reach for this first). **SATURATION** below it (global, uniform).
 - **Skin tone fix** in testbed: ROT_RED 0.00, SAT_RED −0.10, SAT_YELLOW −0.10. R156 warm-hue bias compresses orange/skin more than neutral hues — reducing chroma in those bands restores skin character.
+- **Illuminant-adaptive halation** — `ApplyHalation` G weights modulated by `ctx.illum_warm` (CAT16 L/M − S/M + 0.5 from NeutralIllumTex). `g_mod = 1 − (illum_warm − 0.39) × 0.65`. D65 neutral = no change.
+- **Scene-adaptive HK + Abney** — `hk_coeff = lerp(0.18, 0.32, zone_log_key / 0.50)` (was fixed 0.25). Abney scale `1 + ctx.median_C × 0.60` (median_C clamped [0, 0.30] in SceneCtx).
 - **Current creative_values** — read live from `creative_values.fx` files; do not cache here.
 - **Mid-shadow off-color** — unverified post R127/R130. Likely resolved. Re-test before marking closed.
 

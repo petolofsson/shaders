@@ -30,7 +30,7 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
 {
     float4 col = tex2D(BackBuffer, uv);
     if (INVERSE_STRENGTH <= 0.0) return col;
-    float slope_enc   = ReadHWY(HWY_SLOPE);
+    float slope_enc   = ReadHWY(HWY_CHROMA_SLOPE);
     float slope       = clamp(slope_enc * 1.5 + 1.0, 1.15, 2.2);
     float3 lab        = RGBtoOklab(col.rgb);
     float  C          = length(lab.yz);
