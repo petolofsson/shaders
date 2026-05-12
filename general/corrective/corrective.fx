@@ -318,25 +318,28 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
 
 float4 PassthroughPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    float4 c = tex2D(BackBuffer, uv);
-    if (pos.y < 1.0) {
-        int xi = int(pos.x);
-        if (xi == HWY_STEVENS) {
-            // R153: mode is the dominant scene luminance — more accurate Stevens calibration
-            // than zone_log_key (mean of zone medians), which is pulled up by bright zones.
-            float mode = ReadHWY(HWY_MODE);
-            float fc_s = (1.48 + exp2(log2(max(mode, 1e-6)) * (1.0 / 3.0))) / 2.04;
-            return float4(saturate(fc_s / 1.3), 0.0, 0.0, 1.0);
-        }
-        if (xi == HWY_ZONE_KEY || xi == HWY_ZONE_STD) {
-            float4 ch6 = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0));
-            return float4(xi == HWY_ZONE_KEY ? ch6.r : ch6.g, 0.0, 0.0, 1.0);
-        }
-        if (xi == HWY_SLOW_KEY)
-            return float4(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0.0, 0.0, 1.0);
-        return c;
+    return tex2D(BackBuffer, uv);
+}
+
+// ─── Pass 9 — Highway write (HighwayTex, 256×1) ───────────────────────────
+// Adds corrective slots 203-205, 213. Passes through analysis_frame slots unchanged.
+
+float4 HighwayWritePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    int xi = int(pos.x);
+    if (xi == HWY_STEVENS) {
+        // R153: mode is the dominant scene luminance — more accurate than zone_log_key.
+        float mode = ReadHWY(HWY_MODE);
+        float fc_s = (1.48 + exp2(log2(max(mode, 1e-6)) * (1.0 / 3.0))) / 2.04;
+        return float4(saturate(fc_s / 1.3), 0, 0, 1);
     }
-    return c;
+    if (xi == HWY_ZONE_KEY || xi == HWY_ZONE_STD) {
+        float4 ch6 = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0));
+        return float4(xi == HWY_ZONE_KEY ? ch6.r : ch6.g, 0, 0, 1);
+    }
+    if (xi == HWY_SLOW_KEY)
+        return float4(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0, 0, 1);
+    return float4(ReadHWY(xi), 0, 0, 1);  // pass through analysis_frame slots unchanged
 }
 
 // ─── Technique ─────────────────────────────────────────────────────────────
@@ -377,5 +380,11 @@ technique Corrective
     {
         VertexShader = PostProcessVS;
         PixelShader  = PassthroughPS;
+    }
+    pass HighwayWrite
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = HighwayWritePS;
+        RenderTarget = HighwayTex;
     }
 }

@@ -154,53 +154,48 @@ float4 LumHistGatherPS(float4 pos : SV_Position,
     return float4(count / float(DS_W * DS_H), 0.0, 0.0, 1.0);
 }
 
-// ─── Pass 3 — Debug indicator (yellow, slot 0) ────────────────────────────
+// ─── Pass 3 — Passthrough ─────────────────────────────────────────────────
 
-float4 DebugOverlayPS(float4 pos : SV_Position,
+float4 PassthroughPS(float4 pos : SV_Position,
+                     float2 uv  : TEXCOORD0) : SV_Target
+{
+    return tex2D(BackBuffer, uv);
+}
+
+// ─── Pass 10 — Highway write (HighwayTex, 256×1) ──────────────────────────
+// Runs after all analysis passes so all source textures hold current-frame data.
+// Unknown slots pass through the previous HighwayTex state (corrective adds its own).
+
+float4 HighwayWritePS(float4 pos : SV_Position,
                       float2 uv  : TEXCOORD0) : SV_Target
 {
-    float4 c = tex2D(BackBuffer, uv);
-    if (pos.y < 1.0) {
-        // Encode PercTex into highway at x=194,195,196 (beyond scope_pre's x=0..193).
-        // Reads previous frame's PercTex (CDFWalk runs after this pass) — one-frame
-        // delay is fine; Kalman smoothing keeps values stable.
-        int xi = int(pos.x);
-        float4 perc = tex2D(PercSamp, float2(0.5, 0.5));
-        if (xi == 194) return float4(perc.r, 0.0, 0.0, 1.0);
-        if (xi == 195) return float4(perc.g, 0.0, 0.0, 1.0);
-        if (xi == 196) return float4(perc.b, 0.0, 0.0, 1.0);
-        if (xi == 197) {
-            // R90: encode Kalman-smoothed slope from float16 PercTex.
-            // slope = clamp(2.5 / log_iqr, 1.15, 1.8), normalised to [0,1] for 8-bit highway.
-            // R148: Bowley correction — right-skewed scenes have naturally wide log_iqr
-            // independent of tonemapper compression; inflate log_iqr to discount it.
-            float log_iqr  = log2(max(perc.b, 0.01)) - log2(max(perc.r, 0.01));
-            float bowley   = (perc.b + perc.r - 2.0 * perc.g) / max(perc.b - perc.r, 0.01);
-            log_iqr       += saturate(bowley) * 0.6;
-            float slope    = clamp(2.5 / max(log_iqr, 0.5), 1.15, 1.8);
-            return float4((slope - 1.0) / 1.5, 0.0, 0.0, 1.0);
-        }
-        // R53: scene-cut — reads previous frame's SceneCutTex (SceneCutPS runs after this pass).
-        // One-frame delay is acceptable; Kalman response lags one frame on hard cuts.
-        if (xi == HWY_SCENE_CUT)
-            return float4(tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0)).r, 0.0, 0.0, 1.0);
-        // Slots 198,200-202: read previous frame's textures (MeanChromaPS and CDFWalkHighPS
-        // run after this pass). One-frame delay is fine for all three consumers.
-        if (xi == HWY_MEAN_CHROMA)
-            return float4(tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).r, 0.0, 0.0, 1.0);
-        if (xi == HWY_P90)
-            return float4(tex2Dlod(PercHighSamp, float4(0.5, 0.5, 0, 0)).r, 0.0, 0.0, 1.0);
-        if (xi == HWY_CHROMA_ANGLE) {
-            float2 ab = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).gb;
-            return float4((atan2(ab.y, ab.x) + 3.14159265) / (2.0 * 3.14159265), 0.0, 0.0, 1.0);
-        }
-        if (xi == HWY_ACHROM_FRAC)
-            return float4(tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).a, 0.0, 0.0, 1.0);
-        if (xi == HWY_MODE)
-            return float4(tex2Dlod(ModeSamp, float4(0.5, 0.5, 0, 0)).r, 0.0, 0.0, 1.0);
-        return c;
+    int    xi   = int(pos.x);
+    float4 perc = tex2Dlod(PercSamp,       float4(0.5, 0.5, 0, 0));
+    if (xi == HWY_P25) return float4(perc.r, 0, 0, 1);
+    if (xi == HWY_P50) return float4(perc.g, 0, 0, 1);
+    if (xi == HWY_P75) return float4(perc.b, 0, 0, 1);
+    if (xi == HWY_SLOPE) {
+        float log_iqr = log2(max(perc.b, 0.01)) - log2(max(perc.r, 0.01));
+        float bowley  = (perc.b + perc.r - 2.0 * perc.g) / max(perc.b - perc.r, 0.01);
+        log_iqr      += saturate(bowley) * 0.6;
+        float slope   = clamp(2.5 / max(log_iqr, 0.5), 1.15, 1.8);
+        return float4((slope - 1.0) / 1.5, 0, 0, 1);
     }
-    return c;
+    if (xi == HWY_SCENE_CUT)
+        return float4(tex2Dlod(SceneCutSamp,  float4(0.5, 0.5, 0, 0)).r, 0, 0, 1);
+    if (xi == HWY_MEAN_CHROMA)
+        return float4(tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).r, 0, 0, 1);
+    if (xi == HWY_P90)
+        return float4(tex2Dlod(PercHighSamp,  float4(0.5, 0.5, 0, 0)).r, 0, 0, 1);
+    if (xi == HWY_CHROMA_ANGLE) {
+        float2 ab = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).gb;
+        return float4((atan2(ab.y, ab.x) + 3.14159265) / (2.0 * 3.14159265), 0, 0, 1);
+    }
+    if (xi == HWY_ACHROM_FRAC)
+        return float4(tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).a, 0, 0, 1);
+    if (xi == HWY_MODE)
+        return float4(tex2Dlod(ModeSamp,      float4(0.5, 0.5, 0, 0)).r, 0, 0, 1);
+    return float4(ReadHWY(xi), 0, 0, 1);  // pass through corrective's slots unchanged
 }
 
 // ─── Pass 4 — Smooth luminance histogram ───────────────────────────────────
@@ -419,10 +414,10 @@ technique FrameAnalysis
         PixelShader  = LumHistGatherPS;
         RenderTarget = LumHistRawTex;
     }
-    pass DebugOverlay
+    pass Passthrough
     {
         VertexShader = PostProcessVS;
-        PixelShader  = DebugOverlayPS;
+        PixelShader  = PassthroughPS;
     }
     pass LumHistSmooth
     {
@@ -459,5 +454,11 @@ technique FrameAnalysis
         VertexShader = PostProcessVS;
         PixelShader  = CDFWalkModePS;
         RenderTarget = ModeTex;
+    }
+    pass HighwayWrite
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = HighwayWritePS;
+        RenderTarget = HighwayTex;
     }
 }
