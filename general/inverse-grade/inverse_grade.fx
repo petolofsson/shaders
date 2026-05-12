@@ -157,7 +157,8 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     float  w_highlight = smoothstep(0.60, 0.85, L_base);
     float  w_mid       = 1.0 - w_shadow - w_highlight;
     float  zone_weight = w_shadow * 0.4 + w_mid * 1.0 + w_highlight * 1.4;
-    float  factor      = lerp(1.0, slope_eff, float(INVERSE_STRENGTH) * zone_weight * c_weight * dir_scale);
+    float  lerp_t      = saturate(float(INVERSE_STRENGTH) * zone_weight * c_weight * dir_scale);
+    float  factor      = lerp(1.0, slope_eff, lerp_t);
     float  new_C       = mean_C + (C - mean_C) * factor;
     // Per-hue ceiling — prevents expansion from overshooting natural gamut.
     // Preserves incoming C if already above ceiling (no reduction), but blocks
