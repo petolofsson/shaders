@@ -156,16 +156,20 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     float  w_shadow    = 1.0 - smoothstep(0.0,  0.25, L_base);
     float  w_highlight = smoothstep(0.60, 0.85, L_base) * (1.0 - smoothstep(0.80, 1.0, L_base));
     float  w_mid       = 1.0 - w_shadow - w_highlight;
-    float  zone_weight = w_shadow * 0.4 + w_mid * 1.0 + w_highlight * 1.4;
-    float  lerp_t      = saturate(float(INVERSE_STRENGTH) * zone_weight * c_weight * dir_scale);
+    float  zone_weight = w_shadow * 0.4 + w_mid * 1.0 + w_highlight * 0.8;
+    float  luma_env    = 4.0 * lab.x * (1.0 - lab.x);
+    float  lerp_t      = saturate(float(INVERSE_STRENGTH) * zone_weight * luma_env * c_weight * dir_scale);
     float  factor      = lerp(1.0, slope_eff, lerp_t);
     float  new_C       = mean_C + (C - mean_C) * factor;
     // Per-hue ceiling — prevents expansion from overshooting natural gamut.
     // Preserves incoming C if already above ceiling (no reduction), but blocks
     // inverse grade from pushing further. Mirrors R73 ceilings in grade.fx.
-    new_C   = min(new_C, max(HueCeil(hue), C));
-    lab.yz  = dir * max(new_C, 0.0);
-    col.rgb = saturate(OklabToRGB(lab));
+    new_C           = min(new_C, max(HueCeil(hue), C));
+    lab.yz          = dir * max(new_C, 0.0);
+    float3 rgb_test = OklabToRGB(lab);
+    float  max_ch   = max(max(rgb_test.r, rgb_test.g), rgb_test.b);
+    lab.yz         /= max(max_ch, 1.0);
+    col.rgb         = saturate(OklabToRGB(lab));
     return col;
 }
 
