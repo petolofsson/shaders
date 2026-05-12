@@ -668,7 +668,45 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
 float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float4 col      = tex2D(BackBuffer, uv);
-    if (pos.y < 1.0) return col;
+    if (pos.y < 1.0) {
+        int xi = int(pos.x);
+        if (xi == HWY_FC_KNEE) {
+            float4 perc = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
+            return float4(lerp(0.90, 0.80, saturate((perc.b - 0.60) / 0.30)), 0.0, 0.0, 1.0);
+        }
+        if (xi == HWY_ZONE_STR) {
+            float4 zs  = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0));
+            float ss   = smoothstep(0.06, 0.16, zs.g);
+            float la   = smoothstep(0.10, 0.40, zs.r);
+            float zstr = lerp(0.26, 0.16, ss) * lerp(1.10, 0.93, la) * (CONTRAST * 0.30);
+            return float4(saturate(zstr / 0.30), 0.0, 0.0, 1.0);
+        }
+        if (xi == HWY_SHADOW_LIFT_STR) {
+            float4 perc = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
+            float t     = saturate((perc.r - 0.025) / 0.175);
+            float sls   = lerp(1.50, 0.45, t*t*t*(t*(t*6.0-15.0)+10.0));
+            return float4(saturate(sls * SHADOWS / 1.5), 0.0, 0.0, 1.0);
+        }
+        if (xi == HWY_VIBRANCE) {
+            float zk = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
+            float cb = VIBRANCE * 0.04 * lerp(0.80, 1.20, smoothstep(0.05, 0.35, zk));
+            return float4(saturate(cb / 0.10), 0.0, 0.0, 1.0);
+        }
+        if (xi == HWY_ILLUM_WARM) {
+            // R165: derive illuminant warmth from NeutralIllumTex via CAT16 LMS.
+            // warmth = L − S (after M-normalization): positive = warm, negative = cool.
+            // Biased +0.5 so D65 ≈ 0.39, very warm ≈ 0.80, very cool ≈ 0.06.
+            float3 ir  = tex2Dlod(NeutralIllumSamp, float4(0.5, 0.5, 0, 0)).rgb;
+            float3 in_ = ir / max(Luma(ir), 0.001);
+            const float3x3 Mf = float3x3(0.302825, 0.602279, 0.070428,
+                                          0.153818, 0.777214, 0.085341,
+                                          0.027974, 0.147911, 0.908874);
+            float3 lms  = mul(Mf, in_);
+            float3 lmsn = lms / max(lms.g, 0.001);
+            return float4(saturate(lmsn.r - lmsn.b + 0.5), 0.0, 0.0, 1.0);
+        }
+        return col;
+    }
     SceneCtx ctx       = BuildSceneCtx();
     float4 lf_mip2_tex = tex2D(LowFreqMip2Samp, uv);
 
@@ -821,7 +859,20 @@ float3 ApplyFilmGrain(float3 rgb, float2 pos_xy)
 float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float4 base = tex2D(BackBuffer, uv);
-    if (pos.y < 1.0) return float4(0.0, 0.0, 0.0, 1.0);
+    if (pos.y < 1.0) {
+        if (int(pos.x) == HWY_DIFFUSION_STR) {
+            float4 perc = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
+            float iqr   = perc.b - perc.r;
+            float str   = DIFFUSION_STRENGTH * 0.15 * lerp(0.8, 1.2, saturate(iqr / 0.5));
+            float zk    = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
+            str *= lerp(1.20, 0.85, smoothstep(0.05, 0.25, zk));
+            str *= lerp(1.10, 0.90, saturate((EXPOSURE - 0.70) / 0.60));
+            float diff_bwl = (perc.b + perc.r - 2.0 * perc.g) / max(perc.b - perc.r, 0.01);
+            str *= lerp(1.0, 1.3, saturate(diff_bwl));
+            return float4(saturate(str / 0.10), 0.0, 0.0, 1.0);
+        }
+        return base;
+    }
 
     // Eye shape rotated 90°: points off-screen top/bottom (|dy|=0.70 > screen ±0.50),
     // widest at vertical center = 25% of screen width (±12.5% from center-x).
