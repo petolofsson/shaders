@@ -30,7 +30,7 @@ grade is an **8-pass technique**: LFDownscale1 → LFDownscale2 → NeutralIllum
 - CURVE_B_KNEE +0.008, CURVE_B_TOE −0.005 (rebalanced after shoulder_w/toe_w removal).
 - **Current creative_values** — read live from `creative_values.fx` files; do not cache here.
 - **R185 HCHROMA_ROLLOFF** — implemented, default 0.0 in both profiles. Start at 0.35 to calibrate.
-- **R186 bilateral local luma** — inverse_grade now 3 passes. INVERSE_STRENGTH needs recalibration (shadows get less expansion than before, highlights more).
+- **R186 bilateral local luma** — inverse_grade now 3 passes. INVERSE_STRENGTH=0.25 (recalibrated). lerp_t clamp applied (rule 5 fix, no perceptual change).
 - **Mid-shadow off-color** — unverified post R127/R130. Likely resolved. Re-test before marking closed.
 
 ## Next candidates

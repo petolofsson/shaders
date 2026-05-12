@@ -4,6 +4,8 @@
 
 ## 2026-05-12
 
+- **R186 lerp_t clamp** (`inverse_grade.fx`) — `saturate()` added to lerp argument in `InverseGradePS`. R186 zone_weight×1.4 + dir_scale×1.15 lowered the extrapolation threshold from INVERSE_STRENGTH>1.0 to >0.62; without the clamp, factor could exceed slope_eff. No behaviour change at current knob value (0.25). Rule 5 fix.
+
 - **R186 bilateral local luma for inverse grade** (`inverse_grade.fx`) — Replaced per-pixel `mid_weight = lab.x*(1−lab.x)*4` bell with a three-zone partition driven by a bilateral-filtered local luma estimate. Two new 1/8-res passes (LocalLumaDownH + LocalLumaDownV): separable 9-tap bilateral approximation, σ_s=2.0 output texels (≈±32 px at 1080p), σ_r=0.12 (edge-stop at ΔL>0.24). Zone weights: shadow×0.4, mid×1.0, highlight×1.4 — asymmetric because game tonemappers compress highlights most and shadows least. New RTs: LocalLumaHTex + LocalLumaTex (R16F, 1/8-res). No `static const float[]` — spatial weights as `#define` scalars, range kernel computed inline via `exp()`. INVERSE_STRENGTH will need recalibration after this change.
 
 - **R185: ACES 2.0-inspired highlight chroma rolloff** (`grade.fx`, both `creative_values.fx`) — L²-weighted Michaelis-Menten toe on Oklab C: suppression = L² × (0.20/(C+0.20)) × HCHROMA_ROLLOFF. Near-neutral highlights bleed toward white first (C small → toe factor → 1); deeply saturated highlights resist longest (C large → toe factor → 0). Fills gap left by R22 highlight-arm removal. Default 0.0 in both profiles. ~7 ALU, 0 taps. Applied after global saturation, before vector reconstruction in ApplyChroma.
