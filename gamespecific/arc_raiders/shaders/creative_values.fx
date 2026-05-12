@@ -4,14 +4,14 @@
 // Adaptive inverse tone mapping. Expands Oklab chroma using the IQR-derived compression
 // ratio — restoring chroma the game's tonemapper compressed. Luma is handled by zone
 // S-curve. Works on any S-curve tonemapper. 0 = off. Start at 0.30–0.50.
-#define INVERSE_STRENGTH  0.40
+#define INVERSE_STRENGTH  0.25
 
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
 // Exposure in stops. 0 = neutral, +1 = one stop brighter, -1 = one stop darker.
 // Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.
 // Sets where pixels sit tonally — which directly changes what every knob below "sees".
 // Rule of thumb: dial until overall brightness feels right, then tune beneath.
-#define EXPOSURE  0.17
+#define EXPOSURE  0.25
 
 // Remaps the raw pixel into [BLACKS, WHITES] before EXPOSURE runs.
 // BLACKS: black pedestal — prevents absolute digital black. 0 = off.
@@ -20,7 +20,7 @@
 //   0.95 matches ARRI LogC3 usable ceiling (~91-92% of full scale).
 // Both at defaults (0 / 1) = passthrough (identity).
 #define BLACKS  0.005
-#define WHITES  0.90
+#define WHITES  1.00
 
 // Per-channel knee and toe offsets for the FilmCurve. Encodes the physical dye-layer
 // cross-over character of different film stocks.
@@ -41,7 +41,7 @@
 // color dye. Desaturates shadows most (denser silver retention in unexposed areas),
 // steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.
 // 0 = off. 1 = full (near-monochrome shadows). Start: 0.1–0.3.
-#define BLEACH_BYPASS  0.10
+#define BLEACH_BYPASS  0.05
 
 // Primary color grade. Runs after FilmCurve, before zone contrast.
 // TEMP: positive = warm (R up, B down), negative = cool. Range ±100.
@@ -65,7 +65,7 @@
 
 // Soft luma push/pull in the highlight range (L > 0.55). +1.0 brightens highlights,
 // -1.0 recovers blown highlights. Range ±1.0. Default 0.0 = passthrough.
-#define HIGHLIGHTS  -0.05
+#define HIGHLIGHTS  0.00
 
 // R183: pre-flash warm shadow cast. Fixed warm amber additive in deep shadows (L < 0.25),
 // falls to zero at mid-gray. Models Deakins' colored negative pre-flash technique.
@@ -132,7 +132,7 @@
 // R132 polydisperse: per-channel scatter — red ×1.15, green ×1.00, blue ×0.85.
 // Rough grade mapping: 0.5–0.8 = HBM 1/4, 1.2–1.5 = HBM 1/2, 1.8–2.2 = HBM 1.
 // 1.40 = HBM 1/2 (Hollywood large-format workhorse grade). 0 = off.
-#define DIFFUSION_STRENGTH  0.50
+#define DIFFUSION_STRENGTH  0.55
 
 // R136: Selwyn 2383 granularity — three decorrelated dye layers (R:G:B = 1.00:0.80:1.50).
 // Peaks in upper shadows (Oklab L≈0.50), falls off toward blacks and highlights.

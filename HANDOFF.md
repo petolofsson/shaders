@@ -30,10 +30,12 @@ grade is an **8-pass technique**: LFDownscale1 → LFDownscale2 → NeutralIllum
 - CURVE_B_KNEE +0.008, CURVE_B_TOE −0.005 (rebalanced after shoulder_w/toe_w removal).
 - **Current creative_values** — read live from `creative_values.fx` files; do not cache here.
 - **R185 HCHROMA_ROLLOFF** — implemented, default 0.0 in both profiles. Start at 0.35 to calibrate.
+- **R186 bilateral local luma** — inverse_grade now 3 passes. INVERSE_STRENGTH needs recalibration (shadows get less expansion than before, highlights more).
 - **Mid-shadow off-color** — unverified post R127/R130. Likely resolved. Re-test before marking closed.
 
 ## Next candidates
 
+- **Recalibrate INVERSE_STRENGTH** — R186 zone weights change effective expansion; old value likely needs a small pull-down.
 - **Re-test mid-shadow off-color** — confirm resolved before vk-colorist Phase 2.
 - **vk-colorist Phase 0** — Rust/Vulkan layer infrastructure is independent of shader quality; can start now.
 - **ApplyChroma** still ~80 lines — over Rule 4 limit. Split into ApplyChromaLift + ApplyChromaFinish deferred.
