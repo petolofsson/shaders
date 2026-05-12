@@ -22,6 +22,10 @@ sampler2D BackBuffer
     MagFilter = LINEAR;
 };
 
+// Shared with grade.fx NeutralIllumPS — one-frame delay, acceptable
+texture2D NeutralIllumTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+sampler2D NeutralIllumSamp { Texture = NeutralIllumTex; MinFilter = POINT; MagFilter = POINT; };
+
 float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float4 col = tex2D(BackBuffer, uv);
@@ -41,7 +45,14 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     // cool hues (teal, cyan) less. Scale slope per hue before applying expansion.
     // R165: in warm-lit scenes, warm-hue saturation is the illuminant — not a tonemapper
     // artifact. Back off positive bias proportionally. One-frame delay acceptable.
-    float  illum_warm  = ReadHWY(HWY_ILLUM_WARM);
+    float3 ni_rgb      = tex2Dlod(NeutralIllumSamp, float4(0.5, 0.5, 0, 0)).rgb;
+    float3 ni_norm     = ni_rgb / max(Luma(ni_rgb), 0.001);
+    const float3x3 Mf = float3x3(0.302825, 0.602279, 0.070428,
+                                   0.153818, 0.777214, 0.085341,
+                                   0.027974, 0.147911, 0.908874);
+    float3 ni_lms      = mul(Mf, ni_norm);
+    float3 ni_lmsn     = ni_lms / max(ni_lms.g, 0.001);
+    float  illum_warm  = saturate(ni_lmsn.r - ni_lmsn.b + 0.5);
     float  warm_scene  = saturate((illum_warm - 0.45) / 0.35);
     float  bias        = HueSlopeBias(hue);
     float  bias_adj    = max(bias, 0.0) * (1.0 - warm_scene * 0.50) + min(bias, 0.0);

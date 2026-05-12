@@ -859,20 +859,7 @@ float3 ApplyFilmGrain(float3 rgb, float2 pos_xy)
 float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float4 base = tex2D(BackBuffer, uv);
-    if (pos.y < 1.0) {
-        if (int(pos.x) == HWY_DIFFUSION_STR) {
-            float4 perc = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
-            float iqr   = perc.b - perc.r;
-            float str   = DIFFUSION_STRENGTH * 0.15 * lerp(0.8, 1.2, saturate(iqr / 0.5));
-            float zk    = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
-            str *= lerp(1.20, 0.85, smoothstep(0.05, 0.25, zk));
-            str *= lerp(1.10, 0.90, saturate((EXPOSURE - 0.70) / 0.60));
-            float diff_bwl = (perc.b + perc.r - 2.0 * perc.g) / max(perc.b - perc.r, 0.01);
-            str *= lerp(1.0, 1.3, saturate(diff_bwl));
-            return float4(saturate(str / 0.10), 0.0, 0.0, 1.0);
-        }
-        return base;
-    }
+    if (pos.y < 1.0) return float4(0.0, 0.0, 0.0, 1.0);
 
     // Eye shape rotated 90°: points off-screen top/bottom (|dy|=0.70 > screen ±0.50),
     // widest at vertical center = 25% of screen width (±12.5% from center-x).
