@@ -11,7 +11,7 @@
 // Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.
 // Sets where pixels sit tonally — which directly changes what every knob below "sees".
 // Rule of thumb: dial until overall brightness feels right, then tune beneath.
-#define EXPOSURE  0.17
+#define EXPOSURE  0.10
 
 // Remaps the raw pixel into [BLACKS, WHITES] before EXPOSURE runs.
 // BLACKS: black pedestal — prevents absolute digital black. 0 = off.
@@ -35,13 +35,13 @@
 // Kodak 2383 print emulsion on top of FilmCurve: gentle shadow density bow,
 // restrained shoulder, desaturates mids ~15%, adds warm shadow cast. 0 = off.
 // 1 = full 2383. 0.35 = recommended starting point.
-#define PRINT_STOCK  0.35
+#define PRINT_STOCK  0.40
 
 // Skip the bleach step during print development — retains metallic silver alongside
 // color dye. Desaturates shadows most (denser silver retention in unexposed areas),
 // steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.
 // 0 = off. 1 = full (near-monochrome shadows). Start: 0.1–0.3.
-#define BLEACH_BYPASS  0.05
+#define BLEACH_BYPASS  0.00
 
 // Primary color grade. Runs after FilmCurve, before zone contrast.
 // TEMP: positive = warm (R up, B down), negative = cool. Range ±100.
@@ -57,7 +57,7 @@
 // ── TONAL ─────────────────────────────────────────────────────────────────────
 // Scales the adaptive zone S-curve strength. 1.0 = calibrated default. 0 = off.
 // 2.0 = aggressive. Range 0–2.
-#define CONTRAST  0.95
+#define CONTRAST  0.75
 
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
@@ -77,11 +77,11 @@
 // lift-only, vibrance-masked (already-saturated pixels are attenuated).
 // Reach for this first — lifts flat/dull areas without pushing vivid pixels further.
 // 1.0 = calibrated default. 0 = off.
-#define VIBRANCE  0.15
+#define VIBRANCE  0.05
 
 // Global chroma multiplier. -1.0 = greyscale, 0.0 = passthrough, +1.0 = 2× chroma.
 // Applied uniformly — use after Vibrance when you want a deliberate global push.
-#define SATURATION 0.0
+#define SATURATION 0.02
 
 // R185: ACES 2.0-inspired highlight chroma compression. L²-weighted Michaelis-Menten toe:
 // near-neutral highlights bleed toward white first, saturated highlights resist longest.
@@ -108,8 +108,8 @@
 // ── HUE SATURATION ───────────────────────────────────────────────────────────
 // Per-band chroma scale in Oklab C. ±1.0 → ±80% chroma per hue band.
 // Applied after Vibrance. Default 0.0 = passthrough.
-#define SAT_RED    -0.10
-#define SAT_YELLOW -0.10
+#define SAT_RED    -0.05
+#define SAT_YELLOW -0.05
 #define SAT_GREEN   0.0
 #define SAT_CYAN    0.0
 #define SAT_BLUE    0.0
@@ -120,7 +120,7 @@
 // (yellow filter layer blocks blue from reaching base). White sources glow orange.
 // Fires inside game bloom radius, not on top of it.
 // 0 = off. 0.35 = calibrated default. 1.0 = Ektachrome-style aggressive.
-#define HAL_STRENGTH  0.45
+#define HAL_STRENGTH  0.40
 // Chromatic crossover threshold (ring luma units). Controls where the inner/outer
 // halation colour character transitions. Lower = more orange overall.
 // Range 0.02–0.20. Tune: raise until orange fringe looks physically correct.
@@ -133,10 +133,11 @@
 // R132 polydisperse: per-channel scatter — red ×1.15, green ×1.00, blue ×0.85.
 // Rough grade mapping: 0.5–0.8 = HBM 1/4, 1.2–1.5 = HBM 1/2, 1.8–2.2 = HBM 1.
 // 1.40 = HBM 1/2 (Hollywood large-format workhorse grade). 0 = off.
-#define DIFFUSION_STRENGTH  0.50
+#define DIFFUSION_STRENGTH  0.45
 
 // R136: Selwyn 2383 granularity — three decorrelated dye layers (R:G:B = 1.00:0.80:1.50).
-// Peaks in upper shadows (Oklab L≈0.50), falls off toward blacks and highlights.
+// Envelope sqrt(1−L_gamma): mathematically highest at pure black, tapers to zero at white.
+// Perceived peak is in upper shadows — grain at pure black is invisible against the dark.
 // Framerate-independent: turns over at ~24fps regardless of display fps.
 // 0 = off. 1.0 = calibrated 2383 amplitude. 1.5 = pushed. 2.0 = stylistic.
 #define GRAIN_STRENGTH 0.45
