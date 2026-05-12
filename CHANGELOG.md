@@ -2,6 +2,10 @@
 
 > **Purpose (for AI context):** Chronological record of code changes, one compacted entry per day. Keep only the last 3–4 days. Older history lives in git log. Do not duplicate entries from HANDOFF.md or PLAN.md here.
 
+## 2026-05-12 (session 3)
+
+- **GZW jungle movie grade** (`gzw/creative_values.fx`) — Color values tuned for jungle movie aesthetic (Apocalypse Now / Predator / Platoon character). 3-way CC: teal-green shadows (SHADOW_TEMP −12, TINT −6), green foliage mids (MID_TINT −4), golden tropical-sun highlights (HIGHLIGHT_TEMP +15, TINT +3). Hue rotations: reds lean amber (+0.02), yellows toward green (−0.02), greens deep toward cyan (−0.04) for wet lush foliage, blues toward teal (−0.02). Per-band sat: greens lifted (+0.12), cyans lifted (+0.08), yellows pulled back (−0.08) so they don't compete with green. Blues and magentas slightly desaturated. No tonal or output values changed.
+
 ## 2026-05-12 (session 2)
 
 - **Illuminant-adaptive halation rem-jet** (`grade.fx`) — `ApplyHalation` G channel weights now modulated by `illum_warm` (CAT16 L/M − S/M + 0.5, computed from `NeutralIllumTex` in `BuildSceneCtx`, stored in `SceneCtx`). Warm scenes → less G scatter (redder halo); cool scenes → more G scatter. `g_mod = 1 − (illum_warm − 0.39) × 0.65`, ±~10% G at practical illuminant extremes. D65 neutral (illum_warm = 0.39) → no change from baseline. First physically-motivated adaptive halation model in any game pipeline. Feedback loop risk is low: `NeutralIllumPS` weights neutral (low-C) pixels; halation lands on saturated highlights which score near-zero neutral weight.

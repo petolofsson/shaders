@@ -35,7 +35,7 @@ grade is an **8-pass technique**: LFDownscale1 → LFDownscale2 → NeutralIllum
 - **Skin tone fix** in testbed: ROT_RED 0.00, SAT_RED −0.10, SAT_YELLOW −0.10. R156 warm-hue bias compresses orange/skin more than neutral hues — reducing chroma in those bands restores skin character.
 - **Illuminant-adaptive halation** — `ApplyHalation` G weights modulated by `ctx.illum_warm` (CAT16 L/M − S/M + 0.5 from NeutralIllumTex). `g_mod = 1 − (illum_warm − 0.39) × 0.65`. D65 neutral = no change.
 - **Scene-adaptive HK + Abney** — `hk_coeff = lerp(0.18, 0.32, zone_log_key / 0.50)` (was fixed 0.25). Abney scale `1 + ctx.median_C × 0.60` (median_C clamped [0, 0.30] in SceneCtx).
-- **Current creative_values** — read live from `creative_values.fx` files; do not cache here.
+- **Current creative_values** — read live from `creative_values.fx` files; do not cache here. GZW profile tuned for jungle movie aesthetic (teal-green shadows, green mids, golden highlights) — separate from arc_raiders testbed.
 - **Mid-shadow off-color** — unverified post R127/R130. Likely resolved. Re-test before marking closed.
 
 ## Next candidates
