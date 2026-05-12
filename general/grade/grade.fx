@@ -369,7 +369,11 @@ SceneCtx BuildSceneCtx()
 
 float3 ApplyCorrective(float3 lin, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
 {
-    float3 lin_e = max(lin, 0.0) * pow(2.0, EXPOSURE);
+    float3 lin_p = max(lin, 0.0);
+    float  E     = pow(2.0, EXPOSURE);
+    float  lum   = Luma(lin_p);
+    float  gain  = lerp(E, 1.0, smoothstep(0.55, 0.85, lum));
+    float3 lin_e = lin_p * gain;
     // R104: DIR couplers — developer-inhibitor-release cross-channel masking
     {
         float3 log_e = log2(lin_e + 1e-5);
