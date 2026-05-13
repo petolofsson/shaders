@@ -2,6 +2,12 @@
 
 > **Purpose (for AI context):** Chronological record of code changes, one compacted entry per day. Keep only the last 3–4 days. Older history lives in git log. Do not duplicate entries from HANDOFF.md or PLAN.md here.
 
+## 2026-05-14
+
+- **R190: guided filter base layer** (`grade.fx`) — Replaces R189 bilateral log-luma H/V passes with two guided filter passes (`GuidedCoeff` + `GuidedBase`) at 1/8-res. Algorithm: self-guided local linear model in log10-luma space with adaptive ε regularization (Hu et al. IET Image Processing 2023). Pass 1 computes `(a_k, b_k)` per pixel via 7×7 box mean of log-luma and log-luma² (49 taps, no exp()); Pass 2 averages coefficients and reconstructs base layer `q = mean_a·I + mean_b` into `BilateralLogTex`. Parameters: GF_R=3 (24px physical), GF_EPS=0.05 (a_k ceiling 0.952), GF_ETA=1e-8 (pivot at var=2e-7). `BilateralLogHTex` (R16F) removed; replaced by `GuidedCoeffTex` (RG16F). `BilateralLogTex` slot preserved — ApplyTonal, BILATERAL_STRENGTH, CLARITY_STRENGTH unchanged. Improvement over bilateral: edge-locking via local linear model eliminates lamp/window halos in redistribution; no global σ_r to tune; content-adaptive smoothing (flat areas fully smooth, edges preserved to ≤95.2%).
+
+- **CHROMA_SHOULDER (R185) removed** (`grade.fx`, `creative_values.fx`) — Munsell per-hue highlight rolloff (R133) covers highlight chroma management with correct per-hue differentiation; hue-agnostic Michaelis-Menten shoulder was redundant and stacking with SAT_YELLOW to over-desaturate yellow highlights.
+
 ## 2026-05-13
 
 - **Fix halation + Retinex pre/post-corrective mismatch** (`grade.fx`) — Two pre-existing stage-consistency bugs corrected. (1) Halation: `ApplyHalation` moved to before `FilmCurveApply` in `ApplyCorrective`. Previously compared pre-corrective `lf_mip1` against post-FilmCurve `out_lin`, causing halation to fire in flat bright areas compressed by the curve. Now all three signals (pixel, inner ring `lf_mip1`, outer ring `lf_mip2`) are pre-curve — physically correct (halation occurs in the camera negative before any processing). (2) Retinex: `nl_safe * zk_safe / illum_s0` changed to `new_luma * zk_safe / illum_s0`. Both `zk_safe` (global scene key) and `illum_s0` (1/16-res local illuminant) are pre-corrective; `new_luma` is the post-zone current value being corrected, not a reflectance estimate — avoids reconstructing an absolute target from mixed pipeline stages.

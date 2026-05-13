@@ -117,19 +117,18 @@ sampler2D NeutralIllumSamp
     MagFilter = POINT;
 };
 
-// R189 bilateral log-luma tonemapper — separable H/V passes at 1/8-res.
-// σ_s = 2 texels (= 16 px physical at 1080p, matching Durand/Dorsey). σ_r = 0.4 log10 units.
-#define BIL_LOG_W0  1.000000
-#define BIL_LOG_W1  0.882497   // exp(-1/8)
-#define BIL_LOG_W2  0.606531   // exp(-4/8)
-#define BIL_LOG_W3  0.324652   // exp(-9/8)
-#define BIL_LOG_W4  0.135335   // exp(-16/8)
-#define BIL_LOG_SR2 0.320000   // 2 × 0.4²
+// R190 guided filter base layer — replaces R189 bilateral H/V passes.
+// Self-guided, log10-luma space. Adaptive ε (Hu et al. 2023): a_k = var/(（1+ε)·var + η).
+// r=3 texels at 1/8-res → 7×7 = 49 taps. No range kernel, no exp() per tap.
+#define GF_R    3                           // box radius in texels at 1/8-res (24 px physical)
+#define GF_EPS  0.05                        // ε scale — a_k ceiling = 1/(1+GF_EPS) ≈ 0.952
+#define GF_ETA  1e-8                        // η bias — pivot at var = GF_ETA/GF_EPS = 2e-7
+#define GF_N    ((2 * GF_R + 1) * (2 * GF_R + 1))   // window sample count (49)
 
-texture2D BilateralLogHTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = R16F; MipLevels = 1; };
-sampler2D BilateralLogHSamp
+texture2D GuidedCoeffTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RG16F; MipLevels = 1; };
+sampler2D GuidedCoeffSamp
 {
-    Texture   = BilateralLogHTex;
+    Texture   = GuidedCoeffTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = LINEAR;
@@ -771,57 +770,48 @@ float4 LFDownscale2PS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
 
 // ─── R189 bilateral log-luma passes ──────────────────────────────────────────
 // H-pass: sample CreativeLowFreqSamp (1/8-res), convert to log10 luma, bilateral filter.
-// V-pass: read BilateralLogHTex, complete the separable filter → BilateralLogTex.
-// Output is bilinearly upsampled to full-res by ColorTransformPS when sampling BilateralLogSamp.
-
-float BilateralLogHPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+// R190 guided filter — Pass 1: compute local linear model coefficients (a_k, b_k).
+// Self-guided in log10-luma space. Adaptive ε (Hu 2023): a_k = var/((1+ε)·var + η).
+// Reads CreativeLowFreqSamp (pre-corrective 1/8-res RGBA16F). Writes GuidedCoeffTex (RG16F).
+float2 GuidedCoeffPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    float px  = 8.0 / BUFFER_WIDTH;
-    float L0  = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv).rgb), 1e-3));
-    float sum = BIL_LOG_W0 * L0, wsum = BIL_LOG_W0;
-    float Li, rw;
-    Li = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv + float2(-1.0*px, 0.0)).rgb), 1e-3));
-    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W1*rw*Li; wsum += BIL_LOG_W1*rw;
-    Li = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv + float2(+1.0*px, 0.0)).rgb), 1e-3));
-    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W1*rw*Li; wsum += BIL_LOG_W1*rw;
-    Li = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv + float2(-2.0*px, 0.0)).rgb), 1e-3));
-    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W2*rw*Li; wsum += BIL_LOG_W2*rw;
-    Li = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv + float2(+2.0*px, 0.0)).rgb), 1e-3));
-    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W2*rw*Li; wsum += BIL_LOG_W2*rw;
-    Li = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv + float2(-3.0*px, 0.0)).rgb), 1e-3));
-    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W3*rw*Li; wsum += BIL_LOG_W3*rw;
-    Li = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv + float2(+3.0*px, 0.0)).rgb), 1e-3));
-    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W3*rw*Li; wsum += BIL_LOG_W3*rw;
-    Li = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv + float2(-4.0*px, 0.0)).rgb), 1e-3));
-    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W4*rw*Li; wsum += BIL_LOG_W4*rw;
-    Li = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv + float2(+4.0*px, 0.0)).rgb), 1e-3));
-    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W4*rw*Li; wsum += BIL_LOG_W4*rw;
-    return sum / max(wsum, 1e-5);
+    float px = 8.0 / BUFFER_WIDTH;
+    float py = 8.0 / BUFFER_HEIGHT;
+    float sum_I = 0.0, sum_II = 0.0;
+    [unroll] for (int dy = -GF_R; dy <= GF_R; dy++)
+    [unroll] for (int dx = -GF_R; dx <= GF_R; dx++)
+    {
+        float I = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv + float2(dx * px, dy * py)).rgb), 1e-3));
+        sum_I  += I;
+        sum_II += I * I;
+    }
+    float mean_I  = sum_I  / GF_N;
+    float mean_II = sum_II / GF_N;
+    float var_I   = max(mean_II - mean_I * mean_I, 0.0);
+    float a_k     = var_I / ((1.0 + GF_EPS) * var_I + GF_ETA);
+    float b_k     = (1.0 - a_k) * mean_I;
+    return float2(a_k, b_k);
 }
 
-float BilateralLogVPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+// R190 guided filter — Pass 2: average coefficients over window, reconstruct base layer.
+// Reads GuidedCoeffSamp (RG16F) + center pixel from CreativeLowFreqSamp.
+// Writes BilateralLogTex (R16F) — same slot as R189, ApplyTonal unchanged.
+float GuidedBasePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    float py  = 8.0 / BUFFER_HEIGHT;
-    float L0  = tex2D(BilateralLogHSamp, uv).r;
-    float sum = BIL_LOG_W0 * L0, wsum = BIL_LOG_W0;
-    float Li, rw;
-    Li = tex2D(BilateralLogHSamp, uv + float2(0.0, -1.0*py)).r;
-    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W1*rw*Li; wsum += BIL_LOG_W1*rw;
-    Li = tex2D(BilateralLogHSamp, uv + float2(0.0, +1.0*py)).r;
-    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W1*rw*Li; wsum += BIL_LOG_W1*rw;
-    Li = tex2D(BilateralLogHSamp, uv + float2(0.0, -2.0*py)).r;
-    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W2*rw*Li; wsum += BIL_LOG_W2*rw;
-    Li = tex2D(BilateralLogHSamp, uv + float2(0.0, +2.0*py)).r;
-    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W2*rw*Li; wsum += BIL_LOG_W2*rw;
-    Li = tex2D(BilateralLogHSamp, uv + float2(0.0, -3.0*py)).r;
-    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W3*rw*Li; wsum += BIL_LOG_W3*rw;
-    Li = tex2D(BilateralLogHSamp, uv + float2(0.0, +3.0*py)).r;
-    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W3*rw*Li; wsum += BIL_LOG_W3*rw;
-    Li = tex2D(BilateralLogHSamp, uv + float2(0.0, -4.0*py)).r;
-    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W4*rw*Li; wsum += BIL_LOG_W4*rw;
-    Li = tex2D(BilateralLogHSamp, uv + float2(0.0, +4.0*py)).r;
-    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W4*rw*Li; wsum += BIL_LOG_W4*rw;
-    return sum / max(wsum, 1e-5);
+    float px = 8.0 / BUFFER_WIDTH;
+    float py = 8.0 / BUFFER_HEIGHT;
+    float sum_a = 0.0, sum_b = 0.0;
+    [unroll] for (int dy = -GF_R; dy <= GF_R; dy++)
+    [unroll] for (int dx = -GF_R; dx <= GF_R; dx++)
+    {
+        float2 ab = tex2D(GuidedCoeffSamp, uv + float2(dx * px, dy * py)).rg;
+        sum_a += ab.r;
+        sum_b += ab.g;
+    }
+    float mean_a = sum_a / GF_N;
+    float mean_b = sum_b / GF_N;
+    float I_c    = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv).rgb), 1e-3));
+    return mean_a * I_c + mean_b;
 }
 
 // ─── Diffusion passes (merged from pro_mist.fx — saves one inter-effect overhead) ──
@@ -1021,16 +1011,16 @@ technique OlofssonianColorGrade
         PixelShader  = NeutralIllumPS;
         RenderTarget = NeutralIllumTex;
     }
-    pass BilateralLogH
+    pass GuidedCoeff
     {
         VertexShader = PostProcessVS;
-        PixelShader  = BilateralLogHPS;
-        RenderTarget = BilateralLogHTex;
+        PixelShader  = GuidedCoeffPS;
+        RenderTarget = GuidedCoeffTex;
     }
-    pass BilateralLogV
+    pass GuidedBase
     {
         VertexShader = PostProcessVS;
-        PixelShader  = BilateralLogVPS;
+        PixelShader  = GuidedBasePS;
         RenderTarget = BilateralLogTex;
     }
     pass ColorTransform

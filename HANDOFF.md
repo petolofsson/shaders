@@ -36,7 +36,7 @@ See PLAN.md for authoritative scores and reasoning.
 - **Retinex stage fix** — `nl_safe * zk_safe / illum_s0` → `new_luma * zk_safe / illum_s0`. Both `zk_safe` and `illum_s0` are pre-corrective; `new_luma` is current post-zone value being corrected multiplicatively — no mixed-stage absolute target.
 - **Mid-shadow off-color** — unverified post R127/R130. Likely resolved. Re-test before marking closed.
 
-- **R189 bilateral tonemapper** — `BilateralLogH/V` passes at 1/8-res (σ_s=2 texels=16px, σ_r=0.4 log10). `BILATERAL_STRENGTH` blends local illumination toward global key. `CLARITY_STRENGTH` scales detail layer (>0 = punch, <0 = soften). Both no-op at 0. Testbed: BILATERAL_STRENGTH 0.30, CLARITY_STRENGTH 0.25.
+- **R190 guided filter base layer** — replaces R189 bilateral H/V passes. `GuidedCoeff` + `GuidedBase` passes at 1/8-res (r=3 texels=24px physical). Adaptive ε (Hu 2023): `a_k = var/((1+ε)·var+η)`, GF_EPS=0.05, GF_ETA=1e-8. No range kernel, no exp() per tap. `GuidedCoeffTex` (RG16F) replaces `BilateralLogHTex` (R16F). `BilateralLogTex` output slot unchanged — ApplyTonal reads same sampler. BILATERAL_STRENGTH and CLARITY_STRENGTH semantics unchanged.
 - **Bilateral Retinex improvement** — evaluated and deferred. Swapping LowFreqMip1 for bilateral base in shadow lift/Retinex is zero extra cost but marginal improvement (only visible near hard luminance edges). Code complexity not worth it now.
 
 ## Next candidates
