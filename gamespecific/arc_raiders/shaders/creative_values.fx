@@ -150,4 +150,9 @@
 // Spatially-adaptive tonal redistribution (R189). Bilateral base layer blends local
 // illumination toward scene global key — lifts dark areas, pulls bright areas —
 // while restoring the detail layer so all texture is preserved. 0 = off. 0.25–0.40 = cinematic.
-#define BILATERAL_STRENGTH  0.0
+#define BILATERAL_STRENGTH  0.30
+
+// Local contrast / clarity (R189). Scales the bilateral detail layer before reconstruction.
+// >0 = micro-contrast punch (Lightroom Clarity equivalent). <0 = spatial softening.
+// 0 = off. 0.20–0.40 = subtle punch. Independent of BILATERAL_STRENGTH.
+#define CLARITY_STRENGTH  0.0

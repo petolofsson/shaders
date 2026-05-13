@@ -448,20 +448,22 @@ float3 ApplyCorrective(float3 lin, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
 TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
 {
     float luma        = Luma(lin);
-    // R189 bilateral tonemapper: blend large-scale illumination toward global key.
-    // Base layer (bilateral-filtered log luma) captures illumination; detail layer
-    // (log_pixel - log_base) is added back — preserves all texture. No-op at BILATERAL_STRENGTH=0.
+    // R189 bilateral tonemapper + clarity.
+    // BILATERAL_STRENGTH: blends large-scale illumination toward global key (spatial exposure).
+    // CLARITY_STRENGTH: scales detail layer before reconstruction — >0 = punch/clarity, <0 = soften.
+    // Both are no-ops at 0. Independent — either or both can be active.
     {
-        float safe_luma  = max(luma, 1e-3);
-        float log_base   = tex2D(BilateralLogSamp, uv).r;
-        float log_pixel  = log10(safe_luma);
-        float log_detail = log_pixel - log_base;
-        float log_key    = log10(max(ReadHWY(HWY_ZONE_KEY), 1e-3));
-        float log_comp   = lerp(log_base, log_key, float(BILATERAL_STRENGTH));
-        float bil_ratio  = pow(10.0, log_comp + log_detail) / safe_luma;
-        bil_ratio        = clamp(bil_ratio, 0.5, 2.0);
-        lin              = lin * bil_ratio;
-        luma             = Luma(lin);
+        float safe_luma   = max(luma, 1e-3);
+        float log_base    = tex2D(BilateralLogSamp, uv).r;
+        float log_pixel   = log10(safe_luma);
+        float log_detail  = log_pixel - log_base;
+        float log_key     = log10(max(ReadHWY(HWY_ZONE_KEY), 1e-3));
+        float log_comp    = lerp(log_base, log_key, float(BILATERAL_STRENGTH));
+        float detail_out  = log_detail * (1.0 + float(CLARITY_STRENGTH));
+        float bil_ratio   = pow(10.0, log_comp + detail_out) / safe_luma;
+        bil_ratio         = clamp(bil_ratio, 0.5, 2.0);
+        lin               = lin * bil_ratio;
+        luma              = Luma(lin);
     }
     float4 zone_lvl   = tex2Dlod(ZoneHistorySamp, float4(uv, 0, 0));
     float zone_median = zone_lvl.r;
