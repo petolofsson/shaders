@@ -449,17 +449,17 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
 {
     float luma        = Luma(lin);
     // R189 bilateral tonemapper + clarity.
-    // Both derived from pre-corrective CreativeLowFreqSamp — avoids film curve contaminating
-    // the detail layer. bil_ratio = 10^(fade*(BS*(log_key-log_base) + CS*(log_pre-log_base))).
+    // BS term: purely from pre-corrective base — no film curve contamination.
+    // CS term: full-res post-corrective luma vs pre-corrective base — captures actual
+    //          per-pixel detail the 1/8-res source cannot resolve.
     // Highlight fade: full strength below 0.50, smooth rolloff to zero at 0.80 (linear luma).
     // No-op at BS=CS=0. Independent — either or both can be active.
     {
-        float pre_luma   = max(Luma(tex2D(CreativeLowFreqSamp, uv).rgb), 1e-3);
-        float log_pre    = log10(pre_luma);
         float log_base   = tex2D(BilateralLogSamp, uv).r;
-        float log_detail = log_pre - log_base;
         float log_key    = log10(max(ReadHWY(HWY_ZONE_KEY), 1e-3));
-        float fade       = 1.0 - smoothstep(0.50, 0.80, pre_luma);
+        float log_pixel  = log10(max(luma, 1e-3));
+        float log_detail = log_pixel - log_base;
+        float fade       = 1.0 - smoothstep(0.50, 0.80, luma);
         float bil_ratio  = pow(10.0, fade * (float(BILATERAL_STRENGTH) * (log_key - log_base)
                                            + float(CLARITY_STRENGTH)   * log_detail));
         bil_ratio        = clamp(bil_ratio, 0.5, 2.0);
