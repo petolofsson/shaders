@@ -8,7 +8,7 @@
 analysis_frame : inverse_grade : corrective : grade
 ```
 
-grade is an **8-pass technique**: LFDownscale1 → LFDownscale2 → NeutralIllum → ColorTransform → DiffusionDownsample → DiffusionBlurH → DiffusionBlurV → Diffusion
+grade is a **10-pass technique**: LFDownscale1 → LFDownscale2 → NeutralIllum → BilateralLogH → BilateralLogV → ColorTransform → DiffusionDownsample → DiffusionBlurH → DiffusionBlurV → Diffusion
 
 ## Pipeline state
 
@@ -19,8 +19,8 @@ See PLAN.md for authoritative scores and reasoning.
 - No known compile errors. Debug log: `/tmp/vkbasalt.log`
 - **Data highway** lives in `HighwayTex` (256×1 R16F, declared in `highway.fxh`). BackBuffer is a pure image surface — no y=0 data, no guards needed. `ReadHWY` reads from `HighwaySamp` via `tex2Dlod`. Write passes (`HighwayWritePS`, `RenderTarget=HighwayTex`) are last in `analysis_frame` and `corrective` techniques. `inverse_grade` reads `illum_warm` from `NeutralIllumTex` directly.
 - **Highway slots renamed:** `HWY_CHROMA_SLOPE` (was `HWY_SLOPE`), `HWY_MEDIAN_C` (was `HWY_MEAN_CHROMA`). `HWY_STEVENS` removed (dead slot).
-- **inverse_grade actual state**: R187's zero-anchored formula (`new_C = C * factor`) is in. R187's `(1 − lab.x)` zone weight was **never applied** — bilateral zone system (LocalLumaDownH/V passes, LocalLumaHTex/LocalLumaTex, L_local) was silently retained. Technique is **3-pass** (LocalLumaDownH → LocalLumaDownV → InverseGradePS). The CHANGELOG R187 entry claiming "single-pass" and "bilateral passes removed" is incorrect.
-- **inverse_grade lerp_t**: `saturate(INVERSE_STRENGTH * zone_w * c_weight * dir_scale)` where `zone_w = lerp(0.40,1.0,smoothstep(0.28,0.46,L_local)) * lerp(1.0,0.45,smoothstep(0.80,0.88,L_local))` — empirically calibrated with BILATERAL_ZONE_DEBUG overlay.
+- **inverse_grade actual state**: R187 + R189 complete. **Single-pass** (InverseGradePS only). LocalLumaDownH/V passes, LocalLumaHTex/LocalLumaTex, L_local, BILATERAL_ZONE_DEBUG all removed. Bell curve zone weight applied: `zone_w = 4.0 * lab.x * (1.0 - lab.x)` — peaks at midtone, zero at black/white. Matches ACES compression profile and cinema chroma zone research.
+- **inverse_grade lerp_t**: `saturate(INVERSE_STRENGTH * zone_w * c_weight * dir_scale)` where `zone_w = 4.0 * lab.x * (1.0 - lab.x)` (midtone bell, research-grounded).
 - **HWY_CHROMA_SLOPE** (slot 197): replaced IQR+Bowley (broken in linear luma space — always clamped to 1.15) with `lerp(1.8, 1.15, saturate(median_C / 0.15))`. Low scene chroma → slope 1.8 (max expansion); vivid scene → slope 1.15. Encode/decode unchanged.
 - **Luma-gated EXPOSURE** in grade.fx: `gain = lerp(E, 1.0, smoothstep(0.55, 0.85, lum))` — highlights preserved, no white-out from stops-based multiplication on pre-tonemapped SDR.
 - **EXPOSURE** stops-based `rgb * pow(2, EXPOSURE)`. Testbed at 0.17 EV (recalibrated post-R187).

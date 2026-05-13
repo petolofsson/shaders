@@ -4,7 +4,7 @@
 // Adaptive inverse tone mapping. Expands Oklab chroma using the IQR-derived compression
 // ratio — restoring chroma the game's tonemapper compressed. Luma is handled by zone
 // S-curve. Works on any S-curve tonemapper. 0 = off. Start at 0.30–0.50.
-#define INVERSE_STRENGTH  2.00
+#define INVERSE_STRENGTH  0.40
 
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
 // Exposure in stops. 0 = neutral, +1 = one stop brighter, -1 = one stop darker.
@@ -147,6 +147,7 @@
 #define TONAL_STRENGTH      100
 
 // ── DEBUG ─────────────────────────────────────────────────────────────────────
-// Overlay bilateral zone map on inverse_grade output. Requires shader recompile.
-// shadow = blue, mid = green, highlight = red. 0 = off, 1 = on.
-#define BILATERAL_ZONE_DEBUG 0
+// Spatially-adaptive tonal redistribution (R189). Bilateral base layer blends local
+// illumination toward scene global key — lifts dark areas, pulls bright areas —
+// while restoring the detail layer so all texture is preserved. 0 = off. 0.25–0.40 = cinematic.
+#define BILATERAL_STRENGTH  0.0

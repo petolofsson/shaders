@@ -117,6 +117,34 @@ sampler2D NeutralIllumSamp
     MagFilter = POINT;
 };
 
+// R189 bilateral log-luma tonemapper — separable H/V passes at 1/8-res.
+// σ_s = 2 texels (= 16 px physical at 1080p, matching Durand/Dorsey). σ_r = 0.4 log10 units.
+#define BIL_LOG_W0  1.000000
+#define BIL_LOG_W1  0.882497   // exp(-1/8)
+#define BIL_LOG_W2  0.606531   // exp(-4/8)
+#define BIL_LOG_W3  0.324652   // exp(-9/8)
+#define BIL_LOG_W4  0.135335   // exp(-16/8)
+#define BIL_LOG_SR2 0.320000   // 2 × 0.4²
+
+texture2D BilateralLogHTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = R16F; MipLevels = 1; };
+sampler2D BilateralLogHSamp
+{
+    Texture   = BilateralLogHTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+};
+texture2D BilateralLogTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = R16F; MipLevels = 1; };
+sampler2D BilateralLogSamp
+{
+    Texture   = BilateralLogTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+};
+
 // Diffusion blur chain — 1/4-res. DiffusionTex: downsample target + final V-blur output.
 // DiffusionHorizTex: H-blur intermediate. Both MipLevels=1; no mips needed after Gaussian.
 texture2D DiffusionTex { Width = BUFFER_WIDTH / 4; Height = BUFFER_HEIGHT / 4; Format = RGBA16F; MipLevels = 1; };
@@ -420,6 +448,21 @@ float3 ApplyCorrective(float3 lin, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
 TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
 {
     float luma        = Luma(lin);
+    // R189 bilateral tonemapper: blend large-scale illumination toward global key.
+    // Base layer (bilateral-filtered log luma) captures illumination; detail layer
+    // (log_pixel - log_base) is added back — preserves all texture. No-op at BILATERAL_STRENGTH=0.
+    {
+        float safe_luma  = max(luma, 1e-3);
+        float log_base   = tex2D(BilateralLogSamp, uv).r;
+        float log_pixel  = log10(safe_luma);
+        float log_detail = log_pixel - log_base;
+        float log_key    = log10(max(ReadHWY(HWY_ZONE_KEY), 1e-3));
+        float log_comp   = lerp(log_base, log_key, float(BILATERAL_STRENGTH));
+        float bil_ratio  = pow(10.0, log_comp + log_detail) / safe_luma;
+        bil_ratio        = clamp(bil_ratio, 0.5, 2.0);
+        lin              = lin * bil_ratio;
+        luma             = Luma(lin);
+    }
     float4 zone_lvl   = tex2Dlod(ZoneHistorySamp, float4(uv, 0, 0));
     float zone_median = zone_lvl.r;
     float zone_iqr    = zone_lvl.b - zone_lvl.g;
@@ -729,6 +772,61 @@ float4 LFDownscale2PS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
           + tex2D(LowFreqMip1Samp, uv + float2(-s.x, -s.y))) * 0.25;
 }
 
+// ─── R189 bilateral log-luma passes ──────────────────────────────────────────
+// H-pass: sample CreativeLowFreqSamp (1/8-res), convert to log10 luma, bilateral filter.
+// V-pass: read BilateralLogHTex, complete the separable filter → BilateralLogTex.
+// Output is bilinearly upsampled to full-res by ColorTransformPS when sampling BilateralLogSamp.
+
+float BilateralLogHPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    float px  = 8.0 / BUFFER_WIDTH;
+    float L0  = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv).rgb), 1e-3));
+    float sum = BIL_LOG_W0 * L0, wsum = BIL_LOG_W0;
+    float Li, rw;
+    Li = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv + float2(-1.0*px, 0.0)).rgb), 1e-3));
+    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W1*rw*Li; wsum += BIL_LOG_W1*rw;
+    Li = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv + float2(+1.0*px, 0.0)).rgb), 1e-3));
+    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W1*rw*Li; wsum += BIL_LOG_W1*rw;
+    Li = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv + float2(-2.0*px, 0.0)).rgb), 1e-3));
+    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W2*rw*Li; wsum += BIL_LOG_W2*rw;
+    Li = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv + float2(+2.0*px, 0.0)).rgb), 1e-3));
+    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W2*rw*Li; wsum += BIL_LOG_W2*rw;
+    Li = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv + float2(-3.0*px, 0.0)).rgb), 1e-3));
+    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W3*rw*Li; wsum += BIL_LOG_W3*rw;
+    Li = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv + float2(+3.0*px, 0.0)).rgb), 1e-3));
+    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W3*rw*Li; wsum += BIL_LOG_W3*rw;
+    Li = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv + float2(-4.0*px, 0.0)).rgb), 1e-3));
+    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W4*rw*Li; wsum += BIL_LOG_W4*rw;
+    Li = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv + float2(+4.0*px, 0.0)).rgb), 1e-3));
+    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W4*rw*Li; wsum += BIL_LOG_W4*rw;
+    return sum / max(wsum, 1e-5);
+}
+
+float BilateralLogVPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    float py  = 8.0 / BUFFER_HEIGHT;
+    float L0  = tex2D(BilateralLogHSamp, uv).r;
+    float sum = BIL_LOG_W0 * L0, wsum = BIL_LOG_W0;
+    float Li, rw;
+    Li = tex2D(BilateralLogHSamp, uv + float2(0.0, -1.0*py)).r;
+    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W1*rw*Li; wsum += BIL_LOG_W1*rw;
+    Li = tex2D(BilateralLogHSamp, uv + float2(0.0, +1.0*py)).r;
+    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W1*rw*Li; wsum += BIL_LOG_W1*rw;
+    Li = tex2D(BilateralLogHSamp, uv + float2(0.0, -2.0*py)).r;
+    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W2*rw*Li; wsum += BIL_LOG_W2*rw;
+    Li = tex2D(BilateralLogHSamp, uv + float2(0.0, +2.0*py)).r;
+    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W2*rw*Li; wsum += BIL_LOG_W2*rw;
+    Li = tex2D(BilateralLogHSamp, uv + float2(0.0, -3.0*py)).r;
+    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W3*rw*Li; wsum += BIL_LOG_W3*rw;
+    Li = tex2D(BilateralLogHSamp, uv + float2(0.0, +3.0*py)).r;
+    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W3*rw*Li; wsum += BIL_LOG_W3*rw;
+    Li = tex2D(BilateralLogHSamp, uv + float2(0.0, -4.0*py)).r;
+    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W4*rw*Li; wsum += BIL_LOG_W4*rw;
+    Li = tex2D(BilateralLogHSamp, uv + float2(0.0, +4.0*py)).r;
+    rw = exp(-(Li-L0)*(Li-L0)/BIL_LOG_SR2); sum += BIL_LOG_W4*rw*Li; wsum += BIL_LOG_W4*rw;
+    return sum / max(wsum, 1e-5);
+}
+
 // ─── Diffusion passes (merged from pro_mist.fx — saves one inter-effect overhead) ──
 
 float4 DiffusionDownsamplePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
@@ -925,6 +1023,18 @@ technique OlofssonianColorGrade
         VertexShader = PostProcessVS;
         PixelShader  = NeutralIllumPS;
         RenderTarget = NeutralIllumTex;
+    }
+    pass BilateralLogH
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = BilateralLogHPS;
+        RenderTarget = BilateralLogHTex;
+    }
+    pass BilateralLogV
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = BilateralLogVPS;
+        RenderTarget = BilateralLogTex;
     }
     pass ColorTransform
     {
