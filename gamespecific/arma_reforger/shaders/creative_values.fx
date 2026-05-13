@@ -146,3 +146,8 @@
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.
 #define CORRECTIVE_STRENGTH 100
 #define TONAL_STRENGTH      100
+
+// ── DEBUG ─────────────────────────────────────────────────────────────────────
+// Overlay bilateral zone map on inverse_grade output. Requires shader recompile.
+// shadow = blue, mid = green, highlight = red. 0 = off, 1 = on.
+#define BILATERAL_ZONE_DEBUG 0
