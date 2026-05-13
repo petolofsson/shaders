@@ -459,8 +459,8 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
         float log_pixel  = log10(max(luma, 1e-3));
         float log_detail = log_pixel - log_base;
         float fade       = 1.0 - smoothstep(0.50, 0.80, luma);
-        float bil_ratio  = pow(10.0, fade * (float(BILATERAL_STRENGTH) * (log_key - log_base)
-                                           + float(CLARITY_STRENGTH)   * log_detail));
+        float bil_ratio  = pow(10.0, fade * (float(LOCAL_TONE)       * (log_key - log_base)
+                                           + float(CLARITY_STRENGTH) * log_detail));
         bil_ratio        = clamp(bil_ratio, 0.5, 2.0);
         lin              = lin * bil_ratio;
         luma             = Luma(lin);

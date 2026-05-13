@@ -1,4 +1,5 @@
 // creative_values.fx — tune here
+// Knobs ordered by pipeline firing position.
 
 // ── INPUT ─────────────────────────────────────────────────────────────────────
 // Adaptive inverse tone mapping. Expands Oklab chroma using the IQR-derived compression
@@ -7,12 +8,6 @@
 #define INVERSE_STRENGTH  0.40
 
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
-// Exposure in stops. 0 = neutral, +1 = one stop brighter, -1 = one stop darker.
-// Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.
-// Sets where pixels sit tonally — which directly changes what every knob below "sees".
-// Rule of thumb: dial until overall brightness feels right, then tune beneath.
-#define EXPOSURE  0.15
-
 // Remaps the raw pixel into [BLACKS, WHITES] before EXPOSURE runs.
 // BLACKS: black pedestal — prevents absolute digital black. 0 = off.
 //   0.005 matches actual linear-light value at the ARRI LogC3 black point.
@@ -21,6 +16,23 @@
 // Both at defaults (0 / 1) = passthrough (identity).
 #define BLACKS  0.005
 #define WHITES  0.95
+
+// Exposure in stops. 0 = neutral, +1 = one stop brighter, -1 = one stop darker.
+// Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.
+// Sets where pixels sit tonally — which directly changes what every knob below "sees".
+// Rule of thumb: dial until overall brightness feels right, then tune beneath.
+#define EXPOSURE  0.15
+
+// Film emulsion scatter from specular highlights — orange/amber fringe around
+// brightest sources. Red dominates (deepest dye layer), green small, blue near-zero
+// (yellow filter layer blocks blue from reaching base). White sources glow orange.
+// Fires pre-curve (physical: camera negative, before any processing).
+// 0 = off. 0.35 = calibrated default. 1.0 = Ektachrome-style aggressive.
+#define HAL_STRENGTH  0.45
+// Chromatic crossover threshold (ring luma units). Controls where the inner/outer
+// halation colour character transitions. Lower = more orange overall.
+// Range 0.02–0.20. Tune: raise until orange fringe looks physically correct.
+#define HAL_GAMMA     0.04
 
 // Per-channel knee and toe offsets for the FilmCurve. Encodes the physical dye-layer
 // cross-over character of different film stocks.
@@ -54,6 +66,16 @@
 #define HIGHLIGHT_TINT   0
 
 // ── TONAL ─────────────────────────────────────────────────────────────────────
+// Spatially-adaptive local tone mapping (R190). Guided filter base layer blends local
+// illumination toward scene global key — lifts dark areas, pulls bright areas —
+// while restoring the detail layer so all texture is preserved. 0 = off. 0.25–0.40 = cinematic.
+#define LOCAL_TONE  0.40
+
+// Local contrast / clarity (R190). Scales the guided filter detail layer before reconstruction.
+// >0 = micro-contrast punch (Lightroom Clarity equivalent). <0 = spatial softening.
+// 0 = off. 0.20–0.40 = subtle punch. Independent of LOCAL_TONE.
+#define CLARITY_STRENGTH  0.00
+
 // Scales the adaptive zone S-curve strength. 1.0 = calibrated default. 0 = off.
 // 2.0 = aggressive. Range 0–2.
 #define CONTRAST  1.00
@@ -66,22 +88,11 @@
 // -1.0 recovers blown highlights. Range ±1.0. Default 0.0 = passthrough.
 #define HIGHLIGHTS  0.00
 
+// ── CHROMA ────────────────────────────────────────────────────────────────────
 // R183: pre-flash warm shadow cast. Fixed warm amber additive in deep shadows (L < 0.25),
 // falls to zero at mid-gray. Models Deakins' colored negative pre-flash technique.
 // Positive = warm amber, negative = cool blue-green. Range ±1.0. Default 0.0 = passthrough.
 #define SHADOW_CAST  0.00
-
-// ── CHROMA ────────────────────────────────────────────────────────────────────
-// Per-hue chroma lift strength. Acts as a gain near each hue band's scene mean —
-// lift-only, vibrance-masked (already-saturated pixels are attenuated).
-// Reach for this first — lifts flat/dull areas without pushing vivid pixels further.
-// 1.0 = calibrated default. 0 = off.
-#define VIBRANCE  0.20
-
-// Global chroma multiplier. -1.0 = greyscale, 0.0 = passthrough, +1.0 = 2× chroma.
-// Applied uniformly — use after Vibrance when you want a deliberate global push.
-#define SATURATION 0.00
-
 
 // Rod-vision blue-green bias + scotopic desaturation across mesopic range (luma 0–0.30).
 // Hue: shifts a* (green) + b* (blue) toward 507nm rod peak — blue-green, not pure blue.
@@ -99,7 +110,12 @@
 #define ROT_BLUE    -0.03
 #define ROT_MAG      0.00
 
-// ── HUE SATURATION ───────────────────────────────────────────────────────────
+// Per-hue chroma lift strength. Acts as a gain near each hue band's scene mean —
+// lift-only, vibrance-masked (already-saturated pixels are attenuated).
+// Reach for this first — lifts flat/dull areas without pushing vivid pixels further.
+// 1.0 = calibrated default. 0 = off.
+#define VIBRANCE  0.20
+
 // Per-band chroma scale in Oklab C. ±1.0 → ±80% chroma per hue band.
 // Applied after Vibrance. Default 0.0 = passthrough.
 #define SAT_RED    -0.05
@@ -109,16 +125,9 @@
 #define SAT_BLUE    0.0
 #define SAT_MAG     0.0
 
-// Film emulsion scatter from specular highlights — orange/amber fringe around
-// brightest sources. Red dominates (deepest dye layer), green small, blue near-zero
-// (yellow filter layer blocks blue from reaching base). White sources glow orange.
-// Fires inside game bloom radius, not on top of it.
-// 0 = off. 0.35 = calibrated default. 1.0 = Ektachrome-style aggressive.
-#define HAL_STRENGTH  0.45
-// Chromatic crossover threshold (ring luma units). Controls where the inner/outer
-// halation colour character transitions. Lower = more orange overall.
-// Range 0.02–0.20. Tune: raise until orange fringe looks physically correct.
-#define HAL_GAMMA     0.04
+// Global chroma multiplier. -1.0 = greyscale, 0.0 = passthrough, +1.0 = 2× chroma.
+// Applied uniformly — use after Vibrance when you want a deliberate global push.
+#define SATURATION  0.00
 
 // ── OUTPUT ────────────────────────────────────────────────────────────────────
 // Hollywood Black Magic dual-component model (R131):
@@ -134,20 +143,9 @@
 // Perceived peak is in upper shadows — grain at pure black is invisible against the dark.
 // Framerate-independent: turns over at ~24fps regardless of display fps.
 // 0 = off. 1.0 = calibrated 2383 amplitude. 1.5 = pushed. 2.0 = stylistic.
-#define GRAIN_STRENGTH 0.50
+#define GRAIN_STRENGTH  0.50
 
 // ── STAGE GATES ───────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.
-#define CORRECTIVE_STRENGTH 100
-#define TONAL_STRENGTH      100
-
-// ── DEBUG ─────────────────────────────────────────────────────────────────────
-// Spatially-adaptive tonal redistribution (R189). Bilateral base layer blends local
-// illumination toward scene global key — lifts dark areas, pulls bright areas —
-// while restoring the detail layer so all texture is preserved. 0 = off. 0.25–0.40 = cinematic.
-#define BILATERAL_STRENGTH 0.40
-
-// Local contrast / clarity (R189). Scales the bilateral detail layer before reconstruction.
-// >0 = micro-contrast punch (Lightroom Clarity equivalent). <0 = spatial softening.
-// 0 = off. 0.20–0.40 = subtle punch. Independent of BILATERAL_STRENGTH.
-#define CLARITY_STRENGTH  0.00
+#define CORRECTIVE_STRENGTH  100
+#define TONAL_STRENGTH       100
