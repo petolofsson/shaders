@@ -435,12 +435,6 @@ float3 ApplyCorrective(float3 lin, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
                           SHADOW_TEMP, SHADOW_TINT,
                           MID_TEMP, MID_TINT,
                           HIGHLIGHT_TEMP, HIGHLIGHT_TINT);
-    // ── R51: print stock + R110: masking coupler + R130: dye matrix + bleach ──
-    out_lin = ApplyPrintStock(out_lin, ctx.fc_knee_toe, ctx.fc_knee, PRINT_STOCK,
-                              ctx.eff_p25, ctx.eff_p75);
-    out_lin = ApplyMaskingCoupler(out_lin, PRINT_STOCK);
-    out_lin = ApplyDyeMatrix(out_lin);
-    out_lin = ApplyBleachBypass(out_lin, BLEACH_BYPASS);
     return out_lin;
 }
 
@@ -721,6 +715,21 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     return saturate(chroma_rgb);
 }
 
+// ─── Look Modification Transform — post-grade print emulation ──────────────
+
+float3 ApplyLook(float3 lin, SceneCtx ctx)
+{
+    float3 out_lin = lin;
+    // ── R51: print stock + R110: masking coupler + R130: dye matrix + bleach ──
+    // Fires after all tonal and chroma work — LMT position per ACES convention.
+    out_lin = ApplyPrintStock(out_lin, ctx.fc_knee_toe, ctx.fc_knee, PRINT_STOCK,
+                              ctx.eff_p25, ctx.eff_p75);
+    out_lin = ApplyMaskingCoupler(out_lin, PRINT_STOCK);
+    out_lin = ApplyDyeMatrix(out_lin);
+    out_lin = ApplyBleachBypass(out_lin, BLEACH_BYPASS);
+    return out_lin;
+}
+
 // ─── ColorTransform pixel shader ───────────────────────────────────────────
 
 float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
@@ -735,6 +744,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
     TonalOut tonal = ApplyTonal(lin, col_luma, uv, lf_mip2_tex, ctx);
     float3 result  = ApplyChroma(tonal.lin, tonal.new_luma, tonal.local_var, lf_mip2_tex, ctx);
+    result = ApplyLook(result, ctx);
 
     // dither: break 8-bit BackBuffer quantization — converts banding to imperceptible noise
     // R89: IGN blue-noise dither (Jimenez 2016) — pushes quantization error to high freq

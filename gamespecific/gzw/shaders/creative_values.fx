@@ -32,17 +32,7 @@
 #define CURVE_R_TOE   +0.010
 #define CURVE_B_TOE   -0.005
 
-// Kodak 2383 print emulsion on top of FilmCurve: gentle shadow density bow,
-// restrained shoulder, desaturates mids ~15%, adds warm shadow cast. 0 = off.
-// 1 = full 2383. 0.35 = recommended starting point.
-#define PRINT_STOCK  0.35
-// Skip the bleach step during print development — retains metallic silver alongside
-// color dye. Desaturates shadows most (denser silver retention in unexposed areas),
-// steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.
-// 0 = off. 1 = full (near-monochrome shadows). Start: 0.1–0.3.
-#define BLEACH_BYPASS  0.05
-
-// Primary color grade. Runs after FilmCurve, before print emulation.
+// Primary color grade. Runs after FilmCurve.
 // TEMP: positive = warm (R up, B down), negative = cool. Range ±100.
 // TINT: positive = magenta (G down, R+B up slightly), negative = green. Range ±100.
 // All default to 0 — passthrough. No output change at defaults.
@@ -124,6 +114,17 @@
 // halation colour character transitions. Lower = more orange overall.
 // Range 0.02–0.20. Tune: raise until orange fringe looks physically correct.
 #define HAL_GAMMA     0.04
+
+// ── LOOK ──────────────────────────────────────────────────────────────────────
+// Applied after all grading and chroma work — ACES LMT position.
+// Kodak 2383 print emulsion: gentle shadow density bow, restrained shoulder,
+// desaturates mids ~15%, adds warm shadow cast. 0 = off. 1 = full 2383.
+#define PRINT_STOCK  0.35
+// Skip the bleach step during print development — retains metallic silver alongside
+// color dye. Desaturates shadows most (denser silver retention in unexposed areas),
+// steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.
+// 0 = off. 1 = full (near-monochrome shadows).
+#define BLEACH_BYPASS  0.05
 
 // ── OUTPUT ────────────────────────────────────────────────────────────────────
 // Hollywood Black Magic dual-component model (R131):
