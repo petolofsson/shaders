@@ -1,4 +1,4 @@
-# Handoff — 2026-05-13
+# Handoff — 2026-05-14
 
 > **Purpose (for AI context):** Current session state. Read at session start to orient. Update at session end. Changelog entries go in CHANGELOG.md.
 
@@ -35,11 +35,27 @@ See PLAN.md for authoritative scores and reasoning.
 - **Halation stage fix** — `ApplyHalation` moved to pre-FilmCurve in `ApplyCorrective`. All three signals (pixel, lf_mip1, lf_mip2) now pre-corrective. Physically correct: halation is a camera-negative phenomenon.
 - **Retinex stage fix (R191 P1)** — Retinex now fires BEFORE zone S-curve in `ApplyTonal`. `nl_safe = max(luma, 0.001)` (was `new_luma`). Output goes into `luma` so zone S-curve shapes the spatially-equalised signal. `r_tonal` now measures only the S-curve contribution, not S-curve×Retinex.
 - **3-way CC stage fix (R191 P2)** — `Apply3WayCC` now fires BEFORE `ApplyPrintStock` in `ApplyCorrective`. CC sets up the scene signal that print emulation receives, not the combined print response. SHADOW_TEMP/TINT may need recalibration — they are no longer fighting print stock's warm cast.
-- **P3 plan written** — `research/R192_2026-05-14_P3_print_stock_as_LMT.md`. Move PRINT_STOCK/BLEACH_BYPASS from ApplyCorrective into new `ApplyLook` function called post-ApplyChroma. Medium calibration impact; zero GPU cost change. Implement in dedicated session.
+- **R192 P3 done** — `ApplyLook(float3 lin, SceneCtx ctx)` added to `grade.fx`. Called in `ColorTransformPS` immediately after `ApplyChroma`. `ApplyCorrective` now ends after `Apply3WayCC`. Physical order is now: halation → FilmCurve → 3-way CC → tonal → chroma → print stock/bleach. Both `creative_values.fx` profiles updated: PRINT_STOCK/BLEACH_BYPASS moved from CORRECTIVE to new LOOK section between CHROMA and OUTPUT. **Needs calibration** — see below.
 - **Mid-shadow off-color** — unverified post R127/R130. Likely resolved. Re-test before marking closed.
 
 - **R190 guided filter base layer** — replaces R189 bilateral H/V passes. `GuidedCoeff` + `GuidedBase` passes at 1/8-res (r=3 texels=24px physical). Adaptive ε (Hu 2023): `a_k = var/((1+ε)·var+η)`, GF_EPS=0.05, GF_ETA=1e-8. No range kernel, no exp() per tap. `GuidedCoeffTex` (RG16F) replaces `BilateralLogHTex` (R16F). `BilateralLogTex` output slot unchanged — ApplyTonal reads same sampler. BILATERAL_STRENGTH renamed LOCAL_TONE. CLARITY_STRENGTH unchanged. creative_values.fx reordered by firing position.
 - **Bilateral Retinex improvement** — evaluated and deferred. Swapping LowFreqMip1 for bilateral base in shadow lift/Retinex is zero extra cost but marginal improvement (only visible near hard luminance edges). Code complexity not worth it now.
+
+## R192 P3 calibration — pending visual evaluation
+
+PRINT_STOCK and BLEACH_BYPASS now fire after all chroma work. Expected perceptual changes
+(do not pre-adjust — evaluate visually first):
+
+- **PRINT_STOCK feels stronger**: was desaturating into VIBRANCE/SAT_* which then boosted
+  back. Now desaturates on the fully-graded signal. Try 0.25–0.30 as starting point.
+- **Warm shadow bow more visible**: wasn't being compensated by downstream CC anymore (P2
+  already corrected CC order, but now the bow lands on fully-lifted shadows). SHADOW_TEMP
+  may want to move closer to 0 — it was partly offsetting print stock's warm cast.
+- **BLEACH_BYPASS shadow desaturation denser**: shadow lift + Retinex no longer softening
+  the desaturation. Try 0.03 from 0.05 as starting point.
+- **VIBRANCE/SAT_* may need to come down**: were previously calibrated against a
+  pre-desaturated signal. Now work on full-chroma, then print stock desaturates on top.
+- **Midtone contrast from BLEACH_BYPASS rides on top of zone S-curve**: more apparent grit.
 
 ## Next candidates
 
