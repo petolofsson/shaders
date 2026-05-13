@@ -2,6 +2,12 @@
 
 > **Purpose (for AI context):** Chronological record of code changes, one compacted entry per day. Keep only the last 3–4 days. Older history lives in git log. Do not duplicate entries from HANDOFF.md or PLAN.md here.
 
+## 2026-05-13
+
+- **HWY_CHROMA_SLOPE signal fix** (`analysis_frame.fx`, `highway.fxh`) — IQR+Bowley formula replaced with `lerp(1.8, 1.15, saturate(median_C / 0.15))`. Root cause: luma IQR was computed from linear luma percentiles (p25/p75 from the linearized histogram), where log2(p75/p25) is systematically ≥2.0 for all typical game scenes — always clamping slope to the minimum 1.15 and making INVERSE_STRENGTH a no-op. No literature supports luma IQR as a proxy for chroma compression; ACES compression is a fixed transform independent of scene statistics. New signal uses HWY_MEDIAN_C directly: low scene chroma → max expansion (slope 1.8); vivid scene → min (slope 1.15). Encode/decode (÷1.5 / ×1.5+1) unchanged — inverse_grade.fx untouched.
+
+- **R187 partial-revert documented** (`HANDOFF.md`) — R187 changelog claimed bilateral passes (LocalLumaDownH/V), LocalLumaHTex/LocalLumaTex removed and technique made single-pass. Code audit shows this never happened. Bilateral zone system is live and correct: zone_w = shadow×0.40, mid×1.0, highlight×0.45, driven by L_local from bilateral texture, calibrated with BILATERAL_ZONE_DEBUG. Only the expansion formula (`new_C = C * factor`, zero-anchored) from R187 was actually applied. HANDOFF corrected; CHANGELOG R187 entry stands as historical record of intent.
+
 ## 2026-05-12 (session 3)
 
 - **GZW jungle movie grade** (`gzw/creative_values.fx`) — Color values tuned for jungle movie aesthetic (Apocalypse Now / Predator / Platoon character). 3-way CC: teal-green shadows (SHADOW_TEMP −12, TINT −6), green foliage mids (MID_TINT −4), golden tropical-sun highlights (HIGHLIGHT_TEMP +15, TINT +3). Hue rotations: reds lean amber (+0.02), yellows toward green (−0.02), greens deep toward cyan (−0.04) for wet lush foliage, blues toward teal (−0.02). Per-band sat: greens lifted (+0.12), cyans lifted (+0.08), yellows pulled back (−0.08) so they don't compete with green. Blues and magentas slightly desaturated. No tonal or output values changed.

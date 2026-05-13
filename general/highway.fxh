@@ -27,7 +27,7 @@ sampler2D HighwaySamp
 #define HWY_P25             194    // scene p25 luma
 #define HWY_P50             195    // scene p50 luma
 #define HWY_P75             196    // scene p75 luma
-#define HWY_CHROMA_SLOPE    197    // chroma expansion slope (IQR+Bowley from luma histogram); encode: (v-1.0)/1.5  decode: v*1.5+1.0
+#define HWY_CHROMA_SLOPE    197    // chroma expansion slope from median Oklab C: lerp(1.8,1.15,saturate(median_C/0.15)); encode: (v-1.0)/1.5  decode: v*1.5+1.0
 #define HWY_MEDIAN_C        198    // scene median Oklab C (histogram p50, all pixels); raw [0, 0.30]
 #define HWY_SCENE_CUT       199    // scene cut signal [0,1]
 #define HWY_P90             200    // scene p90 luma (specular floor tracker); raw [0,1]

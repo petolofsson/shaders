@@ -4,14 +4,14 @@
 // Adaptive inverse tone mapping. Expands Oklab chroma using the IQR-derived compression
 // ratio — restoring chroma the game's tonemapper compressed. Luma is handled by zone
 // S-curve. Works on any S-curve tonemapper. 0 = off. Start at 0.30–0.50.
-#define INVERSE_STRENGTH  0.40
+#define INVERSE_STRENGTH  2.00
 
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
 // Exposure in stops. 0 = neutral, +1 = one stop brighter, -1 = one stop darker.
 // Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.
 // Sets where pixels sit tonally — which directly changes what every knob below "sees".
 // Rule of thumb: dial until overall brightness feels right, then tune beneath.
-#define EXPOSURE  0.10
+#define EXPOSURE  0.20
 
 // Remaps the raw pixel into [BLACKS, WHITES] before EXPOSURE runs.
 // BLACKS: black pedestal — prevents absolute digital black. 0 = off.
@@ -35,13 +35,12 @@
 // Kodak 2383 print emulsion on top of FilmCurve: gentle shadow density bow,
 // restrained shoulder, desaturates mids ~15%, adds warm shadow cast. 0 = off.
 // 1 = full 2383. 0.35 = recommended starting point.
-#define PRINT_STOCK  0.40
-
+#define PRINT_STOCK  0.0
 // Skip the bleach step during print development — retains metallic silver alongside
 // color dye. Desaturates shadows most (denser silver retention in unexposed areas),
 // steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.
 // 0 = off. 1 = full (near-monochrome shadows). Start: 0.1–0.3.
-#define BLEACH_BYPASS  0.00
+#define BLEACH_BYPASS  0.05
 
 // Primary color grade. Runs after FilmCurve, before zone contrast.
 // TEMP: positive = warm (R up, B down), negative = cool. Range ±100.
@@ -57,7 +56,7 @@
 // ── TONAL ─────────────────────────────────────────────────────────────────────
 // Scales the adaptive zone S-curve strength. 1.0 = calibrated default. 0 = off.
 // 2.0 = aggressive. Range 0–2.
-#define CONTRAST  0.75
+#define CONTRAST  0.85
 
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
@@ -83,7 +82,7 @@
 // Applied uniformly — use after Vibrance when you want a deliberate global push.
 #define SATURATION 0.02
 
-// R185: ACES 2.0-inspired highlight chroma compression. L²-weighted Michaelis-Menten toe:
+// R185: ACES 2.0-inspired highlight chyeroma compression. L²-weighted Michaelis-Menten toe:
 // near-neutral highlights bleed toward white first, saturated highlights resist longest.
 // Fills the gap left by R22 highlight arm removal — globally progressive, hue-agnostic.
 // 0 = off. 0.35 = calibrated default. 1.0 = aggressive.

@@ -296,7 +296,9 @@ float4 UpdateChromaKalman(int band_idx)
     // R53: scene-cut override — spike K toward 1.0 on hard cuts
     float scene_cut = ReadHWY(HWY_SCENE_CUT);
     K = lerp(K, 1.0, scene_cut) * obs_confidence;
-    float new_mean = prev.r + K * e_chroma;
+    float  h_c     = lerp(1.0 - 0.5 * smoothstep(0.0, VFF_E_SIGMA_CHROMA * 4.0, abs(e_chroma)),
+                          1.0, scene_cut);
+    float new_mean = prev.r + K * e_chroma * h_c;
     float P_new    = saturate((1.0 - K) * P_pred);
     // EMA: std and wsum — gate by obs_confidence so absent bands don't decay
     float k_ema    = lerp(KALMAN_K_INF, 1.0, scene_cut) * obs_confidence;

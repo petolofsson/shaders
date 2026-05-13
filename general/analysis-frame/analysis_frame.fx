@@ -174,10 +174,8 @@ float4 HighwayWritePS(float4 pos : SV_Position,
     if (xi == HWY_P50) return float4(perc.g, 0, 0, 1);
     if (xi == HWY_P75) return float4(perc.b, 0, 0, 1);
     if (xi == HWY_CHROMA_SLOPE) {
-        float log_iqr = log2(max(perc.b, 0.01)) - log2(max(perc.r, 0.01));
-        float bowley  = (perc.b + perc.r - 2.0 * perc.g) / max(perc.b - perc.r, 0.01);
-        log_iqr      += saturate(bowley) * 0.6;
-        float slope   = clamp(2.5 / max(log_iqr, 0.5), 1.15, 1.8);
+        float median_C = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).r;
+        float slope    = lerp(1.8, 1.15, saturate(median_C / 0.15));
         return float4((slope - 1.0) / 1.5, 0, 0, 1);
     }
     if (xi == HWY_SCENE_CUT)
@@ -253,9 +251,10 @@ float4 CDFWalkPS(float4 pos : SV_Position,
     float  P_pred  = P + Q_vff_p;
     float  K       = P_pred / (P_pred + KALMAN_R_PERC);
     float  P_new   = (1.0 - K) * P_pred;
-    return float4(prev.r + K * (p25 - prev.r),
-                  prev.g + K * e_p50,
-                  prev.b + K * (p75 - prev.b),
+    float  h_p     = 1.0 - 0.5 * smoothstep(0.0, VFF_E_SIGMA_PERC * 8.0, abs(e_p50));
+    return float4(prev.r + K * (p25 - prev.r) * h_p,
+                  prev.g + K * e_p50 * h_p,
+                  prev.b + K * (p75 - prev.b) * h_p,
                   P_new);
 }
 
