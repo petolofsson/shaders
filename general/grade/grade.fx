@@ -740,11 +740,16 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
     float  col_luma = Luma(col.rgb);
     float3 lin      = col.rgb * (WHITES - ctx.cfilm_floor) + ctx.cfilm_floor;
-    lin = ApplyCorrective(lin, uv, lf_mip2_tex, ctx);
+    lin = lerp(lin, ApplyCorrective(lin, uv, lf_mip2_tex, ctx), CORRECTIVE_STRENGTH * 0.01);
 
-    TonalOut tonal = ApplyTonal(lin, col_luma, uv, lf_mip2_tex, ctx);
-    float3 result  = ApplyChroma(tonal.lin, tonal.new_luma, tonal.local_var, lf_mip2_tex, ctx);
-    result = ApplyLook(result, ctx);
+    TonalOut tonal      = ApplyTonal(lin, col_luma, uv, lf_mip2_tex, ctx);
+    float    tonal_gate = TONAL_STRENGTH * 0.01;
+    tonal.lin       = lerp(lin,       tonal.lin,       tonal_gate);
+    tonal.new_luma  = lerp(Luma(lin), tonal.new_luma,  tonal_gate);
+    tonal.local_var = tonal.local_var * tonal_gate;
+
+    float3 result  = lerp(tonal.lin, ApplyChroma(tonal.lin, tonal.new_luma, tonal.local_var, lf_mip2_tex, ctx), CHROMA_STRENGTH * 0.01);
+    result = lerp(result, ApplyLook(result, ctx), LOOK_STRENGTH * 0.01);
 
     // dither: break 8-bit BackBuffer quantization — converts banding to imperceptible noise
     // R89: IGN blue-noise dither (Jimenez 2016) — pushes quantization error to high freq

@@ -146,6 +146,8 @@
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.
 #define CORRECTIVE_STRENGTH 100
 #define TONAL_STRENGTH      100
+#define CHROMA_STRENGTH     100
+#define LOOK_STRENGTH       100
 
 // ── TONAL (local) ─────────────────────────────────────────────────────────────
 // Spatially-adaptive local tone mapping (R190). Guided filter base layer blends local

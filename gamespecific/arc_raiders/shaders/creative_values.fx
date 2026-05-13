@@ -5,7 +5,7 @@
 // Adaptive inverse tone mapping. Expands Oklab chroma using the IQR-derived compression
 // ratio — restoring chroma the game's tonemapper compressed. Luma is handled by zone
 // S-curve. Works on any S-curve tonemapper. 0 = off. Start at 0.30–0.50.
-#define INVERSE_STRENGTH  0.40
+#define INVERSE_STRENGTH  0.00
 
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
 // Remaps the raw pixel into [BLACKS, WHITES] before EXPOSURE runs.
@@ -21,18 +21,18 @@
 // Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.
 // Sets where pixels sit tonally — which directly changes what every knob below "sees".
 // Rule of thumb: dial until overall brightness feels right, then tune beneath.
-#define EXPOSURE  0.15
+#define EXPOSURE  0.00
 
 // Film emulsion scatter from specular highlights — orange/amber fringe around
 // brightest sources. Red dominates (deepest dye layer), green small, blue near-zero
 // (yellow filter layer blocks blue from reaching base). White sources glow orange.
 // Fires pre-curve (physical: camera negative, before any processing).
 // 0 = off. 0.35 = calibrated default. 1.0 = Ektachrome-style aggressive.
-#define HAL_STRENGTH  0.45
+#define HAL_STRENGTH  0.00
 // Chromatic crossover threshold (ring luma units). Controls where the inner/outer
 // halation colour character transitions. Lower = more orange overall.
 // Range 0.02–0.20. Tune: raise until orange fringe looks physically correct.
-#define HAL_GAMMA     0.04
+#define HAL_GAMMA     0.00
 
 // Per-channel knee and toe offsets for the FilmCurve. Encodes the physical dye-layer
 // cross-over character of different film stocks.
@@ -59,7 +59,7 @@
 // Spatially-adaptive local tone mapping (R190). Guided filter base layer blends local
 // illumination toward scene global key — lifts dark areas, pulls bright areas —
 // while restoring the detail layer so all texture is preserved. 0 = off. 0.25–0.40 = cinematic.
-#define LOCAL_TONE  0.40
+#define LOCAL_TONE  0.00
 
 // Local contrast / clarity (R190). Scales the guided filter detail layer before reconstruction.
 // >0 = micro-contrast punch (Lightroom Clarity equivalent). <0 = spatial softening.
@@ -68,11 +68,11 @@
 
 // Scales the adaptive zone S-curve strength. 1.0 = calibrated default. 0 = off.
 // 2.0 = aggressive. Range 0–2.
-#define CONTRAST  1.00
+#define CONTRAST  0.00
 
 // Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOWS  0.50
+#define SHADOWS  0.00
 
 // Soft luma push/pull in the highlight range (L > 0.55). +1.0 brightens highlights,
 // -1.0 recovers blown highlights. Range ±1.0. Default 0.0 = passthrough.
@@ -89,7 +89,7 @@
 // Desat: lab.yz *= (1 − 0.12 × w) — rods are achromatic; deep shadows lose chroma.
 // Neutrals unaffected (C=0 → zero shift). R117: transition widened luma 0.12 → 0.30.
 // Recalibrate from scratch: try 0.6–0.8. 0 = off.
-#define PURKINJE_STRENGTH  0.65
+#define PURKINJE_STRENGTH  0.00
 
 // Per-band hue rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
 // (Red→Yellow, Green→Cyan, Blue→Magenta). Default 0.0 = passthrough.
@@ -104,7 +104,7 @@
 // lift-only, vibrance-masked (already-saturated pixels are attenuated).
 // Reach for this first — lifts flat/dull areas without pushing vivid pixels further.
 // 1.0 = calibrated default. 0 = off.
-#define VIBRANCE  0.20
+#define VIBRANCE  0.00
 
 // Per-band chroma scale in Oklab C. ±1.0 → ±80% chroma per hue band.
 // Applied after Vibrance. Default 0.0 = passthrough.
@@ -123,12 +123,12 @@
 // Applied after all grading and chroma work — ACES LMT position.
 // Kodak 2383 print emulsion: gentle shadow density bow, restrained shoulder,
 // desaturates mids ~15%, adds warm shadow cast. 0 = off. 1 = full 2383.
-#define PRINT_STOCK  0.35
+#define PRINT_STOCK  0.00
 // Skip the bleach step during print development — retains metallic silver alongside
 // color dye. Desaturates shadows most (denser silver retention in unexposed areas),
 // steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.
 // 0 = off. 1 = full (near-monochrome shadows).
-#define BLEACH_BYPASS  0.05
+#define BLEACH_BYPASS  0.00
 
 // ── OUTPUT ────────────────────────────────────────────────────────────────────
 // Hollywood Black Magic dual-component model (R131):
@@ -137,7 +137,7 @@
 // R132 polydisperse: per-channel scatter — red ×1.15, green ×1.00, blue ×0.85.
 // Rough grade mapping: 0.5–0.8 = HBM 1/4, 1.2–1.5 = HBM 1/2, 1.8–2.2 = HBM 1.
 // 1.40 = HBM 1/2 (Hollywood large-format workhorse grade). 0 = off.
-#define DIFFUSION_STRENGTH  0.45
+#define DIFFUSION_STRENGTH  0.00
 
 // R136: Selwyn 2383 granularity — three decorrelated dye layers (R:G:B = 1.00:0.80:1.50).
 // Envelope sqrt(1−L_gamma): mathematically highest at pure black, tapers to zero at white.
@@ -150,3 +150,5 @@
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.
 #define CORRECTIVE_STRENGTH  100
 #define TONAL_STRENGTH       100
+#define CHROMA_STRENGTH      100
+#define LOOK_STRENGTH        100
