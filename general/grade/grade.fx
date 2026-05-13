@@ -423,14 +423,14 @@ float3 ApplyCorrective(float3 lin, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
                               act.r * 0.06 + act.g * 0.08);
         lin_e = saturate(exp2(log_e - cpl * 0.3));
     }
+    // ── R105: halation — pre-curve (physical: camera negative, before any processing) ──
+    // lf_mip1/lf_mip2 are pre-corrective; lin_e is pre-curve — signals match.
+    // R151: p90−p50 gap measures isolated bright sources against scene median.
+    float eff_hal_str = HAL_STRENGTH * lerp(1.0, 1.4, ctx.specular_contrast);
+    lin_e = ApplyHalation(lin_e, uv, lf_mip2_tex.rgb, eff_hal_str, HAL_GAMMA, ctx.illum_warm);
     float3 out_lin = FilmCurveApply(lin_e,
                                     ctx.fc_knee_r, ctx.fc_knee, ctx.fc_knee_b,
                                     ctx.fc_ktoe_r, ctx.fc_knee_toe, ctx.fc_ktoe_b);
-    // ── R105: halation — fires before print stock (physical: negative before printing) ──
-    // R151: p90−p50 gap measures isolated bright sources against scene median —
-    // direct specular-vs-surround contrast, not scene darkness proxy.
-    float eff_hal_str = HAL_STRENGTH * lerp(1.0, 1.4, ctx.specular_contrast);
-    out_lin = ApplyHalation(out_lin, uv, lf_mip2_tex.rgb, eff_hal_str, HAL_GAMMA, ctx.illum_warm);
     // ── R51: print stock + R110: masking coupler + R130: dye matrix ──────────
     out_lin = ApplyPrintStock(out_lin, ctx.fc_knee_toe, ctx.fc_knee, PRINT_STOCK,
                               ctx.eff_p25, ctx.eff_p75);
@@ -485,7 +485,10 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     float nl_safe   = max(new_luma, 0.001);
     float log_R     = log2(nl_safe / illum_s0);
     float zk_safe   = max(ctx.zone_log_key, 0.001);
-    new_luma = lerp(new_luma, saturate(nl_safe * zk_safe / illum_s0), 0.75 * ctx.ss_04_25);
+    // Multiplicative ratio: new_luma × (zk_safe / illum_s0). Both zk_safe and illum_s0
+    // are pre-corrective — consistent stage. new_luma is post-zone but that is the current
+    // value being corrected, not a reflectance estimate from mixed stages.
+    new_luma = lerp(new_luma, saturate(new_luma * zk_safe / illum_s0), 0.75 * ctx.ss_04_25);
 
     float texture_att     = 1.0 - smoothstep(0.005, 0.030, local_var);
     float detail_protect  = smoothstep(-2.0, -0.5, log_R);
@@ -654,15 +657,6 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     // Global saturation — -1.0 = greyscale, 0 = passthrough, +1.0 = 2× chroma.
     final_C = max(0.0, final_C * (1.0 + SATURATION));
 
-    // R185: ACES 2.0-inspired highlight chroma rolloff.
-    // L²-weighted Michaelis-Menten toe on C: near-neutral highlights bleach toward white
-    // first; deeply saturated highlights resist. Hue angle preserved — C magnitude only.
-    // Uses incoming C for the toe factor so the knee tracks the original scene chroma.
-    {
-        float hcr_lf   = lab.x * lab.x;
-        float hcr_ctoe = 0.20 / max(C + 0.20, 1e-5);
-        final_C = max(0.0, final_C * (1.0 - saturate(hcr_lf * hcr_ctoe * CHROMA_SHOULDER)));
-    }
 
     // Vector-space (a,b) reconstruction — rotate original direction by R21 delta
     float r21_cos, r21_sin;
