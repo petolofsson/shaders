@@ -34,6 +34,9 @@ See PLAN.md for authoritative scores and reasoning.
 - **Current creative_values** — read live from `creative_values.fx` files; do not cache here. GZW profile tuned for jungle movie aesthetic (teal-green shadows, green mids, golden highlights) — separate from arc_raiders testbed.
 - **Mid-shadow off-color** — unverified post R127/R130. Likely resolved. Re-test before marking closed.
 
+- **R189 bilateral tonemapper** — `BilateralLogH/V` passes at 1/8-res (σ_s=2 texels=16px, σ_r=0.4 log10). `BILATERAL_STRENGTH` blends local illumination toward global key. `CLARITY_STRENGTH` scales detail layer (>0 = punch, <0 = soften). Both no-op at 0. Testbed: BILATERAL_STRENGTH 0.30, CLARITY_STRENGTH 0.25.
+- **Bilateral Retinex improvement** — evaluated and deferred. Swapping LowFreqMip1 for bilateral base in shadow lift/Retinex is zero extra cost but marginal improvement (only visible near hard luminance edges). Code complexity not worth it now.
+
 ## Next candidates
 
 - **ApplyChroma** still ~80 lines — over Rule 4 limit. Split into ApplyChromaLift + ApplyChromaFinish deferred.

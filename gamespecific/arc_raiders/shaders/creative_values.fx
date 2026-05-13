@@ -155,4 +155,4 @@
 // Local contrast / clarity (R189). Scales the bilateral detail layer before reconstruction.
 // >0 = micro-contrast punch (Lightroom Clarity equivalent). <0 = spatial softening.
 // 0 = off. 0.20–0.40 = subtle punch. Independent of BILATERAL_STRENGTH.
-#define CLARITY_STRENGTH  0.0
+#define CLARITY_STRENGTH  0.25
