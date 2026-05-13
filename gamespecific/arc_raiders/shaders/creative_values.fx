@@ -54,7 +54,7 @@
 // 0 = off. 1 = full (near-monochrome shadows). Start: 0.1–0.3.
 #define BLEACH_BYPASS  0.05
 
-// Primary color grade. Runs after FilmCurve, before zone contrast.
+// Primary color grade. Runs after FilmCurve, before print emulation.
 // TEMP: positive = warm (R up, B down), negative = cool. Range ±100.
 // TINT: positive = magenta (G down, R+B up slightly), negative = green. Range ±100.
 // All default to 0 — passthrough. No output change at defaults.

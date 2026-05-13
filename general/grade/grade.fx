@@ -430,17 +430,17 @@ float3 ApplyCorrective(float3 lin, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
     float3 out_lin = FilmCurveApply(lin_e,
                                     ctx.fc_knee_r, ctx.fc_knee, ctx.fc_knee_b,
                                     ctx.fc_ktoe_r, ctx.fc_knee_toe, ctx.fc_ktoe_b);
-    // ── R51: print stock + R110: masking coupler + R130: dye matrix ──────────
-    out_lin = ApplyPrintStock(out_lin, ctx.fc_knee_toe, ctx.fc_knee, PRINT_STOCK,
-                              ctx.eff_p25, ctx.eff_p75);
-    out_lin = ApplyMaskingCoupler(out_lin, PRINT_STOCK);
-    out_lin = ApplyDyeMatrix(out_lin);
-    // ── BLEACH BYPASS + R19: 3-way CC ────────────────────────────────────────
-    out_lin = ApplyBleachBypass(out_lin, BLEACH_BYPASS);
+    // ── R19: 3-way CC — primary grade before print emulation ──────────────────
     out_lin = Apply3WayCC(out_lin,
                           SHADOW_TEMP, SHADOW_TINT,
                           MID_TEMP, MID_TINT,
                           HIGHLIGHT_TEMP, HIGHLIGHT_TINT);
+    // ── R51: print stock + R110: masking coupler + R130: dye matrix + bleach ──
+    out_lin = ApplyPrintStock(out_lin, ctx.fc_knee_toe, ctx.fc_knee, PRINT_STOCK,
+                              ctx.eff_p25, ctx.eff_p75);
+    out_lin = ApplyMaskingCoupler(out_lin, PRINT_STOCK);
+    out_lin = ApplyDyeMatrix(out_lin);
+    out_lin = ApplyBleachBypass(out_lin, BLEACH_BYPASS);
     return out_lin;
 }
 
@@ -465,6 +465,16 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
         lin              = lin * bil_ratio;
         luma             = Luma(lin);
     }
+    // R29: Multi-Scale Retinex — spatial illuminant normalisation fires before zone S-curve
+    // so the S-curve shapes the spatially-equalised signal, not the raw uneven one.
+    float illum_s0  = max(tex2D(LowFreqMip1Samp, uv).a, 0.001);
+    float illum_s2  = max(lf_mip2_tex.a, 0.001);
+    float local_var = abs(illum_s0 - illum_s2);
+    float nl_safe   = max(luma, 0.001);
+    float log_R     = log2(nl_safe / illum_s0);
+    float zk_safe   = max(ctx.zone_log_key, 0.001);
+    luma = lerp(luma, saturate(luma * zk_safe / illum_s0), 0.75 * ctx.ss_04_25);
+
     float4 zone_lvl   = tex2Dlod(ZoneHistorySamp, float4(uv, 0, 0));
     float zone_median = zone_lvl.r;
     float zone_iqr    = zone_lvl.b - zone_lvl.g;
@@ -476,18 +486,6 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     float zone_adj = ctx.zone_str * iqr_scale * delta * (1.0 - abs(delta));
     float above_w  = smoothstep(-0.05, 0.10, delta);
     float new_luma = saturate(luma + zone_adj * above_w);
-
-    // R29: Multi-Scale Retinex — pixel-local illumination/reflectance separation
-    float illum_s0  = max(tex2D(LowFreqMip1Samp, uv).a, 0.001);
-    float illum_s2  = max(lf_mip2_tex.a, 0.001);
-    float local_var = abs(illum_s0 - illum_s2);
-    float nl_safe   = max(new_luma, 0.001);
-    float log_R     = log2(nl_safe / illum_s0);
-    float zk_safe   = max(ctx.zone_log_key, 0.001);
-    // Multiplicative ratio: new_luma × (zk_safe / illum_s0). Both zk_safe and illum_s0
-    // are pre-corrective — consistent stage. new_luma is post-zone but that is the current
-    // value being corrected, not a reflectance estimate from mixed stages.
-    new_luma = lerp(new_luma, saturate(new_luma * zk_safe / illum_s0), 0.75 * ctx.ss_04_25);
 
     float texture_att     = 1.0 - smoothstep(0.005, 0.030, local_var);
     float detail_protect  = smoothstep(-2.0, -0.5, log_R);

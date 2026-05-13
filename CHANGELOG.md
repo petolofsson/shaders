@@ -8,6 +8,12 @@
 
 - **CHROMA_SHOULDER (R185) removed** (`grade.fx`, `creative_values.fx`) — Munsell per-hue highlight rolloff (R133) covers highlight chroma management with correct per-hue differentiation; hue-agnostic Michaelis-Menten shoulder was redundant and stacking with SAT_YELLOW to over-desaturate yellow highlights.
 
+- **R191 P1: Retinex before zone S-curve** (`grade.fx`) — In `ApplyTonal`, moved the Retinex block to execute before the zone S-curve block. `nl_safe` now uses `luma` (post-LOCAL_TONE, pre-zone). Retinex output stored into `luma` so the zone S-curve then shapes the spatially-normalised signal. `r_tonal` now measures only zone S-curve contribution, not S-curve×Retinex. Calibration: CONTRAST and SHADOWS may need minor recalibration — S-curve now sees a different (spatially-equalised) input distribution.
+
+- **R191 P2: 3-way CC before print emulation** (`grade.fx`, `creative_values.fx`) — In `ApplyCorrective`, `Apply3WayCC` moved to before `ApplyPrintStock`. CC now shapes the negative signal before print emulation receives it, matching ACES LMT conventions. Comment in both `creative_values.fx` files updated. Calibration: SHADOW_TEMP/TINT values were partially compensating for PRINT_STOCK's warm cast — recalibrate; existing values will overpower.
+
+- **R192 P3 plan written** (`research/R192_2026-05-14_P3_print_stock_as_LMT.md`) — Full session plan for moving PRINT_STOCK/BLEACH_BYPASS from `ApplyCorrective` into new `ApplyLook` function called post-`ApplyChroma`. Includes step-by-step code changes, ctx field audit, calibration expectations, and risk assessment. Implement in dedicated session.
+
 ## 2026-05-13
 
 - **Fix halation + Retinex pre/post-corrective mismatch** (`grade.fx`) — Two pre-existing stage-consistency bugs corrected. (1) Halation: `ApplyHalation` moved to before `FilmCurveApply` in `ApplyCorrective`. Previously compared pre-corrective `lf_mip1` against post-FilmCurve `out_lin`, causing halation to fire in flat bright areas compressed by the curve. Now all three signals (pixel, inner ring `lf_mip1`, outer ring `lf_mip2`) are pre-curve — physically correct (halation occurs in the camera negative before any processing). (2) Retinex: `nl_safe * zk_safe / illum_s0` changed to `new_luma * zk_safe / illum_s0`. Both `zk_safe` (global scene key) and `illum_s0` (1/16-res local illuminant) are pre-corrective; `new_luma` is the post-zone current value being corrected, not a reflectance estimate — avoids reconstructing an absolute target from mixed pipeline stages.
