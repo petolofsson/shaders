@@ -117,6 +117,17 @@ sampler2D ModeSamp
     MagFilter = POINT;
 };
 
+// R195: normalized histogram entropy H_norm, EMA-smoothed
+texture2D EntropyTex { Width = 1; Height = 1; Format = R16F; MipLevels = 1; };
+sampler2D EntropySamp
+{
+    Texture   = EntropyTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
 // ─── Pass 1 — Downsample ───────────────────────────────────────────────────
 
 float4 DownsamplePS(float4 pos : SV_Position,
@@ -192,6 +203,10 @@ float4 HighwayWritePS(float4 pos : SV_Position,
         return float4(tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).a, 0, 0, 1);
     if (xi == HWY_MODE)
         return float4(tex2Dlod(ModeSamp,      float4(0.5, 0.5, 0, 0)).r, 0, 0, 1);
+    if (xi == HWY_H_NORM)
+        return float4(tex2Dlod(EntropySamp,   float4(0.5, 0.5, 0, 0)).r, 0, 0, 1);
+    if (xi == HWY_IQR)
+        return float4(perc.b - perc.r, 0, 0, 1);
     return float4(ReadHWY(xi), 0, 0, 1);  // pass through corrective's slots unchanged
 }
 
@@ -203,6 +218,25 @@ float4 LumHistSmoothPS(float4 pos : SV_Position,
     float raw  = tex2D(LumHistRaw, uv).r;
     float prev = tex2D(LumHist,    uv).r;
     return float4(lerp(prev, raw, saturate((LERP_SPEED / 100.0) * (frametime / 10.0))), 0.0, 0.0, 1.0);
+}
+
+// ─── Pass 4b — Normalized histogram entropy (R195) ────────────────────────
+// H_norm = −Σ h_i·log₂(h_i) / log₂(64). Source: EMA-smoothed LumHist.
+// H_norm=0: all mass at one luminance (fog/overexposure). H_norm=1: uniform spread.
+// Drives zone S-curve attenuation in grade.fx BuildSceneCtx.
+
+float4 HistEntropyPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    float H = 0.0;
+    [loop] for (int b = 0; b < 64; b++)
+    {
+        float h  = tex2Dlod(LumHist, float4((float(b) + 0.5) / 64.0, 0.5, 0, 0)).r;
+        H       -= h * log2(max(h, 1e-6));
+    }
+    float h_norm = saturate(H / 6.0);
+    float prev   = tex2Dlod(EntropySamp, float4(0.5, 0.5, 0, 0)).r;
+    float alpha  = saturate(frametime * 0.002);
+    return float4(lerp(prev, h_norm, alpha), 0, 0, 1);
 }
 
 // ─── Pass 5 — CDF walk → 1×1 percentile cache ─────────────────────────────
@@ -422,6 +456,12 @@ technique FrameAnalysis
         VertexShader = PostProcessVS;
         PixelShader  = LumHistSmoothPS;
         RenderTarget = LumHistTex;
+    }
+    pass HistEntropy
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = HistEntropyPS;
+        RenderTarget = EntropyTex;
     }
     pass CDFWalk
     {

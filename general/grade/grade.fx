@@ -373,6 +373,10 @@ SceneCtx BuildSceneCtx()
     // CONTRAST scale: 1.0 = calibrated default, 0 = off, 2.0 = aggressive.
     ctx.zone_str           = lerp(0.26, 0.16, ctx.ss_08_25)
                            * lerp(1.10, 0.93, lum_att) * (CONTRAST * 0.30);
+    // R195: H_norm attenuation — high-entropy scenes already have rich tonal gradation;
+    // attenuating zone stretch avoids processing well-distributed material.
+    // Gate at 0.55: fires only above typical "good" scene entropy. Max 25% attenuation.
+    ctx.zone_str          *= lerp(1.0, 0.75, saturate((ReadHWY(HWY_H_NORM) - 0.55) / 0.30));
     ctx.fc_knee            = lerp(0.90, 0.80, saturate((ctx.eff_p75 - 0.60) / 0.30));
     // R147: Bowley skewness — right-skewed (dark dominant, bright tail) → lower knee
     // to catch sparse bright tail that p75-based formula misses when p75 is low.

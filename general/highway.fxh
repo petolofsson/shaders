@@ -9,7 +9,7 @@
 // encoding; see column notes.
 //
 // Write order (dedicated HighwayWritePS pass per effect, RenderTarget=HighwayTex):
-//   Slots 194–202, 206  written by analysis_frame (HighwayWritePS, last pass)
+//   Slots 194–202, 206–208  written by analysis_frame (HighwayWritePS, last pass)
 //   Slots 203–205       written by corrective     (HighwayWritePS, last pass)
 //   Both passes pass through the other's slots from the previous HighwayTex state.
 
@@ -34,6 +34,8 @@ sampler2D HighwaySamp
 #define HWY_CHROMA_ANGLE    201    // mean hue angle (centroid of ab plane); encode: (atan2(b,a)+π)/(2π)  decode: v*2π-π
 #define HWY_ACHROM_FRAC     202    // fraction of pixels with Oklab C < 0.05 [0,1]
 #define HWY_MODE            206    // histogram mode (argmax bin center), EMA-smoothed [0,1]
+#define HWY_H_NORM          207    // normalized histogram entropy [0,1]; 0=all mass one bin, 1=uniform
+#define HWY_IQR             208    // IQR = p75 − p25 [0,1]; scene contrast width
 
 // ── corrective ────────────────────────────────────────────────────────────────
 #define HWY_ZONE_KEY        203    // zone_log_key — linear mean of zone medians [0,1]
