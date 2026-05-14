@@ -664,7 +664,15 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     final_C = max(0.0, final_C * (1.0 + sat_delta * 0.80));
     // Global saturation — -1.0 = greyscale, 0 = passthrough, +1.0 = 2× chroma.
     final_C = max(0.0, final_C * (1.0 + SATURATION));
-
+    // R196-E: cusp-relative chroma compression — ACES2 principle, Oklab/HueCeil basis.
+    // d_norm = C / HueCeil(hue). Reinhard on excess above 0.85 maps [0.85,∞) → [0.85,1.0).
+    // Equal proportional headroom per hue — deep reds and cyans no longer compressed earlier
+    // than other hues just because their cusp sits closer to where saturated colours live.
+    {
+        float d_norm = final_C / max(C_ceil, 0.001);
+        float d_over = max(0.0, d_norm - 0.85);
+        final_C      = min(final_C, (0.85 + d_over / (1.0 + d_over / 0.15)) * C_ceil);
+    }
 
     // Vector-space (a,b) reconstruction — rotate original direction by R21 delta
     float r21_cos, r21_sin;
