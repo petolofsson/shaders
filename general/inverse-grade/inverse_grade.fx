@@ -65,15 +65,21 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     sincos(scene_ang, scene_dir.y, scene_dir.x);
     float  alignment   = dot(dir, scene_dir);
     float  dir_scale   = 1.0 - alignment * 0.15;
-    // Midtone bell: peaks at L=0.5, zero at black/white. Matches ACES compression profile.
+    // Midtone bell: peaks at L=0.5, zero at black/white. Validated for game content:
+    // cinema mastering data (arxiv 2604.06276) shows midtone expansion is correct;
+    // shadow desaturation and highlight convergence do not need expansion.
     float  zone_w  = 4.0 * lab.x * (1.0 - lab.x);
-    float  lerp_t  = saturate(float(INVERSE_STRENGTH) * zone_w * c_weight * dir_scale);
-    float  factor  = lerp(1.0, slope_eff, lerp_t);
-    float  new_C   = C * factor;
-    // Per-hue ceiling — prevents expansion from overshooting natural gamut.
-    // Preserves incoming C if already above ceiling (no reduction), but blocks
-    // inverse grade from pushing further. Mirrors R73 ceilings in grade.fx.
-    new_C           = min(new_C, max(HueCeil(hue), C));
+    // R193: ACES 2.0 toe_inv rational function replaces lerp-with-saturate ceiling.
+    // c1 scales linearly with INVERSE_STRENGTH — no saturate() on the strength path.
+    // Near-neutral C expands most; C near HueCeil asymptotes to ceiling, never clips.
+    // toe_inv(x, ceil, c1, k2) = (x² + k1·x) / (k3·(x+k2))
+    float  ceil_C  = max(HueCeil(hue), C + 0.001);
+    float  c1      = float(INVERSE_STRENGTH) * (slope_eff - 1.0) * zone_w * c_weight * dir_scale;
+    float  k2      = 0.01;
+    float  k1      = sqrt(c1 * c1 + k2 * k2);
+    float  k3      = (ceil_C + k1) / (ceil_C + k2);
+    float  new_C   = (C * C + k1 * C) / (k3 * (C + k2));
+    new_C          = max(new_C, C);
     lab.yz          = dir * max(new_C, 0.0);
     float3 rgb_test = OklabToRGB(lab);
     float  max_ch   = max(max(rgb_test.r, rgb_test.g), rgb_test.b);
