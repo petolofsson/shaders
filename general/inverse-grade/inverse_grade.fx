@@ -53,6 +53,12 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     float3 ni_lmsn     = ni_lms / max(ni_lms.g, 0.001);
     float  illum_warm  = saturate(ni_lmsn.r - ni_lmsn.b + 0.5);
     float  warm_scene  = saturate((illum_warm - 0.45) / 0.35);
+    // R196-J: per-pixel illumination gate — high-luma pixels are illumination-dominated.
+    // Retinex: log(pixel) = log(reflectance) + log(illumination). Bright pixels carry
+    // more illumination energy; chroma expansion risks neonizing warm practicals and emissives.
+    // In warm scenes bright pixels are especially likely to be practicals, not compressed reflectance.
+    float  illum_luma_w = smoothstep(0.45, 0.80, lab.x);
+    float  illum_gate   = illum_luma_w * lerp(0.30, 1.0, warm_scene);
     float  bias        = HueSlopeBias(hue);
     float  bias_adj    = max(bias, 0.0) * (1.0 - warm_scene * 0.50) + min(bias, 0.0);
     float  slope_eff   = clamp(slope * (1.0 + bias_adj), 1.0, 2.2);
@@ -77,7 +83,8 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     // IS drives expansion magnitude. slope_frac adapts ±30%: vivid scenes get 70% of IS,
     // achromatic scenes get 100%. Range [0.7, 1.0] — slope is a scene modifier, not the gate.
     float  slope_frac = lerp(0.7, 1.0, saturate((slope_eff - 1.0) / 0.8));
-    float  c1      = float(INVERSE_STRENGTH) * slope_frac * zone_w * c_weight * dir_scale;
+    float  c1      = float(INVERSE_STRENGTH) * slope_frac * zone_w * c_weight * dir_scale
+                   * (1.0 - illum_gate * float(ILLUM_GATE));
     float  k2      = 0.01;
     float  k1      = sqrt(c1 * c1 + k2 * k2);
     float  k3      = (ceil_C + k1) / (ceil_C + k2);

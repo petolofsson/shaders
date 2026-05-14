@@ -385,9 +385,9 @@ SceneCtx BuildSceneCtx()
     ctx.fc_knee            = saturate(ctx.fc_knee - saturate(ctx.bowley) * 0.06);
     ctx.fc_knee_toe        = lerp(0.15, 0.25, saturate((0.40 - ctx.eff_p25) / 0.30));
     // R147: mode anchor — when toe sits well above peak dark density, pull it down.
-    float mode             = ReadHWY(HWY_MODE);
-    float toe_gap          = saturate((ctx.fc_knee_toe - mode - 0.05) / 0.10);
-    ctx.fc_knee_toe        = lerp(ctx.fc_knee_toe, mode + 0.05, toe_gap * 0.4);
+    ctx.scene_mode         = ReadHWY(HWY_MODE);
+    float toe_gap          = saturate((ctx.fc_knee_toe - ctx.scene_mode - 0.05) / 0.10);
+    ctx.fc_knee_toe        = lerp(ctx.fc_knee_toe, ctx.scene_mode + 0.05, toe_gap * 0.4);
     ctx.fc_knee_r          = clamp(ctx.fc_knee     * exp2(CURVE_R_KNEE), 0.70, 0.95);
     ctx.fc_knee_b          = clamp(ctx.fc_knee     * exp2(CURVE_B_KNEE), 0.70, 0.95);
     ctx.fc_ktoe_r          = clamp(ctx.fc_knee_toe * exp2(CURVE_R_TOE),  0.08, 0.35);
@@ -399,7 +399,6 @@ SceneCtx BuildSceneCtx()
     // R162: specular contrast — p90−p50 gap measures isolated bright sources vs scene median.
     ctx.specular_contrast     = saturate((ReadHWY(HWY_P90) - ctx.perc.g) / 0.40);
     ctx.slow_key           = max(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0.001);
-    ctx.scene_mode         = ReadHWY(HWY_MODE);
     // R176: median_C-driven chroma lift — low-chroma scenes get +25% boost, vivid scenes
     // back off 15%. Orthogonal to zone_log_key (luma). Zero new highway reads.
     float chroma_adapt     = lerp(1.25, 0.85, smoothstep(0.04, 0.18, ctx.median_C));

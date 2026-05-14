@@ -14,6 +14,9 @@
 // 0 = off. Try 0.30–0.60 after recalibrating EXPOSURE.
 #define INVERSE_LUMA  0.40
 
+// R196-J: illumination gate — see arc_raiders creative_values for full description.
+#define ILLUM_GATE  0.0
+
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
 // Remaps the raw pixel into [BLACKS, WHITES] before EXPOSURE runs.
 // BLACKS: black pedestal — prevents absolute digital black. 0 = off.

@@ -14,6 +14,15 @@
 // 0 = off. Try 0.30–0.60 after recalibrating EXPOSURE.
 #define INVERSE_LUMA  0.40
 
+// R196-J: illumination gate — suppresses chroma expansion on bright illumination-dominated
+// pixels (warm practicals, emissives, specular blooms). Retinex principle: bright pixels
+// carry more illumination energy than reflectance signal; expanding their chroma neonizes
+// light sources rather than recovering compressed scene colour.
+// In neutral scenes: max suppression ≈30% on the brightest pixels (illuminant ambiguous).
+// In warm scenes: up to 100% suppression on bright warm pixels (practicals confirmed).
+// 0 = off. 1.0 = full. 0.70 = recommended starting point.
+#define ILLUM_GATE  0.70
+
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
 // Remaps the raw pixel into [BLACKS, WHITES] before EXPOSURE runs.
 // BLACKS: black pedestal — prevents absolute digital black. 0 = off.
