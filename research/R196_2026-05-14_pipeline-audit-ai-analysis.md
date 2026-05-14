@@ -161,3 +161,183 @@ current calibration.
 
 3. **R196-C** — Operator doubling audit (LOCAL_TONE vs shadow lift).
    Measure first, act only if compounding is confirmed.
+
+---
+
+## Addendum — Algorithm upgrade recommendations (second AI analysis)
+
+**Source:** shader_pipeline_algorithm_upgrade_recommendations.md
+
+Second analysis focused on concrete algorithm replacements rather than
+architectural patterns. Most Tier 1 suggestions are HDR-specific or already
+implemented. Six items survive the SDR/SPIR-V filter.
+
+---
+
+### D. AgX-inspired highlight desaturation (from Tier 1 #1)
+
+**The claim:** AgX solves ACES problems — less cyan clipping, better perceptual
+saturation preservation, smoother highlight desaturation.
+
+**Assessment: Research-worthy, not a replacement.**
+
+The SDR argument for AgX is narrower than the HDR one, but real: AgX's
+highlight desaturation rolloff is more perceptually smooth than ACES-fit
+curves, and smoother than a Reinhard shoulder alone. Our FilmCurve already
+uses a rational shoulder (not ACES), so cyan clipping and orange skew are not
+our problem. What AgX does better: the natural transition from saturated
+highlights into luminous white, which ACES compresses chromatically.
+
+Munsell per-hue highlight rolloff (R133) partially covers this for the 12
+canonical hue bands. The gap is cross-hue: the global rolloff into white is
+driven solely by the FilmCurve shoulder shape, not by hue-aware desaturation.
+
+**Proposed direction:** Research AgX's per-hue highlight desaturation curve
+independently of the tone scale. A low-cost approximation: `chroma *= 1 −
+smoothstep(L_threshold, 1.0, L)` with L_threshold per hue band. This is
+R133-style but driven by hue-specific luminance headroom rather than a global
+curve. No tone scale replacement needed.
+
+**Action:** Deferred — research before R133 expansion pass.
+
+---
+
+### E. ACES 2 cusp-aware gamut compression (from Tier 1 #3)
+
+**The claim:** Spectral gamut compression (ACES 2 style) better preserves hue
+purity and emissive color structure than Oklab-space projection.
+
+**Assessment: Valid gap in R78 gclip.**
+
+R78 gclip is constant-hue projection — it preserves hue angle but desaturates
+linearly to the gamut boundary. This is correct for most pixels. The failure
+mode is cusp proximity: highly saturated colours near the gamut cusp (deep
+red, cyan, yellow-green) get compressed toward neutral faster than they should
+perceptually, because the cusp is not equidistant from the Oklab boundary in
+all hue directions.
+
+ACES 2's compression uses the cusp luminance and chroma as reference geometry.
+In Oklab: the cusp is the point of maximum C for a given hue — find it once
+per hue band, use it to normalize the compression distance. This is a
+within-shader lookup using HueCeil() (already computed), not a new pass.
+
+**Proposed direction:** Augment R78 gclip with cusp-relative distance
+normalisation. Before projection, compute `d_norm = C / HueCeil(hue)`. Apply
+a compression function on d_norm rather than on raw C. This gives hue-aware
+smooth compression with no structural change to R78.
+
+**Action:** R197 candidate — can be prototyped inside gclip in one pass.
+
+---
+
+### F. Grain spatial correlation (from Tier 2 #9)
+
+**The claim:** Real film grain is spatially correlated; independent per-pixel
+noise looks synthetic.
+
+**Assessment: Valid, and cheap to approximate.**
+
+Current R136 grain is per-pixel pcg3d hash — zero spatial correlation. Real
+grain clusters in silver halide aggregates; at typical screen viewing distances
+the apparent grain texture has structure at 2–4 pixel scale.
+
+The cheapest approximation: at 1/2-res, generate grain normally, then
+bilinear-upsample to full res. Bilinear blending at half-res automatically
+introduces 2×2 pixel correlation. Zero extra passes — the grain generation
+texture just operates at half-res before being composited.
+
+**GPU cost:** Negligible — same pcg3d hash, same Selwyn envelope, half the
+invocations. Upsampling is one tex2D fetch.
+
+**Action:** Quick win — implement next grain pass.
+
+---
+
+### G. CAM16 unified appearance adaptation (from Tier 2 #8)
+
+**The claim:** We already implement fragments of CAM16 (Hunt, Purkinje, HK,
+Bezold-Brücke, Abney). Unifying under CAM16 would improve coherence.
+
+**Assessment: Partially valid; unification carries risk.**
+
+The fragments are correct individually. The coupling between them is
+empirically calibrated rather than derived from a unified adaptation model.
+CAM16 full implementation would require luminance adaptation state (absolute
+cd/m² values) which we do not have in SDR — the model presupposes a reference
+white luminance.
+
+What is salvageable: CAM16's chromatic adaptation transform (CAT16) is already
+used in NeutralIllumTex for R83. Expanding CAT16 to drive Hunt coupling
+coefficient and HK weight (instead of the current L^0.25 / perceptual
+heuristics) would tighten the appearance model internally without requiring
+absolute luminance.
+
+**Action:** Note for future unified appearance pass — not blocking anything now.
+
+---
+
+### H. Anamorphic PSF approximation (from Tier 1 #4, measured PSF subset)
+
+**The claim:** Real lens PSFs are asymmetric and field-angle dependent.
+Measured PSF kernels would hugely increase realism.
+
+**Assessment: Full measured PSF is out of scope; anamorphic is achievable.**
+
+Storing and applying a measured PSF requires a separable decomposition or FFT
+— neither fits SPIR-V without significant complexity. However, the most
+visible anamorphic characteristic (horizontal stretch of highlight bokeh) is
+achievable with a modified DoG pass: apply the existing inner/outer ring blur
+at anisotropic radii (rx > ry by 1.5–2×). This gives the horizontal flare
+character of anamorphic without storing a PSF.
+
+**Action:** Low priority — current DoG+Lorentzian produces organic result.
+Could add ANAMORPHIC_RATIO control to halation if desired aesthetically.
+
+---
+
+### I. Fast Global Smoother / WLS decomposition (from Tier 1 #2)
+
+**The claim:** Guided filter leaks across strong gradients; WLS/FGS provides
+better edge isolation for local tone.
+
+**Assessment: Addressed by R190 adaptive ε; monitor for residual halo evidence.**
+
+R190 already introduced adaptive ε (Hu 2023 method) which tightens guidance
+in high-gradient regions — this is precisely the WLS advantage. FGS is
+conceptually the iterative limit of adaptive-ε guided filter. The key
+difference (FGS uses Laplacian smoothness penalty; GF uses local box variance)
+matters most in thin-structure scenes (hair, foliage). If halo artifacts on
+depth edges appear in testbed, revisit then.
+
+**Action:** Deferred — R190 adaptive ε covers the main weakness. No evidence
+of residual halos in current testbed.
+
+---
+
+### Rejected from second analysis
+
+| Suggestion | Reason |
+|------------|--------|
+| KLL quantile sketch | Kalman already stabilises percentiles; GPU SPIR-V implementation non-trivial |
+| BOCPD scene-cut detection | Kalman damping handles gradual transitions; no observed pumping artifacts |
+| JzAzBz / ICtCp | SDR context — already rejected in first analysis |
+| HDR-VDP tone allocation | SDR context |
+| Wave-optics bloom | FFT-expensive; HDR benefit only |
+| Spectral film simulation | Long-term research direction; not actionable in HLSL |
+| Neural memory color priors | Requires offline training pipeline |
+| Temporal reservoirs (ReSTIR) | Wrong domain — sample-based rendering technique, not grading |
+| Laplacian pyramid LTM | Already covered by guided filter + zone S-curve combination |
+| Full measured PSF | Separable decomposition / FFT required; out of scope for SPIR-V chain |
+
+---
+
+## Updated priority order (including addendum)
+
+1. **R196-A** — Asymmetric temporal hysteresis on specular_contrast / halation.
+2. **R196-B** — Near-clip fraction signal for inverse_grade highlight classification.
+3. **R196-E** — Cusp-aware gamut compression augment to R78 gclip. (R197 candidate)
+4. **R196-F** — Grain spatial correlation via half-res generation. (quick win)
+5. **R196-C** — Operator doubling audit (LOCAL_TONE vs shadow lift). (measure first)
+6. **R196-D** — AgX-style per-hue highlight desaturation research. (deferred)
+7. **R196-G** — CAM16 unified adaptation note. (future, not blocking)
+8. **R196-H** — Anamorphic PSF approximation. (aesthetic, low priority)
