@@ -1,4 +1,4 @@
-// frame_analysis.fx — Frame-wide histogram analysis
+// analysis_frame.fx — Frame-wide histogram analysis
 #include "../highway.fxh"
 #include "../common.fxh"
 //

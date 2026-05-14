@@ -124,7 +124,7 @@
 
 // Global chroma multiplier. -1.0 = greyscale, 0.0 = passthrough, +1.0 = 2× chroma.
 // Applied uniformly — use after Vibrance when you want a deliberate global push.
-#define SATURATION  0.00
+#define SATURATION  0.05
 
 // ── LOOK ──────────────────────────────────────────────────────────────────────
 // Applied after all grading and chroma work — ACES LMT position.

@@ -1,65 +1,35 @@
 # Handoff — 2026-05-14
 
-> **Purpose (for AI context):** Current session state. Read at session start to orient. Update at session end. Changelog entries go in CHANGELOG.md.
+> **Purpose (for AI context):** Current session state. Read at session start. Update at session end. Changelog entries go in CHANGELOG.md. **Hard limit: 60 lines including this header. Trim aggressively — one fact per line, no prose.**
 
 ## Active chain (testbed)
-
-```
-analysis_frame : inverse_grade : corrective : grade
-```
-
-grade is a **10-pass technique**: LFDownscale1 → LFDownscale2 → NeutralIllum → BilateralLogH → BilateralLogV → ColorTransform → DiffusionDownsample → DiffusionBlurH → DiffusionBlurV → Diffusion
-
-## Pipeline state
-
-See PLAN.md for authoritative scores and reasoning.
+`analysis_frame : inverse_grade : corrective : grade`
+grade: 10 passes — LFDownscale1 → LFDownscale2 → NeutralIllum → GuidedCoeff → GuidedBase → ColorTransform → DiffusionDownsample → DiffusionBlurH → DiffusionBlurV → Diffusion
 
 ## Known state
-
-- No known compile errors. Debug log: `/tmp/vkbasalt.log`
-- **Data highway** lives in `HighwayTex` (256×1 R16F, declared in `highway.fxh`). BackBuffer is a pure image surface — no y=0 data, no guards needed. `ReadHWY` reads from `HighwaySamp` via `tex2Dlod`. Write passes (`HighwayWritePS`, `RenderTarget=HighwayTex`) are last in `analysis_frame` and `corrective` techniques. `inverse_grade` reads `illum_warm` from `NeutralIllumTex` directly.
-- **Highway slots renamed:** `HWY_CHROMA_SLOPE` (was `HWY_SLOPE`), `HWY_MEDIAN_C` (was `HWY_MEAN_CHROMA`). `HWY_STEVENS` removed (dead slot).
-- **inverse_grade actual state**: R187 + R189 complete. **Single-pass** (InverseGradePS only). LocalLumaDownH/V passes, LocalLumaHTex/LocalLumaTex, L_local, BILATERAL_ZONE_DEBUG all removed. Bell curve zone weight applied: `zone_w = 4.0 * lab.x * (1.0 - lab.x)` — peaks at midtone, zero at black/white. Matches ACES compression profile and cinema chroma zone research.
-- **inverse_grade lerp_t**: `saturate(INVERSE_STRENGTH * zone_w * c_weight * dir_scale)` where `zone_w = 4.0 * lab.x * (1.0 - lab.x)` (midtone bell, research-grounded).
-- **HWY_CHROMA_SLOPE** (slot 197): replaced IQR+Bowley (broken in linear luma space — always clamped to 1.15) with `lerp(1.8, 1.15, saturate(median_C / 0.15))`. Low scene chroma → slope 1.8 (max expansion); vivid scene → slope 1.15. Encode/decode unchanged.
-- **Luma-gated EXPOSURE** in grade.fx: `gain = lerp(E, 1.0, smoothstep(0.55, 0.85, lum))` — highlights preserved, no white-out from stops-based multiplication on pre-tonemapped SDR.
-- **EXPOSURE** stops-based `rgb * pow(2, EXPOSURE)`. Testbed at 0.17 EV (recalibrated post-R187).
-- **FilmCurve** rational shoulder + toe. Asymptotically SDR-bounded by construction.
-- **CHROMA_SHOULDER** (renamed from HCHROMA_ROLLOFF) — ACES 2.0-inspired L²-weighted Michaelis-Menten toe. Default 0.0 in both profiles.
-- **VIBRANCE** first in CHROMA section (lift-only, reach for this first). **SATURATION** below it (global, uniform).
-- **Skin tone fix** in testbed: ROT_RED 0.00, SAT_RED −0.10, SAT_YELLOW −0.10. R156 warm-hue bias compresses orange/skin more than neutral hues — reducing chroma in those bands restores skin character.
-- **Illuminant-adaptive halation** — `ApplyHalation` G weights modulated by `ctx.illum_warm`. `g_mod = 1 − (illum_warm − 0.39) × 0.25`. G weights corrected to emulsion physics R:G:B ≈ 30:3:1 (was ~4× too high). D65 neutral = no change.
-- **Scene-adaptive HK + Abney** — `hk_coeff = lerp(0.32, 0.18, zone_log_key / 0.50)` — direction corrected (H-K stronger at low luminance per Hellwig 2022 + Nayatani 1997). HK gate inverted: fades above L=0.55, not below. Abney scale `1 + ctx.median_C × 0.25`. Abney per-hue corrected per Pridmore 2007 (YELLOW near-null, CYAN largest).
-- **Physics audit complete (2026-05-13)** — all stages (0–3, Output) audited. No direction bugs in Stages 0, 1, 2, Output. Stage 3 bugs were corrected in prior session. All physics-direction constants sourced from literature; calibration amplitudes empirically tuned (standard practice). One doc correction: grain envelope `sqrt(1−L_gamma)` peaks mathematically at pure black, not L≈0.50 — perceived peak is upper shadows (grain at pure black is invisible).
-- **Current creative_values** — read live from `creative_values.fx` files; do not cache here. GZW profile tuned for jungle movie aesthetic (teal-green shadows, green mids, golden highlights) — separate from arc_raiders testbed.
-- **Halation stage fix** — `ApplyHalation` moved to pre-FilmCurve in `ApplyCorrective`. All three signals (pixel, lf_mip1, lf_mip2) now pre-corrective. Physically correct: halation is a camera-negative phenomenon.
-- **Retinex stage fix (R191 P1)** — Retinex now fires BEFORE zone S-curve in `ApplyTonal`. `nl_safe = max(luma, 0.001)` (was `new_luma`). Output goes into `luma` so zone S-curve shapes the spatially-equalised signal. `r_tonal` now measures only the S-curve contribution, not S-curve×Retinex.
-- **3-way CC stage fix (R191 P2)** — `Apply3WayCC` now fires BEFORE `ApplyPrintStock` in `ApplyCorrective`. CC sets up the scene signal that print emulation receives, not the combined print response. SHADOW_TEMP/TINT may need recalibration — they are no longer fighting print stock's warm cast.
-- **R192 P3 done** — `ApplyLook(float3 lin, SceneCtx ctx)` added to `grade.fx`. Called in `ColorTransformPS` immediately after `ApplyChroma`. `ApplyCorrective` now ends after `Apply3WayCC`. Physical order is now: halation → FilmCurve → 3-way CC → tonal → chroma → print stock/bleach. Both `creative_values.fx` profiles updated: PRINT_STOCK/BLEACH_BYPASS moved from CORRECTIVE to new LOOK section between CHROMA and OUTPUT. **Needs calibration** — see below.
-- **Mid-shadow off-color** — unverified post R127/R130. Likely resolved. Re-test before marking closed.
-
-- **R190 guided filter base layer** — replaces R189 bilateral H/V passes. `GuidedCoeff` + `GuidedBase` passes at 1/8-res (r=3 texels=24px physical). Adaptive ε (Hu 2023): `a_k = var/((1+ε)·var+η)`, GF_EPS=0.05, GF_ETA=1e-8. No range kernel, no exp() per tap. `GuidedCoeffTex` (RG16F) replaces `BilateralLogHTex` (R16F). `BilateralLogTex` output slot unchanged — ApplyTonal reads same sampler. BILATERAL_STRENGTH renamed LOCAL_TONE. CLARITY_STRENGTH unchanged. creative_values.fx reordered by firing position.
-- **Bilateral Retinex improvement** — evaluated and deferred. Swapping LowFreqMip1 for bilateral base in shadow lift/Retinex is zero extra cost but marginal improvement (only visible near hard luminance edges). Code complexity not worth it now.
+- No compile errors. Log: `/tmp/vkbasalt.log`
+- **Highway**: HighwayTex 256×1 R16F in `highway.fxh`. BackBuffer pure image — no y=0 guards. `HWY_CHROMA_SLOPE` (was `HWY_SLOPE`), `HWY_MEDIAN_C` (was `HWY_MEAN_CHROMA`). `HWY_STEVENS` removed.
+- **inverse_grade**: single-pass. Zone `4·L·(1−L)`. lerp_t = `saturate(INVERSE_STRENGTH × zone_w × c_weight × dir_scale)`.
+- **HWY_CHROMA_SLOPE**: `lerp(1.8, 1.15, saturate(median_C / 0.15))` — low chroma → max expansion.
+- **EXPOSURE**: stops-based `rgb × exp2(EXPOSURE)`. Luma gate: full below 0.55, rolls off to 1.0 at 0.85.
+- **FilmCurve**: rational shoulder + toe. SDR-bounded by construction.
+- **Halation**: pre-FilmCurve. G weights modulated by `illum_warm`. R:G:B ≈ 30:3:1.
+- **Retinex (R191 P1)**: fires before zone S-curve. `nl_safe = max(luma, 0.001)`.
+- **3-way CC (R191 P2)**: fires before `ApplyPrintStock`. SHADOW_TEMP/TINT may need recal.
+- **R192 P3**: `ApplyLook` post-chroma. PRINT_STOCK/BLEACH_BYPASS in new LOOK section. **Needs calibration.**
+- **R190**: GuidedCoeff+GuidedBase at 1/8-res (r=3 texels). **log2-luma space** (was log10). GuidedCoeffTex (RG16F). BilateralLogTex slot unchanged. BILATERAL_STRENGTH → LOCAL_TONE.
+- **Skin tone fix**: ROT_RED 0.00, SAT_RED −0.10, SAT_YELLOW −0.10.
+- **HK**: `lerp(0.32, 0.18, zone_log_key / 0.50)` — stronger at low luminance. Abney: `1 + median_C × 0.25`.
+- **Mid-shadow off-color**: unverified post-R127/R130. Re-test before vk-colorist Phase 2.
 
 ## R192 P3 calibration — pending visual evaluation
-
-PRINT_STOCK and BLEACH_BYPASS now fire after all chroma work. Expected perceptual changes
-(do not pre-adjust — evaluate visually first):
-
-- **PRINT_STOCK feels stronger**: was desaturating into VIBRANCE/SAT_* which then boosted
-  back. Now desaturates on the fully-graded signal. Try 0.25–0.30 as starting point.
-- **Warm shadow bow more visible**: wasn't being compensated by downstream CC anymore (P2
-  already corrected CC order, but now the bow lands on fully-lifted shadows). SHADOW_TEMP
-  may want to move closer to 0 — it was partly offsetting print stock's warm cast.
-- **BLEACH_BYPASS shadow desaturation denser**: shadow lift + Retinex no longer softening
-  the desaturation. Try 0.03 from 0.05 as starting point.
-- **VIBRANCE/SAT_* may need to come down**: were previously calibrated against a
-  pre-desaturated signal. Now work on full-chroma, then print stock desaturates on top.
-- **Midtone contrast from BLEACH_BYPASS rides on top of zone S-curve**: more apparent grit.
+- PRINT_STOCK: try 0.25–0.30 (fires on fully-graded signal, feels stronger)
+- BLEACH_BYPASS: try 0.03 (shadow desaturation denser; lift no longer softens it)
+- SHADOW_TEMP: move toward 0 (was partly compensating print stock warm cast)
+- VIBRANCE/SAT_*: may need to come down (calibrated against pre-desaturated signal)
 
 ## Next candidates
-
-- **ApplyChroma** still ~80 lines — over Rule 4 limit. Split into ApplyChromaLift + ApplyChromaFinish deferred.
-- **CHROMA_SHOULDER calibration** — default 0.0; try 0.35 as starting point when evaluating highlight rolloff character.
-- **vk-colorist Phase 0** — Rust/Vulkan layer infrastructure is independent of shader quality; can start when ready.
-- **Re-test mid-shadow off-color** — confirm resolved before vk-colorist Phase 2.
+- ApplyChroma split — still ~80 lines, over Rule 4 limit
+- CHROMA_SHOULDER calibration — try 0.35 as starting point
+- vk-colorist Phase 0 — Rust/Vulkan layer, independent of shader quality
+- Re-test mid-shadow off-color

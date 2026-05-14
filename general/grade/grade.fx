@@ -17,7 +17,6 @@
 uniform float FRAME_TIMER < source = "timer"; >;        // ms since app start
 
 // ─── Chroma lift constants ─────────────────────────────────────────────────
-#define MIN_WEIGHT      1.0
 #define GREEN_HUE_COOL  (4.0 / 360.0)
 
 
@@ -119,7 +118,7 @@ sampler2D NeutralIllumSamp
 
 
 // R190 guided filter base layer — replaces R189 bilateral H/V passes.
-// Self-guided, log10-luma space. Adaptive ε (Hu et al. 2023): a_k = var/(（1+ε)·var + η).
+// Self-guided, log2-luma space. Adaptive ε (Hu et al. 2023): a_k = var/((1+ε)·var + η).
 // r=3 texels at 1/8-res → 7×7 = 49 taps. No range kernel, no exp() per tap.
 #define GF_R    3                           // box radius in texels at 1/8-res (24 px physical)
 #define GF_EPS  0.05                        // ε scale — a_k ceiling = 1/(1+GF_EPS) ≈ 0.952
@@ -324,10 +323,8 @@ float2 ApplyChromaticInduction(float2 ab, float3 lf_mip2, float final_C)
 // ─── ColorTransformPS stage structs and helpers ────────────────────────────
 
 struct SceneCtx {
-    float3 lms_illum_norm;
     float3 cfilm_floor;
     float4 perc;
-    float  eff_p25, eff_p75;
     float  zone_log_key, zone_std, zone_str;
     float  ss_08_25, ss_04_25;
     float  scene_cut;
@@ -336,7 +333,6 @@ struct SceneCtx {
     float  fc_knee_toe, fc_ktoe_r,  fc_ktoe_b;
     float  shadow_lift_str;
     float  chroma_str_base;
-    float  bowley;
     float  scene_mode;
     float  specular_contrast;
     float  illum_warm;   // CAT16 L/M − S/M + 0.5; D65≈0.39, warm>0.39, cool<0.39
@@ -356,17 +352,15 @@ SceneCtx BuildSceneCtx()
     float3 illum_rgb       = tex2Dlod(NeutralIllumSamp, float4(0.5, 0.5, 0, 0)).rgb;
     float3 illum_norm      = illum_rgb / max(Luma(illum_rgb), 0.001);
     float3 lms_illum       = mul(M_fwd, illum_norm);
-    ctx.lms_illum_norm     = lms_illum / max(lms_illum.g, 0.001);
-    ctx.illum_warm         = saturate(ctx.lms_illum_norm.r - ctx.lms_illum_norm.b + 0.5);
+    float3 lms_illum_norm  = lms_illum / max(lms_illum.g, 0.001);
+    ctx.illum_warm         = saturate(lms_illum_norm.r - lms_illum_norm.b + 0.5);
     ctx.median_C           = clamp(ReadHWY(HWY_MEDIAN_C), 0.0, 0.30);
-    ctx.cfilm_floor        = BLACKS * (ctx.lms_illum_norm * float3(1.02, 1.00, 0.97));
+    ctx.cfilm_floor        = BLACKS * (lms_illum_norm * float3(1.02, 1.00, 0.97));
     ctx.perc               = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
     ctx.scene_cut          = ReadHWY(HWY_SCENE_CUT);
     float4 zstats          = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0));
     ctx.zone_log_key       = zstats.r;
     ctx.zone_std           = zstats.g;
-    ctx.eff_p25            = ctx.perc.r;
-    ctx.eff_p75            = ctx.perc.b;
     ctx.ss_08_25           = smoothstep(0.06, 0.16, ctx.zone_std);
     ctx.ss_04_25           = smoothstep(0.03, 0.16, ctx.zone_std);
     float lum_att          = smoothstep(0.10, 0.40, ctx.zone_log_key);
@@ -377,13 +371,13 @@ SceneCtx BuildSceneCtx()
     // attenuating zone stretch avoids processing well-distributed material.
     // Gate at 0.55: fires only above typical "good" scene entropy. Max 25% attenuation.
     ctx.zone_str          *= lerp(1.0, 0.75, saturate((ReadHWY(HWY_H_NORM) - 0.55) / 0.30));
-    ctx.fc_knee            = lerp(0.90, 0.80, saturate((ctx.eff_p75 - 0.60) / 0.30));
+    ctx.fc_knee            = lerp(0.90, 0.80, saturate((ctx.perc.b - 0.60) / 0.30));
     // R147: Bowley skewness — right-skewed (dark dominant, bright tail) → lower knee
     // to catch sparse bright tail that p75-based formula misses when p75 is low.
-    ctx.bowley             = (ctx.perc.b + ctx.perc.r - 2.0 * ctx.perc.g)
+    float  bowley          = (ctx.perc.b + ctx.perc.r - 2.0 * ctx.perc.g)
                            / max(ctx.perc.b - ctx.perc.r, 0.01);
-    ctx.fc_knee            = saturate(ctx.fc_knee - saturate(ctx.bowley) * 0.06);
-    ctx.fc_knee_toe        = lerp(0.15, 0.25, saturate((0.40 - ctx.eff_p25) / 0.30));
+    ctx.fc_knee            = saturate(ctx.fc_knee - saturate(bowley) * 0.06);
+    ctx.fc_knee_toe        = lerp(0.15, 0.25, saturate((0.40 - ctx.perc.r) / 0.30));
     // R147: mode anchor — when toe sits well above peak dark density, pull it down.
     ctx.scene_mode         = ReadHWY(HWY_MODE);
     float toe_gap          = saturate((ctx.fc_knee_toe - ctx.scene_mode - 0.05) / 0.10);
@@ -393,7 +387,7 @@ SceneCtx BuildSceneCtx()
     ctx.fc_ktoe_r          = clamp(ctx.fc_knee_toe * exp2(CURVE_R_TOE),  0.08, 0.35);
     ctx.fc_ktoe_b          = clamp(ctx.fc_knee_toe * exp2(CURVE_B_TOE),  0.08, 0.35);
     float _sls_t              = saturate(((ctx.perc.r + ctx.scene_mode) * 0.5 - 0.025) / 0.175);
-    float _std_suppress       = smoothstep(0.05, 0.13, ReadHWY(HWY_ZONE_STD));
+    float _std_suppress       = smoothstep(0.05, 0.13, ctx.zone_std);
     ctx.shadow_lift_str       = lerp(1.50, 0.45, _sls_t*_sls_t*_sls_t*(_sls_t*(_sls_t*6.0-15.0)+10.0))
                               * (1.0 - _std_suppress);
     // R162: specular contrast — p90−p50 gap measures isolated bright sources vs scene median.
@@ -406,10 +400,10 @@ SceneCtx BuildSceneCtx()
     return ctx;
 }
 
-float3 ApplyCorrective(float3 lin, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
+float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
 {
     float3 lin_p = max(lin, 0.0);
-    float  E     = pow(2.0, EXPOSURE);
+    float  E     = exp2(EXPOSURE);
     float  lum   = Luma(lin_p);
     float  gain  = lerp(E, 1.0, smoothstep(0.55, 0.85, lum));
     float3 lin_e = lin_p * gain;
@@ -433,7 +427,7 @@ float3 ApplyCorrective(float3 lin, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
     // cannot provide. min() gates to darkening only: no highlight blowup, no tonal disconnect.
     // scale_delta tapers smoothly to zero as L→0.728, so the transition is seamless.
     if (INVERSE_LUMA > 0.0) {
-        float  L_disp      = Luma(tex2D(BackBuffer, uv).rgb);
+        float  L_disp      = col_luma;
         float  shadow_w    = smoothstep(0.005, 0.04, L_disp);
         const float A = 2.51, B = 0.03, C = 2.43, D = 0.59, E = 0.14;
         float  disc        = ((D*D - 4.0*C*E)*L_disp + 4.0*A*E - 2.0*B*D)*L_disp + B*B;
@@ -461,16 +455,17 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     //          per-pixel detail the 1/8-res source cannot resolve.
     // No-op at BS=CS=0. Independent — either or both can be active.
     {
-        float log_base   = tex2D(BilateralLogSamp, uv).r;
-        float log_key    = log10(max(ReadHWY(HWY_ZONE_KEY), 1e-3));
-        float log_pixel  = log10(max(luma, 1e-3));
+        float log_base   = tex2D(BilateralLogSamp, uv).r;  // log2-luma base layer
+        float log_key    = log2(max(ctx.zone_log_key, 1e-3));
+        float log_pixel  = log2(max(luma, 1e-3));
         float log_detail = log_pixel - log_base;
         // LOCAL_TONE: lift-only. Gate on max(log_base, log_pixel) — a bright pixel in a
         // locally-dark area (e.g. lamp against dark wall) has low log_base but high log_pixel;
         // gating on base alone would lift the highlight. Using the higher of the two ensures
         // only pixels that are themselves below the global key receive lift.
-        float bil_ratio  = pow(10.0, float(LOCAL_TONE)       * 0.025 * max(log_key - max(log_base, log_pixel), 0.0)
-                                   + float(CLARITY_STRENGTH) * 0.025 * log_detail);
+        // 0.08306 = 0.025 * log2(10) — keeps behaviour identical to the former log10 formula.
+        float bil_ratio  = exp2(float(LOCAL_TONE)       * 0.08306 * max(log_key - max(log_base, log_pixel), 0.0)
+                              + float(CLARITY_STRENGTH) * 0.08306 * log_detail);
         bil_ratio        = clamp(bil_ratio, 0.5, 2.0);
         float3 lin_b     = lin * bil_ratio;
         lin              = lin_b / max(max(lin_b.r, max(lin_b.g, lin_b.b)), 1.0);
@@ -524,10 +519,11 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     // R62 Finding 3: chroma-stable tonal — apply luma ratio in Oklab L to prevent zone S-curve from shifting chroma
     float3 lab_t  = RGBtoOklab(saturate(lin));
     float r_tonal = new_luma / max(luma, 0.001);
-    float cbrt_r  = exp2(log2(max(r_tonal, 1e-10)) * (1.0 / 3.0));
+    float log_r   = log2(max(r_tonal, 1e-10));
+    float cbrt_r  = exp2(log_r * (1.0 / 3.0));
     lab_t.x = saturate(lab_t.x * cbrt_r);
     // R65: CAM16 Hunt exponent 0.25 — colorfulness ∝ L^0.25 (Hunt 2004, CIECAM02 eq.14-16)
-    float r65_scale = exp2(log2(max(r_tonal, 1e-10)) * 0.25);
+    float r65_scale = exp2(log_r * 0.25);
     float r65_sw    = smoothstep(0.25, 0.0, lab_t.x);
     lab_t.y = lab_t.y * lerp(1.0, r65_scale, r65_sw);
     lab_t.z = lab_t.z * lerp(1.0, r65_scale, r65_sw);
@@ -602,17 +598,11 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     r21_delta    += (lab.x - 0.50) * 0.015 * (0.10 * ch_h + 0.50 * sh2_h + 0.30 * ch3_h);
     float h_out  = frac(h_perc + r21_delta * 0.10);
     float hw_o0  = HueBandWeight(h_out, HB_BAND_RED);
-    float hw_org = HueBandWeight(h_out, HB_BAND_ORANGE);
-    float hw_amb = HueBandWeight(h_out, HB_BAND_AMBER);
     float hw_o1  = HueBandWeight(h_out, HB_BAND_YELLOW);
     float hw_o2  = HueBandWeight(h_out, HB_BAND_GREEN);
-    float hw_tel = HueBandWeight(h_out, HB_BAND_TEAL);
     float hw_o3  = HueBandWeight(h_out, HB_BAND_CYAN);
-    float hw_azr = HueBandWeight(h_out, HB_BAND_AZURE);
     float hw_o4  = HueBandWeight(h_out, HB_BAND_BLUE);
-    float hw_vio = HueBandWeight(h_out, HB_BAND_VIOLET);
     float hw_o5  = HueBandWeight(h_out, HB_BAND_MAGENTA);
-    float hw_ros = HueBandWeight(h_out, HB_BAND_ROSE);
 
     float chroma_str = ctx.chroma_str_base;
     chroma_str *= lerp(1.0, 0.65, smoothstep(0.02, 0.08, local_var));  // R68A: attenuate in textured regions
@@ -753,7 +743,7 @@ float3 ApplyLook(float3 lin, SceneCtx ctx)
     out_lin = ApplyBleachBypass(out_lin, BLEACH_BYPASS);
     // R192: printer lights — per-channel contact-printer exposure after all emulsion work.
     // 25 = neutral, 1 point = 1/12 stop. Mirrors film lab RGB printer head notation.
-    out_lin *= pow(2.0, float3(PRINTER_R - 25, PRINTER_G - 25, PRINTER_B - 25) / 12.0);
+    out_lin *= exp2(float3(PRINTER_R - 25, PRINTER_G - 25, PRINTER_B - 25) / 12.0);
     return saturate(out_lin);
 }
 
@@ -767,7 +757,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
     float  col_luma = Luma(col.rgb);
     float3 lin      = col.rgb * (WHITES - ctx.cfilm_floor) + ctx.cfilm_floor;
-    lin = lerp(lin, ApplyCorrective(lin, uv, lf_mip2_tex, ctx), CORRECTIVE_STRENGTH * 0.01);
+    lin = lerp(lin, ApplyCorrective(lin, col_luma, uv, lf_mip2_tex, ctx), CORRECTIVE_STRENGTH * 0.01);
 
     TonalOut tonal      = ApplyTonal(lin, col_luma, uv, lf_mip2_tex, ctx);
     float    tonal_gate = TONAL_STRENGTH * 0.01;
@@ -809,9 +799,9 @@ float4 LFDownscale2PS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
 }
 
 // ─── R189 bilateral log-luma passes ──────────────────────────────────────────
-// H-pass: sample CreativeLowFreqSamp (1/8-res), convert to log10 luma, bilateral filter.
+// H-pass: sample CreativeLowFreqSamp (1/8-res), convert to log2 luma, bilateral filter.
 // R190 guided filter — Pass 1: compute local linear model coefficients (a_k, b_k).
-// Self-guided in log10-luma space. Adaptive ε (Hu 2023): a_k = var/((1+ε)·var + η).
+// Self-guided in log2-luma space. Adaptive ε (Hu 2023): a_k = var/((1+ε)·var + η).
 // Reads CreativeLowFreqSamp (pre-corrective 1/8-res RGBA16F). Writes GuidedCoeffTex (RG16F).
 float2 GuidedCoeffPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
@@ -821,7 +811,7 @@ float2 GuidedCoeffPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
     [unroll] for (int dy = -GF_R; dy <= GF_R; dy++)
     [unroll] for (int dx = -GF_R; dx <= GF_R; dx++)
     {
-        float I = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv + float2(dx * px, dy * py)).rgb), 1e-3));
+        float I = log2(max(Luma(tex2D(CreativeLowFreqSamp, uv + float2(dx * px, dy * py)).rgb), 1e-3));
         sum_I  += I;
         sum_II += I * I;
     }
@@ -835,7 +825,7 @@ float2 GuidedCoeffPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
 
 // R190 guided filter — Pass 2: average coefficients over window, reconstruct base layer.
 // Reads GuidedCoeffSamp (RG16F) + center pixel from CreativeLowFreqSamp.
-// Writes BilateralLogTex (R16F) — same slot as R189, ApplyTonal unchanged.
+// Writes BilateralLogTex (R16F) — log2-luma base layer read by ApplyTonal.
 float GuidedBasePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float px = 8.0 / BUFFER_WIDTH;
@@ -850,7 +840,7 @@ float GuidedBasePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     }
     float mean_a = sum_a / GF_N;
     float mean_b = sum_b / GF_N;
-    float I_c    = log10(max(Luma(tex2D(CreativeLowFreqSamp, uv).rgb), 1e-3));
+    float I_c    = log2(max(Luma(tex2D(CreativeLowFreqSamp, uv).rgb), 1e-3));
     return mean_a * I_c + mean_b;
 }
 
@@ -991,7 +981,7 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float  adapt_str      = eff_diff * 0.22 * lerp(0.8, 1.2, saturate(iqr / 0.5));
     float  zone_log_key   = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
     float  diff_key_scale = lerp(1.20, 0.85, smoothstep(0.05, 0.25, zone_log_key));
-    float  diff_ap_scale  = lerp(1.10, 0.90, saturate((EXPOSURE - 0.70) / 0.60));
+    float  diff_ap_scale  = lerp(1.10, 0.90, saturate(EXPOSURE / 0.80));
     float  diff_bowley    = (perc.b + perc.r - 2.0 * perc.g) / max(perc.b - perc.r, 0.01);
     adapt_str *= diff_key_scale * diff_ap_scale * lerp(1.0, 1.3, saturate(diff_bowley));
 

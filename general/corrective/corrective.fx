@@ -23,7 +23,6 @@
 #define VFF_E_SIGMA_CHROMA 0.04   // innovation scale for chroma — Oklab a/b magnitudes are smaller
 #define KALMAN_R         0.01     // measurement noise
 #define KALMAN_K_INF     0.095    // steady-state gain for secondary channels (EMA)
-#define SAT_THRESHOLD    2
 
 uniform float FRAME_TIMER < source = "timer"; >;        // ms since app start
 
@@ -248,7 +247,7 @@ float4 ComputeZoneStats()
 
 float4 ComputeSlowKey()
 {
-    float zone_log_key = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
+    float zone_log_key = ComputeZoneStats().r;
     float prev_slow    = tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
     prev_slow = lerp(zone_log_key, prev_slow, step(0.001, prev_slow));
     return float4(lerp(prev_slow, zone_log_key, 0.003), 0, 0, 0);
@@ -309,7 +308,7 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
                        float2 uv  : TEXCOORD0) : SV_Target
 {
     int band_idx = int(pos.x);
-    if (pos.y >= 1.0 || band_idx >= 8) return float4(0, 0, 0, 0);
+    if (pos.y >= 1.0) return float4(0, 0, 0, 0);
     if (band_idx == 6) return ComputeZoneStats();
     if (band_idx == 7) return ComputeSlowKey();
     return UpdateChromaKalman(band_idx);
@@ -324,7 +323,7 @@ float4 PassthroughPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
 }
 
 // ─── Pass 9 — Highway write (HighwayTex, 256×1) ───────────────────────────
-// Adds corrective slots 203-205, 213. Passes through analysis_frame slots unchanged.
+// Adds corrective slots 203-205. Passes through analysis_frame slots unchanged.
 
 float4 HighwayWritePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
