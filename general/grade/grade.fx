@@ -400,7 +400,10 @@ SceneCtx BuildSceneCtx()
     ctx.specular_contrast     = saturate((ReadHWY(HWY_P90) - ctx.perc.g) / 0.40);
     ctx.slow_key           = max(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0.001);
     ctx.scene_mode         = ReadHWY(HWY_MODE);
-    ctx.chroma_str_base    = VIBRANCE * 0.04;
+    // R176: median_C-driven chroma lift — low-chroma scenes get +25% boost, vivid scenes
+    // back off 15%. Orthogonal to zone_log_key (luma). Zero new highway reads.
+    float chroma_adapt     = lerp(1.25, 0.85, smoothstep(0.04, 0.18, ctx.median_C));
+    ctx.chroma_str_base    = VIBRANCE * 0.04 * chroma_adapt;
     return ctx;
 }
 
