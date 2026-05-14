@@ -341,3 +341,172 @@ of residual halos in current testbed.
 6. **R196-D** — AgX-style per-hue highlight desaturation research. (deferred)
 7. **R196-G** — CAM16 unified adaptation note. (future, not blocking)
 8. **R196-H** — Anamorphic PSF approximation. (aesthetic, low priority)
+
+---
+
+## Addendum — Perceptual scene reconstruction (third AI analysis)
+
+**Source:** algo.md
+
+Third analysis frames the pipeline's next step as "perceptual scene
+reconstruction from SDR constraints" rather than more inverse tone mapping.
+Seven points evaluated; three are new and actionable.
+
+---
+
+### J. Illumination/reflectance separation in inverse_grade (from point 3)
+
+**The claim:** SDR tonemappers compress illumination and reflectance differently.
+Inverse grade should act on them separately — expansion on reflectance, not on
+the full pixel appearance signal.
+
+**Assessment: Valid and directly addresses the testbed yellow/orange issue.**
+
+The decomposition model:
+
+```text
+log(pixel) = log(reflectance) + log(illumination)
+```
+
+We already have the illumination estimate: `LowFreqMip1Tex` (1/16-res) is the
+Retinex illuminant `illum_s0`. The reflectance residual is:
+
+```text
+log_reflectance = log(pixel) - log(illum_s0)
+```
+
+Currently `inverse_grade.fx` operates on the full pixel signal — it expands
+chroma uniformly across pixel appearance, with only scene-level gates
+(achromatic fraction, dominant-hue suppression, warm-scene bias). It has no
+mechanism to distinguish:
+
+- A warm practical light (illumination-dominated, high illum_s0, low
+  reflectance variation) — should NOT expand chroma
+- Skin under warm light (reflectance-dominated, moderate illum_s0, meaningful
+  reflectance) — should expand chroma
+- Emissive FX (extreme illumination, near-zero reflectance signal) — must not
+  expand
+
+**Proposed direction:**
+
+Compute `illum_weight = smoothstep(0.30, 0.70, illum_s0)` at each pixel (read
+from `LowFreqMip1Samp`). This is 1 at illumination-dominated regions,
+0 at dark/reflectance-dominated regions. Gate the chroma expansion strength by
+`(1 − illum_weight * ILLUM_GATE)` where ILLUM_GATE is a new knob in
+creative_values.
+
+LowFreqMip1 is already passed into `grade.fx` but not into `inverse_grade.fx`.
+`inverse_grade.fx` would need to declare and read `CreativeLowFreqSamp` (1/8-res,
+already in `corrective.fx` scope) or access `LowFreqMip1` via a new sampler
+declaration — the texture is available since it is a cross-technique read
+target. Alternatively, encode a scene-level illum_fraction to a highway slot
+and use that as a global gate (cheaper, less spatially precise).
+
+**Priority: High** — directly addresses the most persistent testbed artifact
+(warm practical over-saturation). Connects to R196-B: near-clip pixels in
+illumination-dominated regions should have zero expansion.
+
+---
+
+### K. Unified scene_confidence signal (from point 5)
+
+**The claim:** Multiple independent observation gates (hue gating, scene-cut
+override, entropy attenuation) should be unified into a single `scene_confidence`
+scalar that gates all temporal adaptation.
+
+**Assessment: Valid, extends R196-A.**
+
+We already have the pieces:
+- Hue observation confidence: `R171` gate (only updates Kalman when band present)
+- Scene cut override: hard reset to gain=1.0 on p50 spike
+- Entropy attenuation: `R195` reduces zone_str when H_norm > 0.55
+
+A unified `scene_confidence` highway signal would be:
+
+```text
+confidence = 1.0
+confidence *= (1 − scene_cut_strength)       // from slot 199
+confidence *= lerp(1.0, 0.5, entropy_excess) // H_norm overshoot
+confidence *= lerp(1.0, 0.6, specular_gap)   // p90−p50 burst
+```
+
+This single float could then gate:
+- Kalman process noise Q (boost Q on low confidence → faster adaptation)
+- Asymmetric hysteresis rise speed (from R196-A — slow down rise on low confidence)
+- Halation eff_str (existing R162 gate already does part of this)
+- inverse_grade chroma expansion strength
+
+**Key observation:** The sources the analysis mentions as confidence-reducing
+(particles, muzzle flashes, bloom spikes) all manifest as sudden specular_gap
+increases — already in slot 200/p90. The information exists; it just isn't
+unified.
+
+**GPU cost:** One additional highway slot write (combine existing signals). No
+new analysis passes needed.
+
+**Action:** Implement as extension to R196-A. Write to a new highway slot in
+`corrective.fx` HighwayWritePS. Priority after R196-A.
+
+---
+
+### L. Highlight shape priors for inverse_grade classification (from point 6)
+
+**The claim:** Semantic highlight classes, bloom morphology, and local frequency
+analysis let a realtime pipeline approximate what diffusion-based inverse tone
+mapping does via learned priors.
+
+**Assessment: Valid extension of R196-B.**
+
+R196-B proposes near-clip fraction as the primary classification signal.
+This analysis adds two spatial signals that would sharpen the classification:
+
+1. **Highlight compactness:** A compact, high-frequency near-clip region
+   (small area, sharp edges) = specular spike — should not expand. A large,
+   soft near-clip region (window, sky) = compressed scene luminance — could
+   expand. This is measurable at 1/8-res: `near_clip_area / near_clip_perimeter`
+   ratio (approximated with 3×3 neighbourhood dilate/erode) is a compactness
+   proxy.
+
+2. **Local frequency content at clip boundary:** High local gradient at the
+   edge of a near-clip region = structural boundary (specular on dark bg).
+   Low local gradient = gradual falloff (wide illumination source). This is
+   the Laplacian energy in a neighbourhood around near-clip pixels — expensive
+   per-pixel but cheap at 1/8-res on the near-clip mask.
+
+Both signals could be derived from `CreativeLowFreqTex` mip0 (1/8-res,
+already in corrective.fx scope) using the near-clip mask defined in R196-B.
+
+**Practical implementation order:**
+1. Implement R196-B's near-clip fraction first (scene-level gate)
+2. Add compactness signal as second highway slot if fraction alone is
+   insufficient
+3. Local frequency analysis at clip boundary as stretch target
+
+**Action:** Folds into R196-B implementation — record the spatial extensions
+as stretch targets.
+
+---
+
+### Rejected from third analysis
+
+| Point | Reason |
+|-------|--------|
+| #1 — Learned parametric scene embeddings | HighwayTex already IS the compact scene state vector; the "learned" part requires ML offline training not available in SPIR-V chain |
+| #2 — Domain transform / recursive bilateral | Already covered by R196-I — R190 adaptive ε addresses the main guided filter weakness; no perf concern at 1/8-res |
+| #4 — Learned hue manifold LUT | Psychovisual parameters are adaptive by design (Purkinje gate, R176 chroma adapt); baking them into a LUT loses scene-responsiveness |
+| #7 — Unified appearance-domain processing | Oklab already collapses luma/chroma; full simultaneous processing would require pipeline stage reorder — major rewrite for uncertain gain |
+
+---
+
+## Final priority order (all analyses)
+
+1. **R196-A** — Asymmetric temporal hysteresis on specular_contrast / halation.
+2. **R196-J** — Illumination/reflectance separation gate in inverse_grade. (testbed issue)
+3. **R196-B+L** — Near-clip fraction + highlight shape priors for inverse_grade.
+4. **R196-K** — Unified scene_confidence highway signal. (extends A)
+5. **R196-E** — Cusp-aware gamut compression augment to R78 gclip. (R197 candidate)
+6. **R196-F** — Grain spatial correlation via half-res generation. (quick win)
+7. **R196-C** — Operator doubling audit (LOCAL_TONE vs shadow lift). (measure first)
+8. **R196-D** — AgX-style per-hue highlight desaturation research. (deferred)
+9. **R196-G** — CAM16 unified adaptation note. (future)
+10. **R196-H** — Anamorphic PSF approximation. (aesthetic)
