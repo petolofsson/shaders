@@ -71,7 +71,7 @@
 // Local contrast / clarity (R190). Scales the guided filter detail layer before reconstruction.
 // >0 = micro-contrast punch (Lightroom Clarity equivalent). <0 = spatial softening.
 // 0 = off. 0.10–0.30 = subtle punch. 0.50 = strong. Independent of LOCAL_TONE.
-#define CLARITY_STRENGTH  0.30
+#define CLARITY_STRENGTH  0.40
 
 // Scales the adaptive zone S-curve strength. 1.0 = calibrated default. 0 = off.
 // 2.0 = aggressive. Range 0–2.
@@ -142,9 +142,9 @@
 // Mirrors film lab RGB printer head notation: 25 = neutral, 1 point = 1/12 stop.
 // Range 1–50. Push R up for warm cast, push B up for cool cast, etc.
 // Applied after print stock and bleach bypass — post-LMT.
-#define PRINTER_R  26
-#define PRINTER_G  26
-#define PRINTER_B  26
+#define PRINTER_R  26.5
+#define PRINTER_G  26.5
+#define PRINTER_B  26.5
 
 // ── OUTPUT ────────────────────────────────────────────────────────────────────
 // Hollywood Black Magic dual-component model (R131):
