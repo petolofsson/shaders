@@ -510,3 +510,280 @@ as stretch targets.
 8. **R196-D** — AgX-style per-hue highlight desaturation research. (deferred)
 9. **R196-G** — CAM16 unified adaptation note. (future)
 10. **R196-H** — Anamorphic PSF approximation. (aesthetic)
+
+---
+
+## Web search findings — literature strength/weakness assessment per case
+
+**Searches conducted 2026-05-14.** Each case assessed against published
+research to confirm, weaken, or reframe the original proposal. Sources listed
+inline.
+
+---
+
+### R196-A — Asymmetric temporal hysteresis
+**Verdict: STRENGTHENED**
+
+Tariq et al. 2023 "Perceptually Adaptive Real-Time Tone Mapping" (SIGGRAPH
+Asia 2023) directly validates asymmetric temporal adaptation as an open
+problem in realtime grading. The paper proposes a perceptual contrast-matching
+framework with real-time adaptive tone curve estimation, confirming that
+frame-reactive pipelines produce appearance inconsistencies.
+
+"Adaptive Temporal Tone Mapping" (Johnson, Utah) addresses asymmetric temporal
+adaptation specifically in the tone mapping context — confirming this is a
+documented problem class with known solutions.
+
+**New implementation constraint from confidence Kalman literature:** Research
+on confidence-weighted Kalman filters (2022–2024) notes that "adaptive
+observation noise mutation causes abrupt changes in the Kalman gain, which
+reduces stability." The asymmetric EMA for specular_contrast must itself be
+EMA-smoothed before being fed into the Kalman confidence path — a raw spike
+signal would introduce exactly the instability described. This informs the
+implementation: smooth the rise/fall signal before use, not just the output.
+
+---
+
+### R196-B+L — Near-clip highlight classification + shape priors
+**Verdict: DIRECTION STRENGTHENED, optical proxies partially weakened**
+
+"Semantic Aware Diffusion Inverse Tone Mapping" (arXiv 2405.15468, 2024)
+confirms that highlight classification is the correct approach for SDR→HDR
+chroma expansion quality. The paper's method uses FastFCN semantic segmentation
+(ADE20K: sky, ground, vegetation, water, human subjects) combined with a
+directed acyclic graph of scene luminance relationships to determine what is
+clipped and how to handle it.
+
+**Key finding for R196-B:** The paper does NOT classify highlights by optical
+properties (specular vs. emissive). Distinction comes from semantic class
+identity — what the pixel IS, not how bright it is. This means our near-clip
+fraction + compactness proxy is a heuristic approximation of semantic class,
+not a direct equivalent. The R196-L compactness/frequency approach is the
+closest realtime analogue: compact high-frequency clips → specular (skip
+expansion); large soft clips → sky/window (allow expansion).
+
+**Practical conclusion:** Direction is sound and well-validated. Optical
+proxies will misclassify edge cases (e.g., a neon sign is compact but should
+not have chroma suppressed; a fogged-out window is large and soft but may not
+have recoverable chroma). Implement R196-B first as a scene-level guard; treat
+R196-L as a refinement pass if scene-level gating proves insufficient.
+
+---
+
+### R196-C — Operator doubling audit (LOCAL_TONE vs shadow lift)
+**Verdict: STRENGTHENED as a concern**
+
+Wronski 2022 "Exposure Fusion – local tonemapping for real-time rendering"
+confirms: "haloing artifacts can result from both relatively strong settings
+as well as some optimizations and limitations of the algorithm." More
+specifically, search results confirm that stacked local tone mapping operators
+"result in blinking, dark and light halo and other unpleasant artifacts when
+the camera moves in dynamic pictures." A separate measurement result: "both
+types of artifact become perceptible from 1% onwards when spatial extent is
+adjusted."
+
+Literature confirms this is a real risk class. The guidance stands: measure
+on a dark interior frame with each operator isolated before coupling them.
+
+---
+
+### R196-D — AgX per-hue highlight desaturation
+**Verdict: WEAKENED in extractability, concept confirmed**
+
+AgX research confirms the "path to white" — graceful desaturation as colours
+approach highlight — corrects the "Notorious 6" hue shifts that ACES produces.
+The darktable AgX module and reshade.me AgX DRT shader document this behaviour.
+
+**Key finding that weakens the case:** AgX's highlight desaturation is NOT a
+separate operator — it is intrinsic to the tone scale transform, achieved by
+adjusting input primaries before the curve is applied. The "path to white" is
+tone-scale-integrated. Extracting just the per-hue desaturation rolloff into
+our existing FilmCurve without adopting the full AgX tone scale would require
+reverse-engineering the implicit desaturation curves, which vary by hue in a
+way that is not publicly specified as standalone curves.
+
+**Revised proposal:** Research the darktable AgX source code for the per-hue
+rolloff curves as a reference, then implement as an additional smoothstep-gated
+chroma attenuation on top of the FilmCurve shoulder — similar to R133 Munsell
+rolloff but driven by highlight proximity rather than hue-band-specific ceilings.
+This is viable but requires a separate research pass before implementation.
+
+---
+
+### R196-E — Cusp-aware gamut compression
+**Verdict: STRONGLY STRENGTHENED — HueCeil() is already the cusp**
+
+ACES2 documentation confirms the cusp-based compression approach in
+production at scale. The ACES2 DRT uses JMh space (Hellwig 2022 CAM), where
+the cusp is the point of maximum chroma (M) for each hue. Normalization:
+`M_norm = M / cusp_M(hue)`. A power-law compression function is applied on
+M_norm rather than raw M.
+
+**ACESCentral forum finding:** The AP1 cusp can be approximated with a
+trigonometric function (6 cosine/sine coefficients) achieving average pixel
+error of ~0.000607 — "imperceptible to pixel-peeping." No LUT needed.
+
+**Critical alignment with our pipeline:** `HueCeil()` already stores the
+maximum chroma ceiling per hue band — this IS the Oklab equivalent of the
+ACES2 cusp. Our proposed `d_norm = C / HueCeil(hue)` matches the ACES2
+normalization principle exactly. We just need to replace the current hard
+projection with a smooth power-law or Reinhard-style compression on d_norm.
+
+ACES2 production validation + alignment with existing `HueCeil()` infrastructure
+makes this a **fast, high-confidence implementation.** Elevate from "R197
+candidate" to immediate next implementation target.
+
+---
+
+### R196-F — Grain spatial correlation
+**Verdict: STRONGLY STRENGTHENED**
+
+Multiple independent sources confirm the perceptual gap:
+- "Real crystals don't distribute randomly — they cluster based on emulsion
+  chemistry. Fine-grain films like T-Max use Poisson clustering; Tri-X and
+  HP5 show fractal patterns." (grain simulator research)
+- "Procedural approach will ensure the grain will never tile, but the result
+  is actually a noise and does not resemble the granularity of film grain at
+  all. It does look more like a digital sensor noise." (realtime shader
+  survey)
+
+The half-res bilinear approach is directly supported: Wronski's bilinear
+upsampling article confirms that bilinear sampling at half-res introduces
+2-texel correlation naturally, with known pixel grid alignment considerations
+(half-pixel offset must be handled correctly to avoid systematic bias).
+
+**Confirmed quick win.** Trivially differentiates film grain from digital
+noise — the perceptual difference is immediate on visible grain strengths.
+
+---
+
+### R196-G — CAM16 unified adaptation
+**Verdict: WEAKENED — absolute luminance requirement confirmed as blocker**
+
+Search confirms CAM16 is validated for SDR ("CAM16 obtains the best marks for
+SDR images," 2024 color appearance model comparison). Active research
+continues (CAM16-UCS for HDR viewing conditions, 2025).
+
+**Key constraint confirmed:** CIECAM02/16 "takes into account the environment
+of each color" by requiring absolute luminance (cd/m²) for the adaptation
+state. SDR [0,1] values do not encode absolute luminance. Our CAT16 usage for
+NeutralIllumTex is already the most tractable part of CAM16 that works without
+absolute luminance — it computes chromatic adaptation in relative terms.
+
+Remain a future note. No change to assessment.
+
+---
+
+### R196-H — Anamorphic PSF approximation
+**Verdict: WEAKENED — aesthetic only, no technical obligation**
+
+Anamorphic halation in realtime is a well-explored aesthetic choice (Wronski
+2015, KinoStreak Unity shader, Blender anamorphic bokeh). The Blender
+developers note: "with simple Gaussian blurs using a real stretch ratio of
+2:1 it is impossible to achieve the extreme effect of anamorphic flares seen
+in movies."
+
+Our DoG + Lorentzian halation already produces organic film-like scatter. The
+case for anamorphic would be an explicit aesthetic goal (emulating anamorphic
+lens character), not a quality improvement. Our testbed does not use anamorphic
+game content. Drop this from the priority list entirely unless the user
+requests it as an aesthetic feature.
+
+---
+
+### R196-J — Illumination/reflectance separation in inverse_grade
+**Verdict: STRONGLY STRENGTHENED**
+
+2023–2024 Retinex research overwhelmingly validates this decomposition as the
+standard foundation for low-light enhancement and SDR→HDR expansion:
+
+- "The primary assumption of Retinex theory is that an image can be decomposed
+  into illumination and reflectance components" — foundational, confirmed
+- "Reti-Diff extracts reflectance and illumination priors to facilitate
+  detailed reconstruction" (ICCV 2023) — state of the art uses exactly this
+- "A variational framework based on synergy between illumination and
+  reflectance for Retinex decomposition" (ScienceDirect 2025) — active area
+- "A depth iterative illumination estimation network for Retinex-based
+  low-light enhancement" (Scientific Reports 2023) — iterative refinement
+  of illumination estimate improves reconstruction quality
+
+**All papers use the same decomposition we proposed:** illumination estimate
+from a low-frequency luminance field (equivalent to our LowFreqMip1Tex
+illum_s0), reflectance = pixel / illumination, chroma reconstruction on
+reflectance component.
+
+Our infrastructure is already the standard approach. The implementation is
+a one-sampler-declaration change in inverse_grade.fx plus a gate expression.
+
+---
+
+### R196-K — Unified scene_confidence signal
+**Verdict: STRENGTHENED IN CONCEPT, implementation complexity elevated**
+
+Confidence-weighted Kalman filter research (2022–2024) confirms the mechanism
+is valid but flags a specific instability risk: "The NSA Kalman filter
+introduces confidence deviation as the observation noise scale variable, but
+the adaptive observation noise mutation causes abrupt changes in the Kalman
+gain, which reduces stability." Specifically: "strong fluctuations in the
+adaptive observation noise introduced through detection confidence will cause
+mutation noise of the Kalman gain to weaken prediction stability."
+
+**Mitigation from literature:** "The Smoothing Gain Kalman filter combines
+the Gaussian function with the adaptive observation coefficient matrix to
+stabilize the mutation noise." This translates directly: the `scene_confidence`
+highway signal must be EMA-smoothed before use as a Kalman process noise
+modifier. Using the raw specular_gap or scene_cut signal directly would
+introduce exactly the instability described.
+
+**Revised implementation note:** The confidence highway value must have its
+own temporal EMA (τ ≈ 0.2s to damp transient spikes) before it gates Kalman
+noise. This adds one EMA state variable but removes the instability risk.
+The gating of non-Kalman systems (halation, inverse_grade) can use the raw
+signal; only Kalman Q modulation needs the smoothed version.
+
+---
+
+## Web-search-revised final priority order
+
+Changes from pre-search order in brackets.
+
+1. **R196-J** — Illumination/reflectance separation in inverse_grade.
+   **[UP from 2]** STRONGLY STRENGTHENED. Infrastructure exists. One-pass change.
+   Directly addresses testbed warm-practical over-saturation.
+
+2. **R196-E** — Cusp-aware gamut compression to R78 gclip.
+   **[UP from 5]** STRONGLY STRENGTHENED. HueCeil() IS the cusp. ACES2
+   production-validated. Replace hard projection with smooth power-law on
+   d_norm = C / HueCeil(hue). Fastest high-confidence win in the list.
+
+3. **R196-F** — Grain spatial correlation via half-res generation.
+   **[UP from 6]** STRONGLY STRENGTHENED. Perceptual gap confirmed by multiple
+   independent sources. Cheapest implementation in the list. Do this next
+   grain pass.
+
+4. **R196-A** — Asymmetric temporal hysteresis on specular_contrast / halation.
+   **[DOWN from 1]** Still strengthened, but implementation constraint added:
+   EMA-smooth the derived confidence signal before feeding Kalman Q. Slightly
+   more complex than originally scoped.
+
+5. **R196-B+L** — Near-clip fraction + highlight shape priors.
+   **[HELD at 3]** Direction confirmed. Optical proxies are the correct realtime
+   substitute for semantic segmentation. Implement scene-level fraction first.
+
+6. **R196-K** — Unified scene_confidence signal.
+   **[HELD at 4]** Concept strengthened; implementation elevated in complexity
+   (needs own EMA to avoid Kalman instability). Implement after R196-A.
+
+7. **R196-C** — Operator doubling audit.
+   **[HELD at 7]** Concern confirmed by literature. Measure before acting.
+
+8. **R196-D** — AgX per-hue highlight desaturation.
+   **[DOWN from 8]** Weakened in extractability. Requires research into darktable
+   AgX source for per-hue rolloff curves before implementation is possible.
+
+9. **R196-G** — CAM16 unified adaptation.
+   **[HELD at 9]** Absolute luminance blocker confirmed. Future note only.
+
+10. **R196-H** — Anamorphic PSF.
+    **[HELD at 10, demoted to aesthetic-only]** No technical obligation.
+    Remove from active pipeline development list.
