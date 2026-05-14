@@ -946,16 +946,21 @@ float3 ApplyFilmGrain(float3 rgb, float2 pos_xy)
 {
     uint   slot       = uint(FRAME_TIMER / 41.667);
     float  res_scale  = BUFFER_HEIGHT / 1440.0;
-    float2 p          = pos_xy / res_scale;
+    // R196-F: coarse grain at half-res — snaps to 2×2 pixel grid so adjacent blocks
+    // share the same noise sample. GrainValueNoise then interpolates between grid corners,
+    // producing organic 2-texel blobs instead of per-pixel speckling (digital sensor look).
+    // Fine blue-noise (ha/hb) stays full-res for sub-cluster texture variety.
+    float2 p_hr       = floor(pos_xy * 0.5) * 2.0 / res_scale;
+    float2 p_full     = pos_xy / res_scale;
     float  L_g        = pow(max(Luma(rgb), 0.0), 1.0 / 2.2);
     float  luma_scale = 2.5;
     float  silver_boost = BLEACH_BYPASS * (1.0 - smoothstep(0.0, 0.65, L_g)) * 0.30;
-    float  g_r        = GrainValueNoise(p / (luma_scale * 1.15), slot     ).r;
-    float  g_g        = GrainValueNoise(p / (luma_scale * 1.00), slot + 3u).g;
-    float  g_b        = GrainValueNoise(p / (luma_scale * 0.85), slot + 5u).b;
+    float  g_r        = GrainValueNoise(p_hr / (luma_scale * 1.15), slot     ).r;
+    float  g_g        = GrainValueNoise(p_hr / (luma_scale * 1.00), slot + 3u).g;
+    float  g_b        = GrainValueNoise(p_hr / (luma_scale * 0.85), slot + 5u).b;
     float3 g_coarse   = float3(g_r, g_g, g_b);
-    float3 ha         = pcg3d_hash(uint3(uint(p.x),     uint(p.y),     slot + 7u));
-    float3 hb         = pcg3d_hash(uint3(uint(p.x) + 1, uint(p.y) + 1, slot + 7u));
+    float3 ha         = pcg3d_hash(uint3(uint(p_full.x),     uint(p_full.y),     slot + 7u));
+    float3 hb         = pcg3d_hash(uint3(uint(p_full.x) + 1, uint(p_full.y) + 1, slot + 7u));
     float  fine_w     = 0.30 + silver_boost;
     float3 gnoise     = g_coarse * (1.0 - fine_w) + (ha - hb) * 0.5 * fine_w;
     float  env        = GRAIN_STRENGTH * 0.05 * sqrt(max(0.0, 1.0 - L_g));
