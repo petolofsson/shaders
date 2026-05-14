@@ -55,7 +55,7 @@
 // TEMP: positive = warm (R up, B down), negative = cool. Range ±100.
 // TINT: positive = magenta (G down, R+B up slightly), negative = green. Range ±100.
 // All default to 0 — passthrough. No output change at defaults.
-#define SHADOW_TEMP     -0
+#define SHADOW_TEMP     -12
 #define SHADOW_TINT      0
 #define MID_TEMP        +0
 #define MID_TINT         0
@@ -89,15 +89,14 @@
 // R183: pre-flash warm shadow cast. Fixed warm amber additive in deep shadows (L < 0.25),
 // falls to zero at mid-gray. Models Deakins' colored negative pre-flash technique.
 // Positive = warm amber, negative = cool blue-green. Range ±1.0. Default 0.0 = passthrough.
-// ~0.30 matches Kodak 2383's inherent amber shadow cast character.
-#define SHADOW_CAST  0.25
+#define SHADOW_CAST  -0.20
 
 // Rod-vision blue-green bias + scotopic desaturation across mesopic range (luma 0–0.30).
 // Hue: shifts a* (green) + b* (blue) toward 507nm rod peak — blue-green, not pure blue.
 // Desat: lab.yz *= (1 − 0.12 × w) — rods are achromatic; deep shadows lose chroma.
 // Neutrals unaffected (C=0 → zero shift). R117: transition widened luma 0.12 → 0.30.
 // Recalibrate from scratch: try 0.6–0.8. 0 = off.
-#define PURKINJE_STRENGTH  0.60
+#define PURKINJE_STRENGTH  0.75
 
 // Per-band hue rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
 // (Red→Yellow, Green→Cyan, Blue→Magenta). Default 0.0 = passthrough.
@@ -118,7 +117,7 @@
 // Applied after Vibrance. Default 0.0 = passthrough.
 #define SAT_RED    -0.05
 #define SAT_YELLOW -0.05
-#define SAT_GREEN   0.0
+#define SAT_GREEN  +0.08
 #define SAT_CYAN    0.0
 #define SAT_BLUE    0.0
 #define SAT_MAG     0.0
@@ -130,7 +129,7 @@
 // ── LOOK ──────────────────────────────────────────────────────────────────────
 // Applied after all grading and chroma work — ACES LMT position.
 // Kodak 2383 print emulsion: gentle shadow density bow, restrained shoulder,
-// desaturates mids ~15%, adds warm shadow cast. 0 = off. 1 = full 2383.
+// desaturates mids ~15%. 0 = off. 1 = full 2383.
 #define PRINT_STOCK  0.85
 // Skip the bleach step during print development — retains metallic silver alongside
 // color dye. Desaturates shadows most (denser silver retention in unexposed areas),
@@ -153,7 +152,7 @@
 // R132 polydisperse: per-channel scatter — red ×1.15, green ×1.00, blue ×0.85.
 // Rough grade mapping: 0.5–0.8 = HBM 1/4, 1.2–1.5 = HBM 1/2, 1.8–2.2 = HBM 1.
 // 1.40 = HBM 1/2 (Hollywood large-format workhorse grade). 0 = off.
-#define DIFFUSION_STRENGTH  0.45
+#define DIFFUSION_STRENGTH  0.40
 
 // R136: Selwyn 2383 granularity — three decorrelated dye layers (R:G:B = 1.00:0.80:1.50).
 // Envelope sqrt(1−L_gamma): mathematically highest at pure black, tapers to zero at white.

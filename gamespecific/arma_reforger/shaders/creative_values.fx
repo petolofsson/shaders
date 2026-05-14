@@ -33,7 +33,7 @@
 #define CURVE_B_TOE   -0.005
 
 // Kodak 2383 print emulsion on top of FilmCurve: gentle shadow density bow,
-// restrained shoulder, desaturates mids ~15%, adds warm shadow cast. 0 = off.
+// restrained shoulder, desaturates mids ~15%. 0 = off.
 // 1 = full 2383. 0.35 = recommended starting point.
 #define PRINT_STOCK  0.40
 
