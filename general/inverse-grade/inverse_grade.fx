@@ -84,7 +84,7 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     // achromatic scenes get 100%. Range [0.7, 1.0] — slope is a scene modifier, not the gate.
     float  slope_frac = lerp(0.7, 1.0, saturate((slope_eff - 1.0) / 0.8));
     float  c1      = float(INVERSE_STRENGTH) * slope_frac * zone_w * c_weight * dir_scale
-                   * (1.0 - illum_gate * float(ILLUM_GATE));
+                   * (1.0 - illum_gate);
     float  k2      = 0.01;
     float  k1      = sqrt(c1 * c1 + k2 * k2);
     float  k3      = (ceil_C + k1) / (ceil_C + k2);
