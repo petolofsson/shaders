@@ -117,6 +117,7 @@ sampler2D NeutralIllumSamp
     MagFilter = POINT;
 };
 
+
 // R190 guided filter base layer — replaces R189 bilateral H/V passes.
 // Self-guided, log10-luma space. Adaptive ε (Hu et al. 2023): a_k = var/(（1+ε)·var + η).
 // r=3 texels at 1/8-res → 7×7 = 49 taps. No range kernel, no exp() per tap.
@@ -236,29 +237,22 @@ float3 ApplyBleachBypass(float3 lin, float bleach_bypass)
     return saturate(OklabToRGB(lab_bb));
 }
 
-float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print_stock,
-                       float p25, float p75)
+float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print_stock)
 {
-    // Black lift removed — BLACKS pedestal handles the floor; 2383 density comes
-    // from the toe shape, not from lifting the floor (Deakins: keep blacks at zero).
-    float3 ps  = lin;
-    // Gentle toe: linear × ramp from 0.82 at zero to 1.0 at midgray — shadow
-    // density built by tonal bow, not by lifting. ~18% compression at L=0.15.
-    float3 toe = ps * lerp(0.82, 1.0, saturate(ps / 0.5));
-    float3 ps3 = ps * ps * ps;
-    // R160: adaptive shoulder — soften compression when scene is bright-heavy.
-    // 1.8 in dark/normal scenes, eases to 1.2 when p75 > 0.70.
-    float ps_shoulder = lerp(1.8, 1.2, saturate((p75 - 0.40) / 0.30));
-    float ps_cubic    = lerp(0.06, 0.02, saturate((p75 - 0.40) / 0.30));
-    float3 shoulder = 1.0 - (1.0 - ps) * (1.0 - ps) * ps_shoulder - ps3 * ps3 * ps_cubic;
-    ps = lerp(toe, shoulder, smoothstep(0.0, 0.5, ps));
+    float3 ps = lin;
+    // 2383 S-curve — two-piece, no gates:
+    // Power toe: compresses the full range, strongest in darks (each dye layer has its own
+    // H&D curve — power 1.15 darkens 0.10→0.071, 0.30→0.250 at full strength).
+    // Reinhard shoulder: rolls off highlights above 0.60.
+    ps = pow(max(ps, 1e-6), 1.15);
+    float3 d = max(0.0, ps - 0.60);
+    ps = ps - d + d / (1.0 + d * 1.5);
+    // Midtone desaturation: ~15% chroma loss (2383 dye-layer bleach).
     float luma_ps = dot(ps, float3(0.2126, 0.7152, 0.0722));
     float desat_w = 0.15 * (1.0 - smoothstep(0.0, fc_knee_toe, luma_ps))
                           * (1.0 - smoothstep(fc_knee, 1.0, luma_ps));
     ps = lerp(ps, luma_ps.xxx, desat_w);
-    ps.r += 0.010 * (1.0 - ps.r);
-    ps.b -= 0.007 * (1.0 - ps.b);
-    return lerp(lin, saturate(ps), print_stock);
+    return lerp(lin, saturate(ps), saturate(print_stock));
 }
 
 float3 ApplyHalation(float3 lin, float2 uv, float3 lf_mip2, float hal_strength, float hal_gamma,
@@ -427,6 +421,20 @@ float3 ApplyCorrective(float3 lin, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
     // R151: p90−p50 gap measures isolated bright sources against scene median.
     float eff_hal_str = HAL_STRENGTH * lerp(1.0, 1.4, ctx.specular_contrast);
     lin_e = ApplyHalation(lin_e, uv, lf_mip2_tex.rgb, eff_hal_str, HAL_GAMMA, ctx.illum_warm);
+    // R194: ACES luma inverse — undoes ACES midtone boost below the fixed point (L≈0.728).
+    // scale_delta is negative below L≈0.728 (ACES was brightening → inverse darkens back).
+    // Above L≈0.728 ACES was compressing — that expansion requires headroom > 1.0 which SDR
+    // cannot provide. min() gates to darkening only: no highlight blowup, no tonal disconnect.
+    // scale_delta tapers smoothly to zero as L→0.728, so the transition is seamless.
+    if (INVERSE_LUMA > 0.0) {
+        float  L_disp      = Luma(tex2D(BackBuffer, uv).rgb);
+        float  shadow_w    = smoothstep(0.005, 0.04, L_disp);
+        const float A = 2.51, B = 0.03, C = 2.43, D = 0.59, E = 0.14;
+        float  disc        = ((D*D - 4.0*C*E)*L_disp + 4.0*A*E - 2.0*B*D)*L_disp + B*B;
+        float  L_scene     = 0.5*(D*L_disp - B + sqrt(max(disc, 0.0))) / max(A - C*L_disp, 1e-4);
+        float  scale_delta = min((L_scene / max(L_disp, 1e-5) - 1.0) * shadow_w, 0.0);
+        lin_e *= 1.0 + scale_delta * float(INVERSE_LUMA);
+    }
     float3 out_lin = FilmCurveApply(lin_e,
                                     ctx.fc_knee_r, ctx.fc_knee, ctx.fc_knee_b,
                                     ctx.fc_ktoe_r, ctx.fc_knee_toe, ctx.fc_ktoe_b);
@@ -445,18 +453,21 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     // BS term: purely from pre-corrective base — no film curve contamination.
     // CS term: full-res post-corrective luma vs pre-corrective base — captures actual
     //          per-pixel detail the 1/8-res source cannot resolve.
-    // Highlight fade: full strength below 0.50, smooth rolloff to zero at 0.80 (linear luma).
     // No-op at BS=CS=0. Independent — either or both can be active.
     {
         float log_base   = tex2D(BilateralLogSamp, uv).r;
         float log_key    = log10(max(ReadHWY(HWY_ZONE_KEY), 1e-3));
         float log_pixel  = log10(max(luma, 1e-3));
         float log_detail = log_pixel - log_base;
-        float fade       = 1.0 - smoothstep(0.50, 0.80, luma);
-        float bil_ratio  = pow(10.0, fade * (float(LOCAL_TONE)       * (log_key - log_base)
-                                           + float(CLARITY_STRENGTH) * log_detail));
+        // LOCAL_TONE: lift-only. Gate on max(log_base, log_pixel) — a bright pixel in a
+        // locally-dark area (e.g. lamp against dark wall) has low log_base but high log_pixel;
+        // gating on base alone would lift the highlight. Using the higher of the two ensures
+        // only pixels that are themselves below the global key receive lift.
+        float bil_ratio  = pow(10.0, float(LOCAL_TONE)       * 0.025 * max(log_key - max(log_base, log_pixel), 0.0)
+                                   + float(CLARITY_STRENGTH) * 0.025 * log_detail);
         bil_ratio        = clamp(bil_ratio, 0.5, 2.0);
-        lin              = lin * bil_ratio;
+        float3 lin_b     = lin * bil_ratio;
+        lin              = lin_b / max(max(lin_b.r, max(lin_b.g, lin_b.b)), 1.0);
         luma             = Luma(lin);
     }
     // R29: Multi-Scale Retinex — spatial illuminant normalisation fires before zone S-curve
@@ -722,12 +733,14 @@ float3 ApplyLook(float3 lin, SceneCtx ctx)
     float3 out_lin = lin;
     // ── R51: print stock + R110: masking coupler + R130: dye matrix + bleach ──
     // Fires after all tonal and chroma work — LMT position per ACES convention.
-    out_lin = ApplyPrintStock(out_lin, ctx.fc_knee_toe, ctx.fc_knee, PRINT_STOCK,
-                              ctx.eff_p25, ctx.eff_p75);
+    out_lin = ApplyPrintStock(out_lin, ctx.fc_knee_toe, ctx.fc_knee, PRINT_STOCK);
     out_lin = ApplyMaskingCoupler(out_lin, PRINT_STOCK);
     out_lin = ApplyDyeMatrix(out_lin);
     out_lin = ApplyBleachBypass(out_lin, BLEACH_BYPASS);
-    return out_lin;
+    // R192: printer lights — per-channel contact-printer exposure after all emulsion work.
+    // 25 = neutral, 1 point = 1/12 stop. Mirrors film lab RGB printer head notation.
+    out_lin *= pow(2.0, float3(PRINTER_R - 25, PRINTER_G - 25, PRINTER_B - 25) / 12.0);
+    return saturate(out_lin);
 }
 
 // ─── ColorTransform pixel shader ───────────────────────────────────────────
@@ -969,6 +982,9 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     result += dither * (1.0 / 255.0);
 
     result = ApplyFilmGrain(result, pos.xy);
+
+    // 2×2 red activity indicator — top-left corner, pipeline-on check
+    result = lerp(result, float3(1.0, 0.0, 0.0), step(pos.x, 1.5) * step(pos.y, 1.5));
 
     return float4(result, base.a);
 }

@@ -6,6 +6,13 @@
 // S-curve. Works on any S-curve tonemapper. 0 = off. Start at 0.30–0.50.
 #define INVERSE_STRENGTH  0.40
 
+// Luma inverse — undoes ACES midtone boost (standard UE4/UE5 tonemapper).
+// Darkens display values below L≈0.73 (ACES fixed point) back toward scene-linear.
+// Highlights above L≈0.73 are unchanged — ACES shoulder is irrecoverable in SDR.
+// Midtones darken ~0.5 stops at 1.0 — increase EXPOSURE to compensate after enabling.
+// 0 = off. Try 0.30–0.60 after recalibrating EXPOSURE.
+#define INVERSE_LUMA  0.0
+
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
 // Exposure in stops. 0 = neutral, +1 = one stop brighter, -1 = one stop darker.
 // Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.
@@ -59,6 +66,7 @@
 // R183: pre-flash warm shadow cast. Fixed warm amber additive in deep shadows (L < 0.25),
 // falls to zero at mid-gray. Models Deakins' colored negative pre-flash technique.
 // Positive = warm amber, negative = cool blue-green. Range ±1.0. Default 0.0 = passthrough.
+// ~0.30 matches Kodak 2383's inherent amber shadow cast character.
 #define SHADOW_CAST  0.00
 
 // ── CHROMA ────────────────────────────────────────────────────────────────────
@@ -126,6 +134,14 @@
 // 0 = off. 1 = full (near-monochrome shadows).
 #define BLEACH_BYPASS  0.05
 
+// R192: Printer lights — per-channel contact-printer exposure after all emulsion work.
+// Mirrors film lab RGB printer head notation: 25 = neutral, 1 point = 1/12 stop.
+// Range 1–50. Push R up for warm cast, push B up for cool cast, etc.
+// Applied after print stock and bleach bypass — post-LMT.
+#define PRINTER_R  25
+#define PRINTER_G  25
+#define PRINTER_B  25
+
 // ── OUTPUT ────────────────────────────────────────────────────────────────────
 // Hollywood Black Magic dual-component model (R131):
 //   A) Additive shimmer — highlight bloom into dark areas only (micro-lenslet).
@@ -150,12 +166,12 @@
 #define LOOK_STRENGTH       100
 
 // ── TONAL (local) ─────────────────────────────────────────────────────────────
-// Spatially-adaptive local tone mapping (R190). Guided filter base layer blends local
-// illumination toward scene global key — lifts dark areas, pulls bright areas —
-// while restoring the detail layer so all texture is preserved. 0 = off. 0.25–0.40 = cinematic.
+// Spatially-adaptive local tone mapping (R190). Guided filter base layer lifts areas
+// darker than scene global key — shadow/midrange only, highlights unaffected —
+// while restoring the detail layer so all texture is preserved. 0 = off. 0.50–1.00 = subtle. 1.50–2.50 = cinematic.
 #define LOCAL_TONE  0.40
 
 // Local contrast / clarity (R190). Scales the guided filter detail layer before reconstruction.
 // >0 = micro-contrast punch (Lightroom Clarity equivalent). <0 = spatial softening.
-// 0 = off. 0.20–0.40 = subtle punch. Independent of LOCAL_TONE.
+// 0 = off. 0.10–0.30 = subtle punch. 0.50 = strong. Independent of LOCAL_TONE.
 #define CLARITY_STRENGTH  0.0
