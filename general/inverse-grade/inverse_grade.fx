@@ -74,7 +74,10 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     // Near-neutral C expands most; C near HueCeil asymptotes to ceiling, never clips.
     // toe_inv(x, ceil, c1, k2) = (x² + k1·x) / (k3·(x+k2))
     float  ceil_C  = max(HueCeil(hue), C + 0.001);
-    float  c1      = float(INVERSE_STRENGTH) * (slope_eff - 1.0) * zone_w * c_weight * dir_scale;
+    // IS drives expansion magnitude. slope_frac adapts ±30%: vivid scenes get 70% of IS,
+    // achromatic scenes get 100%. Range [0.7, 1.0] — slope is a scene modifier, not the gate.
+    float  slope_frac = lerp(0.7, 1.0, saturate((slope_eff - 1.0) / 0.8));
+    float  c1      = float(INVERSE_STRENGTH) * slope_frac * zone_w * c_weight * dir_scale;
     float  k2      = 0.01;
     float  k1      = sqrt(c1 * c1 + k2 * k2);
     float  k3      = (ceil_C + k1) / (ceil_C + k2);
