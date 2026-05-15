@@ -15,7 +15,7 @@ grade: 10 passes — LFDownscale1 → LFDownscale2 → NeutralIllum → GuidedCo
 - **PRINTER_R/G/B**: 0 = neutral (was 25). Shader drops −25 offset.
 - **DIFFUSION_STRENGTH**: ×1.40 in shader. 1.0 = HBM 1/2 grade.
 - **Highway**: HighwayTex 256×1 R16F. `HWY_CHROMA_SLOPE`, `HWY_MEDIAN_C`. BackBuffer pure image.
-- **inverse_grade**: single-pass. Zone `4·L·(1−L)`. `HWY_CHROMA_SLOPE = lerp(1.8, 1.15, saturate(median_C / 0.15))`.
+- **inverse_grade**: single-pass. Zone `4·L·(1−L)`. **R198**: FilmCurve pre-inverse (`FilmCurveInvCh`) applied before Oklab conversion — chroma expansion in post-curve domain. `HWY_CHROMA_SLOPE = lerp(1.8, 1.15, saturate(median_C / 0.15))`.
 - **EXPOSURE**: stops-based `rgb × exp2(EXPOSURE)`. Luma gate: full below 0.55, rolls off to 1.0 at 0.85.
 - **FilmCurve**: rational shoulder + toe. SDR-bounded by construction.
 - **Halation**: pre-FilmCurve. G weights modulated by `illum_warm`. R:G:B ≈ 30:3:1.

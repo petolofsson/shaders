@@ -84,7 +84,7 @@ Reads from BackBuffer (post-inverse_grade, post-corrective). Analysis textures
 (ZoneHistoryTex, ChromaHistoryTex, PercTex, CreativeLowFreqTex) written by corrective.fx.
 inverse_grade.fx runs before corrective — R90 chroma expansion on pre-corrective signal.
 
-**Pre-grade:** inverse_grade.fx — Oklab chroma expansion (chroma expansion slope from highway x=197, INVERSE_STRENGTH) + per-hue chroma ceiling (`HueCeil()` from hue_bands.fxh — blocks expansion overshoot past natural gamut)
+**Pre-grade:** inverse_grade.fx — R198 FilmCurve pre-inverse (`FilmCurveInvCh`: shoulder rational, toe quadratic, midrange identity) applied before Oklab conversion; knee/ktoe reconstructed from highway p25/p50/p75/mode (one-frame delay). Then Oklab chroma expansion (slope from highway x=197, INVERSE_STRENGTH) + per-hue chroma ceiling (`HueCeil()` from hue_bands.fxh — blocks expansion overshoot past natural gamut)
 
 **LFDownscale1 + LFDownscale2 passes (pre-ColorTransform):** Build `LowFreqMip1Tex` (1/16-res)
 and `LowFreqMip2Tex` (1/32-res) from `CreativeLowFreqTex` mip0 via 4-tap box filter. Must run

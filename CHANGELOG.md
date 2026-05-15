@@ -4,6 +4,8 @@
 
 ## 2026-05-15
 
+- **R198: FilmCurve pre-inverse in `inverse_grade.fx`** — `FilmCurveInvCh()` applies the piecewise exact inverse of `FilmCurveApply` (grade.fx) before chroma expansion, so expansion operates in the post-curve tonal domain. Shoulder inverse: closed-form rational `x = knee + s·h/(h−s)`. Toe inverse: quadratic formula (1 `sqrt`, ~5 MADs). Midrange: identity (body_s ≤1.2%, neglected). `fc_knee`/`fc_knee_toe` reconstructed from highway p25/p50/p75/mode — one-frame delay, same precedent as `NeutralIllumTex`. Per-channel offsets from `CURVE_R/B_KNEE/TOE` knobs. No new passes, no new textures. Research: `R198_2026-05-15_invertible_film_curve.md`.
+
 - **Oklab metric switch** (`tools/analyze_delta.py`) — Replaced CIELAB/CIEDE2000 with Oklab/ΔE_oklab (Euclidean ×100). M1/M2 matrices match `grade.fx` exactly. HUE_BANDS derived from `hue_bands.fxh` primary centers (red 350–70°, yellow 70–126°, green 126–169°, cyan 169–230°, blue 230–297°, magenta 297–350°). Chromatic threshold C>3.0 (Oklab ×100). Pure RGB blue now classifies correctly (CIELAB mis-classified it as magenta at h≈306°). Blue ΔE excess in GZW baseline confirmed content-driven: sky-blues/blue-grays at mean luma 0.078 vs other bands 0.021–0.035, placing them in shadow-lift zone and amplifying ΔL* per unit of proportional lift — not a shader defect.
 
 - **stage_isolate tool** (`tools/stage_isolate.py`, `~/.config/fish/config.fish`) — Additive stage-attribution analysis across all reference frames: CORRECTIVE only → +TONAL → +CHROMA → +LOOK. Saves and fully restores gate values on normal exit and Ctrl-C. Side-by-side report: overall ΔE with per-stage increment, tonal zone ΔL*/ΔC*, hue band table. Fish alias `stage_isolate --game gzw [--delay 5]`.
