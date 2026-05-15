@@ -356,7 +356,7 @@ SceneCtx BuildSceneCtx()
     float3 lms_illum_norm  = lms_illum / max(lms_illum.g, 0.001);
     ctx.illum_warm         = saturate(lms_illum_norm.r - lms_illum_norm.b + 0.5);
     ctx.median_C           = clamp(ReadHWY(HWY_MEDIAN_C), 0.0, 0.30);
-    ctx.cfilm_floor        = BLACKS * (lms_illum_norm * float3(1.02, 1.00, 0.97));
+    ctx.cfilm_floor        = BLACKS;
     ctx.perc               = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
     ctx.scene_cut          = ReadHWY(HWY_SCENE_CUT);
     float4 zstats          = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0));

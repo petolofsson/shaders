@@ -15,18 +15,16 @@
 #define INVERSE_LUMA 0.60
 
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
-// BLACKS: black pedestal — prevents absolute digital black. 0 = passthrough.
-//   1.0 = ARRI LogC3 black point (actual linear-light value). Range 0–1.
-// WHITES: pulls true white below clip before EXPOSURE. 0 = passthrough.
-//   1.0 = ARRI LogC3 usable ceiling (maps white to 0.95). Range 0–1.
-#define BLACKS  0.005
+// BLACKS: black floor, direct linear value. 0.00 = passthrough. 0.05 = 5% floor.
+// WHITES: white ceiling, direct linear value. 1.00 = passthrough. 0.95 = ARRI LogC3 usable ceiling.
+#define BLACKS  0.00
 #define WHITES  0.95
 
 // Exposure in stops. 0 = neutral, +1 = one stop brighter, -1 = one stop darker.
 // Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.
 // Sets where pixels sit tonally — which directly changes what every knob below "sees".
 // Rule of thumb: dial until overall brightness feels right, then tune beneath.
-#define EXPOSURE 0.15
+#define EXPOSURE 0.2
 
 // Film emulsion scatter from specular highlights — orange/amber fringe around
 // brightest sources. Red dominates (deepest dye layer), green small, blue near-zero
@@ -65,7 +63,7 @@
 // Spatially-adaptive local tone mapping (R190). Guided filter base layer lifts areas
 // darker than scene global key — shadow/midrange only, highlights unaffected —
 // while restoring the detail layer so all texture is preserved. 0 = off. 0.50–1.00 = subtle. 1.50–2.50 = cinematic.
-#define LOCAL_CONTRAST  0.50
+#define LOCAL_CONTRAST  1.00
 
 // Local contrast / clarity (R190). Scales the guided filter detail layer before reconstruction.
 // >0 = micro-contrast punch (Lightroom Clarity equivalent). <0 = spatial softening.
