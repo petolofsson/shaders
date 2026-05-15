@@ -17,7 +17,7 @@
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
 // BLACKS: black floor, direct linear value. 0.00 = passthrough. 0.05 = 5% floor.
 // WHITES: white ceiling, direct linear value. 1.00 = passthrough. 0.95 = ARRI LogC3 usable ceiling.
-#define BLACKS  0.00
+#define BLACKS  0.005
 #define WHITES  0.95
 
 // Exposure in stops. 0 = neutral, +1 = one stop brighter, -1 = one stop darker.
