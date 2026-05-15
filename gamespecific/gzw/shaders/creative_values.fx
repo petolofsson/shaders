@@ -15,14 +15,12 @@
 #define INVERSE_LUMA  0.40
 
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
-// Remaps the raw pixel into [BLACKS, WHITES] before EXPOSURE runs.
-// BLACKS: black pedestal — prevents absolute digital black. 0 = off.
-//   0.005 matches actual linear-light value at the ARRI LogC3 black point.
-// WHITES: white headroom — pulls true white below clip before EXPOSURE.
-//   0.95 matches ARRI LogC3 usable ceiling (~91-92% of full scale).
-// Both at defaults (0 / 1) = passthrough (identity).
-#define BLACKS  0.005
-#define WHITES  1.00
+// BLACKS: black pedestal — prevents absolute digital black. 0 = passthrough.
+//   1.0 = ARRI LogC3 black point (actual linear-light value). Range 0–1.
+// WHITE_HEADROOM: pulls true white below clip before EXPOSURE. 0 = passthrough.
+//   1.0 = ARRI LogC3 usable ceiling (maps white to 0.95). Range 0–1.
+#define BLACKS          1.00
+#define WHITE_HEADROOM  0.00
 
 // Exposure in stops. 0 = neutral, +1 = one stop brighter, -1 = one stop darker.
 // Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.
@@ -34,22 +32,23 @@
 // brightest sources. Red dominates (deepest dye layer), green small, blue near-zero
 // (yellow filter layer blocks blue from reaching base). White sources glow orange.
 // Fires pre-curve (physical: camera negative, before any processing).
-// 0 = off. 0.35 = calibrated default. 1.0 = Ektachrome-style aggressive.
+// 0 = off. 1.0 = Ektachrome-style aggressive.
 #define HAL_STRENGTH  0.35
 // Chromatic crossover threshold (ring luma units). Controls where the inner/outer
 // halation colour character transitions. Lower = more orange overall.
 // Range 0.02–0.20. Tune: raise until orange fringe looks physically correct.
-#define HAL_GAMMA     0.04
+#define HAL_CROSSOVER  0.04
 
 // Per-channel knee and toe offsets for the FilmCurve. Encodes the physical dye-layer
-// cross-over character of different film stocks.
-// Default values match ARRI ALEXA latitude. Range approximately ±0.015.
+// cross-over character of different film stocks. 0 = passthrough. Range ±1.
+// ±1.0 = ±0.10 stop shift in the auto knee/toe position.
 // R knee < 0 = red compresses earlier (film-like warm shadows).
 // B knee > 0 = blue compresses later (open highlights). B toe < 0 = cool toe.
-#define CURVE_R_KNEE  -0.000
-#define CURVE_B_KNEE  +0.000
-#define CURVE_R_TOE   +0.000
-#define CURVE_B_TOE   -0.000
+// Negative values invert the S-curve direction for that channel.
+#define CURVE_R_KNEE  -0.00
+#define CURVE_B_KNEE  +0.00
+#define CURVE_R_TOE   +0.00
+#define CURVE_B_TOE   -0.00
 
 // Primary color grade. Runs after FilmCurve.
 // TEMP: positive = warm (R up, B down), negative = cool. Range ±100.
@@ -65,7 +64,8 @@
 // ── TONAL ─────────────────────────────────────────────────────────────────────
 // Spatially-adaptive local tone mapping (R190). Guided filter base layer lifts areas
 // darker than scene global key — shadow/midrange only, highlights unaffected —
-// while restoring the detail layer so all texture is preserved. 0 = off. 0.50–1.00 = subtle. 1.50–2.50 = cinematic.
+// while restoring the detail layer so all texture is preserved.
+// 0 = off. 0.50 = moderate. 1.00 = strong cinematic lift.
 #define LOCAL_TONE  0.50
 
 // Local contrast / clarity (R190). Scales the guided filter detail layer before reconstruction.
@@ -73,11 +73,10 @@
 // 0 = off. 0.10–0.30 = subtle punch. 0.50 = strong. Independent of LOCAL_TONE.
 #define CLARITY_STRENGTH  0.40
 
-// Scales the adaptive zone S-curve strength. 1.0 = calibrated default. 0 = off.
-// 2.0 = aggressive. Range 0–2.
+// Scales the adaptive zone S-curve strength. 0 = off. 1.0 = full. 2.0 = aggressive.
 #define CONTRAST  0.75
 
-// Scales the auto shadow lift. 1.0 = calibrated default. 0 = off.
+// Scales the auto shadow lift. 0 = off. 1.0 = full designed lift.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
 #define SHADOWS  0.75
 
@@ -95,7 +94,7 @@
 // Hue: shifts a* (green) + b* (blue) toward 507nm rod peak — blue-green, not pure blue.
 // Desat: lab.yz *= (1 − 0.12 × w) — rods are achromatic; deep shadows lose chroma.
 // Neutrals unaffected (C=0 → zero shift). R117: transition widened luma 0.12 → 0.30.
-// Recalibrate from scratch: try 0.6–0.8. 0 = off.
+// 0 = off. 0.6–0.8 = mesopic range. 1.0 = full physiological shift.
 #define PURKINJE_STRENGTH  0.75
 
 // Per-band hue rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
@@ -110,7 +109,7 @@
 // Per-hue chroma lift strength. Acts as a gain near each hue band's scene mean —
 // lift-only, vibrance-masked (already-saturated pixels are attenuated).
 // Reach for this first — lifts flat/dull areas without pushing vivid pixels further.
-// 1.0 = calibrated default. 0 = off.
+// 0 = off. 1.0 = full designed lift.
 #define VIBRANCE  0.10
 
 // Per-band chroma scale in Oklab C. ±1.0 → ±80% chroma per hue band.
@@ -138,27 +137,26 @@
 #define BLEACH_BYPASS  0.05
 
 // R192: Printer lights — per-channel contact-printer exposure after all emulsion work.
-// Mirrors film lab RGB printer head notation: 25 = neutral, 1 point = 1/12 stop.
-// Range 1–50. Push R up for warm cast, push B up for cool cast, etc.
+// Mirrors film lab RGB printer head notation: 0 = neutral, ±12 = ±1 stop, 1 point = 1/12 stop.
+// Push R up for warm cast, push B up for cool cast, etc.
 // Applied after print stock and bleach bypass — post-LMT.
-#define PRINTER_R  26.5
-#define PRINTER_G  26.5
-#define PRINTER_B  26.5
+#define PRINTER_R   1.5
+#define PRINTER_G   1.5
+#define PRINTER_B   1.5
 
 // ── OUTPUT ────────────────────────────────────────────────────────────────────
 // Hollywood Black Magic dual-component model (R131):
 //   A) Additive shimmer — highlight bloom into dark areas only (micro-lenslet).
 //   B) Soft midtone overlay — gentle airbrushed smoothing, zero at blacks/whites.
 // R132 polydisperse: per-channel scatter — red ×1.15, green ×1.00, blue ×0.85.
-// Rough grade mapping: 0.5–0.8 = HBM 1/4, 1.2–1.5 = HBM 1/2, 1.8–2.2 = HBM 1.
-// 1.40 = HBM 1/2 (Hollywood large-format workhorse grade). 0 = off.
-#define DIFFUSION_STRENGTH  0.40
+// 0 = off. 0.5 = subtle. 1.0 = Hollywood workhorse (HBM 1/2 grade). 1.5 = aggressive.
+#define DIFFUSION_STRENGTH  0.29
 
 // R136: Selwyn 2383 granularity — three decorrelated dye layers (R:G:B = 1.00:0.80:1.50).
 // Envelope sqrt(1−L_gamma): mathematically highest at pure black, tapers to zero at white.
 // Perceived peak is in upper shadows — grain at pure black is invisible against the dark.
 // Framerate-independent: turns over at ~24fps regardless of display fps.
-// 0 = off. 1.0 = calibrated 2383 amplitude. 1.5 = pushed. 2.0 = stylistic.
+// 0 = off. 1.0 = 2383 amplitude. 1.5 = pushed. 2.0 = stylistic.
 #define GRAIN_STRENGTH  0.40
 
 // ── STAGE GATES ───────────────────────────────────────────────────────────────

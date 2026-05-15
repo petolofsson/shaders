@@ -8,15 +8,15 @@
 #define INVERSE_LUMA      0.00
 
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
-#define BLACKS  0.000
-#define WHITES  1.000
+#define BLACKS          0.00
+#define WHITE_HEADROOM  0.00
 #define EXPOSURE 0.00
 #define HAL_STRENGTH  0.00
-#define HAL_GAMMA     0.04
-#define CURVE_R_KNEE  -0.000
-#define CURVE_B_KNEE  +0.000
-#define CURVE_R_TOE   +0.000
-#define CURVE_B_TOE   -0.000
+#define HAL_CROSSOVER  0.04
+#define CURVE_R_KNEE  -0.00
+#define CURVE_B_KNEE  +0.00
+#define CURVE_R_TOE   +0.00
+#define CURVE_B_TOE   -0.00
 #define SHADOW_TEMP     0
 #define SHADOW_TINT     0
 #define MID_TEMP        0
@@ -52,9 +52,9 @@
 // ── LOOK ──────────────────────────────────────────────────────────────────────
 #define PRINT_STOCK  0.00
 #define BLEACH_BYPASS  0.00
-#define PRINTER_R  25.0
-#define PRINTER_G  25.0
-#define PRINTER_B  25.0
+#define PRINTER_R  0.0
+#define PRINTER_G  0.0
+#define PRINTER_B  0.0
 
 // ── OUTPUT ────────────────────────────────────────────────────────────────────
 #define DIFFUSION_STRENGTH  0.00

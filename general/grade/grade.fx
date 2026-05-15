@@ -355,7 +355,7 @@ SceneCtx BuildSceneCtx()
     float3 lms_illum_norm  = lms_illum / max(lms_illum.g, 0.001);
     ctx.illum_warm         = saturate(lms_illum_norm.r - lms_illum_norm.b + 0.5);
     ctx.median_C           = clamp(ReadHWY(HWY_MEDIAN_C), 0.0, 0.30);
-    ctx.cfilm_floor        = BLACKS * (lms_illum_norm * float3(1.02, 1.00, 0.97));
+    ctx.cfilm_floor        = (BLACKS * 0.005) * (lms_illum_norm * float3(1.02, 1.00, 0.97));
     ctx.perc               = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
     ctx.scene_cut          = ReadHWY(HWY_SCENE_CUT);
     float4 zstats          = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0));
@@ -382,10 +382,10 @@ SceneCtx BuildSceneCtx()
     ctx.scene_mode         = ReadHWY(HWY_MODE);
     float toe_gap          = saturate((ctx.fc_knee_toe - ctx.scene_mode - 0.05) / 0.10);
     ctx.fc_knee_toe        = lerp(ctx.fc_knee_toe, ctx.scene_mode + 0.05, toe_gap * 0.4);
-    ctx.fc_knee_r          = clamp(ctx.fc_knee     * exp2(CURVE_R_KNEE), 0.70, 0.95);
-    ctx.fc_knee_b          = clamp(ctx.fc_knee     * exp2(CURVE_B_KNEE), 0.70, 0.95);
-    ctx.fc_ktoe_r          = clamp(ctx.fc_knee_toe * exp2(CURVE_R_TOE),  0.08, 0.35);
-    ctx.fc_ktoe_b          = clamp(ctx.fc_knee_toe * exp2(CURVE_B_TOE),  0.08, 0.35);
+    ctx.fc_knee_r          = clamp(ctx.fc_knee     * exp2(CURVE_R_KNEE * 0.10), 0.70, 0.95);
+    ctx.fc_knee_b          = clamp(ctx.fc_knee     * exp2(CURVE_B_KNEE * 0.10), 0.70, 0.95);
+    ctx.fc_ktoe_r          = clamp(ctx.fc_knee_toe * exp2(CURVE_R_TOE  * 0.10), 0.08, 0.35);
+    ctx.fc_ktoe_b          = clamp(ctx.fc_knee_toe * exp2(CURVE_B_TOE  * 0.10), 0.08, 0.35);
     float _sls_t              = saturate(((ctx.perc.r + ctx.scene_mode) * 0.5 - 0.025) / 0.175);
     float _std_suppress       = smoothstep(0.05, 0.13, ctx.zone_std);
     ctx.shadow_lift_str       = lerp(1.50, 0.45, _sls_t*_sls_t*_sls_t*(_sls_t*(_sls_t*6.0-15.0)+10.0))
@@ -420,7 +420,7 @@ float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex
     // lf_mip1/lf_mip2 are pre-corrective; lin_e is pre-curve — signals match.
     // R151: p90−p50 gap measures isolated bright sources against scene median.
     float eff_hal_str = HAL_STRENGTH * lerp(1.0, 1.4, ctx.specular_contrast);
-    lin_e = ApplyHalation(lin_e, uv, lf_mip2_tex.rgb, eff_hal_str, HAL_GAMMA, ctx.illum_warm);
+    lin_e = ApplyHalation(lin_e, uv, lf_mip2_tex.rgb, eff_hal_str, HAL_CROSSOVER, ctx.illum_warm);
     // R194: ACES luma inverse — undoes ACES midtone boost below the fixed point (L≈0.728).
     // scale_delta is negative below L≈0.728 (ACES was brightening → inverse darkens back).
     // Above L≈0.728 ACES was compressing — that expansion requires headroom > 1.0 which SDR
@@ -743,8 +743,8 @@ float3 ApplyLook(float3 lin, SceneCtx ctx)
     out_lin = ApplyDyeMatrix(out_lin);
     out_lin = ApplyBleachBypass(out_lin, BLEACH_BYPASS);
     // R192: printer lights — per-channel contact-printer exposure after all emulsion work.
-    // 25 = neutral, 1 point = 1/12 stop. Mirrors film lab RGB printer head notation.
-    out_lin *= exp2(float3(PRINTER_R - 25, PRINTER_G - 25, PRINTER_B - 25) / 12.0);
+    // 0 = neutral, ±12 = ±1 stop. Mirrors film lab RGB printer head notation.
+    out_lin *= exp2(float3(PRINTER_R, PRINTER_G, PRINTER_B) / 12.0);
     return saturate(out_lin);
 }
 
@@ -757,7 +757,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float4 lf_mip2_tex = tex2D(LowFreqMip2Samp, uv);
 
     float  col_luma = Luma(col.rgb);
-    float3 lin      = col.rgb * (WHITES - ctx.cfilm_floor) + ctx.cfilm_floor;
+    float  whites   = 1.0 - WHITE_HEADROOM * 0.05;
+    float3 lin      = col.rgb * (whites - ctx.cfilm_floor) + ctx.cfilm_floor;
     lin = lerp(lin, ApplyCorrective(lin, col_luma, uv, lf_mip2_tex, ctx), CORRECTIVE_STRENGTH * 0.01);
 
     TonalOut tonal      = ApplyTonal(lin, col_luma, uv, lf_mip2_tex, ctx);
@@ -973,7 +974,7 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     diff_radial = lerp(diff_radial, 0.25, smoothstep(0.15, 0.40, r));
     diff_radial = lerp(diff_radial, 0.75, smoothstep(0.40, 0.70, r));
     diff_radial = lerp(diff_radial, 1.00, smoothstep(0.70, 0.90, r));
-    float  eff_diff    = DIFFUSION_STRENGTH * diff_radial;
+    float  eff_diff    = DIFFUSION_STRENGTH * 1.40 * diff_radial;
 
     float3 diff_blur = tex2Dlod(DiffusionSamp, float4(uv, 0, 0)).rgb;
 
