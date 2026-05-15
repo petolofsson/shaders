@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
 """
-tools/analyze_delta.py — Perceptual color delta analysis (CIEDE2000) between EXR captures.
+tools/analyze_delta.py — Perceptual color delta analysis (ΔE_oklab) between EXR captures.
 
 Modes:
-    analyze_delta before.exr after.exr        relative: ΔE2000 per zone + hue band
-    analyze_delta --colorchecker [exr]        absolute: ΔE2000 per patch vs. BabelColor D65
+    analyze_delta before.exr after.exr        relative: ΔE_oklab per zone + hue band
+    analyze_delta --colorchecker [exr]        absolute: ΔE_oklab per patch vs. BabelColor D65
                                               (omit exr to use most recent capture)
 
-ΔE2000 scale:
+ΔE_oklab scale (Euclidean Oklab ×100 — comparable to CIEDE2000):
     < 1     imperceptible to most observers
     1 – 3   acceptable / minor difference
     3 – 6   clearly visible
     > 6     gross error
 
+Hue bands use Oklab hue angle atan2(b,a) in degrees — matches hue_bands.fxh exactly.
+Band centers: red ~30°, yellow ~110°, green ~143°, cyan ~195°, blue ~265°, magenta ~329°.
+
 Requires: numpy, openexr
-No extra packages needed — CIEDE2000 implemented inline from CIE 142:2001.
 """
 
 import argparse
@@ -67,15 +69,17 @@ _PW = (_W - 2 * _MARGIN - (_COLS - 1) * _GAP) // _COLS   # 383 px
 _PH = (_H - 2 * _MARGIN - (_ROWS - 1) * _GAP) // _ROWS   # 305 px
 _SAMPLE = 40   # center-sample square per patch (pixels)
 
-# 6 broad hue bands in CIE Lab hue angle: atan2(b*, a*) in [0, 360)
-# Red=0°, Yellow=90°, Green=180°, Blue=270° in Lab
+# 6 hue bands in Oklab hue angle: atan2(b, a) in [0, 360°)
+# Centers from hue_bands.fxh: red ~30°, yellow ~110°, green ~143°,
+#                              cyan ~195°, blue ~265°, magenta ~329°.
+# Boundaries at midpoints between adjacent primaries.
 HUE_BANDS = [
-    ("red",     340, 360, 0,  30),   # wraps: 340-360 + 0-30
-    ("yellow",   30,  90),
-    ("green",    90, 150),
-    ("cyan",    150, 210),
-    ("blue",    210, 290),
-    ("magenta", 290, 340),
+    ("red",     350, 360,   0, 70),   # wraps through 0°; pure red ~30°
+    ("yellow",   70, 126),            # pure yellow ~110°
+    ("green",   126, 169),            # pure green ~143°
+    ("cyan",    169, 230),            # pure cyan ~195°
+    ("blue",    230, 297),            # pure blue ~265°
+    ("magenta", 297, 350),            # pure magenta ~329°
 ]
 
 
@@ -85,82 +89,32 @@ def _srgb_to_linear(v: np.ndarray) -> np.ndarray:
     return np.where(v <= 0.04045, v / 12.92, ((v + 0.055) / 1.055) ** 2.4)
 
 
-def _linear_rgb_to_lab(rgb: np.ndarray) -> np.ndarray:
-    """Linear sRGB [0, 1] → CIE L*a*b* (D65 2°). Input: (..., 3) float."""
-    M = np.array([
-        [0.4124564, 0.3575761, 0.1804375],
-        [0.2126729, 0.7151522, 0.0721750],
-        [0.0193339, 0.1191920, 0.9503041],
+def _linear_rgb_to_oklab(rgb: np.ndarray) -> np.ndarray:
+    """Linear sRGB [0, 1] → Oklab scaled ×100. Input: (..., 3) float.
+
+    L in [0, 100]. a, b in approximately [-40, +40].
+    Hue angle = atan2(b, a) in degrees, [0, 360°).
+    Matches the M1/M2 matrices used in grade.fx / hue_bands.fxh.
+    """
+    M1 = np.array([
+        [0.4122214708, 0.5363325363, 0.0514459929],
+        [0.2119034982, 0.6806995451, 0.1073969566],
+        [0.0883024619, 0.2817188376, 0.6299787005],
     ], dtype=np.float64)
-    xyz = rgb.astype(np.float64) @ M.T
-    xyz_n = xyz / np.array([0.95047, 1.00000, 1.08883])
-    k = 6.0 / 29.0
-    f = np.where(xyz_n > k ** 3, np.cbrt(xyz_n), xyz_n / (3.0 * k ** 2) + 4.0 / 29.0)
-    L = 116.0 * f[..., 1] - 16.0
-    a = 500.0 * (f[..., 0] - f[..., 1])
-    b = 200.0 * (f[..., 1] - f[..., 2])
-    return np.stack([L, a, b], axis=-1)
+    M2 = np.array([
+        [ 0.2104542553,  0.7936177850, -0.0040720468],
+        [ 1.9779984951, -2.4285922050,  0.4505937099],
+        [ 0.0259040371,  0.7827717662, -0.8086757660],
+    ], dtype=np.float64)
+    lms = np.maximum(rgb.astype(np.float64), 0.0) @ M1.T
+    lms_c = np.cbrt(lms)
+    return (lms_c @ M2.T) * 100.0
 
 
-def _delta_e_2000(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
-    """CIEDE2000 per CIE 142:2001. Inputs: (..., 3) L*a*b*. Returns (...) ΔE."""
-    L1, a1, b1 = lab1[..., 0], lab1[..., 1], lab1[..., 2]
-    L2, a2, b2 = lab2[..., 0], lab2[..., 1], lab2[..., 2]
-
-    # a' adjustment
-    C1 = np.sqrt(a1 ** 2 + b1 ** 2)
-    C2 = np.sqrt(a2 ** 2 + b2 ** 2)
-    Cavg7 = ((C1 + C2) / 2.0) ** 7
-    G = 0.5 * (1.0 - np.sqrt(Cavg7 / (Cavg7 + 25.0 ** 7)))
-    a1p = a1 * (1.0 + G)
-    a2p = a2 * (1.0 + G)
-
-    C1p = np.sqrt(a1p ** 2 + b1 ** 2)
-    C2p = np.sqrt(a2p ** 2 + b2 ** 2)
-    h1p = np.degrees(np.arctan2(b1, a1p)) % 360.0
-    h2p = np.degrees(np.arctan2(b2, a2p)) % 360.0
-
-    dLp = L2 - L1
-    dCp = C2p - C1p
-
-    dh_abs = np.abs(h2p - h1p)
-    dhp = np.where(dh_abs <= 180.0, h2p - h1p,
-          np.where(h2p - h1p > 180.0, h2p - h1p - 360.0,
-                                       h2p - h1p + 360.0))
-    dhp  = np.where((C1p == 0) | (C2p == 0), 0.0, dhp)
-    dHp  = 2.0 * np.sqrt(C1p * C2p) * np.sin(np.radians(dhp / 2.0))
-
-    Lpavg = (L1 + L2) / 2.0
-    Cpavg = (C1p + C2p) / 2.0
-
-    both  = (C1p > 0) & (C2p > 0)
-    hsum  = h1p + h2p
-    hpavg = np.where(~both, hsum,
-            np.where(dh_abs <= 180.0, hsum / 2.0,
-            np.where(hsum < 360.0, (hsum + 360.0) / 2.0,
-                                   (hsum - 360.0) / 2.0)))
-
-    T  = (1.0
-          - 0.17 * np.cos(np.radians(hpavg - 30.0))
-          + 0.24 * np.cos(np.radians(2.0 * hpavg))
-          + 0.32 * np.cos(np.radians(3.0 * hpavg + 6.0))
-          - 0.20 * np.cos(np.radians(4.0 * hpavg - 63.0)))
-
-    SL = 1.0 + 0.015 * (Lpavg - 50.0) ** 2 / np.sqrt(20.0 + (Lpavg - 50.0) ** 2)
-    SC = 1.0 + 0.045 * Cpavg
-    SH = 1.0 + 0.015 * Cpavg * T
-
-    Cpavg7 = Cpavg ** 7
-    RC     = 2.0 * np.sqrt(Cpavg7 / (Cpavg7 + 25.0 ** 7))
-    dtheta = 30.0 * np.exp(-((hpavg - 275.0) / 25.0) ** 2)
-    RT     = -np.sin(np.radians(2.0 * dtheta)) * RC
-
-    return np.sqrt(
-        (dLp / SL) ** 2 +
-        (dCp / SC) ** 2 +
-        (dHp / SH) ** 2 +
-        RT * (dCp / SC) * (dHp / SH)
-    )
+def _delta_e_oklab(lab1: np.ndarray, lab2: np.ndarray) -> np.ndarray:
+    """Euclidean Oklab distance (×100 scale). Inputs: (..., 3). Returns (...) ΔE."""
+    d = lab2 - lab1
+    return np.sqrt((d ** 2).sum(axis=-1))
 
 
 # ── I/O ───────────────────────────────────────────────────────────────────────
@@ -208,14 +162,15 @@ def _bar(v: float, max_v: float = 6.0, width: int = 20) -> str:
 # ── Mode: relative ─────────────────────────────────────────────────────────────
 
 def compute_relative(before: np.ndarray, after: np.ndarray) -> dict:
-    """Compute CIEDE2000 delta stats between two linear-light frames.
+    """Compute ΔE_oklab stats between two linear-light frames.
 
     Returns mean_de, p90, p99, pct_gt1, pct_gt3, zones, hue_bands.
     Zone/band entries: mean_de, max_de, n, dL, dC, dh (dh=None if no chromatic pixels).
+    All ΔL/ΔC values are in Oklab ×100 units (L range 0–100, C range ~0–35).
     """
-    lab_b = _linear_rgb_to_lab(before)
-    lab_a = _linear_rgb_to_lab(after)
-    de    = _delta_e_2000(lab_b, lab_a)
+    lab_b = _linear_rgb_to_oklab(before)
+    lab_a = _linear_rgb_to_oklab(after)
+    de    = _delta_e_oklab(lab_b, lab_a)
 
     result: dict = {
         "mean_de": float(de.mean()),
@@ -257,9 +212,9 @@ def compute_relative(before: np.ndarray, after: np.ndarray) -> dict:
     flat   = lab_b.reshape(-1, 3)
     flat_a = lab_a.reshape(-1, 3)
     de_f   = de.ravel()
-    Cstar  = np.sqrt(flat[:, 1] ** 2 + flat[:, 2] ** 2)
+    C_flat = np.sqrt(flat[:, 1] ** 2 + flat[:, 2] ** 2)
     hangle = np.degrees(np.arctan2(flat[:, 2], flat[:, 1])) % 360.0
-    chroma = Cstar > 5.0
+    chroma = C_flat > 3.0   # Oklab C ×100 > 3 ≈ "clearly has a hue"
 
     for entry in HUE_BANDS:
         bname = entry[0]
@@ -295,7 +250,7 @@ def compute_relative(before: np.ndarray, after: np.ndarray) -> dict:
 
 
 def print_relative(stats: dict, before_name: str, after_name: str) -> None:
-    """Print a full CIEDE2000 relative delta report from compute_relative() output."""
+    """Print a full ΔE_oklab relative delta report from compute_relative() output."""
     print(f"\n{_BLD}analyze_delta  {before_name} → {after_name}{_RST}")
     print("─" * 62)
 
@@ -312,7 +267,7 @@ def print_relative(stats: dict, before_name: str, after_name: str) -> None:
         print(f"  {label:<12} {_bar(z['mean_de'])}  mean {_de_fmt(z['mean_de'])}  max {_de_fmt(z['max_de'])}  N={z['n']/1e3:.0f}K")
         print(f"               ΔL* {z['dL']:+.1f}  ΔC* {z['dC']:+.1f}  Δh° {dh_s}")
 
-    print(f"\n{_BLD}by hue band{_RST}  (C*>5 chromatic pixels, hue from '{before_name}')")
+    print(f"\n{_BLD}by hue band{_RST}  (Oklab C>3 chromatic pixels, hue from '{before_name}')")
     for entry in HUE_BANDS:
         bname = entry[0]
         b = stats["hue_bands"].get(bname)
@@ -336,7 +291,7 @@ def cmd_relative(before_path: Path, after_path: Path) -> None:
         sys.exit(f"Resolution mismatch: before {before.shape[:2]} vs after {after.shape[:2]}")
 
     H, W, _ = before.shape
-    print(f"Computing ΔE2000 on {W}×{H} ({W*H/1e6:.1f}M pixels)...")
+    print(f"Computing ΔE_oklab on {W}×{H} ({W*H/1e6:.1f}M pixels)...")
     stats = compute_relative(before, after)
     print_relative(stats, before_path.name, after_path.name)
 
@@ -348,11 +303,11 @@ def cmd_colorchecker(exr_path: Path) -> None:
     frame    = _load(exr_path)
     Hf, Wf, _ = frame.shape
 
-    print(f"\n{_BLD}ColorChecker absolute ΔE2000 — BabelColor D65 reference{_RST}")
+    print(f"\n{_BLD}ColorChecker absolute ΔE_oklab — BabelColor D65 reference{_RST}")
     print(f"  source: {exr_path.name}  {Wf}×{Hf}")
     print(f"  {_GRN}green <1{_RST}  {_YLW}yellow 1–3{_RST}  {_RED}red >3{_RST}  (>6 = gross error)")
     print()
-    print(f"  {'#':<3} {'Patch':<16} {'ΔE':>5}  {'L*ref':>6}  {'L*meas':>6}  {'ΔL*':>5}  {'ΔC*':>5}  {'Δh°':>5}")
+    print(f"  {'#':<3} {'Patch':<16} {'ΔE':>5}  {'L ref':>6}  {'L meas':>6}  {'ΔL':>5}  {'ΔC':>5}  {'Δh°':>5}")
     print("  " + "─" * 60)
 
     des         = []
@@ -371,10 +326,10 @@ def cmd_colorchecker(exr_path: Path) -> None:
         meas_lin = frame[py:py + _SAMPLE, px:px + _SAMPLE, :].mean(axis=(0, 1))
         ref_lin  = _srgb_to_linear(np.array([r8, g8, b8], np.float32) / 255.0)
 
-        lab_ref  = _linear_rgb_to_lab(ref_lin[None, None]).squeeze()
-        lab_meas = _linear_rgb_to_lab(meas_lin[None, None]).squeeze()
+        lab_ref  = _linear_rgb_to_oklab(ref_lin[None, None]).squeeze()
+        lab_meas = _linear_rgb_to_oklab(meas_lin[None, None]).squeeze()
 
-        de   = float(_delta_e_2000(lab_ref[None], lab_meas[None]).item())
+        de   = float(_delta_e_oklab(lab_ref[None], lab_meas[None]).item())
         dL   = float(lab_meas[0] - lab_ref[0])
         Cref = float(np.sqrt(lab_ref[1] ** 2 + lab_ref[2] ** 2))
         Cm   = float(np.sqrt(lab_meas[1] ** 2 + lab_meas[2] ** 2))
@@ -403,7 +358,7 @@ def cmd_colorchecker(exr_path: Path) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="Perceptual color delta analysis (CIEDE2000)",
+        description="Perceptual color delta analysis (ΔE_oklab)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
