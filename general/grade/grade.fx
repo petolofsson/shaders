@@ -15,6 +15,7 @@
 #include "creative_values.fx"
 
 uniform float FRAME_TIMER < source = "timer"; >;        // ms since app start
+uniform int   FRAME_COUNT < source = "framecount"; >;  // increments every rendered frame
 
 // ─── Chroma lift constants ─────────────────────────────────────────────────
 #define GREEN_HUE_COOL  (4.0 / 360.0)
@@ -419,8 +420,8 @@ float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex
     // ── R105: halation — pre-curve (physical: camera negative, before any processing) ──
     // lf_mip1/lf_mip2 are pre-corrective; lin_e is pre-curve — signals match.
     // R151: p90−p50 gap measures isolated bright sources against scene median.
-    float eff_hal_str = HAL_STRENGTH * lerp(1.0, 1.4, ctx.specular_contrast);
-    lin_e = ApplyHalation(lin_e, uv, lf_mip2_tex.rgb, eff_hal_str, HAL_CROSSOVER, ctx.illum_warm);
+    float eff_hal_str = HALATION * lerp(1.0, 1.4, ctx.specular_contrast);
+    lin_e = ApplyHalation(lin_e, uv, lf_mip2_tex.rgb, eff_hal_str, HALATION_CROSSOVER, ctx.illum_warm);
     // R194: ACES luma inverse — undoes ACES midtone boost below the fixed point (L≈0.728).
     // scale_delta is negative below L≈0.728 (ACES was brightening → inverse darkens back).
     // Above L≈0.728 ACES was compressing — that expansion requires headroom > 1.0 which SDR
@@ -460,13 +461,13 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
         float log_key    = log2(max(ctx.zone_log_key, 1e-3));
         float log_pixel  = log2(max(luma, 1e-3));
         float log_detail = log_pixel - log_base;
-        // LOCAL_TONE: lift-only. Gate on max(log_base, log_pixel) — a bright pixel in a
+        // LOCAL_CONTRAST: lift-only. Gate on max(log_base, log_pixel) — a bright pixel in a
         // locally-dark area (e.g. lamp against dark wall) has low log_base but high log_pixel;
         // gating on base alone would lift the highlight. Using the higher of the two ensures
         // only pixels that are themselves below the global key receive lift.
         // 0.08306 = 0.025 * log2(10) — keeps behaviour identical to the former log10 formula.
-        float bil_ratio  = exp2(float(LOCAL_TONE)       * 0.08306 * max(log_key - max(log_base, log_pixel), 0.0)
-                              + float(CLARITY_STRENGTH) * 0.08306 * log_detail);
+        float bil_ratio  = exp2(float(LOCAL_CONTRAST)       * 0.08306 * max(log_key - max(log_base, log_pixel), 0.0)
+                              + float(CLARITY) * 0.08306 * log_detail);
         bil_ratio        = clamp(bil_ratio, 0.5, 2.0);
         float3 lin_b     = lin * bil_ratio;
         lin              = lin_b / max(max(lin_b.r, max(lin_b.g, lin_b.b)), 1.0);
@@ -489,7 +490,7 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     float clahe_slope = lerp(1.32, 1.12, ctx.ss_04_25);
     float iqr_scale   = min(smoothstep(0.0, 0.25, zone_iqr),
                             (clahe_slope - 1.0) / max(ctx.zone_str, 0.001));
-    float delta    = luma_orig - zone_median;   // original position — LOCAL_TONE lift does not inflate delta
+    float delta    = luma_orig - zone_median;   // original position — LOCAL_CONTRAST lift does not inflate delta
     float zone_adj = ctx.zone_str * iqr_scale * delta * (1.0 - abs(delta));
     float above_w  = smoothstep(-0.05, 0.10, delta);
     float new_luma = saturate(luma + zone_adj * above_w);
@@ -561,7 +562,7 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     {
         // R150: dark-dominant scenes (low mode) are physically dim — scotopic vision
         // more active; scale Purkinje up toward the genuine mesopic threshold.
-        float eff_purkinje = PURKINJE_STRENGTH
+        float eff_purkinje = PURKINJE
                            * lerp(1.0, 1.3, saturate((0.15 - ctx.scene_mode) / 0.15));
         float scotopic_w = 1.0 - smoothstep(0.0, 0.30, new_luma);  // R117: widened from 0.12; mesopic transition spans full scotopic-photopic range
         lab.y -= 0.006 * scotopic_w * C * eff_purkinje;  // rod peak 507nm is blue-green: shift both a* (green) and b* (blue)
@@ -585,12 +586,12 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     C *= r133_roll;
 
     // R21: per-band hue rotation — compute h_out from original h before chroma lift
-    float r21_delta = ROT_RED    * HueBandWeight(h_perc, HB_BAND_RED)
-                    + ROT_YELLOW * HueBandWeight(h_perc, HB_BAND_YELLOW)
-                    + ROT_GREEN  * HueBandWeight(h_perc, HB_BAND_GREEN)
-                    + ROT_CYAN   * HueBandWeight(h_perc, HB_BAND_CYAN)
-                    + ROT_BLUE   * HueBandWeight(h_perc, HB_BAND_BLUE)
-                    + ROT_MAG    * HueBandWeight(h_perc, HB_BAND_MAGENTA);
+    float r21_delta = HUE_RED    * HueBandWeight(h_perc, HB_BAND_RED)
+                    + HUE_YELLOW * HueBandWeight(h_perc, HB_BAND_YELLOW)
+                    + HUE_GREEN  * HueBandWeight(h_perc, HB_BAND_GREEN)
+                    + HUE_CYAN   * HueBandWeight(h_perc, HB_BAND_CYAN)
+                    + HUE_BLUE   * HueBandWeight(h_perc, HB_BAND_BLUE)
+                    + HUE_MAG    * HueBandWeight(h_perc, HB_BAND_MAGENTA);
     // R125/R126: Bezold-Brücke — anchored at Oklab invariant hues (h=0.25 yellow, h=0.75 blue)
     // ch_h zeros at h=0.25/0.75 by construction. sh2/ch3 via double/triple-angle (7 MAD total).
     // Asymmetry: teal lobe (0.61) ~1.6× orange lobe (0.38) — matches Kurtenbach 1994 data.
@@ -757,7 +758,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float4 lf_mip2_tex = tex2D(LowFreqMip2Samp, uv);
 
     float  col_luma = Luma(col.rgb);
-    float  whites   = 1.0 - WHITE_HEADROOM * 0.05;
+    float  whites   = 1.0 - WHITES * 0.05;
     float3 lin      = col.rgb * (whites - ctx.cfilm_floor) + ctx.cfilm_floor;
     lin = lerp(lin, ApplyCorrective(lin, col_luma, uv, lf_mip2_tex, ctx), CORRECTIVE_STRENGTH * 0.01);
 
@@ -955,7 +956,7 @@ float3 ApplyFilmGrain(float3 rgb, float2 pos_xy)
     float3 hb         = pcg3d_hash(uint3(uint(p_full.x) + 1, uint(p_full.y) + 1, slot + 7u));
     float  fine_w     = 0.30 + silver_boost;
     float3 gnoise     = g_coarse * (1.0 - fine_w) + (ha - hb) * 0.5 * fine_w;
-    float  env        = GRAIN_STRENGTH * 0.05 * sqrt(max(0.0, 1.0 - L_g));
+    float  env        = GRAIN * 0.05 * sqrt(max(0.0, 1.0 - L_g));
     return saturate(rgb + gnoise * env * float3(1.00, 0.80, 1.50));
 }
 
@@ -974,7 +975,7 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     diff_radial = lerp(diff_radial, 0.25, smoothstep(0.15, 0.40, r));
     diff_radial = lerp(diff_radial, 0.75, smoothstep(0.40, 0.70, r));
     diff_radial = lerp(diff_radial, 1.00, smoothstep(0.70, 0.90, r));
-    float  eff_diff    = DIFFUSION_STRENGTH * 1.40 * diff_radial;
+    float  eff_diff    = DIFFUSION * 1.40 * diff_radial;
 
     float3 diff_blur = tex2Dlod(DiffusionSamp, float4(uv, 0, 0)).rgb;
 
@@ -989,7 +990,10 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
     float3 result = ApplyDiffusionBloom(base.rgb, diff_blur, adapt_str, eff_diff);
 
-    float dither = frac(52.9829189 * frac(dot(pos.xy, float2(0.06711056, 0.00583715)))) - 0.5;
+    // R197: golden-ratio temporal offset — each frame lands in the largest gap left by
+    // previous frames, giving quasi-random temporal coverage with no visible pattern.
+    float dither_phase = frac(FRAME_COUNT * 0.61803398875);
+    float dither = frac(52.9829189 * frac(dot(pos.xy, float2(0.06711056, 0.00583715))) + dither_phase) - 0.5;
     result += dither * (1.0 / 255.0);
 
     result = ApplyFilmGrain(result, pos.xy);

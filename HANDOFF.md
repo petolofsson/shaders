@@ -9,7 +9,7 @@ grade: 10 passes — LFDownscale1 → LFDownscale2 → NeutralIllum → GuidedCo
 ## Known state
 - No compile errors. Log: `/tmp/vkbasalt.log`
 - **Knob convention**: 0 = passthrough universally. 1 = full designed effect. Compensation factors live in grade.fx — not in creative_values.fx values.
-- **Renamed**: `WHITES` → `WHITE_HEADROOM` (0=passthrough, 1=ARRI 0.95 ceiling). `HAL_GAMMA` → `HAL_CROSSOVER`.
+- **Renamed**: `HAL_GAMMA` → `HALATION_CROSSOVER`. Knobs use industry vernacular: `WHITES`, `HALATION`, `CLARITY`, `PURKINJE`, `HUE_*`, `DIFFUSION`, `GRAIN`, `LOCAL_CONTRAST`.
 - **BLACKS**: ×0.005 in shader. 1.0 = ARRI LogC3 black point.
 - **CURVE_***: ×0.10 in shader. ±1.0 user range = ±0.10 stop knee/toe shift.
 - **PRINTER_R/G/B**: 0 = neutral (was 25). Shader drops −25 offset.
@@ -24,11 +24,9 @@ grade: 10 passes — LFDownscale1 → LFDownscale2 → NeutralIllum → GuidedCo
 - **ApplyLook (R192 P3)**: PRINT_STOCK/BLEACH_BYPASS post-chroma. Needs retune.
 - **R190**: GuidedCoeff+GuidedBase at 1/8-res. log2-luma space. LOCAL_TONE/CLARITY preserved.
 - **Analysis tools**: Oklab/ΔE_oklab metric. `stage_isolate`, `compare_frame --all`, `check_all`.
-- **Baselines**: INVALID — Oklab metric change + knob normalization. Rebless after retune.
-- **Mid-shadow off-color**: unverified post-R127/R130. Re-test before vk-colorist Phase 2.
+- **Baselines**: VALID — check_all PASS 4/4 (5a78cdb). Oklab compare_frame baseline established 2026-05-15.
 
 ## Next
 - Retune GZW `creative_values.fx` from new 0=passthrough baseline
 - Rebless baselines with `check_all --bless` after retune
-- Re-test mid-shadow off-color
 - ApplyChroma split — still ~80 lines, over Rule 4 limit

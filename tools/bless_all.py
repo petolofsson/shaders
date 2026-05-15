@@ -18,8 +18,11 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from compare_frame import _launch_mpv, _goto_frame, SOCK  # noqa: E402
+
 ROOT     = Path(__file__).resolve().parent.parent
-CAPTURES = ROOT / "captures"
+CAPTURES = ROOT / "gamespecific" / "test" / "captures"
 INPUTS   = ROOT / "tests" / "inputs"
 CONFIG   = ROOT / "gamespecific" / "arc_raiders" / "arc_raiders.conf"
 
@@ -43,35 +46,9 @@ def latest_exr() -> Path:
     return candidates[-1]
 
 
-def capture_via_mpv(img_file: str, delay: int) -> Path:
-    """Launch mpv on the game monitor, wait, capture, return the EXR path."""
-    img_path = INPUTS / img_file
-    if not img_path.exists():
-        sys.exit(f"Missing: {img_path}\nRun 'make_test_images' first.")
-
-    env = os.environ.copy()
-    env["ENABLE_VKBASALT"]      = "1"
-    env["VKBASALT_CONFIG_FILE"] = str(CONFIG)
-
-    mpv = subprocess.Popen(
-        [
-            "mpv",
-            "--vo=gpu", "--gpu-api=vulkan",
-            "--loop", "--fs",
-            f"--screen={GAME_SCREEN}",
-            f"--fs-screen={GAME_SCREEN}",
-            str(img_path),
-        ],
-        env=env,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    print(f"  mpv pid {mpv.pid} — waiting {delay}s for pipeline to render...")
-    time.sleep(delay)
-
-    if mpv.poll() is not None:
-        sys.exit("mpv exited early — check /tmp/vkbasalt.log")
-
+def _capture_frame(idx: int) -> Path:
+    """Navigate to playlist frame idx and capture an EXR."""
+    _goto_frame(idx)
     print("  capturing...")
     cap = subprocess.run(
         ["python3", str(ROOT / "tools" / "capture.py"),
@@ -79,24 +56,20 @@ def capture_via_mpv(img_file: str, delay: int) -> Path:
         capture_output=True, text=True,
     )
     if cap.returncode != 0:
-        mpv.terminate()
         sys.exit(f"capture failed:\n{cap.stderr}")
     for line in cap.stdout.strip().splitlines():
         print(f"  {line}")
-
-    mpv.terminate()
-    mpv.wait(timeout=5)
     return latest_exr()
 
 
-def bless_one(name: str, img_file: str, desc: str, delay: int, rebless: bool) -> None:
+def bless_one(name: str, idx: int, desc: str, rebless: bool) -> None:
     golden_exr = ROOT / "tests" / "golden" / f"{name}.exr"
     if golden_exr.exists() and not rebless:
         print(f"  skip '{name}' — already blessed  (use --rebless to overwrite)")
         return
 
     print(f"\n── bless {name} {'─' * (44 - len(name))}")
-    exr = capture_via_mpv(img_file, delay)
+    exr = _capture_frame(idx)
 
     bless = subprocess.run(
         ["python3", str(ROOT / "tools" / "test_golden.py"),
@@ -109,14 +82,14 @@ def bless_one(name: str, img_file: str, desc: str, delay: int, rebless: bool) ->
         print(f"  {line}")
 
 
-def check_one(name: str, img_file: str, delay: int) -> bool:
+def check_one(name: str, idx: int) -> bool:
     golden_exr = ROOT / "tests" / "golden" / f"{name}.exr"
     if not golden_exr.exists():
         print(f"  skip '{name}' — no golden (run bless_all first)")
         return True
 
     print(f"\n── check {name} {'─' * (44 - len(name))}")
-    exr = capture_via_mpv(img_file, delay)
+    exr = _capture_frame(idx)
 
     result = subprocess.run(
         ["python3", str(ROOT / "tools" / "test_golden.py"),
@@ -138,32 +111,46 @@ def main() -> None:
     if not CONFIG.exists():
         sys.exit(f"Config not found: {CONFIG}")
 
-    if args.check:
-        print(f"Checking {len(IMAGES)} images  (delay={args.delay}s)")
-        passed, failed = [], []
-        for name, img_file, _ in IMAGES:
-            ok = check_one(name, img_file, args.delay)
-            (passed if ok else failed).append(name)
-        print(f"\n{'─' * 52}")
-        print(f"  PASS {len(passed)}  FAIL {len(failed)}")
-        if failed:
-            print(f"  failed: {', '.join(failed)}")
-            sys.exit(1)
-    else:
-        print(f"Blessing {len(IMAGES)} images  (delay={args.delay}s, rebless={args.rebless})")
-        for name, img_file, desc in IMAGES:
-            bless_one(name, img_file, desc, args.delay, args.rebless)
+    for _, img_file, _ in IMAGES:
+        if not (INPUTS / img_file).exists():
+            sys.exit(f"Missing: {INPUTS / img_file}\nRun 'make_test_images' first.")
 
-        print(f"\nChecking {len(IMAGES)} images...")
-        passed, failed = [], []
-        for name, img_file, _ in IMAGES:
-            ok = check_one(name, img_file, args.delay)
-            (passed if ok else failed).append(name)
-        print(f"\n{'─' * 52}")
-        print(f"  PASS {len(passed)}  FAIL {len(failed)}")
-        if failed:
-            print(f"  failed: {', '.join(failed)}")
-            sys.exit(1)
+    img_paths = [INPUTS / img_file for _, img_file, _ in IMAGES]
+    mpv = _launch_mpv(img_paths, CONFIG, args.delay)
+
+    try:
+        if args.check:
+            print(f"Checking {len(IMAGES)} images  (delay={args.delay}s)")
+            passed, failed = [], []
+            for idx, (name, _, _) in enumerate(IMAGES):
+                ok = check_one(name, idx)
+                (passed if ok else failed).append(name)
+            print(f"\n{'─' * 52}")
+            print(f"  PASS {len(passed)}  FAIL {len(failed)}")
+            if failed:
+                print(f"  failed: {', '.join(failed)}")
+                sys.exit(1)
+        else:
+            print(f"Blessing {len(IMAGES)} images  (delay={args.delay}s, rebless={args.rebless})")
+            for idx, (name, _, desc) in enumerate(IMAGES):
+                bless_one(name, idx, desc, args.rebless)
+
+            print(f"\nChecking {len(IMAGES)} images...")
+            passed, failed = [], []
+            for idx, (name, _, _) in enumerate(IMAGES):
+                ok = check_one(name, idx)
+                (passed if ok else failed).append(name)
+            print(f"\n{'─' * 52}")
+            print(f"  PASS {len(passed)}  FAIL {len(failed)}")
+            if failed:
+                print(f"  failed: {', '.join(failed)}")
+                sys.exit(1)
+    finally:
+        mpv.terminate()
+        try:
+            mpv.wait(timeout=5)
+        except Exception:
+            mpv.kill()
 
 
 if __name__ == "__main__":

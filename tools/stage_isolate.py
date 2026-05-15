@@ -2,44 +2,52 @@
 """
 tools/stage_isolate.py — Additive stage-isolation analysis.
 
-Runs compare_frame --all four times, enabling stages cumulatively:
+Runs four cumulative stage configurations:
   1. CORRECTIVE only
   2. +TONAL
   3. +CHROMA
   4. +LOOK  (full pipeline)
 
-Prints a side-by-side attribution table so you can see exactly what each
-stage contributes in the context of the stages that precede it.
+Each stage launches mpv once for all frames (single SPIR-V compile) and
+navigates via IPC — much faster than per-frame restarts.
+
+At the end, writes grade_callsheet.txt to gamespecific/<game>/ combining
+creative_values.fx, compare_frame aggregate (if available), and stage data.
 
 Usage:
     stage_isolate --game gzw [--delay 5]
 
-The stage gate values in creative_values.fx are saved and fully restored
-after the run, even if the script is interrupted.
+Gate values in creative_values.fx are saved and fully restored after the
+run, even if interrupted.
 """
 
 import argparse
+import json
 import re
 import signal
 import sys
+from datetime import date
 from pathlib import Path
 
 import numpy as np
 
 try:
-    import OpenEXR  # noqa: F401 — validates dep before any work starts
+    import OpenEXR  # noqa: F401
 except ImportError:
     sys.exit("Missing: pip install openexr")
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from compare_frame import _load_png_linear, _launch_mpv, _save_exr  # noqa: E402
+from compare_frame import (  # noqa: E402
+    _load_png_linear, _launch_mpv, _mpv_cmd, _goto_frame,
+    _save_exr, GAME_MONITOR,
+)
 from analyze_delta import compute_relative, _de_fmt, _BLD, _RST, HUE_BANDS  # noqa: E402
+from capture import take_screenshot  # noqa: E402
 
-import subprocess
-import tempfile
 import shutil
+import tempfile
 import time
 
 # ── Stage gate definitions ────────────────────────────────────────────────────
@@ -85,51 +93,55 @@ def _write_gates(cv: Path, gates: dict) -> None:
 # ── Batch capture for one stage configuration ─────────────────────────────────
 
 def _run_stage(game: str, config: Path, delay: int) -> "list[dict] | None":
-    frames_dir = ROOT / "gamespecific" / game / "reference_frames"
+    frames_dir = ROOT / "gamespecific" / game / "analysis" / "reference"
     pngs = sorted(frames_dir.glob("*.png"))
     if not pngs:
         sys.exit(f"No PNGs in {frames_dir}")
 
     all_stats = []
-    for i, png in enumerate(pngs):
-        print(f"    [{i+1}/{len(pngs)}] {png.name}", end="", flush=True)
-        before = _load_png_linear(png)
+    proc = _launch_mpv(pngs, config, delay)
+    try:
+        for i, png in enumerate(pngs):
+            print(f"    [{i+1}/{len(pngs)}] {png.name}", end="", flush=True)
+            before = _load_png_linear(png)
 
-        tmp      = Path(tempfile.mkdtemp(prefix="stage_isolate_"))
-        after_png = tmp / f"{png.stem}_after.png"
+            _goto_frame(i)
 
-        proc = _launch_mpv(png, config, delay)
-        r = subprocess.run(
-            ["spectacle", "-b", "-m", "-n", "-o", str(after_png)],
-            capture_output=True,
-        )
+            tmp       = Path(tempfile.mkdtemp(prefix="stage_isolate_"))
+            after_png = tmp / f"{png.stem}_after.png"
+            take_screenshot(after_png)
+
+            if not after_png.exists() or after_png.stat().st_size == 0:
+                print("  SKIP (capture failed)")
+                shutil.rmtree(tmp, ignore_errors=True)
+                continue
+
+            after = _load_png_linear(after_png)
+            bh, bw = before.shape[:2]
+            ah, aw = after.shape[:2]
+            if aw > bw:
+                x = aw // 2 if GAME_MONITOR == "right" else 0
+                after = after[:, x:x + bw, :]
+            shutil.rmtree(tmp, ignore_errors=True)
+
+            if before.shape != after.shape:
+                print(f"  SKIP (resolution mismatch)")
+                continue
+
+            stats = compute_relative(before, after)
+            all_stats.append(stats)
+            print(f"  ΔE {stats['mean_de']:.2f}")
+    finally:
         proc.terminate()
         try:
             proc.wait(timeout=3)
-        except subprocess.TimeoutExpired:
+        except Exception:
             proc.kill()
-
-        if r.returncode != 0 or not after_png.exists() or after_png.stat().st_size == 0:
-            print("  SKIP (capture failed)")
-            shutil.rmtree(tmp, ignore_errors=True)
-            continue
-
-        after = _load_png_linear(after_png)
-        shutil.rmtree(tmp, ignore_errors=True)
-
-        if before.shape != after.shape:
-            print(f"  SKIP (resolution mismatch)")
-            continue
-
-        stats = compute_relative(before, after)
-        all_stats.append(stats)
-        print(f"  ΔE {stats['mean_de']:.2f}")
 
     return all_stats if all_stats else None
 
 
 def _aggregate(all_stats: "list[dict]") -> dict:
-    """Average stats across frames."""
     n = len(all_stats)
 
     def avg_zone(label):
@@ -153,8 +165,8 @@ def _aggregate(all_stats: "list[dict]") -> dict:
         }
 
     return {
-        "mean_de": sum(s["mean_de"] for s in all_stats) / n,
-        "zones":   {lbl: avg_zone(lbl) for lbl in ("shadows", "midtones", "highlights")},
+        "mean_de":   sum(s["mean_de"] for s in all_stats) / n,
+        "zones":     {lbl: avg_zone(lbl) for lbl in ("shadows", "midtones", "highlights")},
         "hue_bands": {e[0]: avg_band(e[0]) for e in HUE_BANDS},
     }
 
@@ -166,30 +178,25 @@ def _print_report(results: "list[tuple[str, dict]]") -> None:
     print("─" * 72)
     print(f"\n{_BLD}STAGE ISOLATION REPORT{_RST}\n")
 
-    # Overall ΔE row
     print(f"  {'Stage':<14}  {'Overall ΔE':>10}  {'shadows ΔL*/ΔC*':>17}  {'mids ΔL*/ΔC*':>14}  {'highs ΔL*/ΔC*':>14}")
     print("  " + "─" * 72)
     prev_de = 0.0
     for label, agg in results:
-        de  = agg["mean_de"]
-        inc = de - prev_de
+        de    = agg["mean_de"]
+        inc   = de - prev_de
         inc_s = f"(+{inc:.2f})" if prev_de > 0 else ""
         prev_de = de
-
         sh = agg["zones"].get("shadows")
         mi = agg["zones"].get("midtones")
         hi = agg["zones"].get("highlights")
         sh_s = f"{sh['dL']:+.1f}/{sh['dC']:+.1f}" if sh else "  —  "
         mi_s = f"{mi['dL']:+.1f}/{mi['dC']:+.1f}" if mi else "  —  "
         hi_s = f"{hi['dL']:+.1f}/{hi['dC']:+.1f}" if hi else "  —  "
-
         print(f"  {label:<14}  {_de_fmt(de)} {inc_s:<8}  {sh_s:>17}  {mi_s:>14}  {hi_s:>14}")
 
-    # Hue band table
     print(f"\n  {_BLD}by hue band  (ΔL* / ΔC*){_RST}")
     band_names = [e[0] for e in HUE_BANDS]
-    header = f"  {'Stage':<14}  " + "  ".join(f"{b:<13}" for b in band_names)
-    print(header)
+    print(f"  {'Stage':<14}  " + "  ".join(f"{b:<13}" for b in band_names))
     print("  " + "─" * (16 + 15 * len(band_names)))
     for label, agg in results:
         cells = []
@@ -201,6 +208,107 @@ def _print_report(results: "list[tuple[str, dict]]") -> None:
     print()
 
 
+# ── Call sheet ────────────────────────────────────────────────────────────────
+
+def _write_callsheet(game: str, results: "list[tuple[str, dict]]") -> None:
+    data_dir = ROOT / "gamespecific" / game
+    cv_path  = data_dir / "shaders" / "creative_values.fx"
+    agg_path = data_dir / "compare_agg.json"
+
+    agg = json.loads(agg_path.read_text()) if agg_path.exists() else None
+
+    sep = "=" * 72
+    lines = [
+        f"GRADE CALL SHEET — {game} — {date.today()}",
+        sep,
+        "",
+        "Paste into a web AI with: 'make this look more like [director / film / stock]'",
+        "The knob comments explain every parameter. The analysis shows what the grade",
+        "is currently doing. The AI can suggest specific value changes.",
+        "",
+        sep,
+        "CREATIVE VALUES  (knob comments explain units, ranges, and physical meaning)",
+        sep,
+        "",
+        cv_path.read_text().rstrip(),
+    ]
+
+    if agg:
+        lines += [
+            "",
+            sep,
+            f"ANALYSIS — raw game vs graded ({agg['n_frames']} frames, Oklab ΔE_oklab)",
+            sep,
+            "",
+            "ΔL* = luma shift  ΔC* = chroma shift  Δh° = hue rotation  ΔE = perceptual distance",
+            "Scale: <1 imperceptible  1–3 minor  3–6 visible  >6 gross",
+            "",
+            "TONAL ZONES:",
+        ]
+        for zone in ("shadows", "midtones", "highlights"):
+            z = agg["zones"].get(zone)
+            if not z:
+                continue
+            dh_s = f"  Δh° {z['dh']:+.1f}°" if z.get("dh") is not None else ""
+            lines.append(f"  {zone:<12}  ΔL* {z['dL']:+.1f}  ΔC* {z['dC']:+.1f}{dh_s}  ΔE {z['mean_de']:.2f}")
+
+        lines += ["", "HUE BANDS (chromatic pixels only, Oklab C* > 3):"]
+        for bname, b in agg["hue_bands"].items():
+            if not b:
+                continue
+            dh_s = f"  Δh° {b['dh']:+.1f}°" if b.get("dh") is not None else ""
+            lines.append(f"  {bname:<8}  ΔL* {b['dL']:+.1f}  ΔC* {b['dC']:+.1f}{dh_s}  ΔE {b['mean_de']:.2f}")
+
+    lines += [
+        "",
+        sep,
+        "STAGE ATTRIBUTION  (cumulative — each row adds one stage to the previous)",
+        sep,
+        "",
+        "Format: ΔL* / ΔC* per zone. (+increment) shows each stage's added ΔE.",
+        "",
+        f"  {'Stage':<14}  {'ΔE':>5}           {'shadows ΔL*/ΔC*':>17}  {'mids ΔL*/ΔC*':>14}  {'highs ΔL*/ΔC*':>14}",
+        "  " + "─" * 68,
+    ]
+    prev_de = 0.0
+    for label, agg_s in results:
+        de    = agg_s["mean_de"]
+        inc   = de - prev_de
+        inc_s = f"(+{inc:.2f})" if prev_de > 0 else "      "
+        prev_de = de
+        sh = agg_s["zones"].get("shadows")
+        mi = agg_s["zones"].get("midtones")
+        hi = agg_s["zones"].get("highlights")
+        sh_s = f"{sh['dL']:+.1f}/{sh['dC']:+.1f}" if sh else "  —  "
+        mi_s = f"{mi['dL']:+.1f}/{mi['dC']:+.1f}" if mi else "  —  "
+        hi_s = f"{hi['dL']:+.1f}/{hi['dC']:+.1f}" if hi else "  —  "
+        lines.append(f"  {label:<14}  {de:5.2f} {inc_s}  {sh_s:>17}  {mi_s:>14}  {hi_s:>14}")
+
+    band_names = [e[0] for e in HUE_BANDS]
+    lines += [
+        "",
+        "BY HUE BAND  (ΔL* / ΔC* per stage):",
+        f"  {'Stage':<14}  " + "  ".join(f"{b:<12}" for b in band_names),
+        "  " + "─" * (16 + 14 * len(band_names)),
+    ]
+    for label, agg_s in results:
+        cells = []
+        for bname in band_names:
+            b = agg_s["hue_bands"].get(bname)
+            cells.append(f"{b['dL']:+.1f}/{b['dC']:+.1f}" if b else "  —  ")
+        lines.append(f"  {label:<14}  " + "  ".join(f"{c:<12}" for c in cells))
+
+    out = data_dir / "grade_callsheet.txt"
+    out.write_text("\n".join(lines) + "\n")
+    print(f"  call sheet → {out.relative_to(ROOT)}")
+
+    analysis_dir = data_dir / "analysis" / str(date.today())
+    analysis_dir.mkdir(parents=True, exist_ok=True)
+    arch = analysis_dir / "grade_callsheet.txt"
+    arch.write_text("\n".join(lines) + "\n")
+    print(f"  archive    → {arch.relative_to(ROOT)}")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -210,8 +318,8 @@ def main() -> None:
         epilog="Example:\n  stage_isolate --game gzw --delay 5",
     )
     ap.add_argument("--game",  required=True, help="Game name (e.g. gzw)")
-    ap.add_argument("--delay", type=int, default=3,
-                    help="Seconds to wait for SPIR-V compile per frame (default: 3)")
+    ap.add_argument("--delay", type=int, default=2,
+                    help="Seconds to wait for SPIR-V compile per stage (default: 2)")
     args = ap.parse_args()
 
     cv     = _cv_path(args.game)
@@ -223,7 +331,6 @@ def main() -> None:
     print(f"stage_isolate  game={args.game}  {len(STAGES)} stages")
     print(f"Original gates: { {k: original_gates[k] for k in GATE_NAMES} }")
 
-    # Restore on Ctrl-C or normal exit
     def _restore(sig=None, frame=None):
         _write_gates(cv, original_gates)
         print("\nGates restored.")
@@ -236,7 +343,7 @@ def main() -> None:
         for stage_label, gates in STAGES:
             print(f"\n── {stage_label}  gates={gates}")
             _write_gates(cv, gates)
-            time.sleep(0.1)  # let filesystem flush before mpv picks it up
+            time.sleep(0.1)
 
             all_stats = _run_stage(args.game, config, args.delay)
             if all_stats is None:
@@ -251,6 +358,7 @@ def main() -> None:
 
     if results:
         _print_report(results)
+        _write_callsheet(args.game, results)
 
 
 if __name__ == "__main__":
