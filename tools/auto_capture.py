@@ -32,6 +32,43 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from capture import take_screenshot as _take_screenshot  # noqa: E402
 
 
+def crop_to_monitor(png: Path, screen: str) -> None:
+    """Crop png in-place to the target monitor using ImageMagick."""
+    r = subprocess.run(
+        ["identify", "-format", "%wx%h", str(png)], capture_output=True, text=True
+    )
+    if r.returncode != 0:
+        return
+    try:
+        total_w, total_h = map(int, r.stdout.strip().split("x"))
+    except (ValueError, AttributeError):
+        return
+
+    half_w = total_w // 2
+    if screen in ("left", "0"):
+        x_off, crop_w = 0, half_w
+    elif screen in ("right", "1"):
+        x_off, crop_w = half_w, half_w
+    else:
+        try:
+            x_off = int(screen)
+            crop_w = total_w - x_off
+        except ValueError:
+            return
+
+    if x_off == 0 and crop_w >= total_w:
+        return  # nothing to crop
+
+    tmp_out = png.with_suffix(".crop.png")
+    r2 = subprocess.run(
+        ["convert", str(png),
+         "-crop", f"{crop_w}x{total_h}+{x_off}+0", "+repage", str(tmp_out)],
+        capture_output=True,
+    )
+    if r2.returncode == 0:
+        tmp_out.replace(png)
+
+
 def detect_game() -> "str | None":
     """Scan /proc for a running process with SHADER_GAME set in its environment."""
     needle = b"SHADER_GAME="
@@ -111,6 +148,8 @@ def main() -> None:
                     help="Max frames to keep in analysis/reference/ — oldest pruned (default: 24)")
     ap.add_argument("--min-diff",   type=int, default=12,
                     help="Min mean pixel diff (0–255) required to save a frame (default: 12)")
+    ap.add_argument("--screen",     default="right",
+                    help="which monitor the game is on: left|right|0|1|<pixel offset> (default: right)")
     args = ap.parse_args()
 
     game = args.game or detect_game()
@@ -148,6 +187,8 @@ def main() -> None:
                 print(f"  [{ts}] screenshot failed — is spectacle installed?")
                 time.sleep(args.interval)
                 continue
+
+            crop_to_monitor(tmp, args.screen)
 
             t = make_thumb(tmp)
             if t is None:
