@@ -28,6 +28,7 @@ Requires:
 
 import argparse
 import math
+import os
 import struct
 import subprocess
 import sys
@@ -81,6 +82,23 @@ LUMA_HIST_BINS  = 128   # x=0..127, written by analysis_scope_pre
 
 HUE_HIST_OFFSET = 130
 HUE_HIST_BINS   = 64    # x=130..193, written by analysis_scope_pre
+
+
+# ── Game auto-detection ───────────────────────────────────────────────────────
+
+def detect_game() -> "str | None":
+    """Scan /proc for a running process with SHADER_GAME set in its environment."""
+    needle = b"SHADER_GAME="
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            for entry in Path(f"/proc/{pid}/environ").read_bytes().split(b"\0"):
+                if entry.startswith(needle):
+                    return entry[len(needle):].decode(errors="replace").strip()
+        except (PermissionError, FileNotFoundError, ProcessLookupError):
+            continue
+    return None
 
 
 # ── Screenshot ────────────────────────────────────────────────────────────────
@@ -318,13 +336,26 @@ def _screen_offset(screen_arg: str, total_width: int) -> int:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="vkBasalt pipeline capture → EXR")
-    ap.add_argument("out",        nargs="?",           help="output .exr path (default: auto-named)")
-    ap.add_argument("--game",     default="unknown",   help="game label")
-    ap.add_argument("--note",     default="",          help="free-text session note")
-    ap.add_argument("--screen",   default="left",      help="which monitor the game is on: left|right|0|1|<pixel offset>")
-    ap.add_argument("--no-frame", action="store_true", help="1×1 scalars-only output, no frame image")
-    ap.add_argument("--dump",     action="store_true", help="print highway to stdout, skip EXR write")
+    ap.add_argument("out",           nargs="?",          help="output .exr path (default: auto-named)")
+    ap.add_argument("--game",        default=None,       help="game name (auto-detected from SHADER_GAME if omitted)")
+    ap.add_argument("--note",        default="",         help="free-text session note")
+    ap.add_argument("--screen",      default="left",     help="which monitor the game is on: left|right|0|1|<pixel offset>")
+    ap.add_argument("--no-frame",    action="store_true", help="1×1 scalars-only output, no frame image")
+    ap.add_argument("--dump",        action="store_true", help="print highway to stdout, skip EXR write")
+    ap.add_argument("--detect-game", action="store_true", help="print detected game name and exit")
     args = ap.parse_args()
+
+    if args.detect_game:
+        game = detect_game()
+        if game:
+            print(game)
+            sys.exit(0)
+        sys.exit(1)
+
+    if not args.game:
+        args.game = detect_game() or "unknown"
+        if args.game != "unknown":
+            print(f"Detected game: {args.game}")
 
     ts  = datetime.now().strftime("%Y%m%d_%H%M%S")
     tmp = Path(f"/tmp/pipeline_capture_{ts}.png")
@@ -364,8 +395,12 @@ def main() -> None:
         dump_highway(scalars, luma_hist, hue_hist)
         return
 
-    default_dir = Path(__file__).resolve().parent.parent / "captures"
-    default_dir.mkdir(exist_ok=True)
+    ROOT = Path(__file__).resolve().parent.parent
+    if args.game != "unknown":
+        default_dir = ROOT / "gamespecific" / args.game / "captures"
+    else:
+        default_dir = ROOT / "captures"
+    default_dir.mkdir(parents=True, exist_ok=True)
     out_path = Path(args.out) if args.out else default_dir / f"session_{ts}_{args.game}.exr"
     metadata = {
         "game":       args.game,
