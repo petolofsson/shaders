@@ -130,7 +130,7 @@
 // Applied after all grading and chroma work — ACES LMT position.
 // Kodak 2383 print emulsion: gentle shadow density bow, restrained shoulder,
 // desaturates mids ~15%. 0 = off. 1 = full 2383.
-#define PRINT_STOCK  0.85
+#define PRINT_STOCK  0.50
 // Skip the bleach step during print development — retains metallic silver alongside
 // color dye. Desaturates shadows most (denser silver retention in unexposed areas),
 // steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.
