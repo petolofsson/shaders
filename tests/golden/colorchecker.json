@@ -1,0 +1,14 @@
+{
+  "name": "colorchecker",
+  "description": "24-patch Macbeth ColorChecker",
+  "git_commit": "00ed3b9",
+  "source": "session_20260515_112721_arc_raiders.exr",
+  "resolution": [
+    2560,
+    1440
+  ],
+  "thresholds": {
+    "mae": 0.005,
+    "hist_chi2": 0.05
+  }
+}
