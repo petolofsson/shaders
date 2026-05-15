@@ -18,6 +18,7 @@ Usage:
 """
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -27,6 +28,21 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def detect_game() -> "str | None":
+    """Scan /proc for a running process with SHADER_GAME set in its environment."""
+    needle = b"SHADER_GAME="
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            for entry in Path(f"/proc/{pid}/environ").read_bytes().split(b"\0"):
+                if entry.startswith(needle):
+                    return entry[len(needle):].decode(errors="replace").strip()
+        except (PermissionError, FileNotFoundError, ProcessLookupError):
+            continue
+    return None
 
 
 def take_screenshot(tmp: Path) -> bool:
@@ -88,8 +104,8 @@ def main() -> None:
             "  auto_capture &                # run in background\n"
         ),
     )
-    ap.add_argument("--game",       default="arc_raiders",
-                    help="Game name (default: arc_raiders)")
+    ap.add_argument("--game",       default=None,
+                    help="Game name — auto-detected from SHADER_GAME env var if omitted")
     ap.add_argument("--interval",   type=int, default=20,
                     help="Seconds between capture attempts (default: 20)")
     ap.add_argument("--max-frames", type=int, default=24,
@@ -97,6 +113,13 @@ def main() -> None:
     ap.add_argument("--min-diff",   type=int, default=12,
                     help="Min mean pixel diff (0–255) required to save a frame (default: 12)")
     args = ap.parse_args()
+
+    game = args.game or detect_game()
+    if not game:
+        sys.exit("Could not detect game. Set SHADER_GAME=<name> in Steam launch options or pass --game.")
+    if args.game is None:
+        print(f"Detected game: {game}")
+    args.game = game
 
     dest = ROOT / "gamespecific" / args.game / "reference_frames"
     dest.mkdir(parents=True, exist_ok=True)
