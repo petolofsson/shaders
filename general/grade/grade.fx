@@ -449,6 +449,7 @@ float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex
 TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
 {
     float luma        = Luma(lin);
+    float luma_orig   = luma;   // zone S-curve classifies from original scene position
     // R189 bilateral tonemapper + clarity.
     // BS term: purely from pre-corrective base — no film curve contamination.
     // CS term: full-res post-corrective luma vs pre-corrective base — captures actual
@@ -488,7 +489,7 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     float clahe_slope = lerp(1.32, 1.12, ctx.ss_04_25);
     float iqr_scale   = min(smoothstep(0.0, 0.25, zone_iqr),
                             (clahe_slope - 1.0) / max(ctx.zone_str, 0.001));
-    float delta    = luma - zone_median;
+    float delta    = luma_orig - zone_median;   // original position — LOCAL_TONE lift does not inflate delta
     float zone_adj = ctx.zone_str * iqr_scale * delta * (1.0 - abs(delta));
     float above_w  = smoothstep(-0.05, 0.10, delta);
     float new_luma = saturate(luma + zone_adj * above_w);
