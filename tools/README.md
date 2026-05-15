@@ -70,6 +70,7 @@ Options: `--game gzw` (auto-inferred from path; required with `--all`) · `--del
 | `capture` | In-game EXR snapshot (RGB + pipeline scalars). Auto-detects game. |
 | `compare_frame <png>` | Full before/after pipeline analysis on a reference PNG. |
 | `compare_frame --all --game <name>` | Batch analysis over all reference frames + aggregate. |
+| `stage_isolate --game <name>` | Additive stage attribution: CORRECTIVE → +TONAL → +CHROMA → +LOOK. |
 | `check_all` | Compare current output against blessed baseline. |
 | `check_all --bless [--rebless]` | Accept current output as new golden baseline. |
 
@@ -79,8 +80,9 @@ Options: `--game gzw` (auto-inferred from path; required with `--all`) · `--del
 
 ```
 gamespecific/<game>/
-  creative_values.fx       ← only tuning surface; all knobs live here
-  reference_frames/        ← pre-pipeline PNGs (input to tune + compare_frame)
-  captures/                ← EXR snapshots from capture
-  <game>.conf              ← vkBasalt chain config (do not edit without asking)
+  creative_values.fx          ← only tuning surface; all knobs live here
+  creative_values_neutral.fx  ← passthrough template (copy over to start clean)
+  reference_frames/           ← pre-pipeline PNGs (input to tune + compare_frame)
+  captures/                   ← EXR snapshots from capture
+  <game>.conf                 ← vkBasalt chain config (do not edit without asking)
 ```
