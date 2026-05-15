@@ -2,6 +2,16 @@
 
 > **Purpose (for AI context):** Chronological record of code changes, one compacted entry per day. Keep only the last 3–4 days. Older history lives in git log. Do not duplicate entries from HANDOFF.md or PLAN.md here.
 
+## 2026-05-15
+
+- **Oklab metric switch** (`tools/analyze_delta.py`) — Replaced CIELAB/CIEDE2000 with Oklab/ΔE_oklab (Euclidean ×100). M1/M2 matrices match `grade.fx` exactly. HUE_BANDS derived from `hue_bands.fxh` primary centers (red 350–70°, yellow 70–126°, green 126–169°, cyan 169–230°, blue 230–297°, magenta 297–350°). Chromatic threshold C>3.0 (Oklab ×100). Pure RGB blue now classifies correctly (CIELAB mis-classified it as magenta at h≈306°). Blue ΔE excess in GZW baseline confirmed content-driven: sky-blues/blue-grays at mean luma 0.078 vs other bands 0.021–0.035, placing them in shadow-lift zone and amplifying ΔL* per unit of proportional lift — not a shader defect.
+
+- **stage_isolate tool** (`tools/stage_isolate.py`, `~/.config/fish/config.fish`) — Additive stage-attribution analysis across all reference frames: CORRECTIVE only → +TONAL → +CHROMA → +LOOK. Saves and fully restores gate values on normal exit and Ctrl-C. Side-by-side report: overall ΔE with per-stage increment, tonal zone ΔL*/ΔC*, hue band table. Fish alias `stage_isolate --game gzw [--delay 5]`.
+
+- **Neutral template** (`gamespecific/gzw/shaders/creative_values_neutral.fx`) — Passthrough template: all effect knobs at 0, PRINTER_R/G/B at 0 (neutral), stage gates at 100. Copy over `creative_values.fx` for a clean baseline.
+
+- **Knob normalization** (`grade.fx`, all `creative_values.fx`) — Universal convention: 0 = passthrough, 1 = full designed effect. Compensation factors absorb scale changes so GZW and arc_raiders output is preserved at the committed values. Six changes in `grade.fx`: (1) `BLACKS × 0.005` — 1.0 = ARRI LogC3 black point; (2) `WHITE_HEADROOM` replaces `WHITES` (0=passthrough, shader: `1.0 − WHITE_HEADROOM × 0.05`, 1.0 = ARRI ceiling 0.95); (3) `HAL_CROSSOVER` replaces `HAL_GAMMA` (rename only); (4) `CURVE_* × 0.10` — ±1.0 user range = ±0.10 stop knee/toe shift (0=passthrough); (5) `PRINTER_R/G/B` neutral shifts 25→0, shader drops `-25` offset; (6) `DIFFUSION_STRENGTH × 1.40` — 1.0 = HBM 1/2 grade. All "calibrated default" comments removed from all game profiles. arma_reforger: added missing knobs (INVERSE_LUMA, LOCAL_TONE, CLARITY_STRENGTH, PRINTER_*) at neutral. **Baselines invalid — rebless after retune.**
+
 ## 2026-05-14 (session 2)
 
 - **Chain audit + dead code removal** (`analysis_frame.fx`, `corrective.fx`, `grade.fx`) — Fixed stale filename in `analysis_frame.fx` header (`frame_analysis.fx` → `analysis_frame.fx`). `corrective.fx`: removed dead `#define SAT_THRESHOLD 2`; fixed read-write hazard in `ComputeSlowKey` (was reading `ChromaHistoryTex` slot written in same pass — now reads from `ZoneHistoryTex` via `ComputeZoneStats()`); removed unreachable `band_idx >= 8` branch in `UpdateHistoryPS`; corrected `HighwayWritePS` comment (stale slot 213 claim). `grade.fx`: removed dead `#define MIN_WEIGHT 1.0`; demoted `bowley` from `SceneCtx` field to local variable; eliminated redundant `ReadHWY(HWY_ZONE_STD)` (already in `ctx.zone_std`); removed 6 dead `HueBandWeight` calls in `ApplyChroma` (`hw_org`, `hw_amb`, `hw_tel`, `hw_azr`, `hw_vio`, `hw_ros`); recalibrated `diff_ap_scale` EXPOSURE ramp (`(EXPOSURE - 0.70) / 0.60` → `EXPOSURE / 0.80` — old thresholds calibrated for gamma EXPOSURE, testbed now runs ~0.17 EV stops-based). `ALGORITHMS.md` deleted — content was duplicated in `CLAUDE.md` and per-file comments.
@@ -148,22 +158,3 @@
 
 - **R142–R145** (`grade.fx`) — ColorTransformPS split into BuildSceneCtx/ApplyCorrective/ApplyTonal/ApplyChroma. Zone strength coupled to inverse-grade slope (×1/slope). R144 luma inverse tonemapping (cbrt(p50_linear) pivot in Oklab L space).
 
-## 2026-05-09
-
-- **R139 common.fxh** — Consolidated `PostProcessVS`, `Luma`, `RGBtoOklab`, `OklabToRGB`, `OklabHueNorm`, `RGBtoHSV` into shared header. `GetBandCenter` moved to `hue_bands.fxh`.
-- **R137 print stock shoulder** — Additive `−ps⁶×0.06` correction on shoulder formula. Preserves shadows exactly, progressively compresses above L=0.75.
-- **R136 film grain** — Selwyn 2383 pcg3d model: σ = GRAIN_STRENGTH × 0.018 × sqrt(1−L_gamma), R:G:B decorrelated at 1.00:0.80:1.50. (Timer source broken until R158.)
-- **R142 ColorTransformPS split** — BuildSceneCtx / ApplyCorrective / ApplyTonal / ApplyChroma extracted. Zero output change.
-
-## 2026-05-08
-
-- **R130–R133** — Kodak 2383 3×3 spectral dye matrix (H-1-2383t data). R131 HBM Gaussian blur chain (4 passes). R132 polydisperse chromatic scatter (R:G:B = 1.15:1.00:0.85). R133 Munsell per-hue highlight rolloff `f=(4(1−L))^n` from Renotation V=8→10 C_max ratios.
-- **R52 Purkinje** — a*+b* shift toward 507nm + scotopic desaturation `lab.yz *= 1−0.12×w×PURKINJE_STRENGTH`.
-- **CAT16 removed** — display-referred content; warm lighting is art direction. NeutralIllumTex kept for R83 + R66.
-- **Chroma lift pivot fixed** (`corrective.fx`) — MIN_WEIGHT removed; weight now chroma-gated. Lift was silently inert before this fix.
-
-## 2026-05-07
-
-- **R124B NeutralIllumPS** — 144-sample neutral-pixel-weighted illuminant estimate. Replaces grey world for R83 + R66.
-- **R125–R126 Bezold-Brücke + FilmCurve body** — Three-harmonic BB anchored to unique yellow/blue. Body: one-sided S `max(0,(x(1−x))²(2x−1))×0.65`.
-- **Zone_std thresholds recalibrated** — Intra-zone variance peaks ~0.15. Smoothstep bounds tightened.
