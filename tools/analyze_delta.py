@@ -251,9 +251,25 @@ def cmd_relative(before_path: Path, after_path: Path) -> None:
         mean = float(z.mean())
         mx   = float(z.max())
         print(f"  {label:<12} {_bar(mean)}  mean {_de_fmt(mean)}  max {_de_fmt(mx)}  N={n/1e3:.0f}K")
+        lb   = lab_b[mask]
+        la   = lab_a[mask]
+        dL   = float((la[:, 0] - lb[:, 0]).mean())
+        C_b  = np.sqrt(lb[:, 1] ** 2 + lb[:, 2] ** 2)
+        C_a  = np.sqrt(la[:, 1] ** 2 + la[:, 2] ** 2)
+        dC   = float((C_a - C_b).mean())
+        chm  = C_b > 2.0
+        if chm.any():
+            h_b  = np.degrees(np.arctan2(lb[chm, 2], lb[chm, 1])) % 360.0
+            h_a  = np.degrees(np.arctan2(la[chm, 2], la[chm, 1])) % 360.0
+            dh   = float((((h_a - h_b + 180.0) % 360.0) - 180.0).mean())
+            dh_s = f"{dh:+.1f}°"
+        else:
+            dh_s = "—"
+        print(f"               ΔL* {dL:+.1f}  ΔC* {dC:+.1f}  Δh° {dh_s}")
 
     # Per-hue-band (chromatic pixels only, Lab C* > 5)
     flat   = lab_b.reshape(-1, 3)
+    flat_a = lab_a.reshape(-1, 3)
     de_f   = de.ravel()
     Cstar  = np.sqrt(flat[:, 1] ** 2 + flat[:, 2] ** 2)
     hangle = np.degrees(np.arctan2(flat[:, 2], flat[:, 1])) % 360.0
@@ -277,6 +293,21 @@ def cmd_relative(before_path: Path, after_path: Path) -> None:
         mean = float(bd.mean())
         mx   = float(bd.max())
         print(f"  {name:<8}  {_bar(mean)}  mean {_de_fmt(mean)}  max {_de_fmt(mx)}  N={mask.sum()/1e3:.0f}K")
+        lb_h = flat[mask]
+        la_h = flat_a[mask]
+        dL   = float((la_h[:, 0] - lb_h[:, 0]).mean())
+        C_bh = np.sqrt(lb_h[:, 1] ** 2 + lb_h[:, 2] ** 2)
+        C_ah = np.sqrt(la_h[:, 1] ** 2 + la_h[:, 2] ** 2)
+        dC   = float((C_ah - C_bh).mean())
+        chm  = C_bh > 2.0
+        if chm.any():
+            h_b  = np.degrees(np.arctan2(lb_h[chm, 2], lb_h[chm, 1])) % 360.0
+            h_a  = np.degrees(np.arctan2(la_h[chm, 2], la_h[chm, 1])) % 360.0
+            dh   = float((((h_a - h_b + 180.0) % 360.0) - 180.0).mean())
+            dh_s = f"{dh:+.1f}°"
+        else:
+            dh_s = "—"
+        print(f"            ΔL* {dL:+.1f}  ΔC* {dC:+.1f}  Δh° {dh_s}")
 
     print()
 
