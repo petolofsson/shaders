@@ -47,15 +47,16 @@ Controls: `>` / `<` to cycle frames · `q` to quit.
 ## Step 3 — Measure the delta
 
 ```
-compare_frame gamespecific/gzw/reference_frames/frame.png
+compare_frame gamespecific/gzw/reference_frames/frame.png   # single frame
+compare_frame --all --game gzw                              # all reference frames
 ```
 
-Renders the reference frame through the current pipeline, captures the result, and
+Renders the reference frame(s) through the current pipeline, captures the result, and
 prints CIEDE2000 perceptual delta with directional ΔL*, ΔC*, Δh° per tonal zone and
-hue band. No manual steps.
+hue band. `--all` runs every PNG in `reference_frames/` and appends an aggregate summary.
 
-Options: `--game gzw` (auto-inferred from path) · `--delay 5` (longer SPIR-V wait) ·
-`--keep` (keep temp EXRs for manual inspection).
+Options: `--game gzw` (auto-inferred from path; required with `--all`) · `--delay 5`
+(longer SPIR-V wait) · `--keep` (keep temp EXRs for manual inspection).
 
 ---
 
@@ -66,19 +67,11 @@ Options: `--game gzw` (auto-inferred from path) · `--delay 5` (longer SPIR-V wa
 | `auto_capture` | Background frame capture during gameplay. Auto-detects game from `SHADER_GAME`. |
 | `screenshot [game]` | Single reference frame. Auto-detects game or pass name: `screenshot gzw`. |
 | `tune` | Live mpv viewer, restarts on `creative_values.fx` save. |
-| `compare_frame <png>` | Full before/after pipeline analysis on a reference PNG. |
-| `analyze_delta <before.exr> <after.exr>` | Manual CIEDE2000 delta on any two EXRs. |
-| `analyze_delta --colorchecker [exr]` | Absolute accuracy vs. BabelColor D65 ColorChecker. |
 | `capture` | In-game EXR snapshot (RGB + pipeline scalars). Auto-detects game. |
-
-### Regression tests
-
-| Alias | Description |
-|-------|-------------|
-| `make_test_images` | Render ColorChecker + gradient test images through the pipeline. |
-| `bless_all` | Accept current output as new golden baseline. |
+| `compare_frame <png>` | Full before/after pipeline analysis on a reference PNG. |
+| `compare_frame --all --game <name>` | Batch analysis over all reference frames + aggregate. |
 | `check_all` | Compare current output against blessed baseline. |
-| `test_golden` | Run a single golden test by name. |
+| `check_all --bless [--rebless]` | Accept current output as new golden baseline. |
 
 ---
 

@@ -207,6 +207,125 @@ def _bar(v: float, max_v: float = 6.0, width: int = 20) -> str:
 
 # ── Mode: relative ─────────────────────────────────────────────────────────────
 
+def compute_relative(before: np.ndarray, after: np.ndarray) -> dict:
+    """Compute CIEDE2000 delta stats between two linear-light frames.
+
+    Returns mean_de, p90, p99, pct_gt1, pct_gt3, zones, hue_bands.
+    Zone/band entries: mean_de, max_de, n, dL, dC, dh (dh=None if no chromatic pixels).
+    """
+    lab_b = _linear_rgb_to_lab(before)
+    lab_a = _linear_rgb_to_lab(after)
+    de    = _delta_e_2000(lab_b, lab_a)
+
+    result: dict = {
+        "mean_de": float(de.mean()),
+        "p90":     float(np.percentile(de, 90)),
+        "p99":     float(np.percentile(de, 99)),
+        "pct_gt1": float((de > 1.0).mean() * 100),
+        "pct_gt3": float((de > 3.0).mean() * 100),
+        "zones":   {},
+        "hue_bands": {},
+    }
+
+    luma = 0.2126 * before[..., 0] + 0.7152 * before[..., 1] + 0.0722 * before[..., 2]
+    for label, mask in [
+        ("shadows",    luma < 0.18),
+        ("midtones",   (luma >= 0.18) & (luma < 0.60)),
+        ("highlights", luma >= 0.60),
+    ]:
+        if not mask.any():
+            result["zones"][label] = None
+            continue
+        z   = de[mask]
+        lb  = lab_b[mask]
+        la  = lab_a[mask]
+        dL  = float((la[:, 0] - lb[:, 0]).mean())
+        C_b = np.sqrt(lb[:, 1] ** 2 + lb[:, 2] ** 2)
+        C_a = np.sqrt(la[:, 1] ** 2 + la[:, 2] ** 2)
+        dC  = float((C_a - C_b).mean())
+        chm = C_b > 2.0
+        dh  = None
+        if chm.any():
+            h_b = np.degrees(np.arctan2(lb[chm, 2], lb[chm, 1])) % 360.0
+            h_a = np.degrees(np.arctan2(la[chm, 2], la[chm, 1])) % 360.0
+            dh  = float((((h_a - h_b + 180.0) % 360.0) - 180.0).mean())
+        result["zones"][label] = {
+            "mean_de": float(z.mean()), "max_de": float(z.max()),
+            "n": int(mask.sum()), "dL": dL, "dC": dC, "dh": dh,
+        }
+
+    flat   = lab_b.reshape(-1, 3)
+    flat_a = lab_a.reshape(-1, 3)
+    de_f   = de.ravel()
+    Cstar  = np.sqrt(flat[:, 1] ** 2 + flat[:, 2] ** 2)
+    hangle = np.degrees(np.arctan2(flat[:, 2], flat[:, 1])) % 360.0
+    chroma = Cstar > 5.0
+
+    for entry in HUE_BANDS:
+        bname = entry[0]
+        if len(entry) == 5:
+            _, lo1, hi1, lo2, hi2 = entry
+            mask = chroma & (((hangle >= lo1) & (hangle < hi1)) |
+                             ((hangle >= lo2) & (hangle < hi2)))
+        else:
+            _, lo, hi = entry
+            mask = chroma & (hangle >= lo) & (hangle < hi)
+        if not mask.any():
+            result["hue_bands"][bname] = None
+            continue
+        bd   = de_f[mask]
+        lb_h = flat[mask]
+        la_h = flat_a[mask]
+        dL   = float((la_h[:, 0] - lb_h[:, 0]).mean())
+        C_bh = np.sqrt(lb_h[:, 1] ** 2 + lb_h[:, 2] ** 2)
+        C_ah = np.sqrt(la_h[:, 1] ** 2 + la_h[:, 2] ** 2)
+        dC   = float((C_ah - C_bh).mean())
+        chm  = C_bh > 2.0
+        dh   = None
+        if chm.any():
+            h_b = np.degrees(np.arctan2(lb_h[chm, 2], lb_h[chm, 1])) % 360.0
+            h_a = np.degrees(np.arctan2(la_h[chm, 2], la_h[chm, 1])) % 360.0
+            dh  = float((((h_a - h_b + 180.0) % 360.0) - 180.0).mean())
+        result["hue_bands"][bname] = {
+            "mean_de": float(bd.mean()), "max_de": float(bd.max()),
+            "n": int(mask.sum()), "dL": dL, "dC": dC, "dh": dh,
+        }
+
+    return result
+
+
+def print_relative(stats: dict, before_name: str, after_name: str) -> None:
+    """Print a full CIEDE2000 relative delta report from compute_relative() output."""
+    print(f"\n{_BLD}analyze_delta  {before_name} → {after_name}{_RST}")
+    print("─" * 62)
+
+    print(f"\n{_BLD}overall{_RST}")
+    print(f"  mean {_de_fmt(stats['mean_de'])}  p90 {_de_fmt(stats['p90'])}  p99 {_de_fmt(stats['p99'])}")
+    print(f"  pixels >1: {stats['pct_gt1']:.1f}%   pixels >3: {stats['pct_gt3']:.1f}%")
+
+    print(f"\n{_BLD}by zone{_RST}  (luma thresholds from '{before_name}')")
+    for label in ("shadows", "midtones", "highlights"):
+        z = stats["zones"].get(label)
+        if z is None:
+            continue
+        dh_s = f"{z['dh']:+.1f}°" if z["dh"] is not None else "—"
+        print(f"  {label:<12} {_bar(z['mean_de'])}  mean {_de_fmt(z['mean_de'])}  max {_de_fmt(z['max_de'])}  N={z['n']/1e3:.0f}K")
+        print(f"               ΔL* {z['dL']:+.1f}  ΔC* {z['dC']:+.1f}  Δh° {dh_s}")
+
+    print(f"\n{_BLD}by hue band{_RST}  (C*>5 chromatic pixels, hue from '{before_name}')")
+    for entry in HUE_BANDS:
+        bname = entry[0]
+        b = stats["hue_bands"].get(bname)
+        if b is None:
+            print(f"  {bname:<8}  (no chromatic pixels)")
+            continue
+        dh_s = f"{b['dh']:+.1f}°" if b["dh"] is not None else "—"
+        print(f"  {bname:<8}  {_bar(b['mean_de'])}  mean {_de_fmt(b['mean_de'])}  max {_de_fmt(b['max_de'])}  N={b['n']/1e3:.0f}K")
+        print(f"            ΔL* {b['dL']:+.1f}  ΔC* {b['dC']:+.1f}  Δh° {dh_s}")
+
+    print()
+
+
 def cmd_relative(before_path: Path, after_path: Path) -> None:
     print(f"Loading {before_path.name} ...")
     before = _load(before_path)
@@ -218,98 +337,8 @@ def cmd_relative(before_path: Path, after_path: Path) -> None:
 
     H, W, _ = before.shape
     print(f"Computing ΔE2000 on {W}×{H} ({W*H/1e6:.1f}M pixels)...")
-    lab_b = _linear_rgb_to_lab(before)
-    lab_a = _linear_rgb_to_lab(after)
-    de    = _delta_e_2000(lab_b, lab_a)
-
-    print(f"\n{_BLD}analyze_delta  {before_path.name} → {after_path.name}{_RST}")
-    print("─" * 62)
-
-    mean_de = float(de.mean())
-    p90     = float(np.percentile(de, 90))
-    p99     = float(np.percentile(de, 99))
-    pct1    = float((de > 1.0).mean() * 100)
-    pct3    = float((de > 3.0).mean() * 100)
-
-    print(f"\n{_BLD}overall{_RST}")
-    print(f"  mean {_de_fmt(mean_de)}  p90 {_de_fmt(p90)}  p99 {_de_fmt(p99)}")
-    print(f"  pixels >1: {pct1:.1f}%   pixels >3: {pct3:.1f}%")
-
-    # Per-zone (classified from 'before' luma)
-    luma  = (0.2126 * before[..., 0] + 0.7152 * before[..., 1] + 0.0722 * before[..., 2])
-    zones = [
-        ("shadows",    luma < 0.18),
-        ("midtones",   (luma >= 0.18) & (luma < 0.60)),
-        ("highlights", luma >= 0.60),
-    ]
-    print(f"\n{_BLD}by zone{_RST}  (luma thresholds from '{before_path.name}')")
-    for label, mask in zones:
-        if not mask.any():
-            continue
-        z    = de[mask]
-        n    = mask.sum()
-        mean = float(z.mean())
-        mx   = float(z.max())
-        print(f"  {label:<12} {_bar(mean)}  mean {_de_fmt(mean)}  max {_de_fmt(mx)}  N={n/1e3:.0f}K")
-        lb   = lab_b[mask]
-        la   = lab_a[mask]
-        dL   = float((la[:, 0] - lb[:, 0]).mean())
-        C_b  = np.sqrt(lb[:, 1] ** 2 + lb[:, 2] ** 2)
-        C_a  = np.sqrt(la[:, 1] ** 2 + la[:, 2] ** 2)
-        dC   = float((C_a - C_b).mean())
-        chm  = C_b > 2.0
-        if chm.any():
-            h_b  = np.degrees(np.arctan2(lb[chm, 2], lb[chm, 1])) % 360.0
-            h_a  = np.degrees(np.arctan2(la[chm, 2], la[chm, 1])) % 360.0
-            dh   = float((((h_a - h_b + 180.0) % 360.0) - 180.0).mean())
-            dh_s = f"{dh:+.1f}°"
-        else:
-            dh_s = "—"
-        print(f"               ΔL* {dL:+.1f}  ΔC* {dC:+.1f}  Δh° {dh_s}")
-
-    # Per-hue-band (chromatic pixels only, Lab C* > 5)
-    flat   = lab_b.reshape(-1, 3)
-    flat_a = lab_a.reshape(-1, 3)
-    de_f   = de.ravel()
-    Cstar  = np.sqrt(flat[:, 1] ** 2 + flat[:, 2] ** 2)
-    hangle = np.degrees(np.arctan2(flat[:, 2], flat[:, 1])) % 360.0
-    chroma = Cstar > 5.0
-
-    print(f"\n{_BLD}by hue band{_RST}  (C*>5 chromatic pixels, hue from '{before_path.name}')")
-    for entry in HUE_BANDS:
-        name = entry[0]
-        if len(entry) == 5:  # wrapping band (red)
-            _, lo1, hi1, lo2, hi2 = entry
-            mask = chroma & (((hangle >= lo1) & (hangle < hi1)) |
-                             ((hangle >= lo2) & (hangle < hi2)))
-        else:
-            _, lo, hi = entry
-            mask = chroma & (hangle >= lo) & (hangle < hi)
-
-        if not mask.any():
-            print(f"  {name:<8}  (no chromatic pixels)")
-            continue
-        bd   = de_f[mask]
-        mean = float(bd.mean())
-        mx   = float(bd.max())
-        print(f"  {name:<8}  {_bar(mean)}  mean {_de_fmt(mean)}  max {_de_fmt(mx)}  N={mask.sum()/1e3:.0f}K")
-        lb_h = flat[mask]
-        la_h = flat_a[mask]
-        dL   = float((la_h[:, 0] - lb_h[:, 0]).mean())
-        C_bh = np.sqrt(lb_h[:, 1] ** 2 + lb_h[:, 2] ** 2)
-        C_ah = np.sqrt(la_h[:, 1] ** 2 + la_h[:, 2] ** 2)
-        dC   = float((C_ah - C_bh).mean())
-        chm  = C_bh > 2.0
-        if chm.any():
-            h_b  = np.degrees(np.arctan2(lb_h[chm, 2], lb_h[chm, 1])) % 360.0
-            h_a  = np.degrees(np.arctan2(la_h[chm, 2], la_h[chm, 1])) % 360.0
-            dh   = float((((h_a - h_b + 180.0) % 360.0) - 180.0).mean())
-            dh_s = f"{dh:+.1f}°"
-        else:
-            dh_s = "—"
-        print(f"            ΔL* {dL:+.1f}  ΔC* {dC:+.1f}  Δh° {dh_s}")
-
-    print()
+    stats = compute_relative(before, after)
+    print_relative(stats, before_path.name, after_path.name)
 
 
 # ── Mode: colorchecker ─────────────────────────────────────────────────────────
