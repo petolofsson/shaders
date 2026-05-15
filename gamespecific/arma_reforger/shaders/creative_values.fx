@@ -152,7 +152,7 @@
 // Envelope sqrt(1−L_gamma): mathematically highest at pure black, tapers to zero at white.
 // Perceived peak is in upper shadows — grain at pure black is invisible against the dark.
 // Framerate-independent: turns over at ~24fps regardless of display fps.
-// 0 = off. 1.0 = calibrated 2383 amplitude. 1.5 = pushed. 2.0 = stylistic.
+// 0 = off. 1.0 = 2383 amplitude. 1.5 = pushed. 2.0 = stylistic.
 #define GRAIN_STRENGTH 0.45
 
 // ── STAGE GATES ───────────────────────────────────────────────────────────────
