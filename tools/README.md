@@ -23,11 +23,11 @@ Reference frames are raw game screenshots **before** vkBasalt — the pipeline i
 Press `Home` in-game to toggle vkBasalt off, then:
 
 ```
-auto_capture                  # runs in background; saves frames as you play
+auto_capture                  # runs in foreground; saves frames as you play (Ctrl-C to stop)
 screenshot gzw                # single shot (game auto-detected if SHADER_GAME is set)
 ```
 
-Frames are saved to `gamespecific/<game>/reference_frames/`.
+Frames are saved to `gamespecific/<game>/analysis/reference/`.
 
 ---
 
@@ -47,16 +47,29 @@ Controls: `>` / `<` to cycle frames · `q` to quit.
 ## Step 3 — Measure the delta
 
 ```
-compare_frame gamespecific/gzw/reference_frames/frame.png   # single frame
-compare_frame --all --game gzw                              # all reference frames
+compare_frame gamespecific/gzw/analysis/reference/frame.png   # single frame
+compare_frame --all --game gzw                                 # all reference frames
 ```
 
-Renders the reference frame(s) through the current pipeline, captures the result, and
-prints CIEDE2000 perceptual delta with directional ΔL*, ΔC*, Δh° per tonal zone and
-hue band. `--all` runs every PNG in `reference_frames/` and appends an aggregate summary.
+Renders each reference frame through the current pipeline, captures the result, and
+reports ΔE_oklab perceptual delta with directional ΔL*, ΔC*, Δh° per tonal zone and
+hue band. `--all` runs every PNG in `analysis/reference/` and writes an aggregate
+summary to `gamespecific/<game>/compare_agg.json`.
 
 Options: `--game gzw` (auto-inferred from path; required with `--all`) · `--delay 5`
-(longer SPIR-V wait) · `--keep` (keep temp EXRs for manual inspection).
+(longer SPIR-V wait) · `--keep` (save EXRs to `analysis/YYYY-MM-DD/frames/`).
+
+---
+
+## Step 4 — Stage isolation + call sheet
+
+```
+stage_isolate --game gzw
+```
+
+Runs four cumulative configurations (CORRECTIVE → +TONAL → +CHROMA → +LOOK), measures
+each stage's perceptual contribution, and writes `grade_callsheet.txt` combining the
+current knobs, delta analysis, and plain-language attribution. Knobs restored on exit.
 
 ---
 
@@ -64,15 +77,15 @@ Options: `--game gzw` (auto-inferred from path; required with `--all`) · `--del
 
 | Alias | Description |
 |-------|-------------|
-| `auto_capture` | Background frame capture during gameplay. Auto-detects game from `SHADER_GAME`. |
+| `auto_capture [--game <name>]` | Background frame capture during gameplay. Auto-detects game from `SHADER_GAME`. |
 | `screenshot [game]` | Single reference frame. Auto-detects game or pass name: `screenshot gzw`. |
-| `tune` | Live mpv viewer, restarts on `creative_values.fx` save. |
-| `capture` | In-game EXR snapshot (RGB + pipeline scalars). Auto-detects game. |
-| `compare_frame <png>` | Full before/after pipeline analysis on a reference PNG. |
-| `compare_frame --all --game <name>` | Batch analysis over all reference frames + aggregate. |
-| `stage_isolate --game <name>` | Additive stage attribution: CORRECTIVE → +TONAL → +CHROMA → +LOOK. |
-| `check_all` | Compare current output against blessed baseline. |
-| `check_all --bless [--rebless]` | Accept current output as new golden baseline. |
+| `tune [--game <name>]` | Live mpv viewer, restarts on `creative_values.fx` save. |
+| `capture` | EXR snapshot of current screen (used internally by analysis tools). |
+| `compare_frame <png>` | Full before/after ΔE_oklab analysis on one reference frame. |
+| `compare_frame --all --game <name>` | Batch analysis over all reference frames + aggregate JSON. |
+| `stage_isolate --game <name>` | Additive stage attribution + grade call sheet. |
+| `bless_all --game <name>` | Accept current output as new golden baseline for all test images. |
+| `check_all --game <name>` | Compare current output against blessed baselines. |
 
 ---
 
@@ -80,9 +93,11 @@ Options: `--game gzw` (auto-inferred from path; required with `--all`) · `--del
 
 ```
 gamespecific/<game>/
-  creative_values.fx          ← only tuning surface; all knobs live here
-  creative_values_neutral.fx  ← passthrough template (copy over to start clean)
-  reference_frames/           ← pre-pipeline PNGs (input to tune + compare_frame)
-  captures/                   ← EXR snapshots from capture
-  <game>.conf                 ← vkBasalt chain config (do not edit without asking)
+  shaders/creative_values.fx   ← only tuning surface; all knobs live here
+  analysis/reference/          ← pre-pipeline PNGs (input to tune + compare_frame)
+  analysis/YYYY-MM-DD/         ← date-stamped analysis archive (compare_agg.json, call sheet, EXRs)
+  captures/                    ← EXR snapshots written by capture.py
+  compare_agg.json             ← latest aggregate delta (overwritten each compare_frame --all run)
+  grade_callsheet.txt          ← latest call sheet (overwritten each stage_isolate run)
+  <game>.conf                  ← vkBasalt chain config (do not edit without asking)
 ```

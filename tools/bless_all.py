@@ -6,9 +6,9 @@ For each image: launches mpv with vkBasalt, waits for the pipeline to render,
 captures, runs bless/check, then closes mpv and moves to the next image.
 
 Usage:
-    bless_all [--delay N]   bless all images (skip already-blessed)
-    bless_all --rebless     overwrite existing goldens
-    check_all [--delay N]   check all images against their goldens (via --check flag)
+    bless_all --game gzw [--delay N]   bless all images (skip already-blessed)
+    bless_all --game gzw --rebless     overwrite existing goldens
+    check_all --game gzw [--delay N]   check all images against their goldens (via --check flag)
 """
 
 import argparse
@@ -24,7 +24,6 @@ from compare_frame import _launch_mpv, _goto_frame, SOCK  # noqa: E402
 ROOT     = Path(__file__).resolve().parent.parent
 CAPTURES = ROOT / "gamespecific" / "test" / "captures"
 INPUTS   = ROOT / "tests" / "inputs"
-CONFIG   = ROOT / "gamespecific" / "arc_raiders" / "arc_raiders.conf"
 
 # Monitor index for the right (game) monitor.
 # On KDE Wayland the primary monitor (DP-2, right) is typically index 0.
@@ -103,20 +102,22 @@ def check_one(name: str, idx: int) -> bool:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Bless or check all four test image goldens")
+    ap.add_argument("--game",    required=True,                     help="Game name (e.g. gzw)")
     ap.add_argument("--delay",   type=int,          default=4,     help="Seconds to wait before capture (default: 4)")
     ap.add_argument("--rebless", action="store_true",               help="Overwrite existing goldens (bless mode only)")
     ap.add_argument("--check",   action="store_true",               help="Run checks instead of blessing")
     args = ap.parse_args()
 
-    if not CONFIG.exists():
-        sys.exit(f"Config not found: {CONFIG}")
+    config = ROOT / "gamespecific" / args.game / f"{args.game}.conf"
+    if not config.exists():
+        sys.exit(f"Config not found: {config}")
 
     for _, img_file, _ in IMAGES:
         if not (INPUTS / img_file).exists():
             sys.exit(f"Missing: {INPUTS / img_file}\nRun 'make_test_images' first.")
 
     img_paths = [INPUTS / img_file for _, img_file, _ in IMAGES]
-    mpv = _launch_mpv(img_paths, CONFIG, args.delay)
+    mpv = _launch_mpv(img_paths, config, args.delay)
 
     try:
         if args.check:

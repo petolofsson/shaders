@@ -1,8 +1,8 @@
 {
   "name": "skintones",
   "description": "Fitzpatrick I-VI skin tones",
-  "git_commit": "00ed3b9",
-  "source": "session_20260515_112817_arc_raiders.exr",
+  "git_commit": "dcc712f",
+  "source": "session_20260515_203248_test.exr",
   "resolution": [
     2560,
     1440

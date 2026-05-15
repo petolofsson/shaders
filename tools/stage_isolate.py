@@ -227,6 +227,22 @@ def _write_callsheet(game: str, results: "list[tuple[str, dict]]") -> None:
         "is currently doing. The AI can suggest specific value changes.",
         "",
         sep,
+        "SCENE DESCRIPTION  (fill in before sharing with an AI)",
+        sep,
+        "",
+        "# Lighting: [e.g. 'overcast jungle canopy, dappled midday light through leaves']",
+        "# Raw palette: [e.g. 'warm orange midtones, desaturated foliage, deep blue shadows']",
+        "# Subject: [e.g. 'dense jungle canopy, player character at midground, distant village']",
+        "",
+        sep,
+        "REFERENCE LOOK  (fill in before sharing with an AI)",
+        sep,
+        "",
+        "# Reference still: [filename or URL — e.g. 'gzw_frame_001.png' or a film still]",
+        "# Film reference: [e.g. 'Sicario (2015) — Deakins — golden dust, cool blue shadows']",
+        "# Target descriptors: [e.g. 'lifted blacks / warm midtone rolloff / desaturated highlights / visible grain']",
+        "",
+        sep,
         "CREATIVE VALUES  (knob comments explain units, ranges, and physical meaning)",
         sep,
         "",
@@ -258,6 +274,71 @@ def _write_callsheet(game: str, results: "list[tuple[str, dict]]") -> None:
                 continue
             dh_s = f"  Δh° {b['dh']:+.1f}°" if b.get("dh") is not None else ""
             lines.append(f"  {bname:<8}  ΔL* {b['dL']:+.1f}  ΔC* {b['dC']:+.1f}{dh_s}  ΔE {b['mean_de']:.2f}")
+
+        ch = agg.get("channels", {})
+        if ch:
+            lines += [
+                "",
+                f"CHANNEL PERCENTILES  (linear light 0–1, averaged {agg['n_frames']} frames)",
+                "  Warm cast = R.p50 > B.p50.  Cool = B.p50 > R.p50.  Balanced = R ≈ G ≈ B.",
+                "",
+                f"  {'Ch':<3}  {'p5':>6}  {'p50':>6}  {'p95':>6}    {'p5':>6}  {'p50':>6}  {'p95':>6}  {'Δp50':>6}",
+                f"  {'':3}  {'── Raw ──':>20}    {'── Graded ──':>20}",
+            ]
+            for c in ("R", "G", "B"):
+                r, g = ch[c]["raw"], ch[c]["grad"]
+                lines.append(
+                    f"  {c:<3}  {r[0]:6.3f}  {r[1]:6.3f}  {r[2]:6.3f}    {g[0]:6.3f}  {g[1]:6.3f}  {g[2]:6.3f}  {g[1]-r[1]:+6.3f}"
+                )
+
+    lines += [
+        "",
+        sep,
+        "DELTA LEGEND",
+        sep,
+        "",
+        "  ΔL* > 0 = brighter in that zone    → SHADOWS / HIGHLIGHTS / EXPOSURE / LOCAL_CONTRAST",
+        "  ΔL* < 0 = darker                   → same knobs, opposite direction",
+        "  ΔC* > 0 = more saturated            → SATURATION / SAT_* / VIBRANCE",
+        "  Δh° > 0 = hue shifted toward yellow → HUE_* / PRINTER_R/G/B / SHADOW_TEMP",
+        "  ΔE < 1.0 imperceptible   1–3 subtle   3–6 visible   > 6 strong",
+        "  Channel p5 = shadow floor   p50 = midtone anchor   p95 = highlight ceiling",
+        "",
+        sep,
+        "WHAT THE GRADE IS DOING  (plain language per stage)",
+        sep,
+        "",
+    ]
+
+    prev_de = 0.0
+    contribs = []
+    for label, agg_s in results:
+        inc = agg_s["mean_de"] - prev_de
+        contribs.append((label, inc, agg_s))
+        prev_de = agg_s["mean_de"]
+
+    largest_label = max(contribs, key=lambda x: x[1])[0]
+
+    for label, inc, agg_s in contribs:
+        sh = agg_s["zones"].get("shadows")
+        mi = agg_s["zones"].get("midtones")
+        hi = agg_s["zones"].get("highlights")
+        if inc > 0.05:
+            tag = f"+{inc:.2f} ΔE"
+            if label == largest_label:
+                tag += "  ← largest contributor, most tuning headroom here"
+        elif inc < -0.05:
+            tag = f"−{abs(inc):.2f} ΔE, reduces perceptual distance (correction working)"
+        else:
+            tag = f"{inc:+.2f} ΔE, minimal change"
+        zone_parts = []
+        for zlabel, z in (("shadows", sh), ("mids", mi), ("highs", hi)):
+            if z:
+                zone_parts.append(f"{zlabel} {z['dL']:+.1f} ΔL*")
+        lines.append(f"  {label:<14}  {tag}")
+        if zone_parts:
+            lines.append(f"  {'':14}  tonal: {' / '.join(zone_parts)}")
+        lines.append("")
 
     lines += [
         "",

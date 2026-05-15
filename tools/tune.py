@@ -3,7 +3,7 @@
 tools/tune.py — Live shader tuning against representative game frames.
 
 Place PNG screenshots of the game (without vkBasalt) in:
-    gamespecific/<game>/reference_frames/
+    gamespecific/<game>/analysis/reference/
 
 This tool launches mpv with vkBasalt on all frames as a playlist and
 auto-restarts mpv whenever creative_values.fx is saved on disk.
@@ -18,7 +18,7 @@ Controls in mpv:
 
 Workflow:
     1. Run game with ENABLE_VKBASALT=0, take grim screenshots, save as PNG.
-    2. Copy PNGs into gamespecific/<game>/reference_frames/.
+    2. Copy PNGs into gamespecific/<game>/analysis/reference/.
     3. Run: tune
     4. Edit creative_values.fx, save — mpv restarts automatically (~3s).
     5. Validate final result in-game.
@@ -39,10 +39,10 @@ SCREEN = 0  # KDE Wayland: primary (right, DP-2) = index 0
 
 
 def find_frames(game: str) -> list:
-    d = ROOT / "gamespecific" / game / "reference_frames"
+    d = ROOT / "gamespecific" / game / "analysis" / "reference"
     if not d.exists():
         sys.exit(
-            f"No reference_frames directory: {d}\n"
+            f"No reference directory: {d}\n"
             f"Create it and add PNG screenshots of the game (without vkBasalt)."
         )
     frames = sorted(d.glob("*.png")) + sorted(d.glob("*.jpg")) + sorted(d.glob("*.exr"))

@@ -202,8 +202,10 @@ def main() -> None:
         if args.exr:
             exr_path = Path(args.exr)
         else:
-            captures_dir = Path(__file__).resolve().parent.parent / "captures"
-            candidates = sorted(captures_dir.glob("*.exr"), key=lambda p: p.stat().st_mtime)
+            candidates = sorted(
+                (Path(__file__).resolve().parent.parent / "gamespecific").glob("*/captures/*.exr"),
+                key=lambda p: p.stat().st_mtime,
+            )
             if not candidates:
                 sys.exit("No captures found. Run 'capture' first.")
             exr_path = candidates[-1]
@@ -213,8 +215,10 @@ def main() -> None:
         if args.exr:
             exr_path = Path(args.exr)
         else:
-            captures_dir = Path(__file__).resolve().parent.parent / "captures"
-            candidates = sorted(captures_dir.glob("*.exr"), key=lambda p: p.stat().st_mtime)
+            candidates = sorted(
+                (Path(__file__).resolve().parent.parent / "gamespecific").glob("*/captures/*.exr"),
+                key=lambda p: p.stat().st_mtime,
+            )
             if not candidates:
                 sys.exit("No captures found. Run 'capture' first.")
             exr_path = candidates[-1]

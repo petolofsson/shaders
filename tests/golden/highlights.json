@@ -1,8 +1,8 @@
 {
   "name": "highlights",
   "description": "bright patches on dark ground",
-  "git_commit": "00ed3b9",
-  "source": "session_20260515_112749_arc_raiders.exr",
+  "git_commit": "dcc712f",
+  "source": "session_20260515_203227_test.exr",
   "resolution": [
     2560,
     1440

@@ -31,7 +31,7 @@ try:
 except ImportError:
     sys.exit("Missing: pip install openexr")
 
-CAPTURES_DIR = Path(__file__).resolve().parent.parent / "captures"
+ROOT = Path(__file__).resolve().parent.parent
 
 # BabelColor sRGB D65 reference (8-bit) — matches make_test_images.py exactly
 CC_PATCHES = [
@@ -132,7 +132,10 @@ def _load(exr_path: Path) -> np.ndarray:
 
 
 def _latest_capture() -> Path:
-    candidates = sorted(CAPTURES_DIR.glob("*.exr"), key=lambda p: p.stat().st_mtime)
+    candidates = sorted(
+        ROOT.glob("gamespecific/*/captures/*.exr"),
+        key=lambda p: p.stat().st_mtime,
+    )
     if not candidates:
         sys.exit("No captures found. Run 'capture' first.")
     return candidates[-1]

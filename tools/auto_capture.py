@@ -28,6 +28,8 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from capture import take_screenshot as _take_screenshot  # noqa: E402
 
 
 def detect_game() -> "str | None":
@@ -46,11 +48,8 @@ def detect_game() -> "str | None":
 
 
 def take_screenshot(tmp: Path) -> bool:
-    r = subprocess.run(
-        ["spectacle", "-b", "-m", "-n", "-o", str(tmp)],
-        capture_output=True,
-    )
-    return r.returncode == 0 and tmp.exists() and tmp.stat().st_size > 0
+    _take_screenshot(tmp)
+    return tmp.exists() and tmp.stat().st_size > 0
 
 
 def make_thumb(png: Path) -> "np.ndarray | None":
@@ -109,7 +108,7 @@ def main() -> None:
     ap.add_argument("--interval",   type=int, default=20,
                     help="Seconds between capture attempts (default: 20)")
     ap.add_argument("--max-frames", type=int, default=24,
-                    help="Max frames to keep in reference_frames/ — oldest pruned (default: 24)")
+                    help="Max frames to keep in analysis/reference/ — oldest pruned (default: 24)")
     ap.add_argument("--min-diff",   type=int, default=12,
                     help="Min mean pixel diff (0–255) required to save a frame (default: 12)")
     args = ap.parse_args()
@@ -121,13 +120,13 @@ def main() -> None:
         print(f"Detected game: {game}")
     args.game = game
 
-    dest = ROOT / "gamespecific" / args.game / "reference_frames"
+    dest = ROOT / "gamespecific" / args.game / "analysis" / "reference"
     dest.mkdir(parents=True, exist_ok=True)
     tmp  = Path("/tmp/auto_capture_shot.png")
 
     # Seed similarity baseline from most recent auto-frame if any exist
     last_thumb = None
-    existing   = sorted(dest.glob("autof_*.png"), key=lambda p: p.stat().st_mtime)
+    existing   = sorted(dest.glob("autof_*.png"), key=lambda p: p.stat().st_mtime)  # noqa
     if existing:
         t = make_thumb(existing[-1])
         if t is not None:

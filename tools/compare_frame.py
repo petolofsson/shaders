@@ -151,6 +151,7 @@ def _run_batch(game: str, config: Path, delay: int, keep: bool) -> None:
         frames_out.mkdir(parents=True, exist_ok=True)
 
     all_stats: list[dict] = []
+    all_channels: list[dict] = []
     proc = _launch_mpv(pngs, config, delay)
 
     try:
@@ -189,6 +190,14 @@ def _run_batch(game: str, config: Path, delay: int, keep: bool) -> None:
 
             stats = compute_relative(before, after)
             all_stats.append(stats)
+
+            frame_ch = {}
+            for ch, ci in (("R", 0), ("G", 1), ("B", 2)):
+                frame_ch[ch] = {
+                    "raw":  [float(v) for v in np.percentile(before[:, :, ci], [5, 50, 95])],
+                    "grad": [float(v) for v in np.percentile(after[:, :, ci],  [5, 50, 95])],
+                }
+            all_channels.append(frame_ch)
 
             for label in ("shadows", "midtones", "highlights"):
                 z = stats["zones"].get(label)
@@ -249,12 +258,21 @@ def _run_batch(game: str, config: Path, delay: int, keep: bool) -> None:
     print()
 
     # Save aggregate JSON for call sheet
+    agg_channels: dict = {}
+    if all_channels:
+        for ch in ("R", "G", "B"):
+            agg_channels[ch] = {
+                "raw":  [sum(f[ch]["raw"][i]  for f in all_channels) / len(all_channels) for i in range(3)],
+                "grad": [sum(f[ch]["grad"][i] for f in all_channels) / len(all_channels) for i in range(3)],
+            }
+
     agg_data = {
         "date":     str(date.today()),
         "game":     game,
         "n_frames": n,
         "zones":    agg_zones,
         "hue_bands": agg_bands,
+        "channels": agg_channels,
     }
     agg_path = ROOT / "gamespecific" / game / "compare_agg.json"
     agg_path.write_text(json.dumps(agg_data, indent=2))

@@ -1,8 +1,8 @@
 {
   "name": "colorchecker",
   "description": "24-patch Macbeth ColorChecker",
-  "git_commit": "00ed3b9",
-  "source": "session_20260515_112721_arc_raiders.exr",
+  "git_commit": "dcc712f",
+  "source": "session_20260515_203205_test.exr",
   "resolution": [
     2560,
     1440
