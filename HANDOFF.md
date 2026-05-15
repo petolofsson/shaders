@@ -10,7 +10,7 @@ grade: 10 passes — LFDownscale1 → LFDownscale2 → NeutralIllum → GuidedCo
 - No compile errors. Log: `/tmp/vkbasalt.log`
 - **Knob convention**: 0 = passthrough universally. 1 = full designed effect. Compensation factors live in grade.fx — not in creative_values.fx values.
 - **Renamed**: `HAL_GAMMA` → `HALATION_CROSSOVER`. Knobs use industry vernacular: `WHITES`, `HALATION`, `CLARITY`, `PURKINJE`, `HUE_*`, `DIFFUSION`, `GRAIN`, `LOCAL_CONTRAST`.
-- **BLACKS**: ×0.005 in shader. 1.0 = ARRI LogC3 black point.
+- **BLACKS**: direct linear floor. 0.00 = passthrough. 0.005 = ARRI LogC3 black point.
 - **CURVE_***: ×0.10 in shader. ±1.0 user range = ±0.10 stop knee/toe shift.
 - **PRINTER_R/G/B**: 0 = neutral (was 25). Shader drops −25 offset.
 - **DIFFUSION_STRENGTH**: ×1.40 in shader. 1.0 = HBM 1/2 grade.

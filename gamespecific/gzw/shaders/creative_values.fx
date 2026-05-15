@@ -15,11 +15,9 @@
 #define INVERSE_LUMA  0.40
 
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
-// BLACKS: black pedestal — prevents absolute digital black. 0 = passthrough.
-//   1.0 = ARRI LogC3 black point (actual linear-light value). Range 0–1.
-// WHITES: pulls true white below clip before EXPOSURE. 0 = passthrough.
-//   1.0 = ARRI LogC3 usable ceiling (maps white to 0.95). Range 0–1.
-#define BLACKS          1.00
+// BLACKS: black floor, direct linear value. 0.00 = passthrough. 0.005 = ARRI LogC3 black point.
+// WHITES: white ceiling, direct linear value. 1.00 = passthrough. 0.95 = ARRI LogC3 usable ceiling.
+#define BLACKS          0.005
 #define WHITES  0.95
 
 // Exposure in stops. 0 = neutral, +1 = one stop brighter, -1 = one stop darker.

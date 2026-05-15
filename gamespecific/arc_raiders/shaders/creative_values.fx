@@ -5,39 +5,39 @@
 // Adaptive inverse tone mapping. Expands Oklab chroma using the IQR-derived compression
 // ratio — restoring chroma the game's tonemapper compressed. Luma is handled by zone
 // S-curve. Works on any S-curve tonemapper. 0 = off. Start at 0.30–0.50.
-#define INVERSE_STRENGTH  0.40
+#define INVERSE_STRENGTH  0.60
 
 // Luma inverse — undoes ACES midtone boost (standard UE4/UE5 tonemapper).
 // Darkens display values below L≈0.73 (ACES fixed point) back toward scene-linear.
 // Highlights above L≈0.73 are unchanged — ACES shoulder is irrecoverable in SDR.
 // Midtones darken ~0.5 stops at 1.0 — increase EXPOSURE to compensate after enabling.
 // 0 = off. Try 0.30–0.60 after recalibrating EXPOSURE.
-#define INVERSE_LUMA  0.40
+#define INVERSE_LUMA 0.60
 
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
 // BLACKS: black pedestal — prevents absolute digital black. 0 = passthrough.
 //   1.0 = ARRI LogC3 black point (actual linear-light value). Range 0–1.
 // WHITES: pulls true white below clip before EXPOSURE. 0 = passthrough.
 //   1.0 = ARRI LogC3 usable ceiling (maps white to 0.95). Range 0–1.
-#define BLACKS          1.00
-#define WHITES  0.00
+#define BLACKS  0.005
+#define WHITES  0.95
 
 // Exposure in stops. 0 = neutral, +1 = one stop brighter, -1 = one stop darker.
 // Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.
 // Sets where pixels sit tonally — which directly changes what every knob below "sees".
 // Rule of thumb: dial until overall brightness feels right, then tune beneath.
-#define EXPOSURE 0.04
+#define EXPOSURE 0.15
 
 // Film emulsion scatter from specular highlights — orange/amber fringe around
 // brightest sources. Red dominates (deepest dye layer), green small, blue near-zero
 // (yellow filter layer blocks blue from reaching base). White sources glow orange.
 // Fires pre-curve (physical: camera negative, before any processing).
 // 0 = off. 1.0 = Ektachrome-style aggressive.
-#define HALATION  0.35
+#define HALATION  0.50
 // Chromatic crossover threshold (ring luma units). Controls where the inner/outer
 // halation colour character transitions. Lower = more orange overall.
 // Range 0.02–0.20. Tune: raise until orange fringe looks physically correct.
-#define HALATION_CROSSOVER  0.04
+#define HALATION_CROSSOVER  1.00
 
 // Per-channel knee and toe offsets for the FilmCurve. Encodes the physical dye-layer
 // cross-over character of different film stocks. 0 = passthrough. Range ±1.
@@ -156,11 +156,11 @@
 // Perceived peak is in upper shadows — grain at pure black is invisible against the dark.
 // Framerate-independent: turns over at ~24fps regardless of display fps.
 // 0 = off. 1.0 = 2383 amplitude. 1.5 = pushed. 2.0 = stylistic.
-#define GRAIN  0.40
+#define GRAIN  0.0
 
 // ── STAGE GATES ───────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.
 #define CORRECTIVE_STRENGTH  100
-#define TONAL_STRENGTH       100
-#define CHROMA_STRENGTH      100
-#define LOOK_STRENGTH        100
+#define TONAL_STRENGTH       000
+#define CHROMA_STRENGTH      000
+#define LOOK_STRENGTH        000
