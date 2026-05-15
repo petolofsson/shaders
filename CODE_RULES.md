@@ -70,7 +70,6 @@ Adapted from Holzmann's Power of Ten for this shader pipeline.
     shader edit, verify against the silent-failure checklist in `CLAUDE.md`: no
     `static const float[]` or `static const float3` (compiles silently, wrong output); no
     variable named `out` (reserved keyword); no `tex2Dlod` on BackBuffer (always returns
-    zero); no `MipLevels > 1` on cross-technique render targets (mip1+ silently zeroed);
-    every BackBuffer-writing pass guards `if (pos.y < 1.0) return col` to protect the data
-    highway row. Any effect that introduces a new render target or a new cross-technique
-    dependency must add an entry to the checklist.
+    zero); no `MipLevels > 1` on cross-technique render targets (mip1+ silently zeroed).
+    Any effect that introduces a new render target or a new cross-technique dependency must
+    add an entry to the checklist.

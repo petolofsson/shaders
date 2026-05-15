@@ -22,40 +22,43 @@ sampler2D BackBuffer
     MagFilter = LINEAR;
 };
 
-// Identical descriptor to analysis_frame.fx — vkBasalt shares the texture
-texture2D MeanChromaTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
-sampler2D MeanChromaSamp
-{
-    Texture   = MeanChromaTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
+// Shared with grade.fx NeutralIllumPS — one-frame delay, acceptable
+texture2D NeutralIllumTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+sampler2D NeutralIllumSamp { Texture = NeutralIllumTex; MinFilter = POINT; MagFilter = POINT; };
 
 float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    float4 col = tex2D(BackBuffer, uv);
-    if (pos.y < 1.0) return col;
+    float4 col    = tex2D(BackBuffer, uv);
     if (INVERSE_STRENGTH <= 0.0) return col;
-    float slope_enc  = ReadHWY(HWY_SLOPE);
-    float slope      = clamp(slope_enc * 1.5 + 1.0, 1.15, 2.2);
+    float slope_enc   = ReadHWY(HWY_CHROMA_SLOPE);
+    float slope       = clamp(slope_enc * 1.5 + 1.0, 1.15, 2.2);
     float3 lab        = RGBtoOklab(col.rgb);
     float  C          = length(lab.yz);
-    float  mid_weight = lab.x * (1.0 - lab.x) * 4.0;
     float  hue        = frac(atan2(lab.z, lab.y) / 6.28318530);
     // R157: in highly achromatic scenes the remaining colored pixels are genuine
     // signal — lower the chroma gate so they see full expansion.
     float  achrom_frac = ReadHWY(HWY_ACHROM_FRAC);
     float  c_gate      = lerp(0.10, 0.06, smoothstep(0.60, 0.85, achrom_frac));
     float  c_weight    = saturate((C - c_gate) / 0.15);
-    float  mean_C      = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).r;
     // R156: warm hues (red, orange) are compressed more by ACES-style tonemappers;
     // cool hues (teal, cyan) less. Scale slope per hue before applying expansion.
     // R165: in warm-lit scenes, warm-hue saturation is the illuminant — not a tonemapper
     // artifact. Back off positive bias proportionally. One-frame delay acceptable.
-    float  illum_warm  = ReadHWY(HWY_ILLUM_WARM);
+    float3 ni_rgb      = tex2Dlod(NeutralIllumSamp, float4(0.5, 0.5, 0, 0)).rgb;
+    float3 ni_norm     = ni_rgb / max(Luma(ni_rgb), 0.001);
+    const float3x3 Mf = float3x3(0.302825, 0.602279, 0.070428,
+                                   0.153818, 0.777214, 0.085341,
+                                   0.027974, 0.147911, 0.908874);
+    float3 ni_lms      = mul(Mf, ni_norm);
+    float3 ni_lmsn     = ni_lms / max(ni_lms.g, 0.001);
+    float  illum_warm  = saturate(ni_lmsn.r - ni_lmsn.b + 0.5);
     float  warm_scene  = saturate((illum_warm - 0.45) / 0.35);
+    // R196-J: per-pixel illumination gate — high-luma pixels are illumination-dominated.
+    // Retinex: log(pixel) = log(reflectance) + log(illumination). Bright pixels carry
+    // more illumination energy; chroma expansion risks neonizing warm practicals and emissives.
+    // In warm scenes bright pixels are especially likely to be practicals, not compressed reflectance.
+    float  illum_luma_w = smoothstep(0.45, 0.80, lab.x);
+    float  illum_gate   = illum_luma_w * lerp(0.30, 1.0, warm_scene);
     float  bias        = HueSlopeBias(hue);
     float  bias_adj    = max(bias, 0.0) * (1.0 - warm_scene * 0.50) + min(bias, 0.0);
     float  slope_eff   = clamp(slope * (1.0 + bias_adj), 1.0, 2.2);
@@ -66,16 +69,32 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     float  scene_ang   = ReadHWY(HWY_CHROMA_ANGLE) * 6.28318 - 3.14159;
     float2 scene_dir;
     sincos(scene_ang, scene_dir.y, scene_dir.x);
-    float  alignment   = dot(dir, scene_dir);          // 1 = aligned, -1 = complementary
-    float  dir_scale   = 1.0 - alignment * 0.15;       // ±15% on expansion weight
-    float  factor      = lerp(1.0, slope_eff, float(INVERSE_STRENGTH) * mid_weight * c_weight * dir_scale);
-    float  new_C       = mean_C + (C - mean_C) * factor;
-    // Per-hue ceiling — prevents expansion from overshooting natural gamut.
-    // Preserves incoming C if already above ceiling (no reduction), but blocks
-    // inverse grade from pushing further. Mirrors R73 ceilings in grade.fx.
-    new_C   = min(new_C, max(HueCeil(hue), C));
-    lab.yz  = dir * max(new_C, 0.0);
-    col.rgb   = saturate(OklabToRGB(lab));
+    float  alignment   = dot(dir, scene_dir);
+    float  dir_scale   = 1.0 - alignment * 0.15;
+    // Midtone bell: peaks at L=0.5, zero at black/white. Validated for game content:
+    // cinema mastering data (arxiv 2604.06276) shows midtone expansion is correct;
+    // shadow desaturation and highlight convergence do not need expansion.
+    float  zone_w  = 4.0 * lab.x * (1.0 - lab.x);
+    // R193: ACES 2.0 toe_inv rational function replaces lerp-with-saturate ceiling.
+    // c1 scales linearly with INVERSE_STRENGTH — no saturate() on the strength path.
+    // Near-neutral C expands most; C near HueCeil asymptotes to ceiling, never clips.
+    // toe_inv(x, ceil, c1, k2) = (x² + k1·x) / (k3·(x+k2))
+    float  ceil_C  = max(HueCeil(hue), C + 0.001);
+    // IS drives expansion magnitude. slope_frac adapts ±30%: vivid scenes get 70% of IS,
+    // achromatic scenes get 100%. Range [0.7, 1.0] — slope is a scene modifier, not the gate.
+    float  slope_frac = lerp(0.7, 1.0, saturate((slope_eff - 1.0) / 0.8));
+    float  c1      = float(INVERSE_STRENGTH) * slope_frac * zone_w * c_weight * dir_scale
+                   * (1.0 - illum_gate);
+    float  k2      = 0.01;
+    float  k1      = sqrt(c1 * c1 + k2 * k2);
+    float  k3      = (ceil_C + k1) / (ceil_C + k2);
+    float  new_C   = (C * C + k1 * C) / (k3 * (C + k2));
+    new_C          = max(new_C, C);
+    lab.yz          = dir * max(new_C, 0.0);
+    float3 rgb_test = OklabToRGB(lab);
+    float  max_ch   = max(max(rgb_test.r, rgb_test.g), rgb_test.b);
+    lab.yz         /= max(max_ch, 1.0);
+    col.rgb         = saturate(OklabToRGB(lab));
     return col;
 }
 

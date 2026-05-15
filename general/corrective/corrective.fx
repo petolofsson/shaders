@@ -23,7 +23,6 @@
 #define VFF_E_SIGMA_CHROMA 0.04   // innovation scale for chroma — Oklab a/b magnitudes are smaller
 #define KALMAN_R         0.01     // measurement noise
 #define KALMAN_K_INF     0.095    // steady-state gain for secondary channels (EMA)
-#define SAT_THRESHOLD    2
 
 uniform float FRAME_TIMER < source = "timer"; >;        // ms since app start
 
@@ -248,7 +247,7 @@ float4 ComputeZoneStats()
 
 float4 ComputeSlowKey()
 {
-    float zone_log_key = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
+    float zone_log_key = ComputeZoneStats().r;
     float prev_slow    = tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
     prev_slow = lerp(zone_log_key, prev_slow, step(0.001, prev_slow));
     return float4(lerp(prev_slow, zone_log_key, 0.003), 0, 0, 0);
@@ -296,7 +295,9 @@ float4 UpdateChromaKalman(int band_idx)
     // R53: scene-cut override — spike K toward 1.0 on hard cuts
     float scene_cut = ReadHWY(HWY_SCENE_CUT);
     K = lerp(K, 1.0, scene_cut) * obs_confidence;
-    float new_mean = prev.r + K * e_chroma;
+    float  h_c     = lerp(1.0 - 0.5 * smoothstep(0.0, VFF_E_SIGMA_CHROMA * 4.0, abs(e_chroma)),
+                          1.0, scene_cut);
+    float new_mean = prev.r + K * e_chroma * h_c;
     float P_new    = saturate((1.0 - K) * P_pred);
     // EMA: std and wsum — gate by obs_confidence so absent bands don't decay
     float k_ema    = lerp(KALMAN_K_INF, 1.0, scene_cut) * obs_confidence;
@@ -307,7 +308,7 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
                        float2 uv  : TEXCOORD0) : SV_Target
 {
     int band_idx = int(pos.x);
-    if (pos.y >= 1.0 || band_idx >= 8) return float4(0, 0, 0, 0);
+    if (pos.y >= 1.0) return float4(0, 0, 0, 0);
     if (band_idx == 6) return ComputeZoneStats();
     if (band_idx == 7) return ComputeSlowKey();
     return UpdateChromaKalman(band_idx);
@@ -318,25 +319,22 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
 
 float4 PassthroughPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    float4 c = tex2D(BackBuffer, uv);
-    if (pos.y < 1.0) {
-        int xi = int(pos.x);
-        if (xi == HWY_STEVENS) {
-            // R153: mode is the dominant scene luminance — more accurate Stevens calibration
-            // than zone_log_key (mean of zone medians), which is pulled up by bright zones.
-            float mode = ReadHWY(HWY_MODE);
-            float fc_s = (1.48 + exp2(log2(max(mode, 1e-6)) * (1.0 / 3.0))) / 2.04;
-            return float4(saturate(fc_s / 1.3), 0.0, 0.0, 1.0);
-        }
-        if (xi == HWY_ZONE_KEY || xi == HWY_ZONE_STD) {
-            float4 ch6 = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0));
-            return float4(xi == HWY_ZONE_KEY ? ch6.r : ch6.g, 0.0, 0.0, 1.0);
-        }
-        if (xi == HWY_SLOW_KEY)
-            return float4(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0.0, 0.0, 1.0);
-        return c;
+    return tex2D(BackBuffer, uv);
+}
+
+// ─── Pass 9 — Highway write (HighwayTex, 256×1) ───────────────────────────
+// Adds corrective slots 203-205. Passes through analysis_frame slots unchanged.
+
+float4 HighwayWritePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    int xi = int(pos.x);
+    if (xi == HWY_ZONE_KEY || xi == HWY_ZONE_STD) {
+        float4 ch6 = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0));
+        return float4(xi == HWY_ZONE_KEY ? ch6.r : ch6.g, 0, 0, 1);
     }
-    return c;
+    if (xi == HWY_SLOW_KEY)
+        return float4(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0, 0, 1);
+    return float4(ReadHWY(xi), 0, 0, 1);  // pass through analysis_frame slots unchanged
 }
 
 // ─── Technique ─────────────────────────────────────────────────────────────
@@ -377,5 +375,11 @@ technique Corrective
     {
         VertexShader = PostProcessVS;
         PixelShader  = PassthroughPS;
+    }
+    pass HighwayWrite
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = HighwayWritePS;
+        RenderTarget = HighwayTex;
     }
 }
