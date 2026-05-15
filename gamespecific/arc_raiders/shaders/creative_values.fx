@@ -5,14 +5,14 @@
 // Adaptive inverse tone mapping. Expands Oklab chroma using the IQR-derived compression
 // ratio — restoring chroma the game's tonemapper compressed. Luma is handled by zone
 // S-curve. Works on any S-curve tonemapper. 0 = off. Start at 0.30–0.50.
-#define INVERSE_STRENGTH  0.60
+#define INVERSE_STRENGTH  0.50
 
 // Luma inverse — undoes ACES midtone boost (standard UE4/UE5 tonemapper).
 // Darkens display values below L≈0.73 (ACES fixed point) back toward scene-linear.
 // Highlights above L≈0.73 are unchanged — ACES shoulder is irrecoverable in SDR.
 // Midtones darken ~0.5 stops at 1.0 — increase EXPOSURE to compensate after enabling.
 // 0 = off. Try 0.30–0.60 after recalibrating EXPOSURE.
-#define INVERSE_LUMA 0.60
+#define INVERSE_LUMA 0.50
 
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
 // BLACKS: black floor, direct linear value. 0.00 = passthrough. 0.05 = 5% floor.
@@ -24,18 +24,12 @@
 // Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.
 // Sets where pixels sit tonally — which directly changes what every knob below "sees".
 // Rule of thumb: dial until overall brightness feels right, then tune beneath.
-#define EXPOSURE 0.2
+#define EXPOSURE 0.10
 
-// Film emulsion scatter from specular highlights — orange/amber fringe around
-// brightest sources. Red dominates (deepest dye layer), green small, blue near-zero
-// (yellow filter layer blocks blue from reaching base). White sources glow orange.
-// Fires pre-curve (physical: camera negative, before any processing).
-// 0 = off. 1.0 = Ektachrome-style aggressive.
-#define HALATION  0.50
-// Chromatic crossover threshold (ring luma units). Controls where the inner/outer
-// halation colour character transitions. Lower = more orange overall.
-// Range 0.02–0.20. Tune: raise until orange fringe looks physically correct.
-#define HALATION_CROSSOVER  1.00
+// Film emulsion scatter — warm orange/amber tint on highlights that exceed their
+// local blurred context. Fires on the highlight itself. Self-limiting: flat areas
+// and dark pixels unaffected. 0 = off. 0.30–0.60 = film-like. 1.0 = aggressive.
+#define HALATION  0.3
 
 // Per-channel knee and toe offsets for the FilmCurve. Encodes the physical dye-layer
 // cross-over character of different film stocks. 0 = passthrough. Range ±1.
@@ -60,22 +54,18 @@
 #define HIGHLIGHT_TINT   0
 
 // ── TONAL ─────────────────────────────────────────────────────────────────────
-// Spatially-adaptive local tone mapping (R190). Guided filter base layer lifts areas
-// darker than scene global key — shadow/midrange only, highlights unaffected —
-// while restoring the detail layer so all texture is preserved. 0 = off. 0.50–1.00 = subtle. 1.50–2.50 = cinematic.
-#define LOCAL_CONTRAST  1.00
-
 // Local contrast / clarity (R190). Scales the guided filter detail layer before reconstruction.
 // >0 = micro-contrast punch (Lightroom Clarity equivalent). <0 = spatial softening.
-// 0 = off. 0.10–0.30 = subtle punch. 0.50 = strong. Independent of LOCAL_CONTRAST.
-#define CLARITY  0.40
+// Midtone-only: fades in 0.15→0.40, fades out 0.60→0.85. Shadows and highlights unaffected.
+// 0 = off. 0.10–0.30 = subtle punch. 0.50 = strong.
+#define CLARITY 1.0
 
 // Scales the adaptive zone S-curve strength. 0 = off. 1.0 = full. 2.0 = aggressive.
-#define CONTRAST  0.75
+#define CONTRAST  0.0
 
 // Scales the auto shadow lift. 0 = off. 1.0 = full designed lift.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOWS  0.75
+#define SHADOWS  0.00
 
 // Soft luma push/pull in the highlight range (L > 0.55). +1.0 brightens highlights,
 // -1.0 recovers blown highlights. Range ±1.0. Default 0.0 = passthrough.
@@ -159,6 +149,6 @@
 // ── STAGE GATES ───────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.
 #define CORRECTIVE_STRENGTH  100
-#define TONAL_STRENGTH       000
+#define TONAL_STRENGTH       100
 #define CHROMA_STRENGTH      000
 #define LOOK_STRENGTH        000

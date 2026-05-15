@@ -60,15 +60,10 @@
 #define HIGHLIGHT_TINT   0
 
 // ── TONAL ─────────────────────────────────────────────────────────────────────
-// Spatially-adaptive local tone mapping (R190). Guided filter base layer lifts areas
-// darker than scene global key — shadow/midrange only, highlights unaffected —
-// while restoring the detail layer so all texture is preserved.
-// 0 = off. 0.50 = moderate. 1.00 = strong cinematic lift.
-#define LOCAL_CONTRAST  0.50
-
 // Local contrast / clarity (R190). Scales the guided filter detail layer before reconstruction.
 // >0 = micro-contrast punch (Lightroom Clarity equivalent). <0 = spatial softening.
-// 0 = off. 0.10–0.30 = subtle punch. 0.50 = strong. Independent of LOCAL_CONTRAST.
+// Midtone-only: fades in 0.15→0.40, fades out 0.60→0.85. Shadows and highlights unaffected.
+// 0 = off. 0.10–0.30 = subtle punch. 0.50 = strong.
 #define CLARITY  0.40
 
 // Scales the adaptive zone S-curve strength. 0 = off. 1.0 = full. 2.0 = aggressive.

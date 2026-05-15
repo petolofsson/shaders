@@ -297,7 +297,7 @@ def _write_callsheet(game: str, results: "list[tuple[str, dict]]") -> None:
         "DELTA LEGEND",
         sep,
         "",
-        "  ΔL* > 0 = brighter in that zone    → SHADOWS / HIGHLIGHTS / EXPOSURE / LOCAL_CONTRAST",
+        "  ΔL* > 0 = brighter in that zone    → SHADOWS / HIGHLIGHTS / EXPOSURE",
         "  ΔL* < 0 = darker                   → same knobs, opposite direction",
         "  ΔC* > 0 = more saturated            → SATURATION / SAT_* / VIBRANCE",
         "  Δh° > 0 = hue shifted toward yellow → HUE_* / PRINTER_R/G/B / SHADOW_TEMP",

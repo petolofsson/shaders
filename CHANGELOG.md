@@ -2,6 +2,16 @@
 
 > **Purpose (for AI context):** Chronological record of code changes, one compacted entry per day. Keep only the last 3–4 days. Older history lives in git log. Do not duplicate entries from HANDOFF.md or PLAN.md here.
 
+## 2026-05-16
+
+- **DEHAZE removed** (`grade.fx`, both `creative_values.fx`, `tools/stage_isolate.py`) — Guided filter shadow lift (`LOCAL_CONTRAST` → `DEHAZE`) removed entirely. Lift reference (p75) never reliably fired across scene types; complexity without consistent benefit. `CLARITY` now owns the guided-filter block solo.
+
+- **Fix CLARITY constant** (`grade.fx`) — Reverted `0.08306 → 0.025`. The 0.08306 = 0.025 × log2(10) was a direction error introduced 2026-05-14: guided passes already write log2-luma, so 0.025 is the correct log2-space constant. The prior multiplication by log2(10) was wrongly applied (divide, not multiply).
+
+- **CLARITY midtone gate** (`grade.fx`) — `clarity_gate = smoothstep(0.15, 0.40, luma) × (1 − smoothstep(0.60, 0.85, luma))`. Full effect 0.40–0.60, fades to zero at 0.15 (noise) and 0.85 (highlight blowout). Game-agnostic by construction.
+
+- **Halation fixes** (`grade.fx`) — Three changes: (1) DoG threshold 0.04 inserted before ×luma_p — diffuse areas (sky, clouds, DoG < 0.03) no longer tint; isolated sources (lamps, speculars, DoG > 0.10) fire normally. Self-limiting, no knob. (2) Color corrected from R:G:B = 0.63:0.07:0.02 (red) to 0.63:0.25:0.02 (orange-amber) — green was severely underweighted. (3) `HALATION_CROSSOVER` knob removed; threshold baked in.
+
 ## 2026-05-15
 
 - **R198: FilmCurve pre-inverse in `inverse_grade.fx`** — `FilmCurveInvCh()` applies the piecewise exact inverse of `FilmCurveApply` (grade.fx) before chroma expansion, so expansion operates in the post-curve tonal domain. Shoulder inverse: closed-form rational `x = knee + s·h/(h−s)`. Toe inverse: quadratic formula (1 `sqrt`, ~5 MADs). Midrange: identity (body_s ≤1.2%, neglected). `fc_knee`/`fc_knee_toe` reconstructed from highway p25/p50/p75/mode — one-frame delay, same precedent as `NeutralIllumTex`. Per-channel offsets from `CURVE_R/B_KNEE/TOE` knobs. No new passes, no new textures. Research: `R198_2026-05-15_invertible_film_curve.md`.

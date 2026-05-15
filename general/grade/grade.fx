@@ -255,32 +255,17 @@ float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print
     return lerp(lin, saturate(ps), saturate(print_stock));
 }
 
-float3 ApplyHalation(float3 lin, float2 uv, float3 lf_mip2, float hal_strength, float hal_gamma,
-                     float illum_warm)
+float3 ApplyHalation(float3 lin_e, float3 lin_p, float2 uv, float hal_strength)
 {
-    // R168: three physical improvements:
-    // 1) Exponential PSF: two-scale DoG (tight 1/16−sharp, broad 1/32−1/16) approximates
-    //    diffusion-equation base scatter better than single Gaussian.
-    // 2) AH layer (2383 rem-jet): attenuates tight direct back-reflection ~40%;
-    //    broad scattered component partially bypasses AH → full color weights.
-    // 3) Color: red dominant (deepest dye, reaches base), blue near-zero (yellow filter).
-    // Illuminant-adaptive rem-jet: incident spectral content shifts halo G weight.
-    // Warm scene (illum_warm > 0.39) → more R energy reaches base → relatively less G scatter.
-    // Scale 0.25: emulsion stack pre-filtering removes most short-wavelength variation;
-    // residual G modulation ~20-30% of a G-component already ~1/10 of R (SPD analysis).
-    float3 lf_mip1    = tex2D(LowFreqMip1Samp, uv).rgb;
-    float3 ring_tight = max(float3(0,0,0), lf_mip1 - lin);
-    float3 ring_broad = max(float3(0,0,0), lf_mip2 - lf_mip1);
-    float  tight_luma = dot(ring_tight, float3(0.2126, 0.7152, 0.0722));
-    float  hal_lore   = tight_luma / (tight_luma + hal_gamma + 1e-6);
-    float  lore_g     = lerp(0.78, 0.94, hal_lore);
-    float  lore_b     = lerp(0.22, 0.38, hal_lore);
-    float  g_mod      = 1.0 - (illum_warm - 0.39) * 0.25;
-    // G weights calibrated to emulsion-physics R:G:B ≈ 30:3:1 (pixls.us spectral model).
-    // Previous 0.27/0.45 gave G/R ≈ 0.43 — ~4× too high. 0.07/0.11 → G/R ≈ 0.10.
-    float3 col_tight  = float3(0.63, 0.07 * lore_g * g_mod, 0.02 * lore_b);
-    float3 col_broad  = float3(1.05, 0.11 * lore_g * g_mod, 0.03 * lore_b);
-    return saturate(lin + (ring_tight * col_tight + ring_broad * col_broad) * hal_strength);
+    // DoG: fires where pixel outshines its 1/16-res blurred context.
+    // 0.04 floor: diffuse areas (sky, clouds) have DoG < 0.03 — threshold kills the tint.
+    // Only isolated sources (lamps, speculars, window edges) clear 0.04 and fire.
+    // × luma_p: scatter ∝ source brightness. Color: R:G:B ≈ 30:3:1 (emulsion-physics).
+    float3 lf_mip1 = tex2D(LowFreqMip1Samp, uv).rgb;
+    float  luma_p  = Luma(lin_p);
+    float  dog     = max(0.0, luma_p - Luma(lf_mip1));
+    float  detail  = max(0.0, dog - 0.04) * luma_p;
+    return saturate(lin_e + detail * float3(0.63, 0.25, 0.02) * hal_strength);
 }
 
 float3 Apply3WayCC(float3 lin,
@@ -421,7 +406,7 @@ float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex
     // lf_mip1/lf_mip2 are pre-corrective; lin_e is pre-curve — signals match.
     // R151: p90−p50 gap measures isolated bright sources against scene median.
     float eff_hal_str = HALATION * lerp(1.0, 1.4, ctx.specular_contrast);
-    lin_e = ApplyHalation(lin_e, uv, lf_mip2_tex.rgb, eff_hal_str, HALATION_CROSSOVER, ctx.illum_warm);
+    lin_e = ApplyHalation(lin_e, lin_p, uv, eff_hal_str);
     // R194: ACES luma inverse — undoes ACES midtone boost below the fixed point (L≈0.728).
     // scale_delta is negative below L≈0.728 (ACES was brightening → inverse darkens back).
     // Above L≈0.728 ACES was compressing — that expansion requires headroom > 1.0 which SDR
@@ -458,16 +443,13 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     // No-op at BS=CS=0. Independent — either or both can be active.
     {
         float log_base   = tex2D(BilateralLogSamp, uv).r;  // log2-luma base layer
-        float log_key    = log2(max(ctx.zone_log_key, 1e-3));
         float log_pixel  = log2(max(luma, 1e-3));
         float log_detail = log_pixel - log_base;
-        // LOCAL_CONTRAST: lift-only. Gate on max(log_base, log_pixel) — a bright pixel in a
-        // locally-dark area (e.g. lamp against dark wall) has low log_base but high log_pixel;
-        // gating on base alone would lift the highlight. Using the higher of the two ensures
-        // only pixels that are themselves below the global key receive lift.
-        // 0.08306 = 0.025 * log2(10) — keeps behaviour identical to the former log10 formula.
-        float bil_ratio  = exp2(float(LOCAL_CONTRAST)       * 0.08306 * max(log_key - max(log_base, log_pixel), 0.0)
-                              + float(CLARITY) * 0.08306 * log_detail);
+        // CLARITY: midtone-only. Rolls off in shadows (noise) and highlights (blowout).
+        // 0.025 is the calibrated constant for log2-space data.
+        float clarity_gate = smoothstep(0.15, 0.40, luma)
+                           * (1.0 - smoothstep(0.60, 0.85, luma));
+        float bil_ratio  = exp2(float(CLARITY) * 0.025 * log_detail * clarity_gate);
         bil_ratio        = clamp(bil_ratio, 0.5, 2.0);
         float3 lin_b     = lin * bil_ratio;
         lin              = lin_b / max(max(lin_b.r, max(lin_b.g, lin_b.b)), 1.0);
@@ -490,7 +472,7 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     float clahe_slope = lerp(1.32, 1.12, ctx.ss_04_25);
     float iqr_scale   = min(smoothstep(0.0, 0.25, zone_iqr),
                             (clahe_slope - 1.0) / max(ctx.zone_str, 0.001));
-    float delta    = luma_orig - zone_median;   // original position — LOCAL_CONTRAST lift does not inflate delta
+    float delta    = luma_orig - zone_median;   // original position — DEHAZE lift does not inflate delta
     float zone_adj = ctx.zone_str * iqr_scale * delta * (1.0 - abs(delta));
     float above_w  = smoothstep(-0.05, 0.10, delta);
     float new_luma = saturate(luma + zone_adj * above_w);
