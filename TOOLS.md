@@ -60,9 +60,12 @@ compare_frame --delay 5                  # longer SPIR-V wait
 
 Aggregate output: `gamespecific/<game>/compare_agg.json` (also archived to `analysis/YYYY-MM-DD/`).
 
-`--all-effects` runs CORRECTIVE / TONAL / CHROMA / LOOK / FULL each in isolation and reports ΔE
-independently (not cumulatively). Effects with ΔE < 0.5 are flagged as silent — useful for spotting
-broken or miscalibrated effects. Gates are saved and restored on exit and Ctrl-C.
+`--all-effects` captures FULL pipeline once, then reruns with each stage removed and diffs the two
+outputs (incremental subtraction). ΔE = how much that stage changes the image in pipeline context.
+Effects with ΔE < 0.5 flagged as silent. Stages whose CV section is all-zero are skipped.
+Results written to `gamespecific/<game>/full_analysis/effects_YYYY-MM-DD_HHMMSS.json` (timestamped)
+and `latest.json`. Each file includes per-stage stats, zone/hue-band deltas, and a snapshot of
+`creative_values.fx` at run time — intended for AI-assisted analysis.
 
 ### `stage_isolate`
 Additive stage attribution. Runs four cumulative configurations and measures each stage's

@@ -29,7 +29,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import numpy as np
@@ -426,6 +426,35 @@ def _run_all_effects(game: str, config: Path, delay: int) -> None:
     if full_agg is not None:
         _band_row("FULL", full_agg)
     print()
+
+    # ── Persist to full_analysis/ ─────────────────────────────────────────────
+    now      = datetime.now()
+    cv_path  = ROOT / "gamespecific" / game / "shaders" / "creative_values.fx"
+    out_dir  = ROOT / "gamespecific" / game / "full_analysis"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    payload = {
+        "date":            str(now.date()),
+        "time":            now.strftime("%H:%M:%S"),
+        "game":            game,
+        "n_frames":        len(pngs),
+        "creative_values": cv_path.read_text() if cv_path.exists() else None,
+        "stages": {
+            label: agg
+            for label, agg in results
+        },
+        "full": full_agg,
+    }
+
+    ts       = now.strftime("%Y-%m-%d_%H%M%S")
+    run_path = out_dir / f"effects_{ts}.json"
+    run_path.write_text(json.dumps(payload, indent=2))
+
+    latest = out_dir / "latest.json"
+    latest.write_text(json.dumps(payload, indent=2))
+
+    print(f"  saved → {run_path.relative_to(ROOT)}")
+    print(f"  latest → {latest.relative_to(ROOT)}")
 
 
 def _run_batch(game: str, config: Path, delay: int, keep: bool) -> None:
