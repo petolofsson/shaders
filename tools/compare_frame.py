@@ -21,7 +21,9 @@ Saves aggregate to gamespecific/<game>/compare_agg.json for call sheet.
 import argparse
 import json
 import os
+import re
 import shutil
+import signal
 import socket
 import subprocess
 import sys
@@ -133,6 +135,190 @@ def _goto_frame(idx: int, settle: float = 0.25) -> None:
     """Navigate mpv playlist to frame idx and wait for it to render."""
     _mpv_cmd(["set_property", "playlist-pos", idx])
     time.sleep(settle)
+
+
+# ── All-effects mode ──────────────────────────────────────────────────────────
+
+_AE_GATE_NAMES = ["CORRECTIVE_STRENGTH", "TONAL_STRENGTH", "CHROMA_STRENGTH", "LOOK_STRENGTH"]
+
+EFFECTS = [
+    ("CORRECTIVE", {"CORRECTIVE_STRENGTH": 100, "TONAL_STRENGTH":   0, "CHROMA_STRENGTH":   0, "LOOK_STRENGTH":   0}),
+    ("TONAL",      {"CORRECTIVE_STRENGTH":   0, "TONAL_STRENGTH": 100, "CHROMA_STRENGTH":   0, "LOOK_STRENGTH":   0}),
+    ("CHROMA",     {"CORRECTIVE_STRENGTH":   0, "TONAL_STRENGTH":   0, "CHROMA_STRENGTH": 100, "LOOK_STRENGTH":   0}),
+    ("LOOK",       {"CORRECTIVE_STRENGTH":   0, "TONAL_STRENGTH":   0, "CHROMA_STRENGTH":   0, "LOOK_STRENGTH": 100}),
+    ("FULL",       {"CORRECTIVE_STRENGTH": 100, "TONAL_STRENGTH": 100, "CHROMA_STRENGTH": 100, "LOOK_STRENGTH": 100}),
+]
+
+
+def _ae_cv_path(game: str) -> Path:
+    p = ROOT / "gamespecific" / game / "shaders" / "creative_values.fx"
+    if not p.exists():
+        sys.exit(f"Not found: {p}")
+    return p
+
+
+def _ae_read_gates(cv: Path) -> dict:
+    text = cv.read_text()
+    out = {}
+    for name in _AE_GATE_NAMES:
+        m = re.search(rf"#define\s+{name}\s+(\d+)", text)
+        if not m:
+            sys.exit(f"Gate '{name}' not found in {cv}")
+        out[name] = int(m.group(1))
+    return out
+
+
+def _ae_write_gates(cv: Path, gates: dict) -> None:
+    text = cv.read_text()
+    for name, val in gates.items():
+        text = re.sub(rf"(#define\s+{name}\s+)\d+", rf"\g<1>{val}", text)
+    cv.write_text(text)
+
+
+def _capture_frames(game: str, config: Path, delay: int) -> "list[dict] | None":
+    """Capture all reference frames with current creative_values; return per-frame stats."""
+    frames_dir = ROOT / "gamespecific" / game / "analysis" / "reference"
+    pngs = sorted(frames_dir.glob("*.png"))
+    if not pngs:
+        sys.exit(f"No PNGs in {frames_dir}")
+
+    all_stats = []
+    proc = _launch_mpv(pngs, config, delay)
+    try:
+        for i, png in enumerate(pngs):
+            print(f"    [{i+1}/{len(pngs)}] {png.name}", end="", flush=True)
+            before = _load_png_linear(png)
+            _goto_frame(i)
+
+            tmp       = Path(tempfile.mkdtemp(prefix="compare_ae_"))
+            after_png = tmp / f"{png.stem}_after.png"
+            take_screenshot(after_png)
+
+            if not after_png.exists() or after_png.stat().st_size == 0:
+                print("  SKIP (capture failed)")
+                shutil.rmtree(tmp, ignore_errors=True)
+                continue
+
+            after = _load_png_linear(after_png)
+            bh, bw = before.shape[:2]
+            if after.shape[1] > bw:
+                x = after.shape[1] // 2 if GAME_MONITOR == "right" else 0
+                after = after[:, x:x + bw, :]
+            shutil.rmtree(tmp, ignore_errors=True)
+
+            if before.shape != after.shape:
+                print("  SKIP (resolution mismatch)")
+                continue
+
+            stats = compute_relative(before, after)
+            all_stats.append(stats)
+            print(f"  ΔE {stats['mean_de']:.2f}")
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=3)
+        except Exception:
+            proc.kill()
+
+    return all_stats if all_stats else None
+
+
+def _ae_aggregate(all_stats: "list[dict]") -> dict:
+    n = len(all_stats)
+
+    def avg_zone(label):
+        zones = [s["zones"][label] for s in all_stats if s["zones"].get(label)]
+        if not zones:
+            return None
+        return {
+            "mean_de": sum(z["mean_de"] for z in zones) / len(zones),
+            "dL":      sum(z["dL"]      for z in zones) / len(zones),
+            "dC":      sum(z["dC"]      for z in zones) / len(zones),
+        }
+
+    def avg_band(bname):
+        bands = [s["hue_bands"][bname] for s in all_stats if s["hue_bands"].get(bname)]
+        if not bands:
+            return None
+        return {
+            "mean_de": sum(b["mean_de"] for b in bands) / len(bands),
+            "dL":      sum(b["dL"]      for b in bands) / len(bands),
+            "dC":      sum(b["dC"]      for b in bands) / len(bands),
+        }
+
+    return {
+        "mean_de":   sum(s["mean_de"] for s in all_stats) / n,
+        "zones":     {lbl: avg_zone(lbl) for lbl in ("shadows", "midtones", "highlights")},
+        "hue_bands": {e[0]: avg_band(e[0]) for e in HUE_BANDS},
+    }
+
+
+def _run_all_effects(game: str, config: Path, delay: int) -> None:
+    cv       = _ae_cv_path(game)
+    original = _ae_read_gates(cv)
+    print(f"compare_frame --all-effects  game={game}  {len(EFFECTS)} effects")
+    print(f"Saved gates: {original}\n")
+
+    def _restore(sig=None, frame=None):
+        _ae_write_gates(cv, original)
+        print("\nGates restored.")
+        if sig is not None:
+            sys.exit(1)
+    signal.signal(signal.SIGINT, _restore)
+
+    results: list[tuple[str, dict]] = []
+    try:
+        for label, gates in EFFECTS:
+            print(f"── {label}  {gates}")
+            _ae_write_gates(cv, gates)
+            time.sleep(0.1)
+            stats = _capture_frames(game, config, delay)
+            if stats is None:
+                print(f"  No frames captured — skipping.\n")
+                continue
+            agg = _ae_aggregate(stats)
+            results.append((label, agg))
+            print(f"  aggregate ΔE {agg['mean_de']:.2f}\n")
+    finally:
+        _ae_write_gates(cv, original)
+        print("Gates restored.\n")
+
+    if not results:
+        return
+
+    DEAD = 0.5   # ΔE threshold below which an effect is flagged as silent
+
+    print("─" * 72)
+    print(f"\n{_BLD}EFFECT ATTRIBUTION  (each stage isolated from baseline){_RST}")
+    print(f"  ΔE < {DEAD} flagged as silent — effect may be miscalibrated or broken\n")
+
+    # Zone table
+    print(f"  {'Effect':<14}  {'ΔE':>5}  {'shadows ΔL*/ΔC*':>18}  {'mids ΔL*/ΔC*':>14}  {'highs ΔL*/ΔC*':>14}")
+    print("  " + "─" * 70)
+    for label, agg in results:
+        de   = agg["mean_de"]
+        sh   = agg["zones"].get("shadows")
+        mi   = agg["zones"].get("midtones")
+        hi   = agg["zones"].get("highlights")
+        sh_s = f"{sh['dL']:+.1f}/{sh['dC']:+.1f}" if sh else "    —    "
+        mi_s = f"{mi['dL']:+.1f}/{mi['dC']:+.1f}" if mi else "    —    "
+        hi_s = f"{hi['dL']:+.1f}/{hi['dC']:+.1f}" if hi else "    —    "
+        flag = "  ← silent?" if de < DEAD else ""
+        sep  = "  ════" if label == "FULL" else ""
+        print(f"{sep}  {label:<14}  {_de_fmt(de)}  {sh_s:>18}  {mi_s:>14}  {hi_s:>14}{flag}")
+
+    # Hue band table
+    band_names = [e[0] for e in HUE_BANDS]
+    print(f"\n  by hue band  (ΔL*/ΔC* per effect, chromatic pixels C*>3)")
+    print(f"  {'Effect':<14}  " + "  ".join(f"{b:<12}" for b in band_names))
+    print("  " + "─" * (16 + 14 * len(band_names)))
+    for label, agg in results:
+        cells = []
+        for bname in band_names:
+            b = agg["hue_bands"].get(bname)
+            cells.append(f"{b['dL']:+.1f}/{b['dC']:+.1f}" if b else "   —   ")
+        print(f"  {label:<14}  " + "  ".join(f"{c:<12}" for c in cells))
+    print()
 
 
 def _run_batch(game: str, config: Path, delay: int, keep: bool) -> None:
@@ -299,15 +485,27 @@ def main() -> None:
     )
     ap.add_argument("png",     nargs="?", default=None,
                     help="Reference PNG (pre-vkBasalt game screenshot)")
-    ap.add_argument("--all",   action="store_true",
+    ap.add_argument("--all",         action="store_true",
                     help="Batch-analyse all reference frames for the game")
+    ap.add_argument("--all-effects", action="store_true",
+                    help="Measure each pipeline stage individually (not cumulative) — shows silent effects")
     ap.add_argument("--game",  default=None,
-                    help="Game name (auto-inferred from path, required with --all)")
+                    help="Game name (auto-inferred from path, required with --all / --all-effects)")
     ap.add_argument("--delay", type=int, default=3,
                     help="Seconds to wait for SPIR-V compile (default: 3)")
     ap.add_argument("--keep",  action="store_true",
                     help="Keep temp EXR files instead of deleting after analysis")
     args = ap.parse_args()
+
+    if args.all_effects:
+        game = args.game
+        if not game:
+            sys.exit("--all-effects requires --game <name>")
+        config = ROOT / "gamespecific" / game / f"{game}.conf"
+        if not config.exists():
+            sys.exit(f"Config not found: {config}")
+        _run_all_effects(game, config, args.delay)
+        return
 
     if args.all:
         game = args.game

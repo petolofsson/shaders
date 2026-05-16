@@ -52,12 +52,17 @@ captures the result, and reports ΔE_oklab with ΔL* / ΔC* / Δh° per tonal zo
 
 ```
 compare_frame gamespecific/gzw/analysis/reference/frame.png
-compare_frame --all --game gzw      # batch over all reference frames
-compare_frame --all --game gzw --keep   # also save EXRs to analysis/YYYY-MM-DD/frames/
-compare_frame --delay 5             # longer SPIR-V wait
+compare_frame --all --game gzw           # batch over all reference frames
+compare_frame --all --game gzw --keep    # also save EXRs to analysis/YYYY-MM-DD/frames/
+compare_frame --all-effects --game gzw   # per-effect isolation (see below)
+compare_frame --delay 5                  # longer SPIR-V wait
 ```
 
 Aggregate output: `gamespecific/<game>/compare_agg.json` (also archived to `analysis/YYYY-MM-DD/`).
+
+`--all-effects` runs CORRECTIVE / TONAL / CHROMA / LOOK / FULL each in isolation and reports ΔE
+independently (not cumulatively). Effects with ΔE < 0.5 are flagged as silent — useful for spotting
+broken or miscalibrated effects. Gates are saved and restored on exit and Ctrl-C.
 
 ### `stage_isolate`
 Additive stage attribution. Runs four cumulative configurations and measures each stage's
