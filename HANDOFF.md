@@ -8,25 +8,35 @@ grade: 10 passes — LFDownscale1 → LFDownscale2 → NeutralIllum → GuidedCo
 
 ## Known state
 - No compile errors. Log: `/tmp/vkbasalt.log`
-- **Knob convention**: 0 = passthrough universally. 1 = full designed effect. Compensation factors live in grade.fx — not in creative_values.fx values.
-- **BLACKS**: `max(col.rgb, cfilm_floor)` floor lift in ColorTransformPS, before ApplyCorrective.
-- **WHITES**: `min(lin_e, WHITES)` ceiling clip inside ApplyCorrective, after EXPOSURE+HALATION, before FilmCurve.
-- **EXPOSURE**: uniform `lin_e *= exp2(EXPOSURE)` — no luma gate. Fires after INVERSE_LUMA.
-- **INVERSE_LUMA**: scene-median (p50) ACES quadratic inverse. Uniform scalar — no per-pixel luma variation. Shadow gate smoothstep(0.005, 0.04) only.
-- **HALATION**: post-EXPOSURE. DoG `pixel − lf_mip1`, smoothstep(0.25, 0.40) threshold, `dog² × luma_p`. Orange R:G:B = 0.63:0.25:0.02. Global warm highlight character is intentional.
-- **CLARITY**: lower shadow gate only (smoothstep 0.15→0.40). Upper gate removed. Large-scale gradient suppression via `log_base − log_lf1` (cloud/sky boundary scale suppressed; fine texture unaffected).
-- **VIBRANCE**: scale `×0.40` (was ×0.04). Pivot = `HueCeil(h_out) × 0.5` — no Kalman dependency. vib_mask ceiling = `HueCeil` (was hardcoded 0.22).
-- **SHADOW_CAST**: bipolar. Positive = warm amber (×4 scale: 0.080/0.048 ab). Negative = Purkinje desaturate+bias (0.60 desat, 0.032/0.088 ab). Gate smoothstep(0.25, 0.55). Purkinje standalone block removed — folded in here.
-- **SATURATION knob**: removed from creative_values.fx and grade.fx. Use per-band SAT_* uniformly instead.
-- **DIR_COUPLER**: guarded with `if (DIR_COUPLER > 0.0)`, lerp-blended by value. 0 = true passthrough.
-- **FilmCurve**: shoulder softened — `lerp(lin_e, fc_out, fc_w)` where fc_w rolls off to 0.5 in shoulder region.
-- **Zone S-curve**: `above_w` gate removed — zone_adj now fires uniformly.
-- **CURVE_***: ×0.10 in shader. ±1.0 user range = ±0.10 stop knee/toe shift.
-- **Highway**: HighwayTex 256×1 R16F. Slots documented in highway.fxh.
-- **Baselines**: INVALID — needs rebless after this session's changes.
-- **tools/capture.py**: `import` fixed to `-display :0` (was `-window root`). Polls 1s after tool exit before trying next — fixes spectacle silent-success on KDE Wayland with mpv fullscreen.
+- **Knob convention**: 0 = passthrough universally. 1 = full designed effect.
+- **3-way CC**: ±1.0 range. Scale 0.03 in shader.
+- **HueBandWeightW**: width=0.14 used for HUE_*, SAT_*, hw_o*, LUMA_CONTRAST_*. HueCeil/HueBandRollN keep 0.08.
+- **above_w**: restored — zone S-curve one-sided again (only lifts above zone median).
+- **SHADOW_CAST**: gate smoothstep(0.25, 0.65) — reaches into midtones.
+- **LUMA_CONTRAST_***: 6-band hue-selective clarity, ungated, chroma-gated (smoothstep 0.04→0.10). Shares CLARITY's guided filter detail signal.
+- **CLARITY**: midtone-gated (0.15→0.40). LUMA_CONTRAST_* uses separate ungated detail path.
+
+## ⚠ Shadow lift — TROUBLESHOOTING IN PROGRESS
+- **Problem**: shadow lift not visibly working in GZW jungle at any SHADOWS value.
+- **Root cause**: `texture_att` (Retinex scale variance) suppressed lift to ~0 in textured areas. Jungle is all texture.
+- **Changes made this session**:
+  - `texture_att` removed from shadow lift (still computed, just not applied there)
+  - `detail_protect` relaxed: `smoothstep(-4.0, -0.5, log_R)` (was -2.0)
+  - `lift_w` bell extended: `smoothstep(0.35, 0.0, new_luma)` (was 0.23)
+- **Not yet confirmed working in-game** — needs test at current SHADOWS 2.00.
+- **If still broken**: remaining suppressors are `fine_texture_att`, `context_lift`, `specular_att`.
+
+## GZW current values (live — not committed)
+- EXPOSURE 0.30 / HALATION 0.10 / INVERSE_LUMA 0.25 / DIR_COUPLER 0.40
+- CONTRAST 1.70 / SHADOWS 2.00 / CLARITY 0.5
+- LUMA_CONTRAST_GREEN 1.50 / LUMA_CONTRAST_CYAN 1.0 / LUMA_CONTRAST_BLUE 0.0
+- CURVE_R_KNEE -0.25 / CURVE_B_KNEE +0.10
+- SHADOW_CAST -0.40 / SHADOW_TEMP -0.15 / HUE_GREEN -0.45 / HUE_CYAN +0.12
+- SAT_GREEN 0.50 / SAT_CYAN 0.30 / VIBRANCE 1.0
+- PRINT_STOCK 0.35 / BLEACH_BYPASS 0.22 / DIFFUSION 0.50 / GRAIN 0.0
 
 ## Next
-- Run `stage_isolate --game arc_raiders` to generate callsheet (capture fix now in)
-- Rebless baselines with `bless_all --game arc_raiders` after callsheet review
-- Retune GZW `creative_values.fx` from new 0=passthrough baseline
+- Test shadow lift in GZW jungle — confirm fix works
+- If still broken: investigate fine_texture_att / context_lift / specular_att
+- Rebless arc_raiders baselines
+- Retune arc_raiders creative_values.fx after 3-way CC rescale

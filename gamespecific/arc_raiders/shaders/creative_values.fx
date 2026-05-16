@@ -65,6 +65,15 @@
 // 0 = off. 0.10–0.30 = subtle punch. 0.50 = strong.
 #define CLARITY 0.35
 
+// Hue-selective luma contrast — same mechanism as CLARITY, ungated (fires at all luma levels).
+// Amplifies micro-contrast within the hue band. 0 = off. 0.10–0.30 = subtle. 0.50 = strong.
+#define LUMA_CONTRAST_RED    0.0
+#define LUMA_CONTRAST_YELLOW 0.0
+#define LUMA_CONTRAST_GREEN  0.0
+#define LUMA_CONTRAST_CYAN   0.0
+#define LUMA_CONTRAST_BLUE   0.0
+#define LUMA_CONTRAST_MAG    0.0
+
 // Scales the adaptive zone S-curve strength. 0 = off. 1.0 = full. 2.0 = aggressive.
 #define CONTRAST  0.75
 

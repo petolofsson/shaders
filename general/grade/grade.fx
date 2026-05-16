@@ -435,6 +435,15 @@ float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex
     return out_lin;
 }
 
+float HueBandWeightW(float hue, float center)
+{
+    hue = frac(hue);
+    float d = abs(hue - center);
+    d = min(d, 1.0 - d);
+    float t = saturate(1.0 - d / 0.14);
+    return t * t * (3.0 - 2.0 * t);
+}
+
 TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
 {
     float luma        = Luma(lin);
@@ -454,8 +463,20 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
         // Fine texture has log_base ≈ log_lf1 (both scales see the same average) → no suppression.
         float coarse_grad = max(0.0, log_base - log_lf1);
         float clarity_gate = smoothstep(0.15, 0.40, luma);
-        float gated_detail = log_detail * clarity_gate * (1.0 - saturate(coarse_grad / 0.10));
-        float bil_ratio  = exp2(float(CLARITY) * 0.025 * gated_detail);
+        float coarse_sup     = 1.0 - saturate(coarse_grad / 0.10);
+        float gated_detail   = log_detail * clarity_gate * coarse_sup;
+        float ungated_detail = log_detail * coarse_sup;
+        float3 lab_lc        = RGBtoOklab(saturate(lin));
+        float h_lc           = frac(atan2(lab_lc.z, lab_lc.y) / 6.28318530718);
+        float C_lc           = length(lab_lc.yz);
+        float chroma_gate    = smoothstep(0.04, 0.10, C_lc);
+        float lc_delta       = (LUMA_CONTRAST_RED    * HueBandWeightW(h_lc, HB_BAND_RED)
+                             + LUMA_CONTRAST_YELLOW * HueBandWeightW(h_lc, HB_BAND_YELLOW)
+                             + LUMA_CONTRAST_GREEN  * HueBandWeightW(h_lc, HB_BAND_GREEN)
+                             + LUMA_CONTRAST_CYAN   * HueBandWeightW(h_lc, HB_BAND_CYAN)
+                             + LUMA_CONTRAST_BLUE   * HueBandWeightW(h_lc, HB_BAND_BLUE)
+                             + LUMA_CONTRAST_MAG    * HueBandWeightW(h_lc, HB_BAND_MAGENTA)) * chroma_gate;
+        float bil_ratio      = exp2((float(CLARITY) * gated_detail + lc_delta * ungated_detail) * 0.025);
         bil_ratio        = clamp(bil_ratio, 0.5, 2.0);
         float3 lin_b     = lin * bil_ratio;
         lin              = lin_b / max(max(lin_b.r, max(lin_b.g, lin_b.b)), 1.0);
@@ -480,10 +501,11 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
                             (clahe_slope - 1.0) / max(ctx.zone_str, 0.001));
     float delta    = luma_orig - zone_median;   // original position — DEHAZE lift does not inflate delta
     float zone_adj = ctx.zone_str * iqr_scale * delta * (1.0 - abs(delta));
-    float new_luma = saturate(luma + zone_adj);
+    float above_w  = smoothstep(-0.05, 0.10, delta);
+    float new_luma = saturate(luma + zone_adj * above_w);
 
     float texture_att     = 1.0 - smoothstep(0.005, 0.030, local_var);
-    float detail_protect  = smoothstep(-2.0, -0.5, log_R);
+    float detail_protect  = smoothstep(-4.0, -0.5, log_R);
     // R119: fine-texture gate — 4 diagonal bilinear taps give a cheap 3×3 neighbourhood avg.
     // Detects sub-16px texture (fabric, skin grain) invisible to 1/16-res illuminant maps.
     float2 fine_px         = float2(1.0 / BUFFER_WIDTH, 1.0 / BUFFER_HEIGHT);
@@ -500,8 +522,8 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     // High p90−p50 gap = sun/lamp in frame — lifting shadows flattens depth against the source.
     float specular_att   = 1.0 - smoothstep(0.50, 0.90, ctx.specular_contrast) * 0.35;
     float shadow_lift    = ctx.shadow_lift_str * (0.149169 / (illum_s0 * illum_s0 + 0.003))
-                         * texture_att * fine_texture_att * detail_protect * context_lift * specular_att;
-    float lift_w         = new_luma * smoothstep(0.23, 0.0, new_luma);
+                         * fine_texture_att * detail_protect * context_lift * specular_att;
+    float lift_w         = new_luma * smoothstep(0.35, 0.0, new_luma);
     new_luma = saturate(new_luma + (shadow_lift / 100.0) * 0.75 * lift_w * SHADOWS);
     // Highlights — soft luma push/pull above L≈0.55. +1.0 brightens, -1.0 recovers.
     new_luma = saturate(new_luma + HIGHLIGHTS * 0.20 * smoothstep(0.55, 0.85, new_luma));
@@ -524,15 +546,6 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     result.new_luma  = new_luma;
     result.local_var = local_var;
     return result;
-}
-
-float HueBandWeightW(float hue, float center)
-{
-    hue = frac(hue);
-    float d = abs(hue - center);
-    d = min(d, 1.0 - d);
-    float t = saturate(1.0 - d / 0.14);
-    return t * t * (3.0 - 2.0 * t);
 }
 
 float3 ApplyChroma(float3 lin, float new_luma, float local_var,

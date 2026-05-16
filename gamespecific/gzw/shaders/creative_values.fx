@@ -12,12 +12,12 @@
 // Highlights above L≈0.73 are unchanged — ACES shoulder is irrecoverable in SDR.
 // Midtones darken ~0.5 stops at 1.0 — increase EXPOSURE to compensate after enabling.
 // 0 = off. Try 0.30–0.60 after recalibrating EXPOSURE.
-#define INVERSE_LUMA 0.45
+#define INVERSE_LUMA 0.25
 
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
 // BLACKS: black floor, direct linear value. 0.00 = passthrough. 0.05 = 5% floor.
 // WHITES: white ceiling, direct linear value. 1.00 = passthrough. 0.95 = ARRI LogC3 usable ceiling.
-#define BLACKS  0.00
+#define BLACKS  0.005
 #define WHITES  0.95
 
 // DIR couplers — cross-channel log-space inhibition (film dye chemistry model).
@@ -29,12 +29,12 @@
 // Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.
 // Sets where pixels sit tonally — which directly changes what every knob below "sees".
 // Rule of thumb: dial until overall brightness feels right, then tune beneath.
-#define EXPOSURE 1.0
+#define EXPOSURE 0.30
 
 // Film emulsion scatter — warm orange/amber tint on highlights that exceed their
 // local blurred context. Fires on the highlight itself. Self-limiting: flat areas
 // and dark pixels unaffected. 0 = off. 0.30–0.60 = film-like. 1.0 = aggressive.
-#define HALATION  0.5
+#define HALATION  0.1
 
 // Per-channel knee and toe offsets for the FilmCurve. Encodes the physical dye-layer
 // cross-over character of different film stocks. 0 = passthrough. Range ±1.
@@ -42,8 +42,8 @@
 // R knee < 0 = red compresses earlier (film-like warm shadows).
 // B knee > 0 = blue compresses later (open highlights). B toe < 0 = cool toe.
 // Negative values invert the S-curve direction for that channel.
-#define CURVE_R_KNEE  0.0
-#define CURVE_B_KNEE  0.0
+#define CURVE_R_KNEE  -0.25
+#define CURVE_B_KNEE  +0.10
 #define CURVE_R_TOE   0.0
 #define CURVE_B_TOE   0
 
@@ -63,14 +63,23 @@
 // >0 = micro-contrast punch (Lightroom Clarity equivalent). <0 = spatial softening.
 // Midtone-only: fades in 0.15→0.40, fades out 0.60→0.85. Shadows and highlights unaffected.
 // 0 = off. 0.10–0.30 = subtle punch. 0.50 = strong.
-#define CLARITY 0.5
+#define CLARITY 0.0
+
+// Hue-selective luma contrast — same mechanism as CLARITY, ungated (fires at all luma levels).
+// Amplifies micro-contrast within the hue band. 0 = off. 0.10–0.30 = subtle. 0.50 = strong.
+#define LUMA_CONTRAST_RED    0.0
+#define LUMA_CONTRAST_YELLOW 0.0
+#define LUMA_CONTRAST_GREEN  1.0
+#define LUMA_CONTRAST_CYAN   1.0
+#define LUMA_CONTRAST_BLUE   0.0
+#define LUMA_CONTRAST_MAG    0.0
 
 // Scales the adaptive zone S-curve strength. 0 = off. 1.0 = full. 2.0 = aggressive.
-#define CONTRAST  1.40
+#define CONTRAST  1.0
 
 // Scales the auto shadow lift. 0 = off. 1.0 = full designed lift.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOWS  0.30
+#define SHADOWS  1.00
 
 // Soft luma push/pull in the highlight range (L > 0.55). +1.0 brightens highlights,
 // -1.0 recovers blown highlights. Range ±1.0. Default 0.0 = passthrough.
@@ -82,7 +91,7 @@
 // Negative = scotopic Purkinje: desaturates shadows first (rods are achromatic), then
 //   applies fixed 507nm blue-green bias. Fires on neutrals — not C-weighted.
 // Range ±1.0. 0 = passthrough.
-#define SHADOW_CAST  -0.50
+#define SHADOW_CAST  -0.40
 
 
 // Per-band hue rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
@@ -90,7 +99,7 @@
 #define HUE_RED      0.00
 #define HUE_YELLOW   0.0
 #define HUE_GREEN   -0.45
-#define HUE_CYAN    -0.0
+#define HUE_CYAN    +0.12
 #define HUE_BLUE    -0.0
 #define HUE_MAG      0.00
 
@@ -113,20 +122,20 @@
 // Applied after all grading and chroma work — ACES LMT position.
 // Kodak 2383 print emulsion: gentle shadow density bow, restrained shoulder,
 // desaturates mids ~15%. 0 = off. 1 = full 2383.
-#define PRINT_STOCK 0.60
+#define PRINT_STOCK 0.35
 // Skip the bleach step during print development — retains metallic silver alongside
 // color dye. Desaturates shadows most (denser silver retention in unexposed areas),
 // steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.
 // 0 = off. 1 = full (near-monochrome shadows).
-#define BLEACH_BYPASS  0.15
+#define BLEACH_BYPASS  0.22
 
 // R192: Printer lights — per-channel contact-printer exposure after all emulsion work.
 // Mirrors film lab RGB printer head notation: 0 = neutral, ±12 = ±1 stop, 1 point = 1/12 stop.
 // Push R up for warm cast, push B up for cool cast, etc.
 // Applied after print stock and bleach bypass — post-LMT.
-#define PRINTER_R   1.0
-#define PRINTER_G   1.00
-#define PRINTER_B   1.0
+#define PRINTER_R   0.0
+#define PRINTER_G   0.0
+#define PRINTER_B   0.0
 
 // ── OUTPUT ────────────────────────────────────────────────────────────────────
 // Hollywood Black Magic dual-component model (R131):
@@ -134,14 +143,14 @@
 //   B) Soft midtone overlay — gentle airbrushed smoothing, zero at blacks/whites.
 // R132 polydisperse: per-channel scatter — red ×1.15, green ×1.00, blue ×0.85.
 // 0 = off. 0.5 = subtle. 1.0 = Hollywood workhorse (HBM 1/2 grade). 1.5 = aggressive.
-#define DIFFUSION  0.25
+#define DIFFUSION  0.50
 
 // R136: Selwyn 2383 granularity — three decorrelated dye layers (R:G:B = 1.00:0.80:1.50).
 // Envelope sqrt(1−L_gamma): mathematically highest at pure black, tapers to zero at white.
 // Perceived peak is in upper shadows — grain at pure black is invisible against the dark.
 // Framerate-independent: turns over at ~24fps regardless of display fps.
 // 0 = off. 1.0 = 2383 amplitude. 1.5 = pushed. 2.0 = stylistic.
-#define GRAIN  0.35
+#define GRAIN  0.0
 
 // ── STAGE GATES ───────────────────────────────────────────────────────────────
 // Bypass entire stages for A/B comparison. Not tuning knobs — leave at 100.
