@@ -107,8 +107,8 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     // Retinex: log(pixel) = log(reflectance) + log(illumination). Bright pixels carry
     // more illumination energy; chroma expansion risks neonizing warm practicals and emissives.
     // In warm scenes bright pixels are especially likely to be practicals, not compressed reflectance.
-    float  illum_luma_w = smoothstep(0.45, 0.80, lab.x);
-    float  illum_gate   = illum_luma_w * lerp(0.30, 1.0, warm_scene);
+    float  illum_luma_w = smoothstep(0.35, 0.75, lab.x);
+    float  illum_gate   = illum_luma_w * lerp(0.65, 1.0, warm_scene);
     float  bias        = HueSlopeBias(hue);
     float  bias_adj    = max(bias, 0.0) * (1.0 - warm_scene * 0.50) + min(bias, 0.0);
     float  slope_eff   = clamp(slope * (1.0 + bias_adj), 1.0, 2.2);

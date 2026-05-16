@@ -9,26 +9,24 @@ grade: 10 passes — LFDownscale1 → LFDownscale2 → NeutralIllum → GuidedCo
 ## Known state
 - No compile errors. Log: `/tmp/vkbasalt.log`
 - **Knob convention**: 0 = passthrough universally. 1 = full designed effect. Compensation factors live in grade.fx — not in creative_values.fx values.
-- **Removed knobs**: `DEHAZE` (was LOCAL_CONTRAST — guided lift unreliable across scene types). `HALATION_CROSSOVER` — replaced by baked DoG threshold 0.04.
-- **BLACKS**: direct linear floor. 0.00 = passthrough. 0.005 = ARRI LogC3 black point.
+- **BLACKS**: `max(col.rgb, cfilm_floor)` floor lift in ColorTransformPS, before ApplyCorrective.
+- **WHITES**: `min(lin_e, WHITES)` ceiling clip inside ApplyCorrective, after EXPOSURE+HALATION, before FilmCurve.
+- **EXPOSURE**: uniform `lin_e *= exp2(EXPOSURE)` — no luma gate. Fires after INVERSE_LUMA.
+- **INVERSE_LUMA**: scene-median (p50) ACES quadratic inverse. Uniform scalar — no per-pixel luma variation. Shadow gate smoothstep(0.005, 0.04) only.
+- **HALATION**: post-EXPOSURE. DoG `pixel − lf_mip1`, smoothstep(0.25, 0.40) threshold, `dog² × luma_p`. Orange R:G:B = 0.63:0.25:0.02. Global warm highlight character is intentional.
+- **CLARITY**: lower shadow gate only (smoothstep 0.15→0.40). Upper gate removed. Large-scale gradient suppression via `log_base − log_lf1` (cloud/sky boundary scale suppressed; fine texture unaffected).
+- **VIBRANCE**: scale `×0.40` (was ×0.04). Pivot = `HueCeil(h_out) × 0.5` — no Kalman dependency. vib_mask ceiling = `HueCeil` (was hardcoded 0.22).
+- **SHADOW_CAST**: bipolar. Positive = warm amber (×4 scale: 0.080/0.048 ab). Negative = Purkinje desaturate+bias (0.60 desat, 0.032/0.088 ab). Gate smoothstep(0.25, 0.55). Purkinje standalone block removed — folded in here.
+- **SATURATION knob**: removed from creative_values.fx and grade.fx. Use per-band SAT_* uniformly instead.
+- **DIR_COUPLER**: guarded with `if (DIR_COUPLER > 0.0)`, lerp-blended by value. 0 = true passthrough.
+- **FilmCurve**: shoulder softened — `lerp(lin_e, fc_out, fc_w)` where fc_w rolls off to 0.5 in shoulder region.
+- **Zone S-curve**: `above_w` gate removed — zone_adj now fires uniformly.
 - **CURVE_***: ×0.10 in shader. ±1.0 user range = ±0.10 stop knee/toe shift.
-- **PRINTER_R/G/B**: 0 = neutral (was 25). Shader drops −25 offset.
-- **DIFFUSION_STRENGTH**: ×1.40 in shader. 1.0 = HBM 1/2 grade.
-- **Highway**: HighwayTex 256×1 R16F. `HWY_CHROMA_SLOPE`, `HWY_MEDIAN_C`. BackBuffer pure image.
-- **inverse_grade**: single-pass. Zone `4·L·(1−L)`. **R198**: FilmCurve pre-inverse (`FilmCurveInvCh`) applied before Oklab conversion — chroma expansion in post-curve domain. `HWY_CHROMA_SLOPE = lerp(1.8, 1.15, saturate(median_C / 0.15))`.
-- **EXPOSURE**: stops-based `rgb × exp2(EXPOSURE)`. Luma gate: full below 0.55, rolls off to 1.0 at 0.85.
-- **FilmCurve**: rational shoulder + toe. SDR-bounded by construction.
-- **Halation**: pre-FilmCurve. DoG threshold 0.04 filters diffuse areas (sky/clouds). Orange: R:G:B = 0.63:0.25:0.02. Self-limiting by construction.
-- **CLARITY**: midtone-only. Shadow rolloff `smoothstep(0.15,0.40)`, highlight rolloff `1−smoothstep(0.60,0.85)`. Constant 0.025 (log2-space).
-- **Retinex (R191 P1)**: fires before zone S-curve.
-- **3-way CC (R191 P2)**: fires before `ApplyPrintStock`.
-- **ApplyLook (R192 P3)**: PRINT_STOCK/BLEACH_BYPASS post-chroma. Needs retune.
-- **R190**: GuidedCoeff+GuidedBase at 1/8-res. log2-luma space. CLARITY only (DEHAZE removed).
-- **Analysis tools**: Oklab/ΔE_oklab metric. `stage_isolate`, `compare_frame --all`, `check_all`.
-- **Baselines**: INVALID — halation + CLARITY changes since last bless.
+- **Highway**: HighwayTex 256×1 R16F. Slots documented in highway.fxh.
+- **Baselines**: INVALID — needs rebless after this session's changes.
+- **tools/capture.py**: `import` fixed to `-display :0` (was `-window root`). Polls 1s after tool exit before trying next — fixes spectacle silent-success on KDE Wayland with mpv fullscreen.
 
 ## Next
-- Continue arc_raiders retune: enable CHROMA then LOOK stages
-- Rebless baselines with `check_all --bless` after full retune
+- Run `stage_isolate --game arc_raiders` to generate callsheet (capture fix now in)
+- Rebless baselines with `bless_all --game arc_raiders` after callsheet review
 - Retune GZW `creative_values.fx` from new 0=passthrough baseline
-- ApplyChroma split — still ~80 lines, over Rule 4 limit

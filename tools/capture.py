@@ -104,17 +104,24 @@ def detect_game() -> "str | None":
 # ── Screenshot ────────────────────────────────────────────────────────────────
 
 def take_screenshot(path: Path) -> None:
+    import time
     for cmd in [
         ["grim",      str(path)],
         ["grimblast", "save", "screen", str(path)],
         ["wayshot",   "-f", str(path)],
         ["spectacle", "--background", "--fullscreen", "--output", str(path)],
         ["scrot",     str(path)],
-        ["import",    "-window", "root", str(path)],
+        ["import",    "-display", ":0", str(path)],
     ]:
         try:
             if subprocess.run(cmd, capture_output=True).returncode == 0:
-                return
+                # Poll up to 1s — some tools (spectacle on KDE Wayland) return 0
+                # before the file is flushed, or silently fail to write it.
+                for _ in range(20):
+                    if path.exists() and path.stat().st_size > 0:
+                        return
+                    time.sleep(0.05)
+                # File still absent after 1s — tool lied about success, try next.
         except FileNotFoundError:
             continue
     sys.exit("No screenshot tool found. Install grim (Wayland) or scrot (X11).")

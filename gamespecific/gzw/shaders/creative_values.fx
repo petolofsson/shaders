@@ -20,6 +20,13 @@
 #define BLACKS          0.005
 #define WHITES  0.95
 
+// DIR couplers — cross-channel log-space inhibition (film dye chemistry model).
+// Bright channels suppress complementary channels: desaturates vivid colours,
+// adds density to saturated midtones. 0 = off. 1.0 = full designed effect.
+#define DIR_COUPLER  0.0
+
+
+
 // Exposure in stops. 0 = neutral, +1 = one stop brighter, -1 = one stop darker.
 // Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.
 // Sets where pixels sit tonally — which directly changes what every knob below "sees".
@@ -83,12 +90,6 @@
 // Positive = warm amber, negative = cool blue-green. Range ±1.0. Default 0.0 = passthrough.
 #define SHADOW_CAST  -0.30
 
-// Rod-vision blue-green bias + scotopic desaturation across mesopic range (luma 0–0.30).
-// Hue: shifts a* (green) + b* (blue) toward 507nm rod peak — blue-green, not pure blue.
-// Desat: lab.yz *= (1 − 0.12 × w) — rods are achromatic; deep shadows lose chroma.
-// Neutrals unaffected (C=0 → zero shift). R117: transition widened luma 0.12 → 0.30.
-// 0 = off. 0.6–0.8 = mesopic range. 1.0 = full physiological shift.
-#define PURKINJE  0.75
 
 // Per-band hue rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
 // (Red→Yellow, Green→Cyan, Blue→Magenta). Default 0.0 = passthrough.
@@ -113,10 +114,6 @@
 #define SAT_CYAN   -0.05
 #define SAT_BLUE    0.0
 #define SAT_MAG     0.0
-
-// Global chroma multiplier. -1.0 = greyscale, 0.0 = passthrough, +1.0 = 2× chroma.
-// Applied uniformly — use after Vibrance when you want a deliberate global push.
-#define SATURATION  0.05
 
 // ── LOOK ──────────────────────────────────────────────────────────────────────
 // Applied after all grading and chroma work — ACES LMT position.

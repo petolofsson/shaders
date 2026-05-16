@@ -257,14 +257,13 @@ float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print
 
 float3 ApplyHalation(float3 lin_e, float3 lin_p, float2 uv, float hal_strength)
 {
-    // DoG: fires where pixel outshines its 1/16-res blurred context.
-    // 0.04 floor: diffuse areas (sky, clouds) have DoG < 0.03 — threshold kills the tint.
-    // Only isolated sources (lamps, speculars, window edges) clear 0.04 and fire.
-    // × luma_p: scatter ∝ source brightness. Color: R:G:B ≈ 30:3:1 (emulsion-physics).
     float3 lf_mip1 = tex2D(LowFreqMip1Samp, uv).rgb;
     float  luma_p  = Luma(lin_p);
     float  dog     = max(0.0, luma_p - Luma(lf_mip1));
-    float  detail  = max(0.0, dog - 0.04) * luma_p;
+    // Threshold 0.25–0.40: very diffuse areas (dog < 0.25) don't fire,
+    // isolated point sources and speculars (dog > 0.40) fire fully.
+    // dog² × luma_p: fast spatial falloff, scatter ∝ source brightness.
+    float  detail  = smoothstep(0.25, 0.40, dog) * dog * dog * luma_p;
     return saturate(lin_e + detail * float3(0.63, 0.25, 0.02) * hal_strength);
 }
 
@@ -382,7 +381,7 @@ SceneCtx BuildSceneCtx()
     // R176: median_C-driven chroma lift — low-chroma scenes get +25% boost, vivid scenes
     // back off 15%. Orthogonal to zone_log_key (luma). Zero new highway reads.
     float chroma_adapt     = lerp(1.25, 0.85, smoothstep(0.04, 0.18, ctx.median_C));
-    ctx.chroma_str_base    = VIBRANCE * 0.04 * chroma_adapt;
+    ctx.chroma_str_base    = VIBRANCE * 0.40 * chroma_adapt;
     return ctx;
 }
 
@@ -390,40 +389,44 @@ float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex
 {
     float3 lin_p = max(lin, 0.0);
     float  E     = exp2(EXPOSURE);
-    float  lum   = Luma(lin_p);
-    float  gain  = lerp(E, 1.0, smoothstep(0.55, 0.85, lum));
-    float3 lin_e = lin_p * gain;
+    float3 lin_e = lin_p;
     // R104: DIR couplers — developer-inhibitor-release cross-channel masking
-    {
+    if (DIR_COUPLER > 0.0) {
         float3 log_e = log2(lin_e + 1e-5);
         float3 act   = lin_e * lin_e / (lin_e * lin_e + 0.09);
         float3 cpl   = float3(act.g * 0.12 + act.b * 0.06,
                               act.r * 0.10 + act.b * 0.04,
                               act.r * 0.06 + act.g * 0.08);
-        lin_e = saturate(exp2(log_e - cpl * 0.3));
+        lin_e = lerp(lin_e, saturate(exp2(log_e - cpl * 0.3)), float(DIR_COUPLER));
     }
-    // ── R105: halation — pre-curve (physical: camera negative, before any processing) ──
-    // lf_mip1/lf_mip2 are pre-corrective; lin_e is pre-curve — signals match.
-    // R151: p90−p50 gap measures isolated bright sources against scene median.
-    float eff_hal_str = HALATION * lerp(1.0, 1.4, ctx.specular_contrast);
-    lin_e = ApplyHalation(lin_e, lin_p, uv, eff_hal_str);
     // R194: ACES luma inverse — undoes ACES midtone boost below the fixed point (L≈0.728).
     // scale_delta is negative below L≈0.728 (ACES was brightening → inverse darkens back).
     // Above L≈0.728 ACES was compressing — that expansion requires headroom > 1.0 which SDR
     // cannot provide. min() gates to darkening only: no highlight blowup, no tonal disconnect.
-    // scale_delta tapers smoothly to zero as L→0.728, so the transition is seamless.
     if (INVERSE_LUMA > 0.0) {
-        float  L_disp      = col_luma;
-        float  shadow_w    = smoothstep(0.005, 0.04, L_disp);
-        const float A = 2.51, B = 0.03, C = 2.43, D = 0.59, E = 0.14;
-        float  disc        = ((D*D - 4.0*C*E)*L_disp + 4.0*A*E - 2.0*B*D)*L_disp + B*B;
-        float  L_scene     = 0.5*(D*L_disp - B + sqrt(max(disc, 0.0))) / max(A - C*L_disp, 1e-4);
-        float  scale_delta = min((L_scene / max(L_disp, 1e-5) - 1.0) * shadow_w, 0.0);
-        lin_e *= 1.0 + scale_delta * float(INVERSE_LUMA);
+        // Scene-median ACES inverse — one delta for the whole frame, gradient shapes preserved.
+        // Per-pixel shadow_w still gates true blacks. Renamed constants avoid shadowing outer E.
+        float  p50      = ReadHWY(HWY_P50);
+        float  shadow_w = smoothstep(0.005, 0.04, col_luma);
+        const float Aa = 2.51, Bb = 0.03, Cc = 2.43, Dd = 0.59, Ee = 0.14;
+        float  disc     = ((Dd*Dd - 4.0*Cc*Ee)*p50 + 4.0*Aa*Ee - 2.0*Bb*Dd)*p50 + Bb*Bb;
+        float  L_scene  = 0.5*(Dd*p50 - Bb + sqrt(max(disc, 0.0))) / max(Aa - Cc*p50, 1e-4);
+        float  delta    = min(L_scene / max(p50, 1e-5) - 1.0, 0.0);
+        lin_e *= 1.0 + delta * shadow_w * float(INVERSE_LUMA);
     }
-    float3 out_lin = FilmCurveApply(lin_e,
+    lin_e *= E;
+    // ── R105: halation — pre-curve, post-exposure (fires at corrected signal level) ──
+    // lf_mip1/lf_mip2 are pre-corrective; lin_p passed for DoG detection baseline.
+    // R151: p90−p50 gap measures isolated bright sources against scene median.
+    float eff_hal_str = HALATION * lerp(1.0, 1.4, ctx.specular_contrast);
+    lin_e = ApplyHalation(lin_e, lin_p, uv, eff_hal_str);
+    lin_e = min(lin_e, float(WHITES));
+    float3 fc_out  = FilmCurveApply(lin_e,
                                     ctx.fc_knee_r, ctx.fc_knee, ctx.fc_knee_b,
                                     ctx.fc_ktoe_r, ctx.fc_knee_toe, ctx.fc_ktoe_b);
+    float  sh_w    = smoothstep(ctx.fc_knee - 0.05, ctx.fc_knee + 0.05, Luma(lin_e));
+    float  fc_w    = lerp(1.0, 0.5, sh_w);
+    float3 out_lin = lerp(lin_e, fc_out, fc_w);
     // ── R19: 3-way CC — primary grade before print emulation ──────────────────
     out_lin = Apply3WayCC(out_lin,
                           SHADOW_TEMP, SHADOW_TINT,
@@ -442,14 +445,17 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     //          per-pixel detail the 1/8-res source cannot resolve.
     // No-op at BS=CS=0. Independent — either or both can be active.
     {
-        float log_base   = tex2D(BilateralLogSamp, uv).r;  // log2-luma base layer
+        float log_base   = tex2D(BilateralLogSamp, uv).r;  // log2-luma base layer (1/8-res)
+        float log_lf1    = log2(max(Luma(tex2D(LowFreqMip1Samp, uv).rgb), 1e-3));  // 1/16-res
         float log_pixel  = log2(max(luma, 1e-3));
         float log_detail = log_pixel - log_base;
-        // CLARITY: midtone-only. Rolls off in shadows (noise) and highlights (blowout).
-        // 0.025 is the calibrated constant for log2-space data.
-        float clarity_gate = smoothstep(0.15, 0.40, luma)
-                           * (1.0 - smoothstep(0.60, 0.85, luma));
-        float bil_ratio  = exp2(float(CLARITY) * 0.025 * log_detail * clarity_gate);
+        // Large-scale gradient suppression: log_base > log_lf1 means the 1/8-res neighbourhood
+        // is brighter than the 1/16-res one — cloud/sky boundary scale. Suppress CLARITY there.
+        // Fine texture has log_base ≈ log_lf1 (both scales see the same average) → no suppression.
+        float coarse_grad = max(0.0, log_base - log_lf1);
+        float clarity_gate = smoothstep(0.15, 0.40, luma);
+        float gated_detail = log_detail * clarity_gate * (1.0 - saturate(coarse_grad / 0.10));
+        float bil_ratio  = exp2(float(CLARITY) * 0.025 * gated_detail);
         bil_ratio        = clamp(bil_ratio, 0.5, 2.0);
         float3 lin_b     = lin * bil_ratio;
         lin              = lin_b / max(max(lin_b.r, max(lin_b.g, lin_b.b)), 1.0);
@@ -474,8 +480,7 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
                             (clahe_slope - 1.0) / max(ctx.zone_str, 0.001));
     float delta    = luma_orig - zone_median;   // original position — DEHAZE lift does not inflate delta
     float zone_adj = ctx.zone_str * iqr_scale * delta * (1.0 - abs(delta));
-    float above_w  = smoothstep(-0.05, 0.10, delta);
-    float new_luma = saturate(luma + zone_adj * above_w);
+    float new_luma = saturate(luma + zone_adj);
 
     float texture_att     = 1.0 - smoothstep(0.005, 0.030, local_var);
     float detail_protect  = smoothstep(-2.0, -0.5, log_R);
@@ -525,10 +530,19 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
                    float4 lf_mip2_tex, SceneCtx ctx)
 {
     float3 lab    = RGBtoOklab(lin);
-    // R183: pre-flash warm shadow cast — fixed warm additive in deep shadows, zero at mid-gray.
-    // Models Deakins' practice of fogging negatives with warm colored light. Amber direction.
-    lab.y += SHADOW_CAST * 0.020 * (1.0 - smoothstep(0.0, 0.25, lab.x));
-    lab.z += SHADOW_CAST * 0.012 * (1.0 - smoothstep(0.0, 0.25, lab.x));
+    // R183/R52: bipolar shadow cast. Positive = warm amber (Deakins pre-flash, no desat).
+    // Negative = scotopic Purkinje: desaturate first (rods are achromatic), then fixed
+    // 507nm blue-green bias — fires on neutrals, not C-weighted.
+    {
+        float sc_gate = 1.0 - smoothstep(0.25, 0.55, lab.x);
+        float sc_pos  = max( SHADOW_CAST, 0.0);
+        float sc_neg  = max(-SHADOW_CAST, 0.0);
+        lab.y += sc_pos * 0.080 * sc_gate;
+        lab.z += sc_pos * 0.048 * sc_gate;
+        lab.yz *= saturate(1.0 - 0.60 * sc_gate * sc_neg);
+        lab.y  -= sc_neg * 0.032 * sc_gate;
+        lab.z  -= sc_neg * 0.088 * sc_gate;
+    }
     float  C      = length(lab.yz);
     float  C_stim = C;
     float  h      = OklabHueNorm(lab.y, lab.z);
@@ -540,18 +554,6 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     float  dh     = sh_h * (0.008 + 0.008 * ch_h);
     float  h_perc = frac(h + dh / 6.28318);
 
-    // ── R52: Purkinje shift — rod-vision blue-green bias in deep shadows ───────
-    {
-        // R150: dark-dominant scenes (low mode) are physically dim — scotopic vision
-        // more active; scale Purkinje up toward the genuine mesopic threshold.
-        float eff_purkinje = PURKINJE
-                           * lerp(1.0, 1.3, saturate((0.15 - ctx.scene_mode) / 0.15));
-        float scotopic_w = 1.0 - smoothstep(0.0, 0.30, new_luma);  // R117: widened from 0.12; mesopic transition spans full scotopic-photopic range
-        lab.y -= 0.006 * scotopic_w * C * eff_purkinje;  // rod peak 507nm is blue-green: shift both a* (green) and b* (blue)
-        lab.z -= 0.018 * scotopic_w * C * eff_purkinje;
-        lab.yz *= 1.0 - 0.12 * scotopic_w * eff_purkinje;  // rods are achromatic: scotopic desaturation
-        C = length(lab.yz);
-    }
 
     // R22: saturation by luminance — shadow desaturation 20% (baked Munsell calibration)
     // + midtone expansion bell from cinema SDR mastering data (Žaganeli et al. 2026)
@@ -592,22 +594,9 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     chroma_str *= lerp(1.0, 0.65, smoothstep(0.02, 0.08, local_var));  // R68A: attenuate in textured regions
     float density_str = 50.0;
 
-    // R179: widen pivot weight to 0.14 (was HB_BAND_WIDTH=0.08) so tertiary hues
-    // (orange, amber, teal, azure, violet, rose) interpolate between tracked primaries
-    // instead of falling in zero-weight dead zones and receiving no lift.
-    float new_C = 0.0, total_w = 0.0;
-    [unroll] for (int band = 0; band < 6; band++)
-    {
-        float pivot  = tex2Dlod(ChromaHistory, float4((band + 0.5) / 8.0, 0.5 / 4.0, 0, 0)).r;
-        float d_h    = abs(h_perc - GetBandCenter(band));
-        d_h          = min(d_h, 1.0 - d_h);
-        float wt     = saturate(1.0 - d_h / 0.14);
-        float w      = wt * wt * (3.0 - 2.0 * wt);
-        new_C       += LiftChroma(C, pivot, chroma_str) * w;
-        total_w     += w;
-    }
-    // max(lifted, C) — lift-only; identity limit at C = 0 by construction
-    float lifted_C = (total_w > 0.001) ? new_C / total_w : C;
+    // Vibrance pivot: 50% of per-hue gamut ceiling — bypasses Kalman cold-start issue.
+    // Pixels below 50% saturation get lifted; above 50% are progressively protected.
+    float lifted_C = LiftChroma(C, HueCeil(h_out) * 0.5, chroma_str);
     // R117D: memory color chroma attraction — gentle boost in canonical luminance range.
     // Complements R73 ceilings: where ceilings prevent over-saturation, this nudges up
     // under-saturation in canonical hue+luminance zones. C gate: achromatic pixels are excluded.
@@ -624,7 +613,7 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     float C_ceil      = HueCeil(h_out);
     float lifted_C_c  = min(lifted_C, max(C_ceil, C));
     // R71: vibrance — attenuate lift delta on already-saturated pixels.
-    float vib_mask = saturate(1.0 - C / 0.22);
+    float vib_mask = saturate(1.0 - C / max(C_ceil, 0.001));
     float vib_C    = C + max(lifted_C_c - C, 0.0) * vib_mask;
     float final_C  = vib_C;
 
@@ -636,8 +625,6 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
                     + SAT_BLUE   * HueBandWeight(h_perc, HB_BAND_BLUE)
                     + SAT_MAG    * HueBandWeight(h_perc, HB_BAND_MAGENTA);
     final_C = max(0.0, final_C * (1.0 + sat_delta * 0.80));
-    // Global saturation — -1.0 = greyscale, 0 = passthrough, +1.0 = 2× chroma.
-    final_C = max(0.0, final_C * (1.0 + SATURATION));
     // R196-E: cusp-relative chroma compression — ACES2 principle, Oklab/HueCeil basis.
     // d_norm = C / HueCeil(hue). Reinhard on excess above 0.85 maps [0.85,∞) → [0.85,1.0).
     // Equal proportional headroom per hue — deep reds and cyans no longer compressed earlier
@@ -740,8 +727,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float4 lf_mip2_tex = tex2D(LowFreqMip2Samp, uv);
 
     float  col_luma = Luma(col.rgb);
-    float  whites   = WHITES;
-    float3 lin      = col.rgb * (whites - ctx.cfilm_floor) + ctx.cfilm_floor;
+    float3 lin      = max(col.rgb, ctx.cfilm_floor);
     lin = lerp(lin, ApplyCorrective(lin, col_luma, uv, lf_mip2_tex, ctx), CORRECTIVE_STRENGTH * 0.01);
 
     TonalOut tonal      = ApplyTonal(lin, col_luma, uv, lf_mip2_tex, ctx);
