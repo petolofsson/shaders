@@ -141,13 +141,23 @@ def _goto_frame(idx: int, settle: float = 0.25) -> None:
 
 _AE_GATE_NAMES = ["CORRECTIVE_STRENGTH", "TONAL_STRENGTH", "CHROMA_STRENGTH", "LOOK_STRENGTH"]
 
-EFFECTS = [
-    ("CORRECTIVE", {"CORRECTIVE_STRENGTH": 100, "TONAL_STRENGTH":   0, "CHROMA_STRENGTH":   0, "LOOK_STRENGTH":   0}),
-    ("TONAL",      {"CORRECTIVE_STRENGTH":   0, "TONAL_STRENGTH": 100, "CHROMA_STRENGTH":   0, "LOOK_STRENGTH":   0}),
-    ("CHROMA",     {"CORRECTIVE_STRENGTH":   0, "TONAL_STRENGTH":   0, "CHROMA_STRENGTH": 100, "LOOK_STRENGTH":   0}),
-    ("LOOK",       {"CORRECTIVE_STRENGTH":   0, "TONAL_STRENGTH":   0, "CHROMA_STRENGTH":   0, "LOOK_STRENGTH": 100}),
-    ("FULL",       {"CORRECTIVE_STRENGTH": 100, "TONAL_STRENGTH": 100, "CHROMA_STRENGTH": 100, "LOOK_STRENGTH": 100}),
+# Full pipeline gates and per-stage "without X" variants for incremental subtraction.
+_FULL_GATES = {"CORRECTIVE_STRENGTH": 100, "TONAL_STRENGTH": 100, "CHROMA_STRENGTH": 100, "LOOK_STRENGTH": 100}
+
+_WITHOUT_X = [
+    ("CORRECTIVE", {"CORRECTIVE_STRENGTH":   0, "TONAL_STRENGTH": 100, "CHROMA_STRENGTH": 100, "LOOK_STRENGTH": 100}),
+    ("TONAL",      {"CORRECTIVE_STRENGTH": 100, "TONAL_STRENGTH":   0, "CHROMA_STRENGTH": 100, "LOOK_STRENGTH": 100}),
+    ("CHROMA",     {"CORRECTIVE_STRENGTH": 100, "TONAL_STRENGTH": 100, "CHROMA_STRENGTH":   0, "LOOK_STRENGTH": 100}),
+    ("LOOK",       {"CORRECTIVE_STRENGTH": 100, "TONAL_STRENGTH": 100, "CHROMA_STRENGTH": 100, "LOOK_STRENGTH":   0}),
 ]
+
+# Maps each stage to its creative_values section for zero-knob skip check.
+EFFECT_SECTION: dict[str, str] = {
+    "CORRECTIVE": "CORRECTIVE",
+    "TONAL":      "TONAL",
+    "CHROMA":     "CHROMA",
+    "LOOK":       "LOOK",
+}
 
 
 def _ae_cv_path(game: str) -> Path:
@@ -175,19 +185,47 @@ def _ae_write_gates(cv: Path, gates: dict) -> None:
     cv.write_text(text)
 
 
-def _capture_frames(game: str, config: Path, delay: int) -> "list[dict] | None":
-    """Capture all reference frames with current creative_values; return per-frame stats."""
-    frames_dir = ROOT / "gamespecific" / game / "analysis" / "reference"
-    pngs = sorted(frames_dir.glob("*.png"))
-    if not pngs:
-        sys.exit(f"No PNGs in {frames_dir}")
+def _ae_knobs_all_zero(cv: Path, section_name: str) -> bool:
+    """True if every float #define in the named creative_values section is 0.
 
-    all_stats = []
+    Section headers use Unicode box-drawing dashes; the ASCII section name is
+    always surrounded by spaces, so ' SECTION_NAME ' substring match is reliable.
+    Returns False (don't skip) when no float knobs are found in the section.
+    """
+    float_re   = re.compile(r"^#define\s+\w+\s+([-+]?\d*\.?\d+)\s*$")
+    in_section = False
+    found_any  = False
+    needle     = f" {section_name} "
+
+    for line in cv.read_text().splitlines():
+        if line.startswith("//"):
+            in_section = needle in line
+            continue
+        if not in_section:
+            continue
+        m = float_re.match(line.strip())
+        if m:
+            found_any = True
+            if abs(float(m.group(1))) > 1e-6:
+                return False   # at least one non-zero knob — don't skip
+
+    return found_any  # True only when knobs were found and all are 0
+
+
+def _capture_pipeline_output(
+    pngs: "list[Path]", ref_images: "list[np.ndarray]", config: Path, delay: int
+) -> "list[np.ndarray | None]":
+    """Launch mpv and capture pipeline output for each PNG.
+
+    Returns a list of the same length as pngs. Entries are None for frames that
+    failed to capture or had a resolution mismatch — keeps indices aligned across
+    multiple calls so frame i from one config can be compared to frame i of another.
+    """
+    outputs: "list[np.ndarray | None]" = [None] * len(pngs)
     proc = _launch_mpv(pngs, config, delay)
     try:
-        for i, png in enumerate(pngs):
+        for i, (png, before) in enumerate(zip(pngs, ref_images)):
             print(f"    [{i+1}/{len(pngs)}] {png.name}", end="", flush=True)
-            before = _load_png_linear(png)
             _goto_frame(i)
 
             tmp       = Path(tempfile.mkdtemp(prefix="compare_ae_"))
@@ -210,9 +248,8 @@ def _capture_frames(game: str, config: Path, delay: int) -> "list[dict] | None":
                 print("  SKIP (resolution mismatch)")
                 continue
 
-            stats = compute_relative(before, after)
-            all_stats.append(stats)
-            print(f"  ΔE {stats['mean_de']:.2f}")
+            outputs[i] = after
+            print("  ok")
     finally:
         proc.terminate()
         try:
@@ -220,7 +257,7 @@ def _capture_frames(game: str, config: Path, delay: int) -> "list[dict] | None":
         except Exception:
             proc.kill()
 
-    return all_stats if all_stats else None
+    return outputs
 
 
 def _ae_aggregate(all_stats: "list[dict]") -> dict:
@@ -256,7 +293,14 @@ def _ae_aggregate(all_stats: "list[dict]") -> dict:
 def _run_all_effects(game: str, config: Path, delay: int) -> None:
     cv       = _ae_cv_path(game)
     original = _ae_read_gates(cv)
-    print(f"compare_frame --all-effects  game={game}  {len(EFFECTS)} effects")
+
+    frames_dir = ROOT / "gamespecific" / game / "analysis" / "reference"
+    pngs       = sorted(frames_dir.glob("*.png"))
+    if not pngs:
+        sys.exit(f"No PNGs in {frames_dir}")
+
+    print(f"compare_frame --all-effects  game={game}  {len(pngs)} frame(s)")
+    print(f"Mode: incremental subtraction — ΔE(full) vs ΔE(full minus stage)")
     print(f"Saved gates: {original}\n")
 
     def _restore(sig=None, frame=None):
@@ -266,36 +310,83 @@ def _run_all_effects(game: str, config: Path, delay: int) -> None:
             sys.exit(1)
     signal.signal(signal.SIGINT, _restore)
 
-    results: list[tuple[str, dict]] = []
+    ref_images = [_load_png_linear(p) for p in pngs]
+    # results: (label, agg | None); None = skipped
+    results: "list[tuple[str, dict | None]]" = []
+    full_agg: "dict | None" = None
+
     try:
-        for label, gates in EFFECTS:
-            print(f"── {label}  {gates}")
+        # Phase 1 — capture FULL pipeline output (reference for subtraction)
+        print("── FULL  (reference)")
+        _ae_write_gates(cv, _FULL_GATES)
+        time.sleep(0.1)
+        full_out = _capture_pipeline_output(pngs, ref_images, config, delay)
+        n_ok = sum(1 for o in full_out if o is not None)
+        print(f"  {n_ok}/{len(pngs)} frames ok\n")
+        if n_ok == 0:
+            print("FULL capture failed — aborting.")
+            return
+
+        # FULL ΔE from raw for the context row
+        full_raw_stats = [
+            compute_relative(ref_images[i], full_out[i])
+            for i in range(len(pngs))
+            if full_out[i] is not None and ref_images[i].shape == full_out[i].shape
+        ]
+        if full_raw_stats:
+            full_agg = _ae_aggregate(full_raw_stats)
+
+        # Phase 2 — WITHOUT each stage; compare captured output to FULL
+        for label, gates in _WITHOUT_X:
+            section = EFFECT_SECTION.get(label, "")
+            if section and _ae_knobs_all_zero(cv, section):
+                print(f"── without {label}  (skipped — all {section} knobs are 0)\n")
+                results.append((label, None))
+                continue
+
+            print(f"── without {label}")
             _ae_write_gates(cv, gates)
             time.sleep(0.1)
-            stats = _capture_frames(game, config, delay)
-            if stats is None:
-                print(f"  No frames captured — skipping.\n")
+            wo_out = _capture_pipeline_output(pngs, ref_images, config, delay)
+
+            frame_stats = [
+                compute_relative(wo_out[i], full_out[i])
+                for i in range(len(pngs))
+                if full_out[i] is not None and wo_out[i] is not None
+                and full_out[i].shape == wo_out[i].shape
+            ]
+            if not frame_stats:
+                print(f"  No valid frame pairs — skipping.\n")
+                results.append((label, None))
                 continue
-            agg = _ae_aggregate(stats)
+
+            agg = _ae_aggregate(frame_stats)
             results.append((label, agg))
-            print(f"  aggregate ΔE {agg['mean_de']:.2f}\n")
+            print(f"  {label} contribution ΔE {agg['mean_de']:.2f}\n")
+
     finally:
         _ae_write_gates(cv, original)
         print("Gates restored.\n")
 
-    if not results:
+    if not results and full_agg is None:
         return
 
-    DEAD = 0.5   # ΔE threshold below which an effect is flagged as silent
+    DEAD = 0.5
 
     print("─" * 72)
-    print(f"\n{_BLD}EFFECT ATTRIBUTION  (each stage isolated from baseline){_RST}")
-    print(f"  ΔE < {DEAD} flagged as silent — effect may be miscalibrated or broken\n")
+    print(f"\n{_BLD}EFFECT ATTRIBUTION  (incremental — full minus that stage){_RST}")
+    print(f"  ΔE = how much the output changes when that stage is removed")
+    print(f"  ΔE < {DEAD} flagged as silent — stage may be broken or all knobs near zero\n")
 
-    # Zone table
-    print(f"  {'Effect':<14}  {'ΔE':>5}  {'shadows ΔL*/ΔC*':>18}  {'mids ΔL*/ΔC*':>14}  {'highs ΔL*/ΔC*':>14}")
-    print("  " + "─" * 70)
-    for label, agg in results:
+    hdr = f"  {'Stage':<14}  {'ΔE':>5}  {'shadows ΔL*/ΔC*':>18}  {'mids ΔL*/ΔC*':>14}  {'highs ΔL*/ΔC*':>14}"
+    sep_line = "  " + "─" * 70
+    print(hdr)
+    print(sep_line)
+
+    def _zone_row(label: str, agg: "dict | None", flag_dead: bool = True) -> None:
+        if agg is None:
+            print(f"  {label:<14}  (skipped — knobs all 0)")
+            return
         de   = agg["mean_de"]
         sh   = agg["zones"].get("shadows")
         mi   = agg["zones"].get("midtones")
@@ -303,21 +394,37 @@ def _run_all_effects(game: str, config: Path, delay: int) -> None:
         sh_s = f"{sh['dL']:+.1f}/{sh['dC']:+.1f}" if sh else "    —    "
         mi_s = f"{mi['dL']:+.1f}/{mi['dC']:+.1f}" if mi else "    —    "
         hi_s = f"{hi['dL']:+.1f}/{hi['dC']:+.1f}" if hi else "    —    "
-        flag = "  ← silent?" if de < DEAD else ""
-        sep  = "  ════" if label == "FULL" else ""
-        print(f"{sep}  {label:<14}  {_de_fmt(de)}  {sh_s:>18}  {mi_s:>14}  {hi_s:>14}{flag}")
+        flag = "  ← silent?" if flag_dead and de < DEAD else ""
+        print(f"  {label:<14}  {_de_fmt(de)}  {sh_s:>18}  {mi_s:>14}  {hi_s:>14}{flag}")
+
+    for label, agg in results:
+        _zone_row(label, agg)
+
+    if full_agg is not None:
+        print(sep_line)
+        _zone_row("FULL (raw→graded)", full_agg, flag_dead=False)
 
     # Hue band table
     band_names = [e[0] for e in HUE_BANDS]
-    print(f"\n  by hue band  (ΔL*/ΔC* per effect, chromatic pixels C*>3)")
-    print(f"  {'Effect':<14}  " + "  ".join(f"{b:<12}" for b in band_names))
+    print(f"\n  by hue band  (ΔL*/ΔC*, chromatic pixels C*>3)")
+    print(f"  {'Stage':<14}  " + "  ".join(f"{b:<12}" for b in band_names))
     print("  " + "─" * (16 + 14 * len(band_names)))
-    for label, agg in results:
-        cells = []
-        for bname in band_names:
-            b = agg["hue_bands"].get(bname)
-            cells.append(f"{b['dL']:+.1f}/{b['dC']:+.1f}" if b else "   —   ")
+
+    def _band_row(label: str, agg: "dict | None") -> None:
+        if agg is None:
+            print(f"  {label:<14}  (skipped)")
+            return
+        cells = [
+            (f"{agg['hue_bands'][b]['dL']:+.1f}/{agg['hue_bands'][b]['dC']:+.1f}"
+             if agg["hue_bands"].get(b) else "   —   ")
+            for b in band_names
+        ]
         print(f"  {label:<14}  " + "  ".join(f"{c:<12}" for c in cells))
+
+    for label, agg in results:
+        _band_row(label, agg)
+    if full_agg is not None:
+        _band_row("FULL", full_agg)
     print()
 
 
