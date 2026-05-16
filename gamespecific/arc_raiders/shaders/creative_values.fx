@@ -48,14 +48,14 @@
 #define CURVE_B_TOE   -0.10
 
 // Primary color grade. Runs after FilmCurve.
-// TEMP: positive = warm (R up, B down), negative = cool. Range ±100.
-// TINT: positive = magenta (G down, R+B up slightly), negative = green. Range ±100.
+// TEMP: positive = warm (R up, B down), negative = cool. Range ±1.0.
+// TINT: positive = magenta (G down, R+B up slightly), negative = green. Range ±1.0.
 // All default to 0 — passthrough. No output change at defaults.
-#define SHADOW_TEMP     -12
+#define SHADOW_TEMP     -0.12
 #define SHADOW_TINT      0
-#define MID_TEMP        +0
+#define MID_TEMP         0
 #define MID_TINT         0
-#define HIGHLIGHT_TEMP  +10
+#define HIGHLIGHT_TEMP  +0.10
 #define HIGHLIGHT_TINT   0
 
 // ── TONAL ─────────────────────────────────────────────────────────────────────

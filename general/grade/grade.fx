@@ -276,9 +276,9 @@ float3 Apply3WayCC(float3 lin,
     float r19_sh  = saturate(1.0 - r19_g / 0.35);
     float r19_hl  = saturate((r19_g - 0.65) / 0.35);
     float r19_mid = 1.0 - r19_sh - r19_hl;
-    float3 sh_d  = float3(+shadow_temp + shadow_tint * 0.5, -shadow_tint, -shadow_temp + shadow_tint * 0.5) * 0.0003;
-    float3 mid_d = float3(+mid_temp    + mid_tint    * 0.5, -mid_tint,    -mid_temp    + mid_tint    * 0.5) * 0.0003;
-    float3 hl_d  = float3(+hl_temp     + hl_tint     * 0.5, -hl_tint,     -hl_temp     + hl_tint     * 0.5) * 0.0003;
+    float3 sh_d  = float3(+shadow_temp + shadow_tint * 0.5, -shadow_tint, -shadow_temp + shadow_tint * 0.5) * 0.03;
+    float3 mid_d = float3(+mid_temp    + mid_tint    * 0.5, -mid_tint,    -mid_temp    + mid_tint    * 0.5) * 0.03;
+    float3 hl_d  = float3(+hl_temp     + hl_tint     * 0.5, -hl_tint,     -hl_temp     + hl_tint     * 0.5) * 0.03;
     return saturate(lin + sh_d * r19_sh + mid_d * r19_mid + hl_d * r19_hl);
 }
 
@@ -480,8 +480,7 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
                             (clahe_slope - 1.0) / max(ctx.zone_str, 0.001));
     float delta    = luma_orig - zone_median;   // original position — DEHAZE lift does not inflate delta
     float zone_adj = ctx.zone_str * iqr_scale * delta * (1.0 - abs(delta));
-    float above_w  = smoothstep(-0.05, 0.10, delta);
-    float new_luma = saturate(luma + zone_adj * above_w);
+    float new_luma = saturate(luma + zone_adj);
 
     float texture_att     = 1.0 - smoothstep(0.005, 0.030, local_var);
     float detail_protect  = smoothstep(-2.0, -0.5, log_R);
@@ -527,6 +526,15 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     return result;
 }
 
+float HueBandWeightW(float hue, float center)
+{
+    hue = frac(hue);
+    float d = abs(hue - center);
+    d = min(d, 1.0 - d);
+    float t = saturate(1.0 - d / 0.14);
+    return t * t * (3.0 - 2.0 * t);
+}
+
 float3 ApplyChroma(float3 lin, float new_luma, float local_var,
                    float4 lf_mip2_tex, SceneCtx ctx)
 {
@@ -535,7 +543,7 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     // Negative = scotopic Purkinje: desaturate first (rods are achromatic), then fixed
     // 507nm blue-green bias — fires on neutrals, not C-weighted.
     {
-        float sc_gate = 1.0 - smoothstep(0.25, 0.55, lab.x);
+        float sc_gate = 1.0 - smoothstep(0.25, 0.65, lab.x);
         float sc_pos  = max( SHADOW_CAST, 0.0);
         float sc_neg  = max(-SHADOW_CAST, 0.0);
         lab.y += sc_pos * 0.080 * sc_gate;
@@ -570,13 +578,15 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     float r133_roll = saturate(pow(max(0.0, 4.0 * (1.0 - lab.x)), HueBandRollN(h_perc)));
     C *= r133_roll;
 
-    // R21: per-band hue rotation — compute h_out from original h before chroma lift
-    float r21_delta = HUE_RED    * HueBandWeight(h_perc, HB_BAND_RED)
-                    + HUE_YELLOW * HueBandWeight(h_perc, HB_BAND_YELLOW)
-                    + HUE_GREEN  * HueBandWeight(h_perc, HB_BAND_GREEN)
-                    + HUE_CYAN   * HueBandWeight(h_perc, HB_BAND_CYAN)
-                    + HUE_BLUE   * HueBandWeight(h_perc, HB_BAND_BLUE)
-                    + HUE_MAG    * HueBandWeight(h_perc, HB_BAND_MAGENTA);
+    // R21: per-band hue rotation — wider band (0.14 vs HB_BAND_WIDTH 0.08) covers full wheel
+    // with 6 knobs. Calibrated bands use 0.08; creative rotation needs ±50° to avoid dead zones
+    // in azure (CYAN↔BLUE gap) and orange/violet (RED↔YELLOW, BLUE↔MAG gaps).
+    float r21_delta = HUE_RED    * HueBandWeightW(h_perc, HB_BAND_RED)
+                    + HUE_YELLOW * HueBandWeightW(h_perc, HB_BAND_YELLOW)
+                    + HUE_GREEN  * HueBandWeightW(h_perc, HB_BAND_GREEN)
+                    + HUE_CYAN   * HueBandWeightW(h_perc, HB_BAND_CYAN)
+                    + HUE_BLUE   * HueBandWeightW(h_perc, HB_BAND_BLUE)
+                    + HUE_MAG    * HueBandWeightW(h_perc, HB_BAND_MAGENTA);
     // R125/R126: Bezold-Brücke — anchored at Oklab invariant hues (h=0.25 yellow, h=0.75 blue)
     // ch_h zeros at h=0.25/0.75 by construction. sh2/ch3 via double/triple-angle (7 MAD total).
     // Asymmetry: teal lobe (0.61) ~1.6× orange lobe (0.38) — matches Kurtenbach 1994 data.
@@ -584,12 +594,12 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     float ch3_h   = ch_h * (4.0 * ch_h * ch_h - 3.0);
     r21_delta    += (lab.x - 0.50) * 0.015 * (0.10 * ch_h + 0.50 * sh2_h + 0.30 * ch3_h);
     float h_out  = frac(h_perc + r21_delta * 0.10);
-    float hw_o0  = HueBandWeight(h_out, HB_BAND_RED);
-    float hw_o1  = HueBandWeight(h_out, HB_BAND_YELLOW);
-    float hw_o2  = HueBandWeight(h_out, HB_BAND_GREEN);
-    float hw_o3  = HueBandWeight(h_out, HB_BAND_CYAN);
-    float hw_o4  = HueBandWeight(h_out, HB_BAND_BLUE);
-    float hw_o5  = HueBandWeight(h_out, HB_BAND_MAGENTA);
+    float hw_o0  = HueBandWeightW(h_out, HB_BAND_RED);
+    float hw_o1  = HueBandWeightW(h_out, HB_BAND_YELLOW);
+    float hw_o2  = HueBandWeightW(h_out, HB_BAND_GREEN);
+    float hw_o3  = HueBandWeightW(h_out, HB_BAND_CYAN);
+    float hw_o4  = HueBandWeightW(h_out, HB_BAND_BLUE);
+    float hw_o5  = HueBandWeightW(h_out, HB_BAND_MAGENTA);
 
     float chroma_str = ctx.chroma_str_base;
     chroma_str *= lerp(1.0, 0.65, smoothstep(0.02, 0.08, local_var));  // R68A: attenuate in textured regions
@@ -619,12 +629,12 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     float final_C  = vib_C;
 
     // Per-band saturation — ±1.0 → ±80% chroma scale per hue band.
-    float sat_delta = SAT_RED    * HueBandWeight(h_perc, HB_BAND_RED)
-                    + SAT_YELLOW * HueBandWeight(h_perc, HB_BAND_YELLOW)
-                    + SAT_GREEN  * HueBandWeight(h_perc, HB_BAND_GREEN)
-                    + SAT_CYAN   * HueBandWeight(h_perc, HB_BAND_CYAN)
-                    + SAT_BLUE   * HueBandWeight(h_perc, HB_BAND_BLUE)
-                    + SAT_MAG    * HueBandWeight(h_perc, HB_BAND_MAGENTA);
+    float sat_delta = SAT_RED    * HueBandWeightW(h_perc, HB_BAND_RED)
+                    + SAT_YELLOW * HueBandWeightW(h_perc, HB_BAND_YELLOW)
+                    + SAT_GREEN  * HueBandWeightW(h_perc, HB_BAND_GREEN)
+                    + SAT_CYAN   * HueBandWeightW(h_perc, HB_BAND_CYAN)
+                    + SAT_BLUE   * HueBandWeightW(h_perc, HB_BAND_BLUE)
+                    + SAT_MAG    * HueBandWeightW(h_perc, HB_BAND_MAGENTA);
     final_C = max(0.0, final_C * (1.0 + sat_delta * 0.80));
     // R196-E: cusp-relative chroma compression — ACES2 principle, Oklab/HueCeil basis.
     // d_norm = C / HueCeil(hue). Reinhard on excess above 0.85 maps [0.85,∞) → [0.85,1.0).
