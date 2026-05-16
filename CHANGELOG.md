@@ -4,6 +4,8 @@
 
 ## 2026-05-16
 
+- **Shadow lift redesign** (`grade.fx`) — Removed `fine_texture_att` (4-tap sub-pixel neighbourhood gate) and dead `texture_att`; both zeroed lift in all textured areas (jungle = all texture). Also dropped the Retinex inverse-illuminant term `0.149169/(illum_s0²+0.003)` which gave only ≈1× amplification in bright outdoor scenes (calibrated for dark interiors with illum_s0 < 0.10). New formula: `shadow_lift_str × detail_protect × context_lift × specular_att × 0.25 × lift_w × SHADOWS` — scene-adaptive gate preserved via `shadow_lift_str`, direct scale works consistently across bright and dark scenes. Four BackBuffer taps removed.
+
 - **DEHAZE removed** (`grade.fx`, both `creative_values.fx`, `tools/stage_isolate.py`) — Guided filter shadow lift (`LOCAL_CONTRAST` → `DEHAZE`) removed entirely. Lift reference (p75) never reliably fired across scene types; complexity without consistent benefit. `CLARITY` now owns the guided-filter block solo.
 
 - **Fix CLARITY constant** (`grade.fx`) — Reverted `0.08306 → 0.025`. The 0.08306 = 0.025 × log2(10) was a direction error introduced 2026-05-14: guided passes already write log2-luma, so 0.025 is the correct log2-space constant. The prior multiplication by log2(10) was wrongly applied (divide, not multiply).

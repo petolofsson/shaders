@@ -16,15 +16,11 @@ grade: 10 passes — LFDownscale1 → LFDownscale2 → NeutralIllum → GuidedCo
 - **LUMA_CONTRAST_***: 6-band hue-selective clarity, ungated, chroma-gated (smoothstep 0.04→0.10). Shares CLARITY's guided filter detail signal.
 - **CLARITY**: midtone-gated (0.15→0.40). LUMA_CONTRAST_* uses separate ungated detail path.
 
-## ⚠ Shadow lift — TROUBLESHOOTING IN PROGRESS
-- **Problem**: shadow lift not visibly working in GZW jungle at any SHADOWS value.
-- **Root cause**: `texture_att` (Retinex scale variance) suppressed lift to ~0 in textured areas. Jungle is all texture.
-- **Changes made this session**:
-  - `texture_att` removed from shadow lift (still computed, just not applied there)
-  - `detail_protect` relaxed: `smoothstep(-4.0, -0.5, log_R)` (was -2.0)
-  - `lift_w` bell extended: `smoothstep(0.35, 0.0, new_luma)` (was 0.23)
-- **Not yet confirmed working in-game** — needs test at current SHADOWS 2.00.
-- **If still broken**: remaining suppressors are `fine_texture_att`, `context_lift`, `specular_att`.
+## Shadow lift — fixed 2026-05-16
+- **Root cause resolved**: `fine_texture_att` (4-tap sub-pixel neighbourhood gate) zeroed lift in all textured areas; Retinex inverse term only amplified in dark interiors (illum_s0 < 0.10).
+- **Fix**: removed `fine_texture_att` + dead `texture_att` + 4-tap BackBuffer sample block; replaced `shadow_lift_str × (0.149169/(illum_s0²+0.003)) / 100 × 0.75` with flat `shadow_lift_str × 0.25`.
+- **Formula now**: `new_luma += shadow_lift_str × detail_protect × context_lift × specular_att × 0.25 × lift_w × SHADOWS`
+- **Needs in-game test**: confirm SHADOWS=1.0 gives visible lift in GZW jungle. If too subtle, raise 0.25; if too aggressive on bright scenes, lower it.
 
 ## GZW current values (live — not committed)
 - EXPOSURE 0.30 / HALATION 0.10 / INVERSE_LUMA 0.25 / DIR_COUPLER 0.40

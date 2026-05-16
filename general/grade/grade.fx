@@ -504,27 +504,15 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     float above_w  = smoothstep(-0.05, 0.10, delta);
     float new_luma = saturate(luma + zone_adj * above_w);
 
-    float texture_att     = 1.0 - smoothstep(0.005, 0.030, local_var);
     float detail_protect  = smoothstep(-4.0, -0.5, log_R);
-    // R119: fine-texture gate — 4 diagonal bilinear taps give a cheap 3×3 neighbourhood avg.
-    // Detects sub-16px texture (fabric, skin grain) invisible to 1/16-res illuminant maps.
-    float2 fine_px         = float2(1.0 / BUFFER_WIDTH, 1.0 / BUFFER_HEIGHT);
-    float  luma_nb         = Luma(0.25 * (
-        tex2D(BackBuffer, uv + float2(-0.5, -0.5) * fine_px).rgb +
-        tex2D(BackBuffer, uv + float2( 0.5, -0.5) * fine_px).rgb +
-        tex2D(BackBuffer, uv + float2(-0.5,  0.5) * fine_px).rgb +
-        tex2D(BackBuffer, uv + float2( 0.5,  0.5) * fine_px).rgb));
-    float  fine_var        = abs(col_luma - luma_nb);
-    float  fine_texture_att = 1.0 - saturate((fine_var - 0.004) / 0.008);
     // R60: temporal context — slow ambient key boosts lift during dark transitions, suppresses on re-entry
     float context_lift   = exp2(log2(ctx.slow_key / zk_safe) * 0.4);
     // R162: suppress shadow lift when isolated bright sources dominate (high specular contrast).
     // High p90−p50 gap = sun/lamp in frame — lifting shadows flattens depth against the source.
     float specular_att   = 1.0 - smoothstep(0.50, 0.90, ctx.specular_contrast) * 0.35;
-    float shadow_lift    = ctx.shadow_lift_str * (0.149169 / (illum_s0 * illum_s0 + 0.003))
-                         * fine_texture_att * detail_protect * context_lift * specular_att;
+    float shadow_lift    = ctx.shadow_lift_str * detail_protect * context_lift * specular_att;
     float lift_w         = new_luma * smoothstep(0.35, 0.0, new_luma);
-    new_luma = saturate(new_luma + (shadow_lift / 100.0) * 0.75 * lift_w * SHADOWS);
+    new_luma = saturate(new_luma + shadow_lift * 0.25 * lift_w * SHADOWS);
     // Highlights — soft luma push/pull above L≈0.55. +1.0 brightens, -1.0 recovers.
     new_luma = saturate(new_luma + HIGHLIGHTS * 0.20 * smoothstep(0.55, 0.85, new_luma));
     // R62 Finding 3: chroma-stable tonal — apply luma ratio in Oklab L to prevent zone S-curve from shifting chroma
