@@ -257,14 +257,18 @@ float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print
 
 float3 ApplyHalation(float3 lin_e, float3 lin_p, float2 uv, float hal_strength)
 {
-    float3 lf_mip1 = tex2D(LowFreqMip1Samp, uv).rgb;
-    float  luma_p  = Luma(lin_p);
-    float  dog     = max(0.0, luma_p - Luma(lf_mip1));
+    float3 lf_mip1  = tex2D(LowFreqMip1Samp, uv).rgb;
+    float  luma_p   = Luma(lin_p);
+    float  luma_b   = Luma(lf_mip1);
+    float  dog      = max(0.0, luma_p - luma_b);
     // Threshold 0.25–0.40: very diffuse areas (dog < 0.25) don't fire,
     // isolated point sources and speculars (dog > 0.40) fire fully.
     // dog² × luma_p: fast spatial falloff, scatter ∝ source brightness.
-    float  detail  = smoothstep(0.25, 0.40, dog) * dog * dog * luma_p;
-    return saturate(lin_e + detail * float3(0.63, 0.25, 0.02) * hal_strength);
+    // sky_w: suppresses halation on blue/cool pixels (B>R = sky). Smooth exp, self-limiting.
+    float  sky_w    = exp(-max(0.0, lin_p.b - lin_p.r) * 7.0);
+    float  detail   = smoothstep(0.25, 0.40, dog) * dog * dog * luma_p * sky_w;
+    // Luma-neutral orange: float3(0.63,0.25,0.02) minus its luma (0.314) → hue shift, no bloom.
+    return saturate(lin_e + detail * float3(0.316, -0.064, -0.294) * hal_strength);
 }
 
 float3 Apply3WayCC(float3 lin,
@@ -276,9 +280,9 @@ float3 Apply3WayCC(float3 lin,
     float r19_sh  = saturate(1.0 - r19_g / 0.35);
     float r19_hl  = saturate((r19_g - 0.65) / 0.35);
     float r19_mid = 1.0 - r19_sh - r19_hl;
-    float3 sh_d  = float3(+shadow_temp + shadow_tint * 0.5, -shadow_tint, -shadow_temp + shadow_tint * 0.5) * 0.03;
-    float3 mid_d = float3(+mid_temp    + mid_tint    * 0.5, -mid_tint,    -mid_temp    + mid_tint    * 0.5) * 0.03;
-    float3 hl_d  = float3(+hl_temp     + hl_tint     * 0.5, -hl_tint,     -hl_temp     + hl_tint     * 0.5) * 0.03;
+    float3 sh_d  = float3(+shadow_temp + shadow_tint * 0.5, -shadow_tint, -shadow_temp + shadow_tint * 0.5) * 0.08;
+    float3 mid_d = float3(+mid_temp    + mid_tint    * 0.5, -mid_tint,    -mid_temp    + mid_tint    * 0.5) * 0.08;
+    float3 hl_d  = float3(+hl_temp     + hl_tint     * 0.5, -hl_tint,     -hl_temp     + hl_tint     * 0.5) * 0.08;
     return saturate(lin + sh_d * r19_sh + mid_d * r19_mid + hl_d * r19_hl);
 }
 
@@ -351,7 +355,7 @@ SceneCtx BuildSceneCtx()
     float lum_att          = smoothstep(0.10, 0.40, ctx.zone_log_key);
     // CONTRAST scale: 1.0 = calibrated default, 0 = off, 2.0 = aggressive.
     ctx.zone_str           = lerp(0.26, 0.16, ctx.ss_08_25)
-                           * lerp(1.10, 0.93, lum_att) * (CONTRAST * 0.30);
+                           * lerp(1.10, 0.93, lum_att) * (CONTRAST * 1.00);
     // R195: H_norm attenuation — high-entropy scenes already have rich tonal gradation;
     // attenuating zone stretch avoids processing well-distributed material.
     // Gate at 0.55: fires only above typical "good" scene entropy. Max 25% attenuation.
@@ -390,29 +394,30 @@ float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex
     float3 lin_p = max(lin, 0.0);
     float  E     = exp2(EXPOSURE);
     float3 lin_e = lin_p;
-    // R104: DIR couplers — developer-inhibitor-release cross-channel masking
-    if (DIR_COUPLER > 0.0) {
+    // R104: DIR couplers — developer-inhibitor-release cross-channel masking (hardcoded 0.30)
+    {
         float3 log_e = log2(lin_e + 1e-5);
         float3 act   = lin_e * lin_e / (lin_e * lin_e + 0.09);
         float3 cpl   = float3(act.g * 0.12 + act.b * 0.06,
                               act.r * 0.10 + act.b * 0.04,
                               act.r * 0.06 + act.g * 0.08);
-        lin_e = lerp(lin_e, saturate(exp2(log_e - cpl * 0.3)), float(DIR_COUPLER));
+        lin_e = lerp(lin_e, saturate(exp2(log_e - cpl * 0.3)), 0.30);
     }
     // R194: ACES luma inverse — undoes ACES midtone boost below the fixed point (L≈0.728).
-    // scale_delta is negative below L≈0.728 (ACES was brightening → inverse darkens back).
-    // Above L≈0.728 ACES was compressing — that expansion requires headroom > 1.0 which SDR
-    // cannot provide. min() gates to darkening only: no highlight blowup, no tonal disconnect.
+    // Bell weight (Mertens et al. 2007): exp(-0.5*((L-mu)/0.18)²). mu tuning range: 0.05–0.20.
+    // Lower mu → correction peaks in near-black zone, glow penumbra untouched (diffusion reach preserved).
+    // Higher mu → more correction in smoke/fog zone. Above 0.35 causes blob expansion.
+    // Proportional Oklab (L,a,b) scaling: C/L ratio unchanged, no artificial density.
     if (INVERSE_LUMA > 0.0) {
-        // Scene-median ACES inverse — one delta for the whole frame, gradient shapes preserved.
-        // Per-pixel shadow_w still gates true blacks. Renamed constants avoid shadowing outer E.
-        float  p50      = ReadHWY(HWY_P50);
-        float  shadow_w = smoothstep(0.005, 0.04, col_luma);
         const float Aa = 2.51, Bb = 0.03, Cc = 2.43, Dd = 0.59, Ee = 0.14;
-        float  disc     = ((Dd*Dd - 4.0*Cc*Ee)*p50 + 4.0*Aa*Ee - 2.0*Bb*Dd)*p50 + Bb*Bb;
-        float  L_scene  = 0.5*(Dd*p50 - Bb + sqrt(max(disc, 0.0))) / max(Aa - Cc*p50, 1e-4);
-        float  delta    = min(L_scene / max(p50, 1e-5) - 1.0, 0.0);
-        lin_e *= 1.0 + delta * shadow_w * float(INVERSE_LUMA);
+        float  disc  = ((Dd*Dd - 4.0*Cc*Ee)*col_luma + 4.0*Aa*Ee - 2.0*Bb*Dd)*col_luma + Bb*Bb;
+        float  L_sc  = 0.5*(Dd*col_luma - Bb + sqrt(max(disc, 0.0))) / max(Aa - Cc*col_luma, 1e-4);
+        float  delta = min(L_sc / max(col_luma, 1e-5) - 1.0, 0.0);
+        float  t     = (col_luma - 0.05) / 0.18;
+        float  bell  = exp(-0.5 * t * t);
+        float3 ok    = RGBtoOklab(saturate(lin_e));
+        ok          *= 1.0 + delta * float(INVERSE_LUMA) * bell;
+        lin_e        = OklabToRGB(ok);
     }
     lin_e *= E;
     // ── R105: halation — pre-curve, post-exposure (fires at corrected signal level) ──
@@ -462,7 +467,7 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
         // is brighter than the 1/16-res one — cloud/sky boundary scale. Suppress CLARITY there.
         // Fine texture has log_base ≈ log_lf1 (both scales see the same average) → no suppression.
         float coarse_grad = max(0.0, log_base - log_lf1);
-        float clarity_gate = smoothstep(0.15, 0.40, luma);
+        float clarity_gate = smoothstep(0.15, 0.40, luma) * (1.0 - smoothstep(0.60, 0.85, luma));
         float coarse_sup     = 1.0 - saturate(coarse_grad / 0.10);
         float gated_detail   = log_detail * clarity_gate * coarse_sup;
         float ungated_detail = log_detail * coarse_sup;
@@ -544,7 +549,7 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     // Negative = scotopic Purkinje: desaturate first (rods are achromatic), then fixed
     // 507nm blue-green bias — fires on neutrals, not C-weighted.
     {
-        float sc_gate = 1.0 - smoothstep(0.25, 0.65, lab.x);
+        float sc_gate = 1.0 - smoothstep(0.40, 0.70, lab.x);
         float sc_pos  = max( SHADOW_CAST, 0.0);
         float sc_neg  = max(-SHADOW_CAST, 0.0);
         lab.y += sc_pos * 0.080 * sc_gate;

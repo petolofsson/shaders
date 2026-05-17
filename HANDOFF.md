@@ -1,4 +1,4 @@
-# Handoff — 2026-05-16
+# Handoff — 2026-05-17
 
 > **Purpose (for AI context):** Current session state. Read at session start. Update at session end. Changelog entries go in CHANGELOG.md. **Hard limit: 60 lines including this header. Trim aggressively — one fact per line, no prose.**
 
@@ -9,30 +9,22 @@ grade: 10 passes — LFDownscale1 → LFDownscale2 → NeutralIllum → GuidedCo
 ## Known state
 - No compile errors. Log: `/tmp/vkbasalt.log`
 - **Knob convention**: 0 = passthrough universally. 1 = full designed effect.
-- **3-way CC**: ±1.0 range. Scale 0.03 in shader.
-- **HueBandWeightW**: width=0.14 used for HUE_*, SAT_*, hw_o*, LUMA_CONTRAST_*. HueCeil/HueBandRollN keep 0.08.
+- **INVERSE_LUMA**: Mertens bell weight mu=0.05 sigma=0.18; proportional Oklab (L,a,b). mu range 0.05–0.20.
+- **Halation**: luma-neutral orange `float3(0.316,−0.064,−0.294)`; sky_w exp gate (B>R factor 7.0).
+- **CLARITY**: fully midtone-gated — `smoothstep(0.15,0.40,luma) × (1−smoothstep(0.60,0.85,luma))`.
+- **LUMA_CONTRAST_***: 6-band hue-selective clarity, ungated, chroma-gated (smoothstep 0.04→0.10).
 - **above_w**: restored — zone S-curve one-sided again (only lifts above zone median).
-- **SHADOW_CAST**: gate smoothstep(0.25, 0.65) — reaches into midtones.
-- **LUMA_CONTRAST_***: 6-band hue-selective clarity, ungated, chroma-gated (smoothstep 0.04→0.10). Shares CLARITY's guided filter detail signal.
-- **CLARITY**: midtone-gated (0.15→0.40). LUMA_CONTRAST_* uses separate ungated detail path.
+- **SHADOW_CAST**: gate smoothstep(0.40, 0.70) — tighter than previous (was 0.25→0.65).
+- **3-way CC**: ±1.0 range. Scale 0.08 in shader.
+- **DIR_COUPLER**: removed as knob, hardcoded 0.30 in shader.
+- **CONTRAST**: scale 1.00 (was 0.30).
 
 ## Shadow lift — fixed 2026-05-16
-- **Root cause resolved**: `fine_texture_att` (4-tap sub-pixel neighbourhood gate) zeroed lift in all textured areas; Retinex inverse term only amplified in dark interiors (illum_s0 < 0.10).
-- **Fix**: removed `fine_texture_att` + dead `texture_att` + 4-tap BackBuffer sample block; replaced `shadow_lift_str × (0.149169/(illum_s0²+0.003)) / 100 × 0.75` with flat `shadow_lift_str × 0.25`.
-- **Formula now**: `new_luma += shadow_lift_str × detail_protect × context_lift × specular_att × 0.25 × lift_w × SHADOWS`
-- **Needs in-game test**: confirm SHADOWS=1.0 gives visible lift in GZW jungle. If too subtle, raise 0.25; if too aggressive on bright scenes, lower it.
-
-## GZW current values (live — not committed)
-- EXPOSURE 0.30 / HALATION 0.10 / INVERSE_LUMA 0.25 / DIR_COUPLER 0.40
-- CONTRAST 1.70 / SHADOWS 2.00 / CLARITY 0.5
-- LUMA_CONTRAST_GREEN 1.50 / LUMA_CONTRAST_CYAN 1.0 / LUMA_CONTRAST_BLUE 0.0
-- CURVE_R_KNEE -0.25 / CURVE_B_KNEE +0.10
-- SHADOW_CAST -0.40 / SHADOW_TEMP -0.15 / HUE_GREEN -0.45 / HUE_CYAN +0.12
-- SAT_GREEN 0.50 / SAT_CYAN 0.30 / VIBRANCE 1.0
-- PRINT_STOCK 0.35 / BLEACH_BYPASS 0.22 / DIFFUSION 0.50 / GRAIN 0.0
+- **Root cause resolved**: `fine_texture_att` zeroed lift in all textured areas.
+- **Formula now**: `shadow_lift_str × detail_protect × context_lift × specular_att × 0.25 × lift_w × SHADOWS`
+- **Needs in-game test**: confirm SHADOWS=1.0 gives visible lift in GZW jungle.
 
 ## Next
 - Test shadow lift in GZW jungle — confirm fix works
-- If still broken: investigate fine_texture_att / context_lift / specular_att
-- Rebless arc_raiders baselines
-- Retune arc_raiders creative_values.fx after 3-way CC rescale
+- Rebless arc_raiders baselines (all stage gates 000 during INVERSE_LUMA debug — restore to 100)
+- Retune arc_raiders creative_values.fx (3-way CC scale change, CONTRAST scale change affect output)

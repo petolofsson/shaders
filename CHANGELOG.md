@@ -2,6 +2,22 @@
 
 > **Purpose (for AI context):** Chronological record of code changes, one compacted entry per day. Keep only the last 3–4 days. Older history lives in git log. Do not duplicate entries from HANDOFF.md or PLAN.md here.
 
+## 2026-05-17
+
+- **INVERSE_LUMA: Mertens bell weight** (`grade.fx`, `creative_values.fx`) — Replaced flat proportional ACES luma inverse with per-pixel bell-weighted correction: `exp(-0.5*((col_luma−mu)/0.18)²)`, mu=0.05. Peaks at near-black zone; glow penumbra (0.40+) barely touched — diffusion reach preserved. Applied proportionally in Oklab (L,a,b) → no chroma density change. mu tuning range 0.05–0.20 documented in code: lower = more diffusion reach, higher = more smoke/fog correction; above 0.35 causes blob expansion.
+
+- **Halation: luma-neutral tint + sky suppression** (`grade.fx`) — (1) Orange tint changed from additive `float3(0.63,0.25,0.02)` to luma-neutral `float3(0.316,−0.064,−0.294)` (original minus its luma 0.314) — hue shift only, no brightness blooming. (2) Sky suppression: `sky_w = exp(−max(0, lin_p.b − lin_p.r) × 7.0)` — warm/neutral sources unaffected, blue/cool sky pixels suppressed smoothly.
+
+- **CLARITY upper highlight rolloff** (`grade.fx`) — Upper gate was documented in `creative_values.fx` but missing from code. Now fully implemented: `clarity_gate = smoothstep(0.15,0.40,luma) × (1−smoothstep(0.60,0.85,luma))`. Fades to zero at L=0.85 — highlights unaffected as documented.
+
+- **DIR_COUPLER knob removed** (`grade.fx`, `gzw/creative_values.fx`) — Hardcoded to 0.30 in shader; knob removed from GZW profile. Effect is always-on at designed calibration.
+
+- **3-way CC scale 0.03→0.08** (`grade.fx`) — Increased range to match revised knob convention.
+
+- **CONTRAST scale 0.30→1.00** (`grade.fx`) — Zone S-curve now responds at full knob range.
+
+- **SHADOW_CAST gate 0.25→0.65 shifted to 0.40→0.70** (`grade.fx`) — Tighter gate, pushes full cast strength to deeper shadows.
+
 ## 2026-05-16
 
 - **Shadow lift redesign** (`grade.fx`) — Removed `fine_texture_att` (4-tap sub-pixel neighbourhood gate) and dead `texture_att`; both zeroed lift in all textured areas (jungle = all texture). Also dropped the Retinex inverse-illuminant term `0.149169/(illum_s0²+0.003)` which gave only ≈1× amplification in bright outdoor scenes (calibrated for dark interiors with illum_s0 < 0.10). New formula: `shadow_lift_str × detail_protect × context_lift × specular_att × 0.25 × lift_w × SHADOWS` — scene-adaptive gate preserved via `shadow_lift_str`, direct scale works consistently across bright and dark scenes. Four BackBuffer taps removed.

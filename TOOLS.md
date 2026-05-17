@@ -60,11 +60,16 @@ compare_frame --delay 5                  # longer SPIR-V wait
 
 Aggregate output: `gamespecific/<game>/compare_agg.json` (also archived to `analysis/YYYY-MM-DD/`).
 
-`--all-effects` captures FULL pipeline once, then reruns with each stage removed and diffs the two
-outputs (incremental subtraction). ΔE = how much that stage changes the image in pipeline context.
-Effects with ΔE < 0.5 flagged as silent. Stages whose CV section is all-zero are skipped.
+`--all-effects` captures FULL pipeline once, then for each named effect zeroes its knobs to
+passthrough and diffs the two outputs (incremental subtraction). ΔE = how much that individual
+effect changes the image in full-pipeline context. Effects with ΔE < 0.5 flagged as silent.
+Effects whose knobs are already at passthrough are skipped automatically.
+~22 effects tested: INVERSE_STRENGTH, INVERSE_LUMA, EXPOSURE, BLACKS_WHITES, DIR_COUPLER,
+HALATION, FILM_CURVE, 3WAY_CC, CLARITY, LUMA_CONTRAST, CONTRAST, SHADOWS, HIGHLIGHTS,
+SHADOW_CAST, HUE_ROTATION, VIBRANCE, SATURATION, PRINT_STOCK, BLEACH_BYPASS, PRINTER_LIGHTS,
+DIFFUSION, GRAIN.
 Results written to `gamespecific/<game>/full_analysis/effects_YYYY-MM-DD_HHMMSS.json` (timestamped)
-and `latest.json`. Each file includes per-stage stats, zone/hue-band deltas, and a snapshot of
+and `latest.json`. Each file includes per-effect stats, zone/hue-band deltas, and a snapshot of
 `creative_values.fx` at run time — intended for AI-assisted analysis.
 
 ### `stage_isolate`

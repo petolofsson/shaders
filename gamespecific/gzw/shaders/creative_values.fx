@@ -20,11 +20,6 @@
 #define BLACKS  0.005
 #define WHITES  0.95
 
-// DIR couplers — cross-channel log-space inhibition (film dye chemistry model).
-// Bright channels suppress complementary channels: desaturates vivid colours,
-// adds density to saturated midtones. 0 = off. 1.0 = full designed effect.
-#define DIR_COUPLER 0.40
-
 // Exposure in stops. 0 = neutral, +1 = one stop brighter, -1 = one stop darker.
 // Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.
 // Sets where pixels sit tonally — which directly changes what every knob below "sees".
