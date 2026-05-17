@@ -141,23 +141,48 @@ def _goto_frame(idx: int, settle: float = 0.25) -> None:
 
 _AE_GATE_NAMES = ["CORRECTIVE_STRENGTH", "TONAL_STRENGTH", "CHROMA_STRENGTH", "LOOK_STRENGTH"]
 
-# Full pipeline gates and per-stage "without X" variants for incremental subtraction.
-_FULL_GATES = {"CORRECTIVE_STRENGTH": 100, "TONAL_STRENGTH": 100, "CHROMA_STRENGTH": 100, "LOOK_STRENGTH": 100}
-
-_WITHOUT_X = [
-    ("CORRECTIVE", {"CORRECTIVE_STRENGTH":   0, "TONAL_STRENGTH": 100, "CHROMA_STRENGTH": 100, "LOOK_STRENGTH": 100}),
-    ("TONAL",      {"CORRECTIVE_STRENGTH": 100, "TONAL_STRENGTH":   0, "CHROMA_STRENGTH": 100, "LOOK_STRENGTH": 100}),
-    ("CHROMA",     {"CORRECTIVE_STRENGTH": 100, "TONAL_STRENGTH": 100, "CHROMA_STRENGTH":   0, "LOOK_STRENGTH": 100}),
-    ("LOOK",       {"CORRECTIVE_STRENGTH": 100, "TONAL_STRENGTH": 100, "CHROMA_STRENGTH": 100, "LOOK_STRENGTH":   0}),
+# Per-effect passthrough values. Each entry: (label, {knob: passthrough_value}).
+# passthrough_value = the value that makes the effect do nothing (0.0 for almost all;
+# WHITES=1.0 is the exception because it is a ceiling, not a floor).
+# Skip logic: if all knobs are already at their passthrough values, the effect is
+# inactive and the run is skipped (would produce ΔE=0 anyway).
+_EFFECTS: "list[tuple[str, dict]]" = [
+    # ── INPUT ──────────────────────────────────────────────────────────────────
+    ("INVERSE_STRENGTH",  {"INVERSE_STRENGTH": 0.0}),
+    ("INVERSE_LUMA",      {"INVERSE_LUMA":     0.0}),
+    # ── CORRECTIVE ─────────────────────────────────────────────────────────────
+    ("EXPOSURE",          {"EXPOSURE":         0.0}),
+    ("BLACKS_WHITES",     {"BLACKS": 0.0, "WHITES": 1.0}),
+    ("DIR_COUPLER",       {"DIR_COUPLER":      0.0}),
+    ("HALATION",          {"HALATION":         0.0}),
+    ("FILM_CURVE",        {"CURVE_R_KNEE": 0.0, "CURVE_B_KNEE": 0.0,
+                           "CURVE_R_TOE":  0.0, "CURVE_B_TOE":  0.0}),
+    ("3WAY_CC",           {"SHADOW_TEMP": 0.0, "SHADOW_TINT": 0.0,
+                           "MID_TEMP":    0.0, "MID_TINT":    0.0,
+                           "HIGHLIGHT_TEMP": 0.0, "HIGHLIGHT_TINT": 0.0}),
+    # ── TONAL ──────────────────────────────────────────────────────────────────
+    ("CLARITY",           {"CLARITY":          0.0}),
+    ("LUMA_CONTRAST",     {"LUMA_CONTRAST_RED": 0.0, "LUMA_CONTRAST_YELLOW": 0.0,
+                           "LUMA_CONTRAST_GREEN": 0.0, "LUMA_CONTRAST_CYAN": 0.0,
+                           "LUMA_CONTRAST_BLUE":  0.0, "LUMA_CONTRAST_MAG":  0.0}),
+    ("CONTRAST",          {"CONTRAST":         0.0}),
+    ("SHADOWS",           {"SHADOWS":          0.0}),
+    ("HIGHLIGHTS",        {"HIGHLIGHTS":       0.0}),
+    # ── CHROMA ─────────────────────────────────────────────────────────────────
+    ("SHADOW_CAST",       {"SHADOW_CAST":      0.0}),
+    ("HUE_ROTATION",      {"HUE_RED": 0.0, "HUE_YELLOW": 0.0, "HUE_GREEN": 0.0,
+                           "HUE_CYAN": 0.0, "HUE_BLUE":  0.0, "HUE_MAG":   0.0}),
+    ("VIBRANCE",          {"VIBRANCE":         0.0}),
+    ("SATURATION",        {"SAT_RED": 0.0, "SAT_YELLOW": 0.0, "SAT_GREEN": 0.0,
+                           "SAT_CYAN": 0.0, "SAT_BLUE":  0.0, "SAT_MAG":   0.0}),
+    # ── LOOK ───────────────────────────────────────────────────────────────────
+    ("PRINT_STOCK",       {"PRINT_STOCK":      0.0}),
+    ("BLEACH_BYPASS",     {"BLEACH_BYPASS":    0.0}),
+    ("PRINTER_LIGHTS",    {"PRINTER_R": 0.0, "PRINTER_G": 0.0, "PRINTER_B": 0.0}),
+    # ── OUTPUT ─────────────────────────────────────────────────────────────────
+    ("DIFFUSION",         {"DIFFUSION":        0.0}),
+    ("GRAIN",             {"GRAIN":            0.0}),
 ]
-
-# Maps each stage to its creative_values section for zero-knob skip check.
-EFFECT_SECTION: dict[str, str] = {
-    "CORRECTIVE": "CORRECTIVE",
-    "TONAL":      "TONAL",
-    "CHROMA":     "CHROMA",
-    "LOOK":       "LOOK",
-}
 
 
 def _ae_cv_path(game: str) -> Path:
@@ -167,49 +192,50 @@ def _ae_cv_path(game: str) -> Path:
     return p
 
 
-def _ae_read_gates(cv: Path) -> dict:
-    text = cv.read_text()
-    out = {}
-    for name in _AE_GATE_NAMES:
-        m = re.search(rf"#define\s+{name}\s+(\d+)", text)
-        if not m:
-            sys.exit(f"Gate '{name}' not found in {cv}")
-        out[name] = int(m.group(1))
-    return out
+def _ae_write_knobs(cv: Path, knobs: dict) -> None:
+    """Write knob values into creative_values.fx using regex replacement.
 
-
-def _ae_write_gates(cv: Path, gates: dict) -> None:
+    Handles both integer gate knobs (100/0) and float effect knobs.
+    Uses multiline \S+ to match the existing value token regardless of format
+    (handles +0.10, -0.20, 0.005, 100, 1.0, etc.).
+    """
     text = cv.read_text()
-    for name, val in gates.items():
-        text = re.sub(rf"(#define\s+{name}\s+)\d+", rf"\g<1>{val}", text)
+    for name, val in knobs.items():
+        if isinstance(val, int):
+            valstr = str(val)
+        elif val == 0.0:
+            valstr = "0.0"
+        elif val == 1.0:
+            valstr = "1.0"
+        else:
+            valstr = f"{val:g}"
+        text = re.sub(
+            rf"^(#define\s+{re.escape(name)}\s+)\S+",
+            rf"\g<1>{valstr}",
+            text,
+            flags=re.MULTILINE,
+        )
     cv.write_text(text)
 
 
-def _ae_knobs_all_zero(cv: Path, section_name: str) -> bool:
-    """True if every float #define in the named creative_values section is 0.
+def _ae_knobs_at_passthrough(cv: Path, passthrough: dict) -> bool:
+    """True if every knob in passthrough is already at its passthrough value.
 
-    Section headers use Unicode box-drawing dashes; the ASCII section name is
-    always surrounded by spaces, so ' SECTION_NAME ' substring match is reliable.
-    Returns False (don't skip) when no float knobs are found in the section.
+    Used to skip effects whose knobs haven't been dialled in — they would
+    produce ΔE≈0 anyway, so there is nothing to measure.
     """
-    float_re   = re.compile(r"^#define\s+\w+\s+([-+]?\d*\.?\d+)\s*$")
-    in_section = False
-    found_any  = False
-    needle     = f" {section_name} "
-
-    for line in cv.read_text().splitlines():
-        if line.startswith("//"):
-            in_section = needle in line
-            continue
-        if not in_section:
-            continue
-        m = float_re.match(line.strip())
-        if m:
-            found_any = True
-            if abs(float(m.group(1))) > 1e-6:
-                return False   # at least one non-zero knob — don't skip
-
-    return found_any  # True only when knobs were found and all are 0
+    text = cv.read_text()
+    for name, pval in passthrough.items():
+        m = re.search(rf"^#define\s+{re.escape(name)}\s+(\S+)", text, re.MULTILINE)
+        if not m:
+            return False
+        try:
+            cur = float(m.group(1))
+        except ValueError:
+            return False
+        if abs(cur - float(pval)) > 1e-6:
+            return False
+    return True
 
 
 def _capture_pipeline_output(
@@ -290,44 +316,53 @@ def _ae_aggregate(all_stats: "list[dict]") -> dict:
     }
 
 
-def _run_all_effects(game: str, config: Path, delay: int) -> None:
-    cv       = _ae_cv_path(game)
-    original = _ae_read_gates(cv)
+def _run_all_effects(game: str, config: Path, delay: int, max_frames: int = 12,
+                     only: "list[str] | None" = None) -> None:
+    cv            = _ae_cv_path(game)
+    original_text = cv.read_text()
 
     frames_dir = ROOT / "gamespecific" / game / "analysis" / "reference"
-    pngs       = sorted(frames_dir.glob("*.png"))
+    pngs       = sorted(frames_dir.glob("*.png"))[:max_frames]
     if not pngs:
         sys.exit(f"No PNGs in {frames_dir}")
 
+    effects = _EFFECTS
+    if only:
+        valid = {label for label, _ in _EFFECTS}
+        unknown = [n for n in only if n not in valid]
+        if unknown:
+            sys.exit(f"Unknown effect(s): {', '.join(unknown)}\nValid: {', '.join(sorted(valid))}")
+        effects = [(label, pt) for label, pt in _EFFECTS if label in only]
+
     print(f"compare_frame --all-effects  game={game}  {len(pngs)} frame(s)")
-    print(f"Mode: incremental subtraction — ΔE(full) vs ΔE(full minus stage)")
-    print(f"Saved gates: {original}\n")
+    print(f"Mode: incremental subtraction — ΔE(full pipeline) vs ΔE(full minus effect)")
+    print(f"Effects: {', '.join(label for label, _ in effects)}\n")
 
     def _restore(sig=None, frame=None):
-        _ae_write_gates(cv, original)
-        print("\nGates restored.")
+        cv.write_text(original_text)
+        print("\ncreative_values.fx restored.")
         if sig is not None:
             sys.exit(1)
     signal.signal(signal.SIGINT, _restore)
 
     ref_images = [_load_png_linear(p) for p in pngs]
-    # results: (label, agg | None); None = skipped
     results: "list[tuple[str, dict | None]]" = []
     full_agg: "dict | None" = None
 
     try:
-        # Phase 1 — capture FULL pipeline output (reference for subtraction)
+        # Phase 1 — FULL pipeline (gates must all be 100)
         print("── FULL  (reference)")
-        _ae_write_gates(cv, _FULL_GATES)
+        _ae_write_knobs(cv, {k: 100 for k in _AE_GATE_NAMES})
         time.sleep(0.1)
         full_out = _capture_pipeline_output(pngs, ref_images, config, delay)
+        # restore after FULL capture so cv is back to original state for subtraction runs
+        cv.write_text(original_text)
         n_ok = sum(1 for o in full_out if o is not None)
         print(f"  {n_ok}/{len(pngs)} frames ok\n")
         if n_ok == 0:
             print("FULL capture failed — aborting.")
             return
 
-        # FULL ΔE from raw for the context row
         full_raw_stats = [
             compute_relative(ref_images[i], full_out[i])
             for i in range(len(pngs))
@@ -336,18 +371,18 @@ def _run_all_effects(game: str, config: Path, delay: int) -> None:
         if full_raw_stats:
             full_agg = _ae_aggregate(full_raw_stats)
 
-        # Phase 2 — WITHOUT each stage; compare captured output to FULL
-        for label, gates in _WITHOUT_X:
-            section = EFFECT_SECTION.get(label, "")
-            if section and _ae_knobs_all_zero(cv, section):
-                print(f"── without {label}  (skipped — all {section} knobs are 0)\n")
+        # Phase 2 — WITHOUT each effect; compare to FULL
+        for label, passthrough in effects:
+            if _ae_knobs_at_passthrough(cv, passthrough):
+                print(f"── without {label}  (skipped — already at passthrough)\n")
                 results.append((label, None))
                 continue
 
             print(f"── without {label}")
-            _ae_write_gates(cv, gates)
+            _ae_write_knobs(cv, passthrough)
             time.sleep(0.1)
             wo_out = _capture_pipeline_output(pngs, ref_images, config, delay)
+            cv.write_text(original_text)   # restore before next iteration
 
             frame_stats = [
                 compute_relative(wo_out[i], full_out[i])
@@ -365,8 +400,8 @@ def _run_all_effects(game: str, config: Path, delay: int) -> None:
             print(f"  {label} contribution ΔE {agg['mean_de']:.2f}\n")
 
     finally:
-        _ae_write_gates(cv, original)
-        print("Gates restored.\n")
+        cv.write_text(original_text)
+        print("creative_values.fx restored.\n")
 
     if not results and full_agg is None:
         return
@@ -374,18 +409,18 @@ def _run_all_effects(game: str, config: Path, delay: int) -> None:
     DEAD = 0.5
 
     print("─" * 72)
-    print(f"\n{_BLD}EFFECT ATTRIBUTION  (incremental — full minus that stage){_RST}")
-    print(f"  ΔE = how much the output changes when that stage is removed")
-    print(f"  ΔE < {DEAD} flagged as silent — stage may be broken or all knobs near zero\n")
+    print(f"\n{_BLD}EFFECT ATTRIBUTION  (incremental — full pipeline minus that effect){_RST}")
+    print(f"  ΔE = how much the output changes when that effect is zeroed")
+    print(f"  ΔE < {DEAD} flagged as silent — effect may be broken or knobs at passthrough\n")
 
-    hdr = f"  {'Stage':<14}  {'ΔE':>5}  {'shadows ΔL*/ΔC*':>18}  {'mids ΔL*/ΔC*':>14}  {'highs ΔL*/ΔC*':>14}"
-    sep_line = "  " + "─" * 70
+    hdr = f"  {'Effect':<18}  {'ΔE':>5}  {'shadows ΔL*/ΔC*':>18}  {'mids ΔL*/ΔC*':>14}  {'highs ΔL*/ΔC*':>14}"
+    sep_line = "  " + "─" * 74
     print(hdr)
     print(sep_line)
 
     def _zone_row(label: str, agg: "dict | None", flag_dead: bool = True) -> None:
         if agg is None:
-            print(f"  {label:<14}  (skipped — knobs all 0)")
+            print(f"  {label:<18}  (skipped — at passthrough)")
             return
         de   = agg["mean_de"]
         sh   = agg["zones"].get("shadows")
@@ -395,7 +430,7 @@ def _run_all_effects(game: str, config: Path, delay: int) -> None:
         mi_s = f"{mi['dL']:+.1f}/{mi['dC']:+.1f}" if mi else "    —    "
         hi_s = f"{hi['dL']:+.1f}/{hi['dC']:+.1f}" if hi else "    —    "
         flag = "  ← silent?" if flag_dead and de < DEAD else ""
-        print(f"  {label:<14}  {_de_fmt(de)}  {sh_s:>18}  {mi_s:>14}  {hi_s:>14}{flag}")
+        print(f"  {label:<18}  {_de_fmt(de)}  {sh_s:>18}  {mi_s:>14}  {hi_s:>14}{flag}")
 
     for label, agg in results:
         _zone_row(label, agg)
@@ -407,19 +442,19 @@ def _run_all_effects(game: str, config: Path, delay: int) -> None:
     # Hue band table
     band_names = [e[0] for e in HUE_BANDS]
     print(f"\n  by hue band  (ΔL*/ΔC*, chromatic pixels C*>3)")
-    print(f"  {'Stage':<14}  " + "  ".join(f"{b:<12}" for b in band_names))
-    print("  " + "─" * (16 + 14 * len(band_names)))
+    print(f"  {'Effect':<18}  " + "  ".join(f"{b:<12}" for b in band_names))
+    print("  " + "─" * (20 + 14 * len(band_names)))
 
     def _band_row(label: str, agg: "dict | None") -> None:
         if agg is None:
-            print(f"  {label:<14}  (skipped)")
+            print(f"  {label:<18}  (skipped)")
             return
         cells = [
             (f"{agg['hue_bands'][b]['dL']:+.1f}/{agg['hue_bands'][b]['dC']:+.1f}"
              if agg["hue_bands"].get(b) else "   —   ")
             for b in band_names
         ]
-        print(f"  {label:<14}  " + "  ".join(f"{c:<12}" for c in cells))
+        print(f"  {label:<18}  " + "  ".join(f"{c:<12}" for c in cells))
 
     for label, agg in results:
         _band_row(label, agg)
@@ -439,7 +474,7 @@ def _run_all_effects(game: str, config: Path, delay: int) -> None:
         "game":            game,
         "n_frames":        len(pngs),
         "creative_values": cv_path.read_text() if cv_path.exists() else None,
-        "stages": {
+        "effects": {
             label: agg
             for label, agg in results
         },
@@ -631,6 +666,10 @@ def main() -> None:
                     help="Seconds to wait for SPIR-V compile (default: 3)")
     ap.add_argument("--keep",  action="store_true",
                     help="Keep temp EXR files instead of deleting after analysis")
+    ap.add_argument("--max-frames", type=int, default=None,
+                    help="Cap number of reference frames (default: 12 for --all-effects, unlimited for --all)")
+    ap.add_argument("--only", nargs="+", default=None, metavar="EFFECT",
+                    help="Test only these effects (space-separated, e.g. --only INVERSE_LUMA EXPOSURE)")
     args = ap.parse_args()
 
     if args.all_effects:
@@ -640,7 +679,8 @@ def main() -> None:
         config = ROOT / "gamespecific" / game / f"{game}.conf"
         if not config.exists():
             sys.exit(f"Config not found: {config}")
-        _run_all_effects(game, config, args.delay)
+        max_frames = args.max_frames if args.max_frames is not None else 12
+        _run_all_effects(game, config, args.delay, max_frames, args.only)
         return
 
     if args.all:

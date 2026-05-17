@@ -25,6 +25,7 @@
 #define KALMAN_K_INF     0.095    // steady-state gain for secondary channels (EMA)
 
 uniform float FRAME_TIMER < source = "timer"; >;        // ms since app start
+uniform float FRAME_TIME  < source = "frametime"; >;    // ms since last frame
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
@@ -250,7 +251,12 @@ float4 ComputeSlowKey()
     float zone_log_key = ComputeZoneStats().r;
     float prev_slow    = tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
     prev_slow = lerp(zone_log_key, prev_slow, step(0.001, prev_slow));
-    return float4(lerp(prev_slow, zone_log_key, 0.003), 0, 0, 0);
+    // R200: dual-rate EMA — slow cortical T_half=20s (K=0.0000346), fast scene-cut T_half=67ms (K=0.01034).
+    // Rinner & Gegenfurtner 2000; Ji et al. 2023. Framerate-independent via FRAME_TIME.
+    float scene_cut   = ReadHWY(HWY_SCENE_CUT);
+    float alpha_slow  = saturate(FRAME_TIME * 0.0000346f);
+    float alpha_fast  = saturate(FRAME_TIME * 0.01034f);
+    return float4(lerp(prev_slow, zone_log_key, lerp(alpha_slow, alpha_fast, scene_cut)), 0, 0, 0);
 }
 
 float4 UpdateChromaKalman(int band_idx)

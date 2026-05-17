@@ -403,6 +403,7 @@ float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex
                               act.r * 0.06 + act.g * 0.08);
         lin_e = lerp(lin_e, saturate(exp2(log_e - cpl * 0.3)), 0.30);
     }
+
     // R194: ACES luma inverse — undoes ACES midtone boost below the fixed point (L≈0.728).
     // Bell weight (Mertens et al. 2007): exp(-0.5*((L-mu)/0.18)²). mu tuning range: 0.05–0.20.
     // Lower mu → correction peaks in near-black zone, glow penumbra untouched (diffusion reach preserved).
@@ -426,6 +427,17 @@ float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex
     float eff_hal_str = HALATION * lerp(1.0, 1.4, ctx.specular_contrast);
     lin_e = ApplyHalation(lin_e, lin_p, uv, eff_hal_str);
     lin_e = min(lin_e, float(WHITES));
+    // R202: M_neg — Kodak Vision3 500T (5219) negative spectral sensitivity (H-1-5219t, Gotanda 2010 sampling).
+    // Applied in linear sRGB, after EXPOSURE + halation, before FilmCurve — physical negative→H-D chain order.
+    // Completes the two-stock chain: M_neg (input sensitivity) + R85 dye masking (print side).
+    {
+        float3x3 m_neg = float3x3(
+            1.0000, 0.0227, 0.0062,   // red layer:   100% R + 2.27% G + 0.62% B
+            0.0017, 1.0000, 0.0245,   // green layer: 0.17% R + 100% G + 2.45% B
+            0.0000, 0.0002, 1.0000    // blue layer:  ~pure
+        );
+        lin_e = mul(m_neg, lin_e);
+    }
     float3 fc_out  = FilmCurveApply(lin_e,
                                     ctx.fc_knee_r, ctx.fc_knee, ctx.fc_knee_b,
                                     ctx.fc_ktoe_r, ctx.fc_knee_toe, ctx.fc_ktoe_b);
