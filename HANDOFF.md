@@ -15,7 +15,7 @@ grade: 10 passes — LFDownscale1 → LFDownscale2 → NeutralIllum → GuidedCo
 - **LUMA_CONTRAST_***: 6-band hue-selective clarity, ungated, chroma-gated (smoothstep 0.04→0.10).
 - **above_w**: restored — zone S-curve one-sided again (only lifts above zone median).
 - **SHADOW_CAST**: gate smoothstep(0.40, 0.70) — tighter than previous (was 0.25→0.65).
-- **3-way CC**: ±1.0 range. Scale 0.08 in shader.
+- **3-way CC**: ±1.0 range. Scale 0.06 in shader. Zones: sh full<BT.709 0.11, hl full>0.80.
 - **DIR_COUPLER**: removed as knob, hardcoded 0.30 in shader.
 - **CONTRAST**: scale 1.00 (was 0.30).
 - **R200 slow_key**: dual-rate EMA — K_slow=0.0000346 (T_half=20s), K_fast=0.01034 (T_half=67ms on scene cut); framerate-independent via FRAME_TIME.
@@ -32,5 +32,5 @@ grade: 10 passes — LFDownscale1 → LFDownscale2 → NeutralIllum → GuidedCo
 - **Temporal dither**: FRAME_COUNT→FRAME_TIMER slot. No visual impact on static images.
 
 ## Next
-- Recalibrate SHADOW/MID/HIGHLIGHT TEMP/TINT on both profiles (3-way CC Oklab).
+- Dial SHADOW/MID/HIGHLIGHT TEMP/TINT on both profiles (zones recalibrated; knobs still at zero).
 - Recalibrate BLEACH_BYPASS on both profiles (new space + new order).

@@ -279,11 +279,11 @@ float3 Apply3WayCC(float3 lin,
     // Oklab a/b shift: temp → b-axis (warm=positive, cool=negative),
     // tint → a-axis (magenta=positive, green=negative). Orthogonal by construction.
     // Zone gates on Oklab L — consistent with shadow cast and other ApplyChroma operations.
-    // Scale 0.06: SHADOW/MID/HIGHLIGHT TEMP/TINT require recalibration after this change.
+    // Scale 0.06. Zones in BT.709: sh full<0.11, fade 0.11→0.27; hl fade 0.47→0.80, full>0.80.
     float3 lab  = RGBtoOklab(saturate(lin));
     float  L    = lab.x;
-    float  sh_w = 1.0 - smoothstep(0.35, 0.55, L);
-    float  hl_w = smoothstep(0.70, 0.90, L);
+    float  sh_w = 1.0 - smoothstep(0.48, 0.65, L);
+    float  hl_w = smoothstep(0.78, 0.93, L);
     float  mid_w = max(0.0, 1.0 - sh_w - hl_w);
     lab.y += (shadow_tint * sh_w + mid_tint * mid_w + hl_tint * hl_w) * 0.06;
     lab.z += (shadow_temp * sh_w + mid_temp * mid_w + hl_temp * hl_w) * 0.06;
