@@ -95,8 +95,8 @@ sampler2D MeanChromaSamp
     MagFilter = POINT;
 };
 
-// p90 luma cache — EMA-smoothed specular floor tracker
-texture2D PercHighTex { Width = 1; Height = 1; Format = R16F; MipLevels = 1; };
+// p90 luma cache (r) and p10 shadow floor (g) — EMA-smoothed
+texture2D PercHighTex { Width = 1; Height = 1; Format = RG16F; MipLevels = 1; };
 sampler2D PercHighSamp
 {
     Texture   = PercHighTex;
@@ -111,6 +111,17 @@ texture2D ModeTex { Width = 1; Height = 1; Format = R16F; MipLevels = 1; };
 sampler2D ModeSamp
 {
     Texture   = ModeTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
+// p75 Oklab C and hue concentration κ — written by ChromaExtraPS
+texture2D ChromaExtraTex { Width = 1; Height = 1; Format = RG16F; MipLevels = 1; };
+sampler2D ChromaExtraSamp
+{
+    Texture   = ChromaExtraTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = POINT;
@@ -207,6 +218,12 @@ float4 HighwayWritePS(float4 pos : SV_Position,
         return float4(tex2Dlod(EntropySamp,   float4(0.5, 0.5, 0, 0)).r, 0, 0, 1);
     if (xi == HWY_IQR)
         return float4(perc.b - perc.r, 0, 0, 1);
+    if (xi == HWY_P10)
+        return float4(tex2Dlod(PercHighSamp,   float4(0.5, 0.5, 0, 0)).g, 0, 0, 1);
+    if (xi == HWY_CHROMA_P75)
+        return float4(tex2Dlod(ChromaExtraSamp, float4(0.5, 0.5, 0, 0)).r, 0, 0, 1);
+    if (xi == HWY_HUE_CONC)
+        return float4(tex2Dlod(ChromaExtraSamp, float4(0.5, 0.5, 0, 0)).g, 0, 0, 1);
     return float4(ReadHWY(xi), 0, 0, 1);  // pass through corrective's slots unchanged
 }
 
@@ -377,6 +394,64 @@ float4 MeanChromaPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     );
 }
 
+// ─── Pass 7b — p75 Oklab C and hue concentration κ ───────────────────────
+// p75_C: 75th percentile of per-pixel Oklab C over chromatic pixels (C > 0.05).
+//   Complements median_C: median tracks typical chroma, p75_C tracks the vivid tail.
+//   High p75_C with low median_C = a few vivid objects in a muted scene.
+// κ: mean resultant length = |mean_ab| / median_C.
+//   κ≈1: all chromatic pixels share one hue (sunset, underwater).
+//   κ≈0: hue distribution is uniform (forest, cityscape).
+//   Computed from existing MeanChromaSamp — no extra pixel loop needed for κ.
+
+float4 ChromaExtraPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    float hist[CHROMA_BINS];
+    [unroll] for (int i = 0; i < CHROMA_BINS; i++) hist[i] = 0.0;
+
+    float count = 0.0;
+    [loop]
+    for (int y = 0; y < DS_H; y++)
+    {
+        [loop]
+        for (int x = 0; x < DS_W; x++)
+        {
+            float2 s_uv = float2((x + 0.5) / float(DS_W), (y + 0.5) / float(DS_H));
+            float3 lab  = RGBtoOklab(tex2D(Downsample, s_uv).rgb);
+            float  C    = length(lab.yz);
+            float  in_b = step(0.05, C);
+            int    bin  = clamp(int(C / CHROMA_C_MAX * CHROMA_BINS), 0, CHROMA_BINS - 1);
+            hist[bin]  += in_b;
+            count      += in_b;
+        }
+    }
+
+    float target = max(count, 1.0) * 0.75;
+    float cumul  = 0.0;
+    float p75_C  = CHROMA_C_MAX * 0.75;
+    float lk     = 0.0;
+    [loop] for (int b = 0; b < CHROMA_BINS; b++)
+    {
+        float prev_c = cumul;
+        cumul       += hist[b];
+        float inv    = (hist[b] > 0.0) ? 1.0 / hist[b] : 0.0;
+        float t      = saturate((target - prev_c) * inv);
+        float bv     = (float(b) + t) / float(CHROMA_BINS) * CHROMA_C_MAX;
+        float at     = step(target, cumul) * (1.0 - lk);
+        p75_C        = lerp(p75_C, bv, at);
+        lk           = saturate(lk + at);
+    }
+    float valid = step(0.5, count);
+    p75_C = lerp(CHROMA_C_MAX * 0.75, p75_C, valid);
+
+    float4 mc    = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0));
+    float  kappa = saturate(length(mc.gb) / max(mc.r, 0.001));
+
+    float2 prev      = tex2Dlod(ChromaExtraSamp, float4(0.5, 0.5, 0, 0)).rg;
+    float  scene_cut = tex2Dlod(SceneCutSamp,    float4(0.5, 0.5, 0, 0)).r;
+    float  alpha     = lerp(saturate(frametime * 0.001), 1.0, scene_cut);
+    return float4(lerp(prev.r, p75_C, alpha), lerp(prev.g, kappa, alpha), 0.0, 1.0);
+}
+
 // ─── Pass 8 — p90 luma percentile ────────────────────────────────────────
 // Same 64-bin CDF walk as CDFWalkPS but targets the 90th percentile.
 // No Kalman — simple EMA is sufficient for a coarse highlight threshold signal.
@@ -384,8 +459,8 @@ float4 MeanChromaPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 float4 CDFWalkHighPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float cumul = 0.0;
-    float p90 = 0.90;
-    float lk90 = 0.0;
+    float p90 = 0.90, p10 = 0.10;
+    float lk90 = 0.0,  lk10 = 0.0;
 
     [loop] for (int b = 0; b < HIST_BINS; b++)
     {
@@ -395,15 +470,20 @@ float4 CDFWalkHighPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
 
         float inv  = (frc > 0.0) ? 1.0 / frc : 0.0;
         float t90  = saturate((0.90 - prev) * inv);
+        float t10  = saturate((0.10 - prev) * inv);
         float bv90 = (float(b) + t90) / float(HIST_BINS);
+        float bv10 = (float(b) + t10) / float(HIST_BINS);
         float at90 = step(0.90, cumul) * (1.0 - lk90);
+        float at10 = step(0.10, cumul) * (1.0 - lk10);
         p90  = lerp(p90, bv90, at90);
+        p10  = lerp(p10, bv10, at10);
         lk90 = saturate(lk90 + at90);
+        lk10 = saturate(lk10 + at10);
     }
 
-    float prev  = tex2Dlod(PercHighSamp, float4(0.5, 0.5, 0, 0)).r;
+    float2 prev = tex2Dlod(PercHighSamp, float4(0.5, 0.5, 0, 0)).rg;
     float alpha = saturate(frametime * 0.005);
-    return float4(lerp(prev, p90, alpha), 0.0, 0.0, 1.0);
+    return float4(lerp(prev.r, p90, alpha), lerp(prev.g, p10, alpha), 0.0, 1.0);
 }
 
 // ─── Pass 9 — R147: histogram mode (argmax bin center) ───────────────────
@@ -486,6 +566,12 @@ technique FrameAnalysis
         VertexShader = PostProcessVS;
         PixelShader  = MeanChromaPS;
         RenderTarget = MeanChromaTex;
+    }
+    pass ChromaExtra
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = ChromaExtraPS;
+        RenderTarget = ChromaExtraTex;
     }
     pass CDFWalkMode
     {
