@@ -22,9 +22,7 @@ sampler2D BackBuffer
     MagFilter = LINEAR;
 };
 
-// Shared with grade.fx NeutralIllumPS — one-frame delay, acceptable
-texture2D NeutralIllumTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
-sampler2D NeutralIllumSamp { Texture = NeutralIllumTex; MinFilter = POINT; MagFilter = POINT; };
+// NeutralIllum RGB: read from TexHwyTex data row 0 pixel 4 (grade writes each frame, one-frame delay).
 
 // Piecewise exact inverse of FilmCurveApply (grade.fx).
 // Shoulder and toe have closed-form inverses; midrange body_s (≤1.2%) is neglected.
@@ -94,7 +92,7 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     // cool hues (teal, cyan) less. Scale slope per hue before applying expansion.
     // R165: in warm-lit scenes, warm-hue saturation is the illuminant — not a tonemapper
     // artifact. Back off positive bias proportionally. One-frame delay acceptable.
-    float3 ni_rgb     = tex2Dlod(NeutralIllumSamp, float4(0.5, 0.5, 0, 0)).rgb;
+    float3 ni_rgb     = ReadTexHwyIlluminant().rgb;
     float  illum_warm = IllumWarm(ni_rgb);
     float  warm_scene  = saturate((illum_warm - 0.45) / 0.35);
     // R196-J: per-pixel illumination gate — high-luma pixels are illumination-dominated.

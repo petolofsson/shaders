@@ -7,13 +7,15 @@
 // Single vkBasalt effect — no inter-effect BackBuffer clears, no wasted Passthroughs.
 //
 // Passes:
-//   1. ComputeLowFreq       BackBuffer → CreativeLowFreqTex    1/8 res downsample
-//   2. ComputeZoneHistogram CreativeLowFreqTex → CreativeZoneHistTex  32-bin per-zone histogram
-//   3. BuildZoneLevels      CreativeZoneHistTex → CreativeZoneLevelsTex  CDF → zone medians
-//   4. SmoothZoneLevels     CreativeZoneLevelsTex → ZoneHistoryTex  temporal smoothing
-//   5. UpdateHistory        BackBuffer → ChromaHistoryTex  per-band Oklab chroma stats
+//   1. ComputeZoneHistogram TexHwyTex(spatial) → CreativeZoneHistTex  32-bin per-zone histogram
+//   2. BuildZoneLevels      CreativeZoneHistTex → CreativeZoneLevelsTex  CDF → zone medians
+//   3. SmoothZoneLevels     CreativeZoneLevelsTex → ZoneHistoryTex  temporal smoothing
+//   4. UpdateHistory        BackBuffer → ChromaHistoryTex  per-band Oklab chroma stats
+//   5. TexHwyWrite          ChromaHistoryTex → TexHwyTex data rows 1..4
 //   6. Passthrough          BackBuffer → BackBuffer  keeps BB non-black for vkBasalt
-// R152: WarmBias pass removed (dead — no consumer); 6 passes remain.
+//   7. HighwayWrite         → HighwayTex
+// R152: WarmBias pass removed (dead — no consumer).
+// ComputeLowFreqPS removed — TexHwyTex spatial lane (analysis_frame) replaces it.
 
 #include "creative_values.fx"
 
@@ -33,16 +35,6 @@ texture2D BackBufferTex : COLOR;
 sampler2D BackBuffer
 {
     Texture   = BackBufferTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = LINEAR;
-    MagFilter = LINEAR;
-};
-
-texture2D CreativeLowFreqTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 1; };  // R117: mip1/2 never used (grade.fx builds LowFreqMip1/2Tex explicitly)
-sampler2D CreativeLowFreqSamp
-{
-    Texture   = CreativeLowFreqTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = LINEAR;
@@ -89,18 +81,6 @@ sampler2D ChromaHistory
     MagFilter = POINT;
 };
 
-// Global scene percentiles — r=p25, g=p50, b=p75, a=P (written by analysis_frame)
-texture2D PercTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
-sampler2D PercSamp
-{
-    Texture   = PercTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
-
-
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
 // ─── Halton(2,3) sequence — procedural, avoids static const array SPIR-V issue ──
@@ -119,22 +99,9 @@ float Halton3(uint i)
     return r;
 }
 
-// ─── Pass 1 — 1/8 res downsample ───────────────────────────────────────────
-
-float4 ComputeLowFreqPS(float4 pos : SV_Position,
-                        float2 uv  : TEXCOORD0) : SV_Target
-{
-    float2 px = float2(1.0 / BUFFER_WIDTH, 1.0 / BUFFER_HEIGHT);
-    float3 rgb = 0.0;
-    rgb += tex2D(BackBuffer, uv + float2(-1.5, -1.5) * px).rgb;
-    rgb += tex2D(BackBuffer, uv + float2( 1.5, -1.5) * px).rgb;
-    rgb += tex2D(BackBuffer, uv + float2(-1.5,  1.5) * px).rgb;
-    rgb += tex2D(BackBuffer, uv + float2( 1.5,  1.5) * px).rgb;
-    rgb *= 0.25;
-    return float4(rgb, Luma(rgb));
-}
-
-// ─── Pass 2 — per-zone 32-bin luma histogram ───────────────────────────────
+// ─── Pass 1 — per-zone 32-bin luma histogram ───────────────────────────────
+// Reads from TexHwyTex spatial lane (1/8-res, written by analysis_frame).
+// suv.y scaled by TEX_HWY_SPATIAL_H/TEX_HWY_TOTAL_H to stay inside spatial lane rows.
 
 float4 ComputeZoneHistogramPS(float4 pos : SV_Position,
                               float2 uv  : TEXCOORD0) : SV_Target
@@ -148,14 +115,15 @@ float4 ComputeZoneHistogramPS(float4 pos : SV_Position,
     float v_lo      = float(zone_row) / 4.0;
     float bucket_lo = float(b)     / 32.0;
     float bucket_hi = float(b + 1) / 32.0;
+    float scale_y   = float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
 
     float count = 0.0;
     [loop] for (int sy = 0; sy < 10; sy++)
     [loop] for (int sx = 0; sx < 10; sx++)
     {
         float2 suv  = float2(u_lo + (sx + 0.5) / 10.0 * 0.25,
-                             v_lo + (sy + 0.5) / 10.0 * 0.25);
-        float  luma = tex2Dlod(CreativeLowFreqSamp, float4(suv, 0, 0)).a;
+                            (v_lo + (sy + 0.5) / 10.0 * 0.25) * scale_y);
+        float  luma = tex2Dlod(TexHwySamp, float4(suv, 0, 0)).a;
         count += (luma >= bucket_lo && luma < bucket_hi) ? 1.0 : 0.0;
     }
 
@@ -249,7 +217,7 @@ float4 ComputeZoneStats()
 float4 ComputeSlowKey()
 {
     float zone_log_key = ComputeZoneStats().r;
-    float prev_slow    = tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
+    float prev_slow    = ReadTexHwyChroma(0, 7).r;  // ChromaHistory row 0 col 7, previous frame
     prev_slow = lerp(zone_log_key, prev_slow, step(0.001, prev_slow));
     // R200: dual-rate EMA — slow cortical T_half=20s (K=0.0000346), fast scene-cut T_half=67ms (K=0.01034).
     // Rinner & Gegenfurtner 2000; Ji et al. 2023. Framerate-independent via FRAME_TIME.
@@ -286,7 +254,7 @@ float4 UpdateChromaKalman(int band_idx)
     // State freezes; P still inflates via Q_MIN so re-entry adapts immediately.
     float obs_confidence = saturate(sum_w * 0.5);
 
-    float4 prev    = tex2D(ChromaHistory, float2((band_idx + 0.5) / 8.0, 0.5 / 4.0));
+    float4 prev    = ReadTexHwyChroma(0, band_idx);  // ChromaHistory row 0, previous frame
     // R39: VFF Kalman — chroma mean (.r), P in .a, cold-start when uninitialized
     float P_prev   = (prev.a < 0.001) ? 1.0 : prev.a;
     float e_chroma = mean - prev.r;
@@ -321,6 +289,25 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
 }
 
 
+// ─── Pass 5 — TexHwy write (ChromaHistory → data rows 1..4) ───────────────
+// Packs ChromaHistoryTex (8×4, written by UpdateHistory) into TexHwyTex data rows 1..4.
+// Spatial lane and data row 0 pass through from analysis_frame.
+
+float4 TexHwyWritePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    int row = int(pos.y);
+    int col = int(pos.x);
+    if (row >= TEX_HWY_SPATIAL_H) {
+        int dr = row - TEX_HWY_SPATIAL_H;
+        if (dr >= 1 && dr <= 4 && col < 8) {
+            float2 ch_uv = float2((float(col) + 0.5) / 8.0,
+                                  (float(dr - 1) + 0.5) / 4.0);
+            return tex2Dlod(ChromaHistory, float4(ch_uv, 0, 0));
+        }
+    }
+    return tex2Dlod(TexHwySamp, float4(uv, 0, 0));
+}
+
 // ─── Pass 8 — Passthrough ──────────────────────────────────────────────────
 
 float4 PassthroughPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
@@ -347,12 +334,6 @@ float4 HighwayWritePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
 
 technique Corrective
 {
-    pass ComputeLowFreq
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = ComputeLowFreqPS;
-        RenderTarget = CreativeLowFreqTex;
-    }
     pass ComputeZoneHistogram
     {
         VertexShader = PostProcessVS;
@@ -376,6 +357,12 @@ technique Corrective
         VertexShader = PostProcessVS;
         PixelShader  = UpdateHistoryPS;
         RenderTarget = ChromaHistoryTex;
+    }
+    pass TexHwyWrite
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = TexHwyWritePS;
+        RenderTarget = TexHwyTex;
     }
     pass Passthrough
     {

@@ -1,6 +1,62 @@
-// common.fxh — Shared vertex shader and color space utilities
+// common.fxh — Shared vertex shader, color space utilities, and texture highway
 // Included by all effect files in this pipeline.
 // Edit here; do not copy these functions into individual effect files.
+
+// ─── Texture Highway ────────────────────────────────────────────────────────
+// TexHwyTex (BUFFER_WIDTH/8 × BUFFER_HEIGHT/8+TEX_HWY_ROWS, RGBA16F):
+//   Rows 0..BUFFER_HEIGHT/8-1  : spatial lane  r=R g=G b=B a=Luma  written by analysis_frame
+//   Data row +0 pixel 0        : p25/p50/p75/Kalman_P               written by analysis_frame
+//   Data row +0 pixel 1        : p90/p10/p75_C/kappa                written by analysis_frame
+//   Data row +0 pixel 2        : median_C/mean_a/mean_b/achrom_frac written by analysis_frame
+//   Data row +0 pixel 3        : scene_cut/p50_prev/mode/entropy    written by analysis_frame
+//   Data row +0 pixel 4        : NeutralIllum RGB (one-frame delay) written by grade
+//   Data rows +1..+4 cols 0..7 : ChromaHistoryTex 8×4               written by corrective
+//
+// Pass-through: each effect's TexHwyWritePS copies unowned pixels from TexHwyTex.
+// Same mechanism as HighwayWritePS / HighwayTex in highway.fxh.
+
+#define TEX_HWY_ROWS      5
+#define TEX_HWY_SPATIAL_H (BUFFER_HEIGHT / 8)
+#define TEX_HWY_TOTAL_H   (BUFFER_HEIGHT / 8 + TEX_HWY_ROWS)
+
+texture2D TexHwyTex
+{
+    Width     = BUFFER_WIDTH / 8;
+    Height    = BUFFER_HEIGHT / 8 + TEX_HWY_ROWS;
+    Format    = RGBA16F;
+    MipLevels = 1;
+};
+sampler2D TexHwySamp
+{
+    Texture   = TexHwyTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = LINEAR;
+    MagFilter = LINEAR;
+};
+
+// Read spatial lane luma at full-screen UV uv∈[0,1].
+float ZoneLuma(float2 uv)
+{
+    float sy = uv.y * float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
+    return tex2Dlod(TexHwySamp, float4(uv.x, sy, 0, 0)).a;
+}
+
+// Read data row pixel. dr = row offset from spatial lane base (0..TEX_HWY_ROWS-1).
+float4 ReadTexHwyData(int dr, int col)
+{
+    float u = (float(col) + 0.5) * (8.0 / float(BUFFER_WIDTH));
+    float v = (float(TEX_HWY_SPATIAL_H + dr) + 0.5) / float(TEX_HWY_TOTAL_H);
+    return tex2Dlod(TexHwySamp, float4(u, v, 0, 0));
+}
+
+float4 ReadTexHwyPerc()       { return ReadTexHwyData(0, 0); }  // p25/p50/p75/P
+float4 ReadTexHwyPercHigh()   { return ReadTexHwyData(0, 1); }  // p90/p10/p75_C/kappa
+float4 ReadTexHwyMeanChroma() { return ReadTexHwyData(0, 2); }  // median_C/mean_a/mean_b/achrom_frac
+float4 ReadTexHwySceneCut()   { return ReadTexHwyData(0, 3); }  // scene_cut/p50_prev/mode/entropy
+float4 ReadTexHwyIlluminant() { return ReadTexHwyData(0, 4); }  // NeutralIllum RGB (grade, prev frame)
+// ChromaHistory row r (0..3), col c (0..7) → data rows 1..4
+float4 ReadTexHwyChroma(int r, int c) { return ReadTexHwyData(1 + r, c); }
 
 void PostProcessVS(in  uint   id  : SV_VertexID,
                    out float4 pos : SV_Position,

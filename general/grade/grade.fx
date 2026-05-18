@@ -32,16 +32,9 @@ sampler2D BackBuffer
     MagFilter = LINEAR;
 };
 
-// Scene percentiles — r=p25, g=p50, b=p75, a=iqr
-texture2D PercTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
-sampler2D PercSamp
-{
-    Texture   = PercTex;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
+// Scene percentiles read from TexHwyTex via ReadTexHwyPerc() (common.fxh).
 
-// Zone medians (from creative_render_chain SmoothZoneLevels)
+// Zone medians (from corrective.fx SmoothZoneLevels)
 texture2D ZoneHistoryTex { Width = 4; Height = 4; Format = RGBA16F; MipLevels = 1; };
 sampler2D ZoneHistorySamp
 {
@@ -63,27 +56,9 @@ sampler2D CreativeZoneHistSamp
     MagFilter = POINT;
 };
 
-// 1/8-res low-freq base (from creative_render_chain ComputeLowFreq, luma in .a)
-texture2D CreativeLowFreqTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 1; };
-sampler2D CreativeLowFreqSamp
-{
-    Texture   = CreativeLowFreqTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = LINEAR;
-    MagFilter = LINEAR;
-};
-
-// Per-band chroma stats (from olofssonian_chroma_lift UpdateHistory)
-texture2D ChromaHistoryTex { Width = 8; Height = 4; Format = RGBA16F; MipLevels = 1; };
-sampler2D ChromaHistory
-{
-    Texture   = ChromaHistoryTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
+// 1/8-res low-freq base: TexHwyTex spatial lane (written by analysis_frame, luma in .a).
+// Use TexHwySamp (declared in common.fxh) with UV V scaled by TEX_HWY_SPATIAL_H/TEX_HWY_TOTAL_H.
+// ChromaHistory reads via ReadTexHwyChroma() (common.fxh).
 
 // 1/16-res LF scale 1 — populated by LFDownscale1PS within this technique (vkBasalt cross-technique mips are zero)
 texture2D LowFreqMip1Tex { Width = BUFFER_WIDTH / 16; Height = BUFFER_HEIGHT / 16; Format = RGBA16F; MipLevels = 1; };
@@ -344,9 +319,9 @@ SceneCtx BuildSceneCtx()
     ctx.illum_warm    = IllumWarm(illum_rgb);
     ctx.median_C           = clamp(ReadHWY(HWY_MEDIAN_C), 0.0, 0.30);
     ctx.cfilm_floor        = BLACKS;
-    ctx.perc               = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
+    ctx.perc               = ReadTexHwyPerc();
     ctx.scene_cut          = ReadHWY(HWY_SCENE_CUT);
-    float4 zstats          = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0));
+    float4 zstats          = ReadTexHwyChroma(0, 6);
     ctx.zone_log_key       = zstats.r;
     ctx.zone_std           = zstats.g;
     ctx.ss_08_25           = smoothstep(0.06, 0.16, ctx.zone_std);
@@ -380,7 +355,7 @@ SceneCtx BuildSceneCtx()
                               * (1.0 - _std_suppress);
     // R162: specular contrast — p90−p50 gap measures isolated bright sources vs scene median.
     ctx.specular_contrast     = saturate((ReadHWY(HWY_P90) - ctx.perc.g) / 0.40);
-    ctx.slow_key           = max(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0.001);
+    ctx.slow_key           = max(ReadTexHwyChroma(0, 7).r, 0.001);
     ctx.key_L              = clamp(exp2(log2(ctx.slow_key) * (1.0 / 3.0)), 0.30, 0.80);
     // R176: median_C-driven chroma lift — low-chroma scenes get +25% boost, vivid scenes
     // back off 15%. Orthogonal to zone_log_key (luma). Zero new highway reads.
@@ -791,12 +766,16 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
 float4 LFDownscale1PS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    // 2× box filter: 4 taps at ±half-texel in mip0 space (mip0 texel = 8/BUFFER px)
-    float2 s = float2(4.0 / BUFFER_WIDTH, 4.0 / BUFFER_HEIGHT);
-    return (tex2D(CreativeLowFreqSamp, uv + float2( s.x,  s.y))
-          + tex2D(CreativeLowFreqSamp, uv + float2(-s.x,  s.y))
-          + tex2D(CreativeLowFreqSamp, uv + float2( s.x, -s.y))
-          + tex2D(CreativeLowFreqSamp, uv + float2(-s.x, -s.y))) * 0.25;
+    // 2× box filter from TexHwyTex spatial lane → LowFreqMip1Tex (1/16-res).
+    // V scaled to stay inside spatial lane; half-texel offset = 0.5/TEX_HWY_TOTAL_H in V.
+    float sy = uv.y * float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
+    float sx = uv.x;
+    float ox = 4.0 / float(BUFFER_WIDTH);
+    float oy = 0.5 / float(TEX_HWY_TOTAL_H);
+    return (tex2D(TexHwySamp, float2(sx + ox, sy + oy))
+          + tex2D(TexHwySamp, float2(sx - ox, sy + oy))
+          + tex2D(TexHwySamp, float2(sx + ox, sy - oy))
+          + tex2D(TexHwySamp, float2(sx - ox, sy - oy))) * 0.25;
 }
 
 float4 LFDownscale2PS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
@@ -816,13 +795,15 @@ float4 LFDownscale2PS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
 // Reads CreativeLowFreqSamp (pre-corrective 1/8-res RGBA16F). Writes GuidedCoeffTex (RG16F).
 float2 GuidedCoeffPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    float px = 8.0 / BUFFER_WIDTH;
-    float py = 8.0 / BUFFER_HEIGHT;
+    // GuidedCoeffTex is BUFFER_WIDTH/8 × BUFFER_HEIGHT/8; uv∈[0,1] maps full spatial lane.
+    float px  = 8.0 / float(BUFFER_WIDTH);
+    float py  = 1.0 / float(TEX_HWY_TOTAL_H);   // one spatial-lane texel in TexHwyTex V
+    float sy  = uv.y * float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
     float sum_I = 0.0, sum_II = 0.0;
     [unroll] for (int dy = -GF_R; dy <= GF_R; dy++)
     [unroll] for (int dx = -GF_R; dx <= GF_R; dx++)
     {
-        float I = log2(max(Luma(tex2D(CreativeLowFreqSamp, uv + float2(dx * px, dy * py)).rgb), 1e-3));
+        float I = log2(max(Luma(tex2D(TexHwySamp, float2(uv.x + dx * px, sy + dy * py)).rgb), 1e-3));
         sum_I  += I;
         sum_II += I * I;
     }
@@ -851,7 +832,7 @@ float GuidedBasePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     }
     float mean_a = sum_a / GF_N;
     float mean_b = sum_b / GF_N;
-    float I_c    = log2(max(Luma(tex2D(CreativeLowFreqSamp, uv).rgb), 1e-3));
+    float I_c    = log2(max(Luma(tex2D(TexHwySamp, float2(uv.x, uv.y * float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H))).rgb), 1e-3));
     return mean_a * I_c + mean_b;
 }
 
@@ -987,10 +968,10 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
     float3 diff_blur = tex2Dlod(DiffusionSamp, float4(uv, 0, 0)).rgb;
 
-    float4 perc           = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));
+    float4 perc           = ReadTexHwyPerc();
     float  iqr            = perc.b - perc.r;
     float  adapt_str      = eff_diff * 0.22 * lerp(0.8, 1.2, saturate(iqr / 0.5));
-    float  zone_log_key   = tex2Dlod(ChromaHistory, float4(6.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
+    float  zone_log_key   = ReadTexHwyChroma(0, 6).r;
     float  diff_key_scale = lerp(1.20, 0.85, smoothstep(0.05, 0.25, zone_log_key));
     float  diff_ap_scale  = lerp(1.10, 0.90, saturate(EXPOSURE / 0.80));
     float  diff_bowley    = (perc.b + perc.r - 2.0 * perc.g) / max(perc.b - perc.r, 0.01);
@@ -1022,11 +1003,12 @@ float4 NeutralIllumPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     float3 grey_acc    = 0.0;
     float  total_w     = 0.0;
 
+    float scale_y = float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
     [unroll] for (int iy = 0; iy < 9; iy++)
     [unroll] for (int ix = 0; ix < 16; ix++)
     {
-        float2 suv = float2((ix + 0.5) / 16.0, (iy + 0.5) / 9.0);
-        float3 rgb = tex2Dlod(CreativeLowFreqSamp, float4(suv, 0, 0)).rgb;
+        float2 suv = float2((ix + 0.5) / 16.0, (iy + 0.5) / 9.0 * scale_y);
+        float3 rgb = tex2Dlod(TexHwySamp, float4(suv, 0, 0)).rgb;
         float3 lab = RGBtoOklab(rgb);
         float  C   = length(lab.yz);
         float  w   = 1.0 - smoothstep(0.04, 0.10, C);
@@ -1039,6 +1021,20 @@ float4 NeutralIllumPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     float3 neutral_mean = neutral_acc / max(total_w, 0.001);
     float  conf         = saturate(total_w / 8.0);
     return float4(lerp(grey_world, neutral_mean, conf), 1.0);
+}
+
+// ─── TexHwy write — NeutralIllum → data row 0 pixel 4 ──────────────────────
+// NeutralIllumTex is written by NeutralIllumPS (current frame) and read by ColorTransformPS
+// (current frame via NeutralIllumSamp). Here we also publish it into TexHwyTex so that
+// inverse_grade.fx can read it on the NEXT frame (ReadTexHwyIlluminant = one-frame delay).
+
+float4 TexHwyWritePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    int row = int(pos.y);
+    int col = int(pos.x);
+    if (row >= TEX_HWY_SPATIAL_H && (row - TEX_HWY_SPATIAL_H) == 0 && col == 4)
+        return tex2Dlod(NeutralIllumSamp, float4(0.5, 0.5, 0, 0));
+    return tex2Dlod(TexHwySamp, float4(uv, 0, 0));
 }
 
 // ─── Technique ─────────────────────────────────────────────────────────────
@@ -1102,5 +1098,11 @@ technique OlofssonianColorGrade
     {
         VertexShader = PostProcessVS;
         PixelShader  = DiffusionPS;
+    }
+    pass TexHwyWrite
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = TexHwyWritePS;
+        RenderTarget = TexHwyTex;
     }
 }

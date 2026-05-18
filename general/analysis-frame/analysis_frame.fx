@@ -4,6 +4,8 @@
 //
 // Builds per-frame luminance histogram and scene statistics.
 // All samples are in linear light — vkBasalt linearizes the sRGB swapchain on read.
+// TexHwyTex spatial lane (1/8-res) replaces DownsampleTex (fixed 32×18).
+// Histogram still gathers 32×18 = 576 samples from the spatial lane via bilinear reads.
 
 #define DS_W          32
 #define DS_H          18
@@ -22,16 +24,6 @@ texture2D BackBufferTex : COLOR;
 sampler2D BackBuffer
 {
     Texture   = BackBufferTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = LINEAR;
-    MagFilter = LINEAR;
-};
-
-texture2D DownsampleTex { Width = DS_W; Height = DS_H; Format = RGBA16F; MipLevels = 1; };
-sampler2D Downsample
-{
-    Texture   = DownsampleTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = LINEAR;
@@ -139,17 +131,35 @@ sampler2D EntropySamp
     MagFilter = POINT;
 };
 
-// ─── Pass 1 — Downsample ───────────────────────────────────────────────────
+// ─── Pass 1 — TexHwyWrite (spatial lane) ───────────────────────────────────
+// Writes pre-correction scene RGB+Luma into TexHwyTex spatial lane (rows 0..BUFFER_HEIGHT/8-1).
+// 4-tap box filter at ±1.5 px offsets — same kernel as former ComputeLowFreqPS.
+// Data rows pass through from TexHwyTex previous state (grade's NeutralIllum survives).
 
-float4 DownsamplePS(float4 pos : SV_Position,
-                    float2 uv  : TEXCOORD0) : SV_Target
+float4 TexHwyWriteSpatialPS(float4 pos : SV_Position,
+                             float2 uv  : TEXCOORD0) : SV_Target
 {
-    return tex2D(BackBuffer, uv);
+    int row = int(pos.y);
+    if (row >= TEX_HWY_SPATIAL_H)
+        return tex2Dlod(TexHwySamp, float4(uv, 0, 0));  // data rows: pass-through
+    // Spatial lane: 4-tap box downsample from BackBuffer.
+    // uv.y maps [0, SPATIAL_H/TOTAL_H) when row < SPATIAL_H — rescale to full [0,1] for BB.
+    float bb_y = uv.y * float(TEX_HWY_TOTAL_H) / float(TEX_HWY_SPATIAL_H);
+    float2 bb_uv = float2(uv.x, bb_y);
+    float2 px = float2(1.0 / BUFFER_WIDTH, 1.0 / BUFFER_HEIGHT);
+    float3 rgb = 0.0;
+    rgb += tex2D(BackBuffer, bb_uv + float2(-1.5, -1.5) * px).rgb;
+    rgb += tex2D(BackBuffer, bb_uv + float2( 1.5, -1.5) * px).rgb;
+    rgb += tex2D(BackBuffer, bb_uv + float2(-1.5,  1.5) * px).rgb;
+    rgb += tex2D(BackBuffer, bb_uv + float2( 1.5,  1.5) * px).rgb;
+    rgb *= 0.25;
+    return float4(rgb, Luma(rgb));
 }
 
 // ─── Pass 2 — Luminance histogram gather ───────────────────────────────────
-// Each output pixel (bucket b) counts linearized-luma samples in [b/64, (b+1)/64).
-// Normalized by total samples so the histogram sums to 1.0.
+// Gathers DS_W×DS_H = 576 bilinear samples from TexHwyTex spatial lane.
+// Resolution-independent: samples are spaced evenly across the spatial lane
+// regardless of BUFFER_WIDTH/HEIGHT (unlike the old fixed 32×18 DownsampleTex).
 
 float4 LumHistGatherPS(float4 pos : SV_Position,
                        float2 uv  : TEXCOORD0) : SV_Target
@@ -157,6 +167,7 @@ float4 LumHistGatherPS(float4 pos : SV_Position,
     int   b         = int(pos.x);
     float bucket_lo = float(b)     / float(HIST_BINS);
     float bucket_hi = float(b + 1) / float(HIST_BINS);
+    float scale_y   = float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
 
     float count = 0.0;
     [loop]
@@ -165,9 +176,9 @@ float4 LumHistGatherPS(float4 pos : SV_Position,
         [loop]
         for (int x = 0; x < DS_W; x++)
         {
-            float2 s_uv = float2((x + 0.5) / float(DS_W), (y + 0.5) / float(DS_H));
-            float3 c    = tex2D(Downsample, s_uv).rgb;  // already linear — vkBasalt linearizes on read
-            float  luma = Luma(c);
+            float2 s_uv = float2((x + 0.5) / float(DS_W),
+                                 (y + 0.5) / float(DS_H) * scale_y);
+            float  luma = tex2Dlod(TexHwySamp, float4(s_uv, 0, 0)).a;
             count += (luma >= bucket_lo && luma < bucket_hi) ? 1.0 : 0.0;
         }
     }
@@ -181,6 +192,38 @@ float4 PassthroughPS(float4 pos : SV_Position,
                      float2 uv  : TEXCOORD0) : SV_Target
 {
     return tex2D(BackBuffer, uv);
+}
+
+// ─── Pass 10b — TexHwy data rows write ─────────────────────────────────────
+// Packs private analysis textures into TexHwyTex data rows.
+// Spatial lane (row < BUFFER_HEIGHT/8): pass-through from TexHwyWriteSpatial.
+// Data row 0: analysis stats (5 pixels). Data rows 1..4: pass-through (corrective writes).
+
+float4 TexHwyWriteDataPS(float4 pos : SV_Position,
+                          float2 uv  : TEXCOORD0) : SV_Target
+{
+    int row = int(pos.y);
+    int col = int(pos.x);
+    if (row < TEX_HWY_SPATIAL_H)
+        return tex2Dlod(TexHwySamp, float4(uv, 0, 0));  // spatial lane: pass-through
+    int dr = row - TEX_HWY_SPATIAL_H;
+    if (dr == 0) {
+        if (col == 0) return tex2Dlod(PercSamp,         float4(0.5, 0.5, 0, 0));
+        if (col == 1) {
+            float2 ph = tex2Dlod(PercHighSamp,    float4(0.5, 0.5, 0, 0)).rg;
+            float2 ce = tex2Dlod(ChromaExtraSamp, float4(0.5, 0.5, 0, 0)).rg;
+            return float4(ph.r, ph.g, ce.r, ce.g);
+        }
+        if (col == 2) return tex2Dlod(MeanChromaSamp,   float4(0.5, 0.5, 0, 0));
+        if (col == 3) {
+            float sc   = tex2Dlod(SceneCutSamp,  float4(0.5, 0.5, 0, 0)).r;
+            float p50p = tex2Dlod(SceneCutSamp,  float4(0.5, 0.5, 0, 0)).g;
+            float mode = tex2Dlod(ModeSamp,      float4(0.5, 0.5, 0, 0)).r;
+            float ent  = tex2Dlod(EntropySamp,   float4(0.5, 0.5, 0, 0)).r;
+            return float4(sc, p50p, mode, ent);
+        }
+    }
+    return tex2Dlod(TexHwySamp, float4(uv, 0, 0));  // all other pixels: pass-through
 }
 
 // ─── Pass 10 — Highway write (HighwayTex, 256×1) ──────────────────────────
@@ -356,14 +399,16 @@ float4 MeanChromaPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
     float sum_a = 0.0, sum_b = 0.0;
     float count = 0.0, achrom_count = 0.0;
+    float scale_y = float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
     [loop]
     for (int y = 0; y < DS_H; y++)
     {
         [loop]
         for (int x = 0; x < DS_W; x++)
         {
-            float2 s_uv = float2((x + 0.5) / float(DS_W), (y + 0.5) / float(DS_H));
-            float3 lab  = RGBtoOklab(tex2D(Downsample, s_uv).rgb);
+            float2 s_uv = float2((x + 0.5) / float(DS_W),
+                                 (y + 0.5) / float(DS_H) * scale_y);
+            float3 lab  = RGBtoOklab(tex2Dlod(TexHwySamp, float4(s_uv, 0, 0)).rgb);
             float  C    = length(lab.yz);
             float  in_b = step(0.05, C);
             int    bin  = clamp(int(C / CHROMA_C_MAX * CHROMA_BINS), 0, CHROMA_BINS - 1);
@@ -409,14 +454,16 @@ float4 ChromaExtraPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
     [unroll] for (int i = 0; i < CHROMA_BINS; i++) hist[i] = 0.0;
 
     float count = 0.0;
+    float scale_y = float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
     [loop]
     for (int y = 0; y < DS_H; y++)
     {
         [loop]
         for (int x = 0; x < DS_W; x++)
         {
-            float2 s_uv = float2((x + 0.5) / float(DS_W), (y + 0.5) / float(DS_H));
-            float3 lab  = RGBtoOklab(tex2D(Downsample, s_uv).rgb);
+            float2 s_uv = float2((x + 0.5) / float(DS_W),
+                                 (y + 0.5) / float(DS_H) * scale_y);
+            float3 lab  = RGBtoOklab(tex2Dlod(TexHwySamp, float4(s_uv, 0, 0)).rgb);
             float  C    = length(lab.yz);
             float  in_b = step(0.05, C);
             int    bin  = clamp(int(C / CHROMA_C_MAX * CHROMA_BINS), 0, CHROMA_BINS - 1);
@@ -514,11 +561,11 @@ float4 CDFWalkModePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
 
 technique FrameAnalysis
 {
-    pass Downsample
+    pass TexHwyWriteSpatial
     {
         VertexShader = PostProcessVS;
-        PixelShader  = DownsamplePS;
-        RenderTarget = DownsampleTex;
+        PixelShader  = TexHwyWriteSpatialPS;
+        RenderTarget = TexHwyTex;
     }
     pass LumHistGather
     {
@@ -578,6 +625,12 @@ technique FrameAnalysis
         VertexShader = PostProcessVS;
         PixelShader  = CDFWalkModePS;
         RenderTarget = ModeTex;
+    }
+    pass TexHwyWriteData
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = TexHwyWriteDataPS;
+        RenderTarget = TexHwyTex;
     }
     pass HighwayWrite
     {
