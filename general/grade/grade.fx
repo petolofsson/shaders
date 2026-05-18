@@ -15,7 +15,6 @@
 #include "creative_values.fx"
 
 uniform float FRAME_TIMER < source = "timer"; >;        // ms since app start
-uniform int   FRAME_COUNT < source = "framecount"; >;  // increments every rendered frame
 
 // ─── Chroma lift constants ─────────────────────────────────────────────────
 #define GREEN_HUE_COOL  (4.0 / 360.0)
@@ -227,14 +226,15 @@ float3 ApplyMaskingCoupler(float3 lin, float print_stock)
 
 float3 ApplyBleachBypass(float3 lin, float bleach_bypass)
 {
-    float3 lab_bb   = RGBtoOklab(lin);
-    float  bb_dark  = 1.0 - smoothstep(0.0, 0.65, lab_bb.x);
-    float  bb_desat = bleach_bypass * lerp(0.05, 0.72, bb_dark);
-    lab_bb.y *= (1.0 - bb_desat);
-    lab_bb.z *= (1.0 - bb_desat);
-    float  bb_mid  = lab_bb.x * (1.0 - lab_bb.x) * 4.0;
-    lab_bb.x = saturate(lab_bb.x - bleach_bypass * 0.055 * bb_mid);
-    return saturate(OklabToRGB(lab_bb));
+    // Retained silver is spectrally neutral — luminance-domain effect, modeled in linear sRGB.
+    // Shadow emphasis: desaturation strongest in shadows, fades to zero at luma=0.65.
+    float  luma    = Luma(lin);
+    float  bb_dark = 1.0 - smoothstep(0.0, 0.65, luma);
+    float  desat   = bleach_bypass * lerp(0.05, 0.72, bb_dark);
+    float3 desatd  = lerp(lin, luma.xxx, desat);
+    // Silver contrast: neutral-density midtone darkening (bell peaks at luma=0.5).
+    float  bb_mid  = luma * (1.0 - luma) * 4.0;
+    return saturate(desatd * (1.0 - bleach_bypass * 0.055 * bb_mid));
 }
 
 float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print_stock)
@@ -276,14 +276,18 @@ float3 Apply3WayCC(float3 lin,
                    float mid_temp,    float mid_tint,
                    float hl_temp,     float hl_tint)
 {
-    float r19_g   = sqrt(dot(lin, float3(0.2126, 0.7152, 0.0722)));
-    float r19_sh  = saturate(1.0 - r19_g / 0.35);
-    float r19_hl  = saturate((r19_g - 0.65) / 0.35);
-    float r19_mid = 1.0 - r19_sh - r19_hl;
-    float3 sh_d  = float3(+shadow_temp + shadow_tint * 0.5, -shadow_tint, -shadow_temp + shadow_tint * 0.5) * 0.08;
-    float3 mid_d = float3(+mid_temp    + mid_tint    * 0.5, -mid_tint,    -mid_temp    + mid_tint    * 0.5) * 0.08;
-    float3 hl_d  = float3(+hl_temp     + hl_tint     * 0.5, -hl_tint,     -hl_temp     + hl_tint     * 0.5) * 0.08;
-    return saturate(lin + sh_d * r19_sh + mid_d * r19_mid + hl_d * r19_hl);
+    // Oklab a/b shift: temp → b-axis (warm=positive, cool=negative),
+    // tint → a-axis (magenta=positive, green=negative). Orthogonal by construction.
+    // Zone gates on Oklab L — consistent with shadow cast and other ApplyChroma operations.
+    // Scale 0.06: SHADOW/MID/HIGHLIGHT TEMP/TINT require recalibration after this change.
+    float3 lab  = RGBtoOklab(saturate(lin));
+    float  L    = lab.x;
+    float  sh_w = 1.0 - smoothstep(0.35, 0.55, L);
+    float  hl_w = smoothstep(0.70, 0.90, L);
+    float  mid_w = max(0.0, 1.0 - sh_w - hl_w);
+    lab.y += (shadow_tint * sh_w + mid_tint * mid_w + hl_tint * hl_w) * 0.06;
+    lab.z += (shadow_temp * sh_w + mid_temp * mid_w + hl_temp * hl_w) * 0.06;
+    return saturate(OklabToRGB(lab));
 }
 
 float3 ApplyAmbientTint(float3 lab_t, float3 lf_mip2, float r65_sw, float scene_cut)
@@ -737,10 +741,11 @@ float3 ApplyLook(float3 lin, SceneCtx ctx)
     float3 out_lin = lin;
     // ── R51: print stock + R110: masking coupler + R130: dye matrix + bleach ──
     // Fires after all tonal and chroma work — LMT position per ACES convention.
+    // Physical order: bleach bypass is a development stage (precedes printing).
+    out_lin = ApplyBleachBypass(out_lin, BLEACH_BYPASS);
     out_lin = ApplyPrintStock(out_lin, ctx.fc_knee_toe, ctx.fc_knee, PRINT_STOCK);
     out_lin = ApplyMaskingCoupler(out_lin, PRINT_STOCK);
     out_lin = ApplyDyeMatrix(out_lin);
-    out_lin = ApplyBleachBypass(out_lin, BLEACH_BYPASS);
     // R192: printer lights — per-channel contact-printer exposure after all emulsion work.
     // 0 = neutral, ±12 = ±1 stop. Mirrors film lab RGB printer head notation.
     out_lin *= exp2(float3(PRINTER_R, PRINTER_G, PRINTER_B) / 12.0);
@@ -989,7 +994,7 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
     // R197: golden-ratio temporal offset — each frame lands in the largest gap left by
     // previous frames, giving quasi-random temporal coverage with no visible pattern.
-    float dither_phase = frac(FRAME_COUNT * 0.61803398875);
+    float dither_phase = frac(float(uint(FRAME_TIMER / 41.667)) * 0.61803398875);
     float dither = frac(52.9829189 * frac(dot(pos.xy, float2(0.06711056, 0.00583715))) + dither_phase) - 0.5;
     result += dither * (1.0 / 255.0);
 

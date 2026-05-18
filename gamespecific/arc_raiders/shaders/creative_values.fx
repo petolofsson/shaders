@@ -64,7 +64,7 @@
 // Amplifies micro-contrast within the hue band. 0 = off. 0.10–0.30 = subtle. 0.50 = strong.
 #define LUMA_CONTRAST_RED    0.0
 #define LUMA_CONTRAST_YELLOW 0.0
-#define LUMA_CONTRAST_GREEN  1.5
+#define LUMA_CONTRAST_GREEN  0.0
 #define LUMA_CONTRAST_CYAN   0.0
 #define LUMA_CONTRAST_BLUE   0.0
 #define LUMA_CONTRAST_MAG    0.0
@@ -74,7 +74,7 @@
 
 // Scales the auto shadow lift. 0 = off. 1.0 = full designed lift.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
-#define SHADOWS  0.55
+#define SHADOWS  0.0
 
 // Soft luma push/pull in the highlight range (L > 0.55). +1.0 brightens highlights,
 // -1.0 recovers blown highlights. Range ±1.0. Default 0.0 = passthrough.

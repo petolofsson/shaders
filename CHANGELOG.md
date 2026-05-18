@@ -2,6 +2,16 @@
 
 > **Purpose (for AI context):** Chronological record of code changes, one compacted entry per day. Keep only the last 3–4 days. Older history lives in git log. Do not duplicate entries from HANDOFF.md or PLAN.md here.
 
+## 2026-05-18
+
+- **3-way CC → Oklab** (`grade.fx`) — `Apply3WayCC` rewritten in Oklab a/b space. temp → b-axis (warm=positive, cool=negative); tint → a-axis (magenta=positive, green=negative). Axes are orthogonal — temp and tint no longer cross-contaminate. Zone gates moved from `sqrt(BT.709 luma)` to Oklab L (sh: 0.35→0.55, hl: 0.70→0.90), consistent with shadow cast and other ApplyChroma gates. Scale 0.06 (was 0.08 additive sRGB vector). **SHADOW/MID/HIGHLIGHT TEMP/TINT require recalibration on both profiles.**
+
+- **Bleach bypass: fix order + fix space** (`grade.fx`) — Two physical-model fixes. (1) `ApplyBleachBypass` moved to first in `ApplyLook`, before `ApplyPrintStock` — development stage precedes printing stage (bleach bypass is film development, print stock is contact printing). (2) Rewritten in linear sRGB luma desaturation: `lerp(lin, luma.xxx, desat)` — retained silver is spectrally neutral (luminance-domain), not a perceptual chroma effect. Bell midtone darkening also switches to linear luma (peaks at luma=0.5 vs. old Oklab L=0.5 which was luma≈0.125). **BLEACH_BYPASS requires recalibration.**
+
+- **Temporal dither: FRAME_COUNT → FRAME_TIMER** (`grade.fx`) — `source = "framecount"` returns 0 in vkBasalt (same issue as R158 grain fix). `dither_phase` was always 0 — IGN temporal rotation was inactive. Now uses `uint(FRAME_TIMER / 41.667)` matching the grain slot counter; rotates at 24fps. No calibration impact.
+
+- **Dead code removal** (`common.fxh`) — `RGBtoHSV` removed; unused since Oklab adoption, never called in the chain.
+
 ## 2026-05-17
 
 - **INVERSE_LUMA: Mertens bell weight** (`grade.fx`, `creative_values.fx`) — Replaced flat proportional ACES luma inverse with per-pixel bell-weighted correction: `exp(-0.5*((col_luma−mu)/0.18)²)`, mu=0.05. Peaks at near-black zone; glow penumbra (0.40+) barely touched — diffusion reach preserved. Applied proportionally in Oklab (L,a,b) → no chroma density change. mu tuning range 0.05–0.20 documented in code: lower = more diffusion reach, higher = more smoke/fog correction; above 0.35 causes blob expansion.

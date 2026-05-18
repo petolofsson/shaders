@@ -7,7 +7,7 @@
 | Stage | Finished | Novel |
 |-------|----------|-------|
 | Stage 0 — Input (inverse_grade) | 99% | 90% |
-| Stage 1 — Film Stock | 99% | 93% |
+| Stage 1 — Film Stock | 99% | 94% |
 | Stage 2 — Tonal | 98% | 90% |
 | Stage 3 — Color + Halation | 98% | 89% |
 | Output — Diffusion + Grain | 98% | 93% |
@@ -21,17 +21,17 @@ Drag reducing score: (1) INVERSE_LUMA now uses Mertens et al. 2007 bell weight f
 
 Remaining 1%: the slope `lerp(1.8, 1.15, saturate(median_C / 0.15))` is calibrated against ACES specifically — would need re-derivation for Hejl, GT Tone Mapper, or custom curves.
 
-**Stage 1 — Film Stock (93% novel)**
-Games approximate film stocks with LUTs — even RDR2's celebrated film look is LUT-based. The 2383 3×3 spectral dye matrix from H-1-2383t primary data, H&D curve, DIR couplers, chromatic floor, masking coupler — none of this exists in any game post-processing pipeline. Rational film curve with histogram-mode-derived knee, adaptive print stock from scene percentiles — not in games. R192 P3: PRINT_STOCK/BLEACH_BYPASS in `ApplyLook` post-chroma — correct physical LMT placement.
+**Stage 1 — Film Stock (94% novel)**
+Games approximate film stocks with LUTs — even RDR2's celebrated film look is LUT-based. The 2383 3×3 spectral dye matrix from H-1-2383t primary data, H&D curve, DIR couplers, chromatic floor, masking coupler — none of this exists in any game post-processing pipeline. Rational film curve with histogram-mode-derived knee, adaptive print stock from scene percentiles — not in games. R192 P3: PRINT_STOCK/BLEACH_BYPASS in `ApplyLook` post-chroma — correct physical LMT placement. R202: Kodak Vision3 500T negative spectral sensitivity matrix (M_neg) — completes the physical two-stock chain (input negative sensitivity + print dye masking). No game post-process pipeline implements the negative-side matrix. Derived from H-1-5219t datasheet via Gotanda 2010 sampling method; hardcoded (no knobs).
 
-Drag reducing score: (1) 3-way CC exists in UE5 and most real-time grading stacks — not novel. (2) S-curve tone shaping is universal. (3) DIR-adjacent couplers exist in desktop photo tools (DxO FilmPack, Silver Efex) — novel in real-time games but not in the broader tooling ecosystem. (4) DIR_COUPLER is now hardcoded at 0.30 rather than user-exposed — minor reduction in implemented scope. Drag from (1)+(2) is substantial since CC and curves together represent a large fraction of Stage 1's functional surface area.
+Drag reducing score: (1) 3-way CC exists in UE5 and most real-time grading stacks — not novel. (2) S-curve tone shaping is universal. (3) DIR-adjacent couplers exist in desktop photo tools (DxO FilmPack, Silver Efex) — novel in real-time games but not in the broader tooling ecosystem. (4) DIR_COUPLER is now hardcoded at 0.30 rather than user-exposed — minor reduction in implemented scope. Drag from (1)+(2) is substantial since CC and curves together represent a large fraction of Stage 1's functional surface area. (5) M_neg off-diagonal values are small (max 2.45%) — the method is novel but the visual contribution is subtle by construction; the Gotanda paper describes the method even if no game implements it.
 
 Remaining 1%: BLEACH_BYPASS shadow desaturation calibration pending visual evaluation against real footage references.
 
 **Stage 2 — Tonal (90% novel)**
 Zone system contrast from histogram statistics, Retinex illumination decomposition (2-scale: 1/16-res + 1/32-res), Oklab-stable L-substitution, ambient shadow tint from scene illuminant — none of this is in any commercial game engine. R190: guided filter (Hu et al. IET IP 2023) with adaptive ε replaces bilateral — eliminates halo artifacts, content-adaptive smoothing.
 
-Drag reducing score: (1) CLARITY is conceptually Lightroom Clarity — the guided filter implementation is more principled than bilateral but the concept is well-known in desktop color tools. The upper highlight gate (just bug-fixed today) was documented behavior that was missing from code — a completion, not a novelty claim. (2) Shadow lift is adaptive but fundamentally a shadow brightening operation — every game has some form of shadow detail preservation. (3) Retinex (Land 1971 / Jobson 1997) is a classic algorithm; novelty is in the application context only. (4) Auto-exposure is structurally adjacent to zone key — UE5 eye adaptation overlaps conceptually even if the mechanism differs. (5) LUMA_CONTRAST_* hue-selective clarity shares the same guided filter signal — more of a UI extension than a new technique.
+Drag reducing score: (1) CLARITY is conceptually Lightroom Clarity — the guided filter implementation is more principled than bilateral but the concept is well-known in desktop color tools. The upper highlight gate was documented behavior that was missing from code — a completion, not a novelty claim. (2) Shadow lift is adaptive but fundamentally a shadow brightening operation — every game has some form of shadow detail preservation. (3) Retinex (Land 1971 / Jobson 1997) is a classic algorithm; novelty is in the application context only. (4) Auto-exposure is structurally adjacent to zone key — UE5 eye adaptation overlaps conceptually even if the mechanism differs. (5) LUMA_CONTRAST_* hue-selective clarity shares the same guided filter signal — more of a UI extension than a new technique. (6) R200 dual-rate EMA for slow_key: framerate-independent adaptation with literature-calibrated time constants (Rinner & Gegenfurtner 2000) is principled, but dual-rate EMA is standard signal processing and the slow_key already existed — this is a physiologically correct refinement of an existing feature, not a new technique.
 
 Remaining 2%: GF_EPS=0.05 is a fixed regularization — content-adaptive ε scheduling against actual scene variance is the principled completion.
 

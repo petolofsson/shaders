@@ -1,4 +1,4 @@
-# Handoff — 2026-05-17
+# Handoff — 2026-05-18
 
 > **Purpose (for AI context):** Current session state. Read at session start. Update at session end. Changelog entries go in CHANGELOG.md. **Hard limit: 60 lines including this header. Trim aggressively — one fact per line, no prose.**
 
@@ -18,13 +18,19 @@ grade: 10 passes — LFDownscale1 → LFDownscale2 → NeutralIllum → GuidedCo
 - **3-way CC**: ±1.0 range. Scale 0.08 in shader.
 - **DIR_COUPLER**: removed as knob, hardcoded 0.30 in shader.
 - **CONTRAST**: scale 1.00 (was 0.30).
+- **R200 slow_key**: dual-rate EMA — K_slow=0.0000346 (T_half=20s), K_fast=0.01034 (T_half=67ms on scene cut); framerate-independent via FRAME_TIME.
+- **R202 M_neg**: Kodak Vision3 500T sensitivity matrix in linear sRGB, after EXPOSURE+halation, before FilmCurve. No knobs. Completes negative+print two-stock chain.
 
-## Shadow lift — fixed 2026-05-16
+## Shadow lift — confirmed 2026-05-17
 - **Root cause resolved**: `fine_texture_att` zeroed lift in all textured areas.
 - **Formula now**: `shadow_lift_str × detail_protect × context_lift × specular_att × 0.25 × lift_w × SHADOWS`
-- **Needs in-game test**: confirm SHADOWS=1.0 gives visible lift in GZW jungle.
+- **GZW jungle test**: confirmed working.
+
+## Color system changes — 2026-05-18
+- **3-way CC**: now Oklab a/b. temp→b-axis, tint→a-axis. Zone gates: sh smoothstep(0.35,0.55,L), hl smoothstep(0.70,0.90,L). Scale 0.06.
+- **Bleach bypass**: linear sRGB luma desaturation. Moved before PrintStock in ApplyLook.
+- **Temporal dither**: FRAME_COUNT→FRAME_TIMER slot. No visual impact on static images.
 
 ## Next
-- Test shadow lift in GZW jungle — confirm fix works
-- Rebless arc_raiders baselines (all stage gates 000 during INVERSE_LUMA debug — restore to 100)
-- Retune arc_raiders creative_values.fx (3-way CC scale change, CONTRAST scale change affect output)
+- Recalibrate SHADOW/MID/HIGHLIGHT TEMP/TINT on both profiles (3-way CC Oklab).
+- Recalibrate BLEACH_BYPASS on both profiles (new space + new order).
