@@ -52,6 +52,22 @@ float OklabHueNorm(float a, float b)
     return frac(sign(b + 1e-10) * th / 6.28318 + 1.0);
 }
 
+// Adaptive zone gates — shadow/highlight relative to scene key (Oklab L).
+// key_L = cbrt(slow_key) from SceneCtx. Offsets keep zones at current calibration
+// when slow_key ≈ 0.18 (key_L ≈ 0.563): sh fades 0.46→0.60, hl fades 0.78→0.93.
+float ZoneShadowW(float L, float key_L)
+{
+    return 1.0 - smoothstep(key_L - 0.10, key_L + 0.04, L);
+}
+float ZoneHighlightW(float L, float key_L)
+{
+    return smoothstep(key_L + 0.22, key_L + 0.37, L);
+}
+float ZoneMidW(float L, float key_L)
+{
+    return max(0.0, 1.0 - ZoneShadowW(L, key_L) - ZoneHighlightW(L, key_L));
+}
+
 // CAT16 sRGB→LMS illuminant warmth. Input: unnormalised linear sRGB.
 // Returns warmth proxy: D65≈0.39, warm scene >0.39, cool scene <0.39.
 float IllumWarm(float3 rgb)

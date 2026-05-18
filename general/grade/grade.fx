@@ -274,17 +274,17 @@ float3 ApplyHalation(float3 lin_e, float3 lin_p, float2 uv, float hal_strength)
 float3 Apply3WayCC(float3 lin,
                    float shadow_temp, float shadow_tint,
                    float mid_temp,    float mid_tint,
-                   float hl_temp,     float hl_tint)
+                   float hl_temp,     float hl_tint,
+                   float key_L)
 {
     // Oklab a/b shift: temp → b-axis (warm=positive, cool=negative),
     // tint → a-axis (magenta=positive, green=negative). Orthogonal by construction.
-    // Zone gates on Oklab L — consistent with shadow cast and other ApplyChroma operations.
-    // Scale 0.06. Zones in BT.709: sh full<0.11, fade 0.11→0.27; hl fade 0.47→0.80, full>0.80.
-    float3 lab  = RGBtoOklab(saturate(lin));
-    float  L    = lab.x;
-    float  sh_w = 1.0 - smoothstep(0.48, 0.65, L);
-    float  hl_w = smoothstep(0.78, 0.93, L);
-    float  mid_w = max(0.0, 1.0 - sh_w - hl_w);
+    // Zones adapt to scene key via ZoneShadowW/ZoneHighlightW (common.fxh).
+    float3 lab   = RGBtoOklab(saturate(lin));
+    float  L     = lab.x;
+    float  sh_w  = ZoneShadowW(L, key_L);
+    float  hl_w  = ZoneHighlightW(L, key_L);
+    float  mid_w = ZoneMidW(L, key_L);
     lab.y += (shadow_tint * sh_w + mid_tint * mid_w + hl_tint * hl_w) * 0.06;
     lab.z += (shadow_temp * sh_w + mid_temp * mid_w + hl_temp * hl_w) * 0.06;
     return saturate(OklabToRGB(lab));
@@ -330,6 +330,7 @@ struct SceneCtx {
     float  specular_contrast;
     float  illum_warm;   // CAT16 L/M − S/M + 0.5; D65≈0.39, warm>0.39, cool<0.39
     float  median_C;     // scene median Oklab C (highway HWY_MEDIAN_C) [0, 0.30]
+    float  key_L;        // cbrt(slow_key), clamped [0.30,0.80] — Oklab L pivot for zone gates
 };
 
 struct TonalOut { float3 lin; float new_luma; float local_var; };
@@ -380,6 +381,7 @@ SceneCtx BuildSceneCtx()
     // R162: specular contrast — p90−p50 gap measures isolated bright sources vs scene median.
     ctx.specular_contrast     = saturate((ReadHWY(HWY_P90) - ctx.perc.g) / 0.40);
     ctx.slow_key           = max(tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r, 0.001);
+    ctx.key_L              = clamp(exp2(log2(ctx.slow_key) * (1.0 / 3.0)), 0.30, 0.80);
     // R176: median_C-driven chroma lift — low-chroma scenes get +25% boost, vivid scenes
     // back off 15%. Orthogonal to zone_log_key (luma). Zero new highway reads.
     float chroma_adapt     = lerp(1.25, 0.85, smoothstep(0.04, 0.18, ctx.median_C));
@@ -446,7 +448,8 @@ float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex
     out_lin = Apply3WayCC(out_lin,
                           SHADOW_TEMP, SHADOW_TINT,
                           MID_TEMP, MID_TINT,
-                          HIGHLIGHT_TEMP, HIGHLIGHT_TINT);
+                          HIGHLIGHT_TEMP, HIGHLIGHT_TINT,
+                          ctx.key_L);
     return out_lin;
 }
 
@@ -559,7 +562,7 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     // Negative = scotopic Purkinje: desaturate first (rods are achromatic), then fixed
     // 507nm blue-green bias — fires on neutrals, not C-weighted.
     {
-        float sc_gate = 1.0 - smoothstep(0.40, 0.70, lab.x);
+        float sc_gate = ZoneShadowW(lab.x, ctx.key_L);
         float sc_pos  = max( SHADOW_CAST, 0.0);
         float sc_neg  = max(-SHADOW_CAST, 0.0);
         lab.y += sc_pos * 0.080 * sc_gate;
