@@ -215,7 +215,7 @@ float3 ApplyDyeMatrix(float3 lin)
 
 float3 ApplyMaskingCoupler(float3 lin, float print_stock)
 {
-    float mc_luma = dot(lin, float3(0.2126, 0.7152, 0.0722));
+    float mc_luma = Luma(lin);
     float mc_w    = saturate(1.0 - mc_luma / 0.75);
     mc_w         *= mc_w;
     float mc_str  = print_stock * 0.008 * mc_w;
@@ -248,7 +248,7 @@ float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print
     float3 d = max(0.0, ps - 0.60);
     ps = ps - d + d / (1.0 + d * 1.5);
     // Midtone desaturation: ~15% chroma loss (2383 dye-layer bleach).
-    float luma_ps = dot(ps, float3(0.2126, 0.7152, 0.0722));
+    float luma_ps = Luma(ps);
     float desat_w = 0.15 * (1.0 - smoothstep(0.0, fc_knee_toe, luma_ps))
                           * (1.0 - smoothstep(fc_knee, 1.0, luma_ps));
     ps = lerp(ps, luma_ps.xxx, desat_w);
@@ -292,7 +292,7 @@ float3 Apply3WayCC(float3 lin,
 
 float3 ApplyAmbientTint(float3 lab_t, float3 lf_mip2, float r65_sw, float scene_cut)
 {
-    float3 illum_norm = lf_mip2 / max(dot(lf_mip2, float3(0.2126, 0.7152, 0.0722)), 0.001);
+    float3 illum_norm = lf_mip2 / max(Luma(lf_mip2), 0.001);
     float3 lab_amb    = RGBtoOklab(illum_norm * 0.18);
     float  lab_t_C    = length(lab_t.yz);
     float  achrom_w   = 1.0 - smoothstep(0.0, 0.05, lab_t_C);
@@ -306,7 +306,7 @@ float3 ApplyAmbientTint(float3 lab_t, float3 lf_mip2, float r65_sw, float scene_
 float2 ApplyChromaticInduction(float2 ab, float3 lf_mip2, float final_C)
 {
     float3 surr     = lf_mip2;
-    float3 surr_lab = RGBtoOklab(surr / max(dot(surr, float3(0.2126, 0.7152, 0.0722)), 0.001) * 0.18);
+    float3 surr_lab = RGBtoOklab(surr / max(Luma(surr), 0.001) * 0.18);
     float  ind_mask = saturate(1.0 - final_C / 0.06);
     ab.x -= surr_lab.y * 0.12 * ind_mask;
     ab.y -= surr_lab.z * 0.12 * ind_mask;
@@ -531,8 +531,6 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     float shadow_lift    = ctx.shadow_lift_str * detail_protect * context_lift * specular_att;
     float lift_w         = new_luma * smoothstep(0.35, 0.0, new_luma);
     new_luma = saturate(new_luma + shadow_lift * 0.25 * lift_w * SHADOWS);
-    // Highlights — soft luma push/pull above L≈0.55. +1.0 brightens, -1.0 recovers.
-    new_luma = saturate(new_luma + HIGHLIGHTS * 0.20 * smoothstep(0.55, 0.85, new_luma));
     // R62 Finding 3: chroma-stable tonal — apply luma ratio in Oklab L to prevent zone S-curve from shifting chroma
     float3 lab_t  = RGBtoOklab(saturate(lin));
     float r_tonal = new_luma / max(luma, 0.001);
@@ -546,6 +544,17 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     lab_t.z = lab_t.z * lerp(1.0, r65_scale, r65_sw);
     // R66: ambient shadow tint — inject scene-ambient hue into achromatic lifted shadows.
     lab_t = ApplyAmbientTint(lab_t, lf_mip2_tex.rgb, r65_sw, ctx.scene_cut);
+
+    // HIGHLIGHTS: lerp toward white in Oklab — positive boosts with graceful chroma rolloff,
+    // negative recovers by reducing L only. No gamut clip by construction.
+    {
+        float hl_gate = ZoneHighlightW(lab_t.x, ctx.key_L);
+        float hl_pos  = saturate( float(HIGHLIGHTS)) * 0.20 * hl_gate;
+        float hl_neg  = saturate(-float(HIGHLIGHTS)) * 0.20 * hl_gate;
+        lab_t.x   = saturate(lab_t.x + hl_pos * (1.0 - lab_t.x));
+        lab_t.yz *= (1.0 - hl_pos);
+        lab_t.x   = saturate(lab_t.x - hl_neg * lab_t.x * 0.5);
+    }
 
     TonalOut result;
     result.lin       = saturate(OklabToRGB(lab_t));
