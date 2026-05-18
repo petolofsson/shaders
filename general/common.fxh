@@ -52,4 +52,15 @@ float OklabHueNorm(float a, float b)
     return frac(sign(b + 1e-10) * th / 6.28318 + 1.0);
 }
 
+// CAT16 sRGB→LMS illuminant warmth. Input: unnormalised linear sRGB.
+// Returns warmth proxy: D65≈0.39, warm scene >0.39, cool scene <0.39.
+float IllumWarm(float3 rgb)
+{
+    float3 n = rgb / max(Luma(rgb), 0.001);
+    float L  = dot(n, float3(0.302825, 0.602279, 0.070428));
+    float M  = dot(n, float3(0.153818, 0.777214, 0.085341));
+    float S  = dot(n, float3(0.027974, 0.147911, 0.908874));
+    return saturate((L - S) / max(M, 0.001) + 0.5);
+}
+
 

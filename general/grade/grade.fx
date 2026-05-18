@@ -339,14 +339,8 @@ SceneCtx BuildSceneCtx()
     SceneCtx ctx;
     // Illuminant normalization — CAT16 pixel correction removed (R127): game content is
     // display-referred (sRGB→D65); warm lighting is art direction, not a calibration error.
-    const float3x3 M_fwd = float3x3(0.302825, 0.602279, 0.070428,
-                                     0.153818, 0.777214, 0.085341,
-                                     0.027974, 0.147911, 0.908874);
-    float3 illum_rgb       = tex2Dlod(NeutralIllumSamp, float4(0.5, 0.5, 0, 0)).rgb;
-    float3 illum_norm      = illum_rgb / max(Luma(illum_rgb), 0.001);
-    float3 lms_illum       = mul(M_fwd, illum_norm);
-    float3 lms_illum_norm  = lms_illum / max(lms_illum.g, 0.001);
-    ctx.illum_warm         = saturate(lms_illum_norm.r - lms_illum_norm.b + 0.5);
+    float3 illum_rgb  = tex2Dlod(NeutralIllumSamp, float4(0.5, 0.5, 0, 0)).rgb;
+    ctx.illum_warm    = IllumWarm(illum_rgb);
     ctx.median_C           = clamp(ReadHWY(HWY_MEDIAN_C), 0.0, 0.30);
     ctx.cfilm_floor        = BLACKS;
     ctx.perc               = tex2Dlod(PercSamp, float4(0.5, 0.5, 0, 0));

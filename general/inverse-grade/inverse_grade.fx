@@ -94,14 +94,8 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     // cool hues (teal, cyan) less. Scale slope per hue before applying expansion.
     // R165: in warm-lit scenes, warm-hue saturation is the illuminant — not a tonemapper
     // artifact. Back off positive bias proportionally. One-frame delay acceptable.
-    float3 ni_rgb      = tex2Dlod(NeutralIllumSamp, float4(0.5, 0.5, 0, 0)).rgb;
-    float3 ni_norm     = ni_rgb / max(Luma(ni_rgb), 0.001);
-    const float3x3 Mf = float3x3(0.302825, 0.602279, 0.070428,
-                                   0.153818, 0.777214, 0.085341,
-                                   0.027974, 0.147911, 0.908874);
-    float3 ni_lms      = mul(Mf, ni_norm);
-    float3 ni_lmsn     = ni_lms / max(ni_lms.g, 0.001);
-    float  illum_warm  = saturate(ni_lmsn.r - ni_lmsn.b + 0.5);
+    float3 ni_rgb     = tex2Dlod(NeutralIllumSamp, float4(0.5, 0.5, 0, 0)).rgb;
+    float  illum_warm = IllumWarm(ni_rgb);
     float  warm_scene  = saturate((illum_warm - 0.45) / 0.35);
     // R196-J: per-pixel illumination gate — high-luma pixels are illumination-dominated.
     // Retinex: log(pixel) = log(reflectance) + log(illumination). Bright pixels carry
