@@ -28,9 +28,8 @@ grade: 11 passes — LFDownscale1 → LFDownscale2 → NeutralIllum → GuidedCo
 - **Eliminated**: CreativeLowFreqTex, PercTex (cross-effect), ChromaHistoryTex (cross-effect), NeutralIllumTex (cross-effect via name). ComputeLowFreqPS pass removed (−1 full BB read).
 - **Behavioral**: low-freq source is now pre-inverse_grade (was post). Retinex/guided filter see pre-corrected signal.
 - **ZoneLuma(uv)** helper in common.fxh — infrastructure for spatial zone gates; not yet used as pixel-L replacement.
-- **Dead code still present**: grade.fx has `CreativeZoneHistTex`/`CreativeZoneHistSamp` declared but never read. Stale comments reference `CreativeLowFreqSamp`. Debug passes likely present. **Needs a debug audit pass.**
+- **Dead code audit done (2026-05-18)**: removed `CreativeZoneHistTex`/`CreativeZoneHistSamp` from grade.fx; corrected 6 stale comments across grade.fx and analysis_frame.fx referencing removed textures. 2×2 red activity indicator kept by choice.
 
 ## Next
-- **Debug audit**: remove dead declarations, stale comments, unused debug passes (see session prompt).
 - Dial SHADOW/MID/HIGHLIGHT TEMP/TINT on both profiles (knobs still at zero).
 - Recalibrate BLEACH_BYPASS on both profiles.

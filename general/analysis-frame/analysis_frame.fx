@@ -51,8 +51,7 @@ sampler2D LumHist
     MagFilter = POINT;
 };
 
-// Shared percentile cache — r=p25, g=p50, b=p75, a=P (Kalman variance)
-// Written here, read by corrective_render_chain and grade
+// Percentile cache — r=p25, g=p50, b=p75, a=P (Kalman variance); published to TexHwyTex
 texture2D PercTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
 sampler2D PercSamp
 {
@@ -64,7 +63,7 @@ sampler2D PercSamp
 };
 
 // R53: scene-cut signal — r=scene_cut [0,1], g=p50 from last frame (for delta)
-// Written here, read by corrective passes to override Kalman gain
+// Written here, published to TexHwyTex (HWY_SCENE_CUT slot)
 texture2D SceneCutTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
 sampler2D SceneCutSamp
 {

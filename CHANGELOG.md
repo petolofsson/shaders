@@ -2,6 +2,10 @@
 
 > **Purpose (for AI context):** Chronological record of code changes, one compacted entry per day. Keep only the last 3–4 days. Older history lives in git log. Do not duplicate entries from HANDOFF.md or PLAN.md here.
 
+## 2026-05-18 (session 2)
+
+- **Dead code removal + doc sync** — Removed `CreativeZoneHistTex`/`CreativeZoneHistSamp` from `grade.fx` (declared, never sampled). Fixed 6 stale comments across `grade.fx` and `analysis_frame.fx` referencing removed textures (`CreativeLowFreqTex`, `CreativeLowFreqSamp`, `CorrectiveSrcTex`). Removed `analysis_scope.fx` and `analysis_scope_pre.fx` (old BackBuffer y=0 histogram scope, incompatible with current TexHwyTex data highway). Updated CLAUDE.md: chain, grade pass count (8→11), corrective pass count (8→7), all `CreativeLowFreqTex`/`CreativeLowFreqSamp` references, analysis texture list in `ColorTransformPS` section.
+
 ## 2026-05-18
 
 - **3-way CC → Oklab** (`grade.fx`) — `Apply3WayCC` rewritten in Oklab a/b space. temp → b-axis (warm=positive, cool=negative); tint → a-axis (magenta=positive, green=negative). Axes are orthogonal — temp and tint no longer cross-contaminate. Zone gates moved from `sqrt(BT.709 luma)` to Oklab L (sh: 0.35→0.55, hl: 0.70→0.90), consistent with shadow cast and other ApplyChroma gates. Scale 0.06 (was 0.08 additive sRGB vector). **SHADOW/MID/HIGHLIGHT TEMP/TINT require recalibration on both profiles.**

@@ -6,9 +6,9 @@ vkBasalt auto-linearizes the sRGB swapchain. HDR must be OFF in-game.
 
 ## Active chain (`arc_raiders.conf`)
 ```
-analysis_frame : inverse_grade : analysis_scope_pre : corrective : grade : analysis_scope
+analysis_frame : inverse_grade : corrective : grade
 ```
-`grade` is an 8-pass technique (LFDownscale1 → LFDownscale2 → NeutralIllum → ColorTransform → DiffusionDownsample → DiffusionBlurH → DiffusionBlurV → Diffusion).
+`grade` is an 11-pass technique (LFDownscale1 → LFDownscale2 → NeutralIllum → GuidedCoeff → GuidedBase → ColorTransform → DiffusionDownsample → DiffusionBlurH → DiffusionBlurV → Diffusion → TexHwyWrite).
 Diffusion is merged inside grade.fx — it is NOT a separate effect in the chain.
 
 ## Silent-failure gotchas — verify before every shader edit
@@ -30,8 +30,7 @@ Diffusion is merged inside grade.fx — it is NOT a separate effect in the chain
 - Data highway lives in `HighwayTex` (256×1 R16F, declared in `highway.fxh`). Read via `ReadHWY(slot)`. Written by `HighwayWritePS` (last pass, `RenderTarget=HighwayTex`) in `analysis_frame` and `corrective`.
 - Any effect where all passes use explicit RenderTargets must add a Passthrough pass
   that writes BackBuffer, or vkBasalt clears it for the next effect.
-- `corrective.fx` is one effect with 8 passes — the final Passthrough keeps BB alive
-  for `grade.fx`. No inter-effect clears between corrective passes.
+- `corrective.fx` is one effect with 7 passes (ComputeZoneHistogram → BuildZoneLevels → SmoothZoneLevels → UpdateHistory → TexHwyWrite → Passthrough → HighwayWrite) — the Passthrough keeps BB alive for `grade.fx`.
 
 ## How I work
 
@@ -66,7 +65,6 @@ Diffusion is merged inside grade.fx — it is NOT a separate effect in the chain
 | `general/analysis-frame/analysis_frame.fx` | Histogram, PercTex, data highway encoding |
 | `general/highway.fxh` | Data highway slot constants + `ReadHWY()` macro |
 | `general/hue_bands.fxh` | 12-hue band centers, `HueBandWeight()`, `HueCeil()` — natural chroma ceilings shared by inverse_grade.fx and grade.fx |
-| `gamespecific/arc_raiders/shaders/debug_text.fxh` | 3×5 debug font, included by all effects |
 | `gamespecific/arc_raiders/arc_raiders.conf` | Chain config — never touch without ask |
 
 **grade.fx internal textures (within-technique, always populated):**
@@ -80,17 +78,17 @@ Diffusion is merged inside grade.fx — it is NOT a separate effect in the chain
 
 ## `ColorTransformPS` stage order (`grade.fx`)
 
-Reads from BackBuffer (post-inverse_grade, post-corrective). Analysis textures
-(ZoneHistoryTex, ChromaHistoryTex, PercTex, CreativeLowFreqTex) written by corrective.fx.
+Reads from BackBuffer (post-inverse_grade, post-corrective). ZoneHistoryTex read directly;
+chroma stats and scene percentiles arrive via TexHwyTex (ReadTexHwyChroma / ReadTexHwyPerc / ReadHWY).
 inverse_grade.fx runs before corrective — R90 chroma expansion on pre-corrective signal.
 
 **Pre-grade:** inverse_grade.fx — R198 FilmCurve pre-inverse (`FilmCurveInvCh`: shoulder rational, toe quadratic, midrange identity) applied before Oklab conversion; knee/ktoe reconstructed from highway p25/p50/p75/mode (one-frame delay). Then Oklab chroma expansion (slope from highway x=197, INVERSE_STRENGTH) + per-hue chroma ceiling (`HueCeil()` from hue_bands.fxh — blocks expansion overshoot past natural gamut)
 
 **LFDownscale1 + LFDownscale2 passes (pre-ColorTransform):** Build `LowFreqMip1Tex` (1/16-res)
-and `LowFreqMip2Tex` (1/32-res) from `CreativeLowFreqTex` mip0 via 4-tap box filter. Must run
+and `LowFreqMip2Tex` (1/32-res) from `TexHwyTex` spatial lane via 4-tap box filter. Must run
 before ColorTransform. Cross-technique mips are zero — these passes are the fix (R113).
 
-**NeutralIllum pass (pre-ColorTransform):** 144-sample (16×9) grid over `CreativeLowFreqSamp` mip0, neutral-pixel-weighted (weight = `1−smoothstep(0.04,0.10,C)`). Outputs scene illuminant estimate to 1×1 `NeutralIllumTex`. Used by R83 (chromatic floor) and R66 (ambient shadow tint). CAT16 pixel correction removed R127 — game content is display-referred (sRGB→D65); warm lighting is art direction, not a calibration error.
+**NeutralIllum pass (pre-ColorTransform):** 144-sample (16×9) grid over `TexHwySamp` spatial lane, neutral-pixel-weighted (weight = `1−smoothstep(0.04,0.10,C)`). Outputs scene illuminant estimate to 1×1 `NeutralIllumTex`. Used by R83 (chromatic floor) and R66 (ambient shadow tint). CAT16 pixel correction removed R127 — game content is display-referred (sRGB→D65); warm lighting is art direction, not a calibration error.
 
 1. **CORRECTIVE** — `pow(rgb, EXPOSURE)` + R104 DIR couplers (log2-space cross-channel inhibition, default off) + FilmCurve (rational shoulder+toe, p25/p75 knee; upper-mid one-sided body lift `max(0,(x(1-x))²(2x-1))*0.65`) + R83 chromatic floor (lms_illum_norm from NeutralIllumTex) + R84 log-density offsets + R85 dye masking + R19 3-way CC
 2. **TONAL** — Zone S-curve + Spatial norm (auto from zone_std) + R29 Retinex (illum_s0 from LowFreqMip1, illum_s2 from LowFreqMip2) + Shadow lift + R62 Oklab-stable tonal (L-substitution, chroma preserved) + R65 Hunt coupling + R66 ambient shadow tint (illum from LowFreqMip2)

@@ -8,9 +8,8 @@
 //   2. Zone contrast S-curve (auto) + Clarity + Shadow lift
 //   3. Oklab chroma lift + H-K + Abney + density + gamut compress + R21/R22
 //
-// Reads from CorrectiveSrcTex (snapshot by corrective_render_chain CopyToSrc).
-// All history textures (ZoneHistoryTex, ChromaHistoryTex, PercTex, CreativeLowFreqTex)
-// are computed by earlier passes in the chain before this runs.
+// Reads from BackBuffer (post-corrective). ZoneHistoryTex, chroma stats, and scene
+// percentiles arrive via TexHwyTex (ReadTexHwyChroma / ReadTexHwyPerc / ReadHWY).
 
 #include "creative_values.fx"
 
@@ -43,17 +42,6 @@ sampler2D ZoneHistorySamp
     AddressV  = CLAMP;
     MinFilter = LINEAR;
     MagFilter = LINEAR;
-};
-
-// Per-zone 32-bin luma histogram (shared from corrective.fx ComputeZoneHistogram)
-texture2D CreativeZoneHistTex { Width = 32; Height = 16; Format = R16F; MipLevels = 1; };
-sampler2D CreativeZoneHistSamp
-{
-    Texture   = CreativeZoneHistTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
 };
 
 // 1/8-res low-freq base: TexHwyTex spatial lane (written by analysis_frame, luma in .a).
@@ -789,10 +777,9 @@ float4 LFDownscale2PS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
 }
 
 // ─── R189 bilateral log-luma passes ──────────────────────────────────────────
-// H-pass: sample CreativeLowFreqSamp (1/8-res), convert to log2 luma, bilateral filter.
 // R190 guided filter — Pass 1: compute local linear model coefficients (a_k, b_k).
 // Self-guided in log2-luma space. Adaptive ε (Hu 2023): a_k = var/((1+ε)·var + η).
-// Reads CreativeLowFreqSamp (pre-corrective 1/8-res RGBA16F). Writes GuidedCoeffTex (RG16F).
+// Reads TexHwySamp spatial lane (1/8-res RGBA16F). Writes GuidedCoeffTex (RG16F).
 float2 GuidedCoeffPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     // GuidedCoeffTex is BUFFER_WIDTH/8 × BUFFER_HEIGHT/8; uv∈[0,1] maps full spatial lane.
@@ -816,7 +803,7 @@ float2 GuidedCoeffPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
 }
 
 // R190 guided filter — Pass 2: average coefficients over window, reconstruct base layer.
-// Reads GuidedCoeffSamp (RG16F) + center pixel from CreativeLowFreqSamp.
+// Reads GuidedCoeffSamp (RG16F) + center pixel from TexHwySamp.
 // Writes BilateralLogTex (R16F) — log2-luma base layer read by ApplyTonal.
 float GuidedBasePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
@@ -994,7 +981,7 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 }
 
 // ─── R124B: Neutral-pixel-weighted illuminant estimation ───────────────────
-// Samples CreativeLowFreqTex at 16×9 grid (144 points). Near-grey pixels
+// Samples TexHwySamp spatial lane at 16×9 grid (144 points). Near-grey pixels
 // (Oklab C < 0.10) carry illuminant color reliably; saturated pixels are noise.
 // Falls back to grey world when fewer than ~8/144 samples are neutral.
 float4 NeutralIllumPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
