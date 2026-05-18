@@ -53,15 +53,18 @@ float OklabHueNorm(float a, float b)
 }
 
 // Adaptive zone gates — shadow/highlight relative to scene key (Oklab L).
-// key_L = cbrt(slow_key) from SceneCtx. Offsets keep zones at current calibration
-// when slow_key ≈ 0.18 (key_L ≈ 0.563): sh fades 0.46→0.60, hl fades 0.78→0.93.
+// key_L = cbrt(slow_key) from SceneCtx, clamped [0.30, 0.80].
+// Shadow: fixed offsets below/above key_L. At key_L≈0.563: fades 0.46→0.60.
+// Highlight: headroom-proportional (key_L + fraction of [key_L,1.0]) so the zone
+// stays alive in bright scenes. At key_L≈0.563: fades 0.78→0.93 (same as before).
 float ZoneShadowW(float L, float key_L)
 {
     return 1.0 - smoothstep(key_L - 0.10, key_L + 0.04, L);
 }
 float ZoneHighlightW(float L, float key_L)
 {
-    return smoothstep(key_L + 0.22, key_L + 0.37, L);
+    float head = 1.0 - key_L;
+    return smoothstep(key_L + head * 0.50, key_L + head * 0.85, L);
 }
 float ZoneMidW(float L, float key_L)
 {
