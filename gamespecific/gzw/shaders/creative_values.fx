@@ -26,21 +26,17 @@
 // Rule of thumb: dial until overall brightness feels right, then tune beneath.
 #define EXPOSURE 0.05
 
-// Film emulsion scatter — warm orange/amber tint on highlights that exceed their
-// local blurred context. Fires on the highlight itself. Self-limiting: flat areas
-// and dark pixels unaffected. 0 = off. 0.30–0.60 = film-like. 1.0 = aggressive.
-#define HALATION  0.40
 
-// Per-channel knee and toe offsets for the FilmCurve. Encodes the physical dye-layer
-// cross-over character of different film stocks. 0 = passthrough. Range ±1.
-// ±1.0 = ±0.10 stop shift in the auto knee/toe position.
-// R knee < 0 = red compresses earlier (film-like warm shadows).
-// B knee > 0 = blue compresses later (open highlights). B toe < 0 = cool toe.
-// Negative values invert the S-curve direction for that channel.
-#define CURVE_R_KNEE  -0.00
-#define CURVE_B_KNEE  +0.00
-#define CURVE_R_TOE   +0.00
-#define CURVE_B_TOE   -0.00
+// DIR couplers — developer-inhibitor-release cross-channel inhibition (R104).
+// Mimics film dye-layer coupling: active channels inhibit neighbours in log space.
+// 0 = off. 1.0 = full designed strength.
+#define DIR_COUPLER  0.0
+
+// Kodak Vision3 500T negative spectral sensitivity matrix (R202).
+// Cross-channel mixing from film negative dye layers — subtle warm-red bias in G/B.
+// 0 = off. 1.0 = full measured sensitivity.
+#define M_NEG  0.0
+
 
 // Primary color grade. Runs after FilmCurve.
 // TEMP: positive = warm (R up, B down), negative = cool. Range ±1.0.

@@ -133,26 +133,6 @@ sampler2D DiffusionHorizSamp
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-float3 FilmCurveApply(float3 x,
-                      float knee_r, float knee_g, float knee_b,
-                      float ktoe_r, float ktoe_g, float ktoe_b)
-{
-    float3 knee_rgb  = float3(knee_r, knee_g, knee_b);
-    float3 ktoe_rgb  = max(float3(ktoe_r, ktoe_g, ktoe_b), 0.001);
-    float3 above     = max(x - knee_rgb, 0.0);
-    float3 below     = max(ktoe_rgb - x, 0.0);
-    float3 headroom  = max(1.0 - knee_rgb, 0.001);
-    // Upper-mid lift only: midrange-weighted one-sided S (zero at x≤0.5 and x=1, peak ~+1.2% at x≈0.72)
-    // body_s clamped to [0,1] input — formula produces runaway positive values for x>1.
-    float3 xs        = saturate(x);
-    float3 xw        = xs * (1.0 - xs);
-    float3 body_s    = max(0.0, xw * xw * (2.0 * xs - 1.0)) * 0.65;
-    // Rational shoulder: C1 at knee, asymptotes to 1.0 (SDR ceiling by construction).
-    float3 sh_comp   = above * above / (headroom + above);
-    // Rational toe: C1 at ktoe, scaled to match prior quadratic toe depth at x=0.
-    float3 tc_comp   = (0.06 / ktoe_rgb) * below * below / (ktoe_rgb + below);
-    return x + body_s - sh_comp + tc_comp;
-}
 
 float LiftChroma(float C, float pivot, float strength)
 {
@@ -181,7 +161,7 @@ float3 ApplyMaskingCoupler(float3 lin, float print_stock)
     float mc_luma = Luma(lin);
     float mc_w    = saturate(1.0 - mc_luma / 0.75);
     mc_w         *= mc_w;
-    float mc_str  = print_stock * 0.008 * mc_w;
+    float mc_str  = saturate(print_stock) * 0.024 * mc_w;
     lin.r = saturate(lin.r + mc_str);
     lin.b = saturate(lin.b - mc_str * 0.65);
     return lin;
@@ -200,7 +180,7 @@ float3 ApplyBleachBypass(float3 lin, float bleach_bypass)
     return saturate(desatd * (1.0 - bleach_bypass * 0.055 * bb_mid));
 }
 
-float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print_stock)
+float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float print_stock)
 {
     float3 ps = lin;
     // 2383 S-curve — two-piece, no gates:
@@ -212,27 +192,12 @@ float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print
     ps = ps - d + d / (1.0 + d * 1.5);
     // Midtone desaturation: ~15% chroma loss (2383 dye-layer bleach).
     float luma_ps = Luma(ps);
-    float desat_w = 0.15 * (1.0 - smoothstep(0.0, fc_knee_toe, luma_ps))
-                          * (1.0 - smoothstep(fc_knee, 1.0, luma_ps));
+    float desat_w = 0.15 * smoothstep(0.0, fc_knee_toe * 2.0, luma_ps)
+                         * (1.0 - smoothstep(0.55, 0.75, luma_ps));
     ps = lerp(ps, luma_ps.xxx, desat_w);
     return lerp(lin, saturate(ps), saturate(print_stock));
 }
 
-float3 ApplyHalation(float3 lin_e, float3 lin_p, float2 uv, float hal_strength)
-{
-    float3 lf_mip1  = tex2D(LowFreqMip1Samp, uv).rgb;
-    float  luma_p   = Luma(lin_p);
-    float  luma_b   = Luma(lf_mip1);
-    float  dog      = max(0.0, luma_p - luma_b);
-    // Threshold 0.25–0.40: very diffuse areas (dog < 0.25) don't fire,
-    // isolated point sources and speculars (dog > 0.40) fire fully.
-    // dog² × luma_p: fast spatial falloff, scatter ∝ source brightness.
-    // sky_w: suppresses halation on blue/cool pixels (B>R = sky). Smooth exp, self-limiting.
-    float  sky_w    = exp(-max(0.0, lin_p.b - lin_p.r) * 7.0);
-    float  detail   = smoothstep(0.25, 0.40, dog) * dog * dog * luma_p * sky_w;
-    // Luma-neutral orange: float3(0.63,0.25,0.02) minus its luma (0.314) → hue shift, no bloom.
-    return saturate(lin_e + detail * float3(0.316, -0.064, -0.294) * hal_strength);
-}
 
 float3 Apply3WayCC(float3 lin,
                    float shadow_temp, float shadow_tint,
@@ -285,8 +250,7 @@ struct SceneCtx {
     float  ss_08_25, ss_04_25;
     float  scene_cut;
     float  slow_key;
-    float  fc_knee,     fc_knee_r,  fc_knee_b;
-    float  fc_knee_toe, fc_ktoe_r,  fc_ktoe_b;
+    float  fc_knee_toe;
     float  shadow_lift_str;
     float  chroma_str_base;
     float  scene_mode;
@@ -322,21 +286,11 @@ SceneCtx BuildSceneCtx()
     // attenuating zone stretch avoids processing well-distributed material.
     // Gate at 0.55: fires only above typical "good" scene entropy. Max 25% attenuation.
     ctx.zone_str          *= lerp(1.0, 0.75, saturate((ReadHWY(HWY_H_NORM) - 0.55) / 0.30));
-    ctx.fc_knee            = lerp(0.90, 0.80, saturate((ctx.perc.b - 0.60) / 0.30));
-    // R147: Bowley skewness — right-skewed (dark dominant, bright tail) → lower knee
-    // to catch sparse bright tail that p75-based formula misses when p75 is low.
-    float  bowley          = (ctx.perc.b + ctx.perc.r - 2.0 * ctx.perc.g)
-                           / max(ctx.perc.b - ctx.perc.r, 0.01);
-    ctx.fc_knee            = saturate(ctx.fc_knee - saturate(bowley) * 0.06);
     ctx.fc_knee_toe        = lerp(0.15, 0.25, saturate((0.40 - ctx.perc.r) / 0.30));
     // R147: mode anchor — when toe sits well above peak dark density, pull it down.
     ctx.scene_mode         = ReadHWY(HWY_MODE);
     float toe_gap          = saturate((ctx.fc_knee_toe - ctx.scene_mode - 0.05) / 0.10);
     ctx.fc_knee_toe        = lerp(ctx.fc_knee_toe, ctx.scene_mode + 0.05, toe_gap * 0.4);
-    ctx.fc_knee_r          = clamp(ctx.fc_knee     * exp2(CURVE_R_KNEE * 0.10), 0.70, 0.95);
-    ctx.fc_knee_b          = clamp(ctx.fc_knee     * exp2(CURVE_B_KNEE * 0.10), 0.70, 0.95);
-    ctx.fc_ktoe_r          = clamp(ctx.fc_knee_toe * exp2(CURVE_R_TOE  * 0.10), 0.08, 0.35);
-    ctx.fc_ktoe_b          = clamp(ctx.fc_knee_toe * exp2(CURVE_B_TOE  * 0.10), 0.08, 0.35);
     float _sls_t              = saturate(((ctx.perc.r + ctx.scene_mode) * 0.5 - 0.025) / 0.175);
     float _std_suppress       = smoothstep(0.05, 0.13, ctx.zone_std);
     ctx.shadow_lift_str       = lerp(1.50, 0.45, _sls_t*_sls_t*_sls_t*(_sls_t*(_sls_t*6.0-15.0)+10.0))
@@ -354,66 +308,13 @@ SceneCtx BuildSceneCtx()
 
 float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
 {
-    float3 lin_p = max(lin, 0.0);
-    float  E     = exp2(EXPOSURE);
-    float3 lin_e = lin_p;
-    // R104: DIR couplers — developer-inhibitor-release cross-channel masking (hardcoded 0.30)
-    {
-        float3 log_e = log2(lin_e + 1e-5);
-        float3 act   = lin_e * lin_e / (lin_e * lin_e + 0.09);
-        float3 cpl   = float3(act.g * 0.12 + act.b * 0.06,
-                              act.r * 0.10 + act.b * 0.04,
-                              act.r * 0.06 + act.g * 0.08);
-        lin_e = lerp(lin_e, saturate(exp2(log_e - cpl * 0.3)), 0.30);
-    }
-
-    // R194: ACES luma inverse — undoes ACES midtone boost below the fixed point (L≈0.728).
-    // Bell weight (Mertens et al. 2007): exp(-0.5*((L-mu)/0.18)²). mu tuning range: 0.05–0.20.
-    // Lower mu → correction peaks in near-black zone, glow penumbra untouched (diffusion reach preserved).
-    // Higher mu → more correction in smoke/fog zone. Above 0.35 causes blob expansion.
-    // Proportional Oklab (L,a,b) scaling: C/L ratio unchanged, no artificial density.
-    if (INVERSE_LUMA > 0.0) {
-        const float Aa = 2.51, Bb = 0.03, Cc = 2.43, Dd = 0.59, Ee = 0.14;
-        float  disc  = ((Dd*Dd - 4.0*Cc*Ee)*col_luma + 4.0*Aa*Ee - 2.0*Bb*Dd)*col_luma + Bb*Bb;
-        float  L_sc  = 0.5*(Dd*col_luma - Bb + sqrt(max(disc, 0.0))) / max(Aa - Cc*col_luma, 1e-4);
-        float  delta = min(L_sc / max(col_luma, 1e-5) - 1.0, 0.0);
-        float  t     = (col_luma - 0.05) / 0.18;
-        float  bell  = exp(-0.5 * t * t);
-        float3 ok    = RGBtoOklab(saturate(lin_e));
-        ok          *= 1.0 + delta * float(INVERSE_LUMA) * bell;
-        lin_e        = OklabToRGB(ok);
-    }
-    lin_e *= E;
-    // ── R105: halation — pre-curve, post-exposure (fires at corrected signal level) ──
-    // lf_mip1/lf_mip2 are pre-corrective; lin_p passed for DoG detection baseline.
-    // R151: p90−p50 gap measures isolated bright sources against scene median.
-    float eff_hal_str = HALATION * lerp(1.0, 1.4, ctx.specular_contrast);
-    lin_e = ApplyHalation(lin_e, lin_p, uv, eff_hal_str);
-    lin_e = min(lin_e, float(WHITES));
-    // R202: M_neg — Kodak Vision3 500T (5219) negative spectral sensitivity (H-1-5219t, Gotanda 2010 sampling).
-    // Applied in linear sRGB, after EXPOSURE + halation, before FilmCurve — physical negative→H-D chain order.
-    // Completes the two-stock chain: M_neg (input sensitivity) + R85 dye masking (print side).
-    {
-        float3x3 m_neg = float3x3(
-            1.0000, 0.0227, 0.0062,   // red layer:   100% R + 2.27% G + 0.62% B
-            0.0017, 1.0000, 0.0245,   // green layer: 0.17% R + 100% G + 2.45% B
-            0.0000, 0.0002, 1.0000    // blue layer:  ~pure
-        );
-        lin_e = mul(m_neg, lin_e);
-    }
-    float3 fc_out  = FilmCurveApply(lin_e,
-                                    ctx.fc_knee_r, ctx.fc_knee, ctx.fc_knee_b,
-                                    ctx.fc_ktoe_r, ctx.fc_knee_toe, ctx.fc_ktoe_b);
-    float  sh_w    = smoothstep(ctx.fc_knee - 0.05, ctx.fc_knee + 0.05, Luma(lin_e));
-    float  fc_w    = lerp(1.0, 0.5, sh_w);
-    float3 out_lin = lerp(lin_e, fc_out, fc_w);
+    float3 lin_e = max(lin, 0.0) * exp2(EXPOSURE);
     // ── R19: 3-way CC — primary grade before print emulation ──────────────────
-    out_lin = Apply3WayCC(out_lin,
-                          SHADOW_TEMP, SHADOW_TINT,
-                          MID_TEMP, MID_TINT,
-                          HIGHLIGHT_TEMP, HIGHLIGHT_TINT,
-                          ctx.key_L);
-    return out_lin;
+    return Apply3WayCC(lin_e,
+                       SHADOW_TEMP, SHADOW_TINT,
+                       MID_TEMP, MID_TINT,
+                       HIGHLIGHT_TEMP, HIGHLIGHT_TINT,
+                       ctx.key_L);
 }
 
 float HueBandWeightW(float hue, float center)
@@ -680,7 +581,7 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
 
     // R117C: chromatic induction — broad surround hue nudges near-achromatic pixels toward complement.
     // Simultaneous contrast: a grey patch in a coloured surround takes on a slight opposite hue tinge.
-    // Uses LowFreqMip2 (1/32-res, already read by R66 + halation) as the spatial surround estimate.
+    // Uses LowFreqMip2 (1/32-res) as the spatial surround estimate.
     float2 ab_ind = ApplyChromaticInduction(float2(f_oka, f_okb), lf_mip2_tex.rgb, final_C);
     f_oka = ab_ind.x; f_okb = ab_ind.y;
 
@@ -712,7 +613,7 @@ float3 ApplyLook(float3 lin, SceneCtx ctx)
     // Fires after all tonal and chroma work — LMT position per ACES convention.
     // Physical order: bleach bypass is a development stage (precedes printing).
     out_lin = ApplyBleachBypass(out_lin, BLEACH_BYPASS);
-    out_lin = ApplyPrintStock(out_lin, ctx.fc_knee_toe, ctx.fc_knee, PRINT_STOCK);
+    out_lin = ApplyPrintStock(out_lin, ctx.fc_knee_toe, PRINT_STOCK);
     out_lin = ApplyMaskingCoupler(out_lin, PRINT_STOCK);
     out_lin = ApplyDyeMatrix(out_lin);
     // R192: printer lights — per-channel contact-printer exposure after all emulsion work.
@@ -730,7 +631,37 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float4 lf_mip2_tex = tex2D(LowFreqMip2Samp, uv);
 
     float  col_luma = Luma(col.rgb);
-    float3 lin      = max(col.rgb, ctx.cfilm_floor);
+    float3 lin      = col.rgb;
+    // R104: DIR couplers — cross-channel inhibition in log space. Fires independently of CORRECTIVE_STRENGTH.
+    if (DIR_COUPLER > 0.0) {
+        float3 log_c = log2(lin + 1e-5);
+        float3 act   = lin * lin / (lin * lin + 0.09);
+        float3 cpl   = float3(act.g * 0.12 + act.b * 0.06,
+                              act.r * 0.10 + act.b * 0.04,
+                              act.r * 0.06 + act.g * 0.08);
+        lin = saturate(exp2(log_c - cpl * float(DIR_COUPLER) * 20.0));
+    }
+    // R202: M_neg — Kodak Vision3 500T negative spectral sensitivity. Fires independently of CORRECTIVE_STRENGTH.
+    if (M_NEG > 0.0) {
+        float sc = float(M_NEG) * 20.0;
+        lin = saturate(float3(
+            lin.r + (0.0227 * lin.g + 0.0062 * lin.b) * sc,
+            lin.g + (0.0017 * lin.r + 0.0245 * lin.b) * sc,
+            lin.b + (0.0002 * lin.g)                  * sc
+        ));
+    }
+    // R194: ACES luma inverse — undoes ACES midtone boost. Fires independently of CORRECTIVE_STRENGTH.
+    if (INVERSE_LUMA > 0.0) {
+        const float Aa = 2.51, Bb = 0.03, Cc = 2.43, Dd = 0.59, Ee = 0.14;
+        float  disc  = ((Dd*Dd - 4.0*Cc*Ee)*col_luma + 4.0*Aa*Ee - 2.0*Bb*Dd)*col_luma + Bb*Bb;
+        float  L_sc  = 0.5*(Dd*col_luma - Bb + sqrt(max(disc, 0.0))) / max(Aa - Cc*col_luma, 1e-4);
+        float  delta = min(L_sc / max(col_luma, 1e-5) - 1.0, 0.0);
+        float  t     = (col_luma - 0.05) / 0.18;
+        float  bell  = exp(-0.5 * t * t);
+        float3 ok    = RGBtoOklab(saturate(lin));
+        ok          *= 1.0 + delta * float(INVERSE_LUMA) * bell;
+        lin          = OklabToRGB(ok);
+    }
     lin = lerp(lin, ApplyCorrective(lin, col_luma, uv, lf_mip2_tex, ctx), CORRECTIVE_STRENGTH * 0.01);
 
     TonalOut tonal      = ApplyTonal(lin, col_luma, uv, lf_mip2_tex, ctx);
@@ -742,6 +673,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float3 result  = lerp(tonal.lin, ApplyChroma(tonal.lin, tonal.new_luma, tonal.local_var, lf_mip2_tex, ctx), CHROMA_STRENGTH * 0.01);
     result = lerp(result, ApplyLook(result, ctx), LOOK_STRENGTH * 0.01);
 
+    result = lerp(float(BLACKS), float(WHITES), saturate(result));
     // dither: break 8-bit BackBuffer quantization — converts banding to imperceptible noise
     // R89: IGN blue-noise dither (Jimenez 2016) — pushes quantization error to high freq
     float dither = frac(52.9829189 * frac(dot(pos.xy, float2(0.06711056, 0.00583715)))) - 0.5;
@@ -879,7 +811,7 @@ float3 ApplyDiffusionBloom(float3 base_rgb, float3 diff_blur, float adapt_str, f
     float3 result     = saturate(base_rgb + bloom * adapt_str);
     float  luma_r     = Luma(result);
     float  mid_gate   = luma_r * (1.0 - luma_r) * 4.0;
-    return saturate(lerp(result, diff_blur, (0.10 + eff_diff * 0.09) * mid_gate * ch_scatter));
+    return saturate(lerp(result, diff_blur, eff_diff * 0.19 * mid_gate * ch_scatter));
 }
 
 float3 pcg3d_hash(uint3 v)
