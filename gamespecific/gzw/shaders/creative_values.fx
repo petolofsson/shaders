@@ -31,20 +31,17 @@
 // and dark pixels unaffected. 0 = off. 0.30–0.60 = film-like. 1.0 = aggressive.
 #define HALATION  0.40
 
-// Adaptive S-curve (histogram-derived knee/toe). Shadow toe lift, upper-mid lift,
-// shoulder compression above knee. 0 = off. 1 = full designed effect.
+// Adaptive S-curve (histogram-derived knee). Upper-mid lift + shoulder compression.
+// 0 = off (bypass). 1 = full designed effect.
 #define FILM_CURVE  1.0
 
 // Per-channel knee and toe offsets for the FilmCurve. Encodes the physical dye-layer
 // cross-over character of different film stocks. 0 = passthrough. Range ±1.
-// ±1.0 = ±0.10 stop shift in the auto knee/toe position.
+// ±1.0 = ±0.10 stop shift in the auto knee position.
 // R knee < 0 = red compresses earlier (film-like warm shadows).
-// B knee > 0 = blue compresses later (open highlights). B toe < 0 = cool toe.
-// Negative values invert the S-curve direction for that channel.
-#define CURVE_R_KNEE  -0.00
-#define CURVE_B_KNEE  +0.00
-#define CURVE_R_TOE   +0.00
-#define CURVE_B_TOE   -0.00
+// B knee > 0 = blue compresses later (open highlights).
+#define CURVE_R_KNEE  -0.20
+#define CURVE_B_KNEE  +0.10
 
 // Primary color grade. Runs after FilmCurve.
 // TEMP: positive = warm (R up, B down), negative = cool. Range ±1.0.

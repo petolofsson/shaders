@@ -24,28 +24,15 @@ sampler2D BackBuffer
 
 // NeutralIllum RGB: read from TexHwyTex data row 0 pixel 4 (grade writes each frame, one-frame delay).
 
-// Piecewise exact inverse of FilmCurveApply (grade.fx).
-// Shoulder and toe have closed-form inverses; midrange body_s (≤1.2%) is neglected.
-// R198: pre-compensates for the forward FilmCurve that grade.fx will apply,
-// so chroma expansion operates in the post-curve tonal domain.
-float FilmCurveInvCh(float y, float knee, float ktoe)
+// Exact inverse of FilmCurveApply shoulder (grade.fx). Midrange body_s (≤1.2%) neglected.
+// R198: pre-compensates for the forward FilmCurve, so chroma expansion sees the post-curve domain.
+float FilmCurveInvCh(float y, float knee)
 {
-    float h  = 1.0 - knee;
-    float A  = 0.06 / ktoe;
-    float qa = 1.0 - A;
-
-    // Shoulder: x = knee + s·h/(h−s), s = y−knee
+    float h    = 1.0 - knee;
     float s    = y - knee;
     float x_sh = knee + s * h / max(h - s, 1e-5);
-
-    // Toe: quadratic b² term, b = ktoe−x
-    float disc = y*y + 4.0*qa*(ktoe - y)*ktoe;
-    float b    = (-y + sqrt(max(disc, 0.0))) / max(2.0*qa, 1e-5);
-    float x_to = ktoe - b;
-
     float w_sh = step(knee, y);   // 1 if y >= knee
-    float w_to = step(y, ktoe);   // 1 if y <= ktoe
-    return lerp(lerp(y, x_to, w_to), x_sh, w_sh);
+    return lerp(y, x_sh, w_sh);  // shoulder inverse or identity (midrange)
 }
 
 float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
@@ -53,29 +40,21 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     float4 col    = tex2D(BackBuffer, uv);
     if (INVERSE_STRENGTH <= 0.0) return col;
 
-    // R198: apply FilmCurve inverse so chroma expansion sees the post-curve domain.
-    // Reconstruct fc_knee / fc_knee_toe from highway (one-frame delay — same precedent
-    // as NeutralIllumTex). Per-channel offsets from creative_values knobs.
+    // R198: apply FilmCurve shoulder inverse so chroma expansion sees the post-curve domain.
+    // Reconstruct fc_knee from highway (one-frame delay — same precedent as NeutralIllumTex).
     {
-        float p25  = ReadHWY(HWY_P25);
-        float p50  = ReadHWY(HWY_P50);
-        float p75  = ReadHWY(HWY_P75);
-        float mode = ReadHWY(HWY_MODE);
-        float bowley     = (p75 + p25 - 2.0*p50) / max(p75 - p25, 0.01);
-        float fc_knee    = saturate(lerp(0.90, 0.80, saturate((p75 - 0.60) / 0.30))
-                         - saturate(bowley) * 0.06);
-        float fc_ktoe    = lerp(0.15, 0.25, saturate((0.40 - p25) / 0.30));
-        float toe_gap    = saturate((fc_ktoe - mode - 0.05) / 0.10);
-        fc_ktoe          = lerp(fc_ktoe, mode + 0.05, toe_gap * 0.4);
+        float p50    = ReadHWY(HWY_P50);
+        float p75    = ReadHWY(HWY_P75);
+        float p25    = ReadHWY(HWY_P25);
+        float bowley = (p75 + p25 - 2.0*p50) / max(p75 - p25, 0.01);
+        float fc_knee = saturate(lerp(0.90, 0.80, saturate((p75 - 0.60) / 0.30))
+                      - saturate(bowley) * 0.06);
         float3 knee = float3(clamp(fc_knee * exp2(float(CURVE_R_KNEE) * 0.10), 0.70, 0.95),
                              fc_knee,
                              clamp(fc_knee * exp2(float(CURVE_B_KNEE) * 0.10), 0.70, 0.95));
-        float3 ktoe = float3(clamp(fc_ktoe * exp2(float(CURVE_R_TOE)  * 0.10), 0.08, 0.35),
-                             fc_ktoe,
-                             clamp(fc_ktoe * exp2(float(CURVE_B_TOE)  * 0.10), 0.08, 0.35));
-        col.r = FilmCurveInvCh(col.r, knee.r, ktoe.r);
-        col.g = FilmCurveInvCh(col.g, knee.g, ktoe.g);
-        col.b = FilmCurveInvCh(col.b, knee.b, ktoe.b);
+        col.r = FilmCurveInvCh(col.r, knee.r);
+        col.g = FilmCurveInvCh(col.g, knee.g);
+        col.b = FilmCurveInvCh(col.b, knee.b);
     }
 
     float slope_enc   = ReadHWY(HWY_CHROMA_SLOPE);

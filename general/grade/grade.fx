@@ -133,25 +133,20 @@ sampler2D DiffusionHorizSamp
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-float3 FilmCurveApply(float3 x,
-                      float knee_r, float knee_g, float knee_b,
-                      float ktoe_r, float ktoe_g, float ktoe_b)
+float3 FilmCurveApply(float3 x, float knee_r, float knee_g, float knee_b)
 {
     float3 knee_rgb  = float3(knee_r, knee_g, knee_b);
-    float3 ktoe_rgb  = max(float3(ktoe_r, ktoe_g, ktoe_b), 0.001);
     float3 above     = max(x - knee_rgb, 0.0);
-    float3 below     = max(ktoe_rgb - x, 0.0);
     float3 headroom  = max(1.0 - knee_rgb, 0.001);
-    // Upper-mid lift only: midrange-weighted one-sided S (zero at x≤0.5 and x=1, peak ~+1.2% at x≈0.72)
-    // body_s clamped to [0,1] input — formula produces runaway positive values for x>1.
+    // Upper-mid lift: one-sided S normalized to [0.5, fc_knee] so peak tracks the scene knee.
+    // t=0 at x=0.5, t=1 at x=fc_knee — body_s is exactly zero at and above the knee.
     float3 xs        = saturate(x);
-    float3 xw        = xs * (1.0 - xs);
-    float3 body_s    = max(0.0, xw * xw * (2.0 * xs - 1.0)) * 0.65;
+    float3 t_norm    = saturate((xs - 0.5) / max(knee_rgb - 0.5, 0.001));
+    float3 tw        = t_norm * (1.0 - t_norm);
+    float3 body_s    = max(0.0, tw * tw * (2.0 * t_norm - 1.0)) * 0.65;
     // Rational shoulder: C1 at knee, asymptotes to 1.0 (SDR ceiling by construction).
     float3 sh_comp   = above * above / (headroom + above);
-    // Rational toe: C1 at ktoe, scaled to match prior quadratic toe depth at x=0.
-    float3 tc_comp   = (0.06 / ktoe_rgb) * below * below / (ktoe_rgb + below);
-    return x + body_s - sh_comp + tc_comp;
+    return x + body_s - sh_comp;
 }
 
 float LiftChroma(float C, float pivot, float strength)
@@ -162,7 +157,7 @@ float LiftChroma(float C, float pivot, float strength)
 
 // ─── Stage helpers ─────────────────────────────────────────────────────────
 
-float3 ApplyDyeMatrix(float3 lin)
+float3 ApplyDyeMatrix(float3 lin, float print_stock)
 {
     float lin_min   = min(lin.r, min(lin.g, lin.b));
     float sat_proxy = max(lin.r, max(lin.g, lin.b)) - lin_min;
@@ -173,18 +168,20 @@ float3 ApplyDyeMatrix(float3 lin)
     bl_x.r = dye.r * 1.00 + dye.g * 0.15 + dye.b * 0.01;
     bl_x.g = dye.r * 0.14 + dye.g * 1.00 + dye.b * 0.06;
     bl_x.b = dye.r * 0.09 + dye.g * 0.09 + dye.b * 1.00;
-    return saturate(lin * (1.0 - bl_x + bl_x * bl_x * 0.5));
+    float3 result = saturate(lin * (1.0 - bl_x + bl_x * bl_x * 0.5));
+    return lerp(lin, result, saturate(print_stock));
 }
 
 float3 ApplyMaskingCoupler(float3 lin, float print_stock)
 {
-    float mc_luma = Luma(lin);
-    float mc_w    = saturate(1.0 - mc_luma / 0.75);
-    mc_w         *= mc_w;
-    float mc_str  = print_stock * 0.008 * mc_w;
-    lin.r = saturate(lin.r + mc_str);
-    lin.b = saturate(lin.b - mc_str * 0.65);
-    return lin;
+    float mc_luma  = Luma(lin);
+    float mc_w     = saturate(1.0 - mc_luma / 0.75);
+    mc_w          *= mc_w;
+    float mc_str   = 0.008 * mc_w;
+    float3 warmed  = lin;
+    warmed.r = saturate(lin.r + mc_str);
+    warmed.b = saturate(lin.b - mc_str * 0.65);
+    return lerp(lin, warmed, saturate(print_stock));
 }
 
 float3 ApplyBleachBypass(float3 lin, float bleach_bypass)
@@ -212,7 +209,7 @@ float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print
     ps = ps - d + d / (1.0 + d * 1.5);
     // Midtone desaturation: ~15% chroma loss (2383 dye-layer bleach).
     float luma_ps = Luma(ps);
-    float desat_w = 0.15 * (1.0 - smoothstep(0.0, fc_knee_toe, luma_ps))
+    float desat_w = 0.15 * smoothstep(0.0, fc_knee_toe, luma_ps)
                           * (1.0 - smoothstep(fc_knee, 1.0, luma_ps));
     ps = lerp(ps, luma_ps.xxx, desat_w);
     return lerp(lin, saturate(ps), saturate(print_stock));
@@ -279,14 +276,13 @@ float2 ApplyChromaticInduction(float2 ab, float3 lf_mip2, float final_C)
 // ─── ColorTransformPS stage structs and helpers ────────────────────────────
 
 struct SceneCtx {
-    float3 cfilm_floor;
     float4 perc;
     float  zone_log_key, zone_std, zone_str;
     float  ss_08_25, ss_04_25;
     float  scene_cut;
     float  slow_key;
     float  fc_knee,     fc_knee_r,  fc_knee_b;
-    float  fc_knee_toe, fc_ktoe_r,  fc_ktoe_b;
+    float  fc_knee_toe;
     float  shadow_lift_str;
     float  chroma_str_base;
     float  scene_mode;
@@ -306,7 +302,6 @@ SceneCtx BuildSceneCtx()
     float3 illum_rgb  = tex2Dlod(NeutralIllumSamp, float4(0.5, 0.5, 0, 0)).rgb;
     ctx.illum_warm    = IllumWarm(illum_rgb);
     ctx.median_C           = clamp(ReadHWY(HWY_MEDIAN_C), 0.0, 0.30);
-    ctx.cfilm_floor        = BLACKS;
     ctx.perc               = ReadTexHwyPerc();
     ctx.scene_cut          = ReadHWY(HWY_SCENE_CUT);
     float4 zstats          = ReadTexHwyChroma(0, 6);
@@ -335,8 +330,6 @@ SceneCtx BuildSceneCtx()
     ctx.fc_knee_toe        = lerp(ctx.fc_knee_toe, ctx.scene_mode + 0.05, toe_gap * 0.4);
     ctx.fc_knee_r          = clamp(ctx.fc_knee     * exp2(CURVE_R_KNEE * 0.10), 0.70, 0.95);
     ctx.fc_knee_b          = clamp(ctx.fc_knee     * exp2(CURVE_B_KNEE * 0.10), 0.70, 0.95);
-    ctx.fc_ktoe_r          = clamp(ctx.fc_knee_toe * exp2(CURVE_R_TOE  * 0.10), 0.08, 0.35);
-    ctx.fc_ktoe_b          = clamp(ctx.fc_knee_toe * exp2(CURVE_B_TOE  * 0.10), 0.08, 0.35);
     float _sls_t              = saturate(((ctx.perc.r + ctx.scene_mode) * 0.5 - 0.025) / 0.175);
     float _std_suppress       = smoothstep(0.05, 0.13, ctx.zone_std);
     ctx.shadow_lift_str       = lerp(1.50, 0.45, _sls_t*_sls_t*_sls_t*(_sls_t*(_sls_t*6.0-15.0)+10.0))
@@ -389,7 +382,6 @@ float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex
     // R151: p90−p50 gap measures isolated bright sources against scene median.
     float eff_hal_str = HALATION * lerp(1.0, 1.4, ctx.specular_contrast);
     lin_e = ApplyHalation(lin_e, lin_p, uv, eff_hal_str);
-    lin_e = min(lin_e, float(WHITES));
     // R202: M_neg — Kodak Vision3 500T (5219) negative spectral sensitivity (H-1-5219t, Gotanda 2010 sampling).
     // Applied in linear sRGB, after EXPOSURE + halation, before FilmCurve — physical negative→H-D chain order.
     // Completes the two-stock chain: M_neg (input sensitivity) + R85 dye masking (print side).
@@ -401,12 +393,9 @@ float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex
         );
         lin_e = mul(m_neg, lin_e);
     }
-    float3 fc_out  = FilmCurveApply(lin_e,
-                                    ctx.fc_knee_r, ctx.fc_knee, ctx.fc_knee_b,
-                                    ctx.fc_ktoe_r, ctx.fc_knee_toe, ctx.fc_ktoe_b);
-    float  sh_w    = smoothstep(ctx.fc_knee - 0.05, ctx.fc_knee + 0.05, Luma(lin_e));
-    float  fc_w    = lerp(1.0, 0.5, sh_w);
-    float3 out_lin = lerp(lin_e, fc_out, fc_w * saturate(float(FILM_CURVE)));
+    float3 fc_out  = FilmCurveApply(lin_e, ctx.fc_knee_r, ctx.fc_knee, ctx.fc_knee_b);
+    float  hl_taper = 1.0 - smoothstep(ctx.fc_knee, float(WHITES), Luma(lin_e));
+    float3 out_lin = lerp(lin_e, fc_out, saturate(float(FILM_CURVE)) * hl_taper);
     // ── R19: 3-way CC — primary grade before print emulation ──────────────────
     out_lin = Apply3WayCC(out_lin,
                           SHADOW_TEMP, SHADOW_TINT,
@@ -714,7 +703,7 @@ float3 ApplyLook(float3 lin, SceneCtx ctx)
     out_lin = ApplyBleachBypass(out_lin, BLEACH_BYPASS);
     out_lin = ApplyPrintStock(out_lin, ctx.fc_knee_toe, ctx.fc_knee, PRINT_STOCK);
     out_lin = ApplyMaskingCoupler(out_lin, PRINT_STOCK);
-    out_lin = ApplyDyeMatrix(out_lin);
+    out_lin = ApplyDyeMatrix(out_lin, PRINT_STOCK);
     // R192: printer lights — per-channel contact-printer exposure after all emulsion work.
     // 0 = neutral, ±12 = ±1 stop. Mirrors film lab RGB printer head notation.
     out_lin *= exp2(float3(PRINTER_R, PRINTER_G, PRINTER_B) / 12.0);
@@ -729,8 +718,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     SceneCtx ctx       = BuildSceneCtx();
     float4 lf_mip2_tex = tex2D(LowFreqMip2Samp, uv);
 
-    float  col_luma = Luma(col.rgb);
-    float3 lin      = max(col.rgb, ctx.cfilm_floor);
+    float3 lin      = col.rgb * (float(WHITES) - float(BLACKS)) + float(BLACKS);
+    float  col_luma = Luma(lin);
     lin = lerp(lin, ApplyCorrective(lin, col_luma, uv, lf_mip2_tex, ctx), CORRECTIVE_STRENGTH * 0.01);
 
     TonalOut tonal      = ApplyTonal(lin, col_luma, uv, lf_mip2_tex, ctx);

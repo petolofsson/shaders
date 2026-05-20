@@ -82,7 +82,7 @@ Reads from BackBuffer (post-inverse_grade, post-corrective). ZoneHistoryTex read
 chroma stats and scene percentiles arrive via TexHwyTex (ReadTexHwyChroma / ReadTexHwyPerc / ReadHWY).
 inverse_grade.fx runs before corrective — R90 chroma expansion on pre-corrective signal.
 
-**Pre-grade:** inverse_grade.fx — R198 FilmCurve pre-inverse (`FilmCurveInvCh`: shoulder rational, toe quadratic, midrange identity) applied before Oklab conversion; knee/ktoe reconstructed from highway p25/p50/p75/mode (one-frame delay). Then Oklab chroma expansion (slope from highway x=197, INVERSE_STRENGTH) + per-hue chroma ceiling (`HueCeil()` from hue_bands.fxh — blocks expansion overshoot past natural gamut)
+**Pre-grade:** inverse_grade.fx — R198 FilmCurve shoulder pre-inverse (`FilmCurveInvCh`: shoulder rational only, midrange identity; R205 removed toe) applied before Oklab conversion; knee reconstructed from highway p25/p50/p75 + CURVE_R/B_KNEE (one-frame delay). Then Oklab chroma expansion (slope from highway x=197, INVERSE_STRENGTH) + per-hue chroma ceiling (`HueCeil()` from hue_bands.fxh — blocks expansion overshoot past natural gamut)
 
 **LFDownscale1 + LFDownscale2 passes (pre-ColorTransform):** Build `LowFreqMip1Tex` (1/16-res)
 and `LowFreqMip2Tex` (1/32-res) from `TexHwyTex` spatial lane via 4-tap box filter. Must run
@@ -90,7 +90,7 @@ before ColorTransform. Cross-technique mips are zero — these passes are the fi
 
 **NeutralIllum pass (pre-ColorTransform):** 144-sample (16×9) grid over `TexHwySamp` spatial lane, neutral-pixel-weighted (weight = `1−smoothstep(0.04,0.10,C)`). Outputs scene illuminant estimate to 1×1 `NeutralIllumTex`. Used by R83 (chromatic floor) and R66 (ambient shadow tint). CAT16 pixel correction removed R127 — game content is display-referred (sRGB→D65); warm lighting is art direction, not a calibration error.
 
-1. **CORRECTIVE** — `pow(rgb, EXPOSURE)` + R104 DIR couplers (log2-space cross-channel inhibition, default off) + FilmCurve (rational shoulder+toe, p25/p75 knee; upper-mid one-sided body lift `max(0,(x(1-x))²(2x-1))*0.65`) + R83 chromatic floor (lms_illum_norm from NeutralIllumTex) + R84 log-density offsets + R85 dye masking + R19 3-way CC
+1. **CORRECTIVE** — `pow(rgb, EXPOSURE)` + R104 DIR couplers (log2-space cross-channel inhibition, default off) + FilmCurve (rational shoulder only R205; p25/p75 knee; upper-mid body lift `max(0,t²(1−t)²(2t−1))×0.65` where `t=saturate((x−0.5)/(knee−0.5))` tracks fc_knee; tapers via hl_taper at WHITES ceiling) + R83 chromatic floor (lms_illum_norm from NeutralIllumTex) + R84 log-density offsets + R85 dye masking + R19 3-way CC
 2. **TONAL** — Zone S-curve + Spatial norm (auto from zone_std) + R29 Retinex (illum_s0 from LowFreqMip1, illum_s2 from LowFreqMip2) + Shadow lift + R62 Oklab-stable tonal (L-substitution, chroma preserved) + R65 Hunt coupling + R66 ambient shadow tint (illum from LowFreqMip2)
 3. **CHROMA** — HELMLAB Fourier hue correction + R52 Purkinje + R22 sat-by-luma (shadow arm only — highlight arm removed) + R133 Munsell per-hue highlight rolloff (`HueBandRollN()`, `MUNSELL_HIGHLIGHT_ROLLOFF`) + R21 hue rotation + R75 hue-by-luminance + chroma lift (CHROMA_STR × 0.04 raw, R68A spatial mod) + R15 HK + R69/R12 Abney + density + R71 vibrance self-mask + R73 memory color ceilings (`HueCeil()` from hue_bands.fxh, full 12-hue wheel) + gamut pre-knee + gclip + R105 halation DoG PSF (LowFreqMip1 inner / LowFreqMip2 outer ring) + R106 Lorentzian tail
 
