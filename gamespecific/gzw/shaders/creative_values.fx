@@ -26,11 +26,6 @@
 // Rule of thumb: dial until overall brightness feels right, then tune beneath.
 #define EXPOSURE 0.05
 
-// Film emulsion scatter — warm orange/amber tint on highlights that exceed their
-// local blurred context. Fires on the highlight itself. Self-limiting: flat areas
-// and dark pixels unaffected. 0 = off. 0.30–0.60 = film-like. 1.0 = aggressive.
-#define HALATION  0.40
-
 // Adaptive S-curve (histogram-derived knee). Upper-mid lift + shoulder compression.
 // 0 = off (bypass). 1 = full designed effect.
 #define FILM_CURVE  1.0
@@ -55,13 +50,7 @@
 #define HIGHLIGHT_TINT   0
 
 // ── TONAL ─────────────────────────────────────────────────────────────────────
-// Local contrast / clarity (R190). Scales the guided filter detail layer before reconstruction.
-// >0 = micro-contrast punch (Lightroom Clarity equivalent). <0 = spatial softening.
-// Midtone-only: fades in 0.15→0.40, fades out 0.60→0.85. Shadows and highlights unaffected.
-// 0 = off. 0.10–0.30 = subtle punch. 0.50 = strong.
-#define CLARITY 0.3
-
-// Hue-selective luma contrast — same mechanism as CLARITY, ungated (fires at all luma levels).
+// Hue-selective luma contrast from the guided-filter detail signal.
 // Amplifies micro-contrast within the hue band. 0 = off. 0.10–0.30 = subtle. 0.50 = strong.
 #define LUMA_CONTRAST_RED    0.0
 #define LUMA_CONTRAST_YELLOW 0.0
@@ -76,18 +65,6 @@
 // Scales the auto shadow lift. 0 = off. 1.0 = full designed lift.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
 #define SHADOWS  1.00
-
-// Soft luma push/pull in the highlight range (L > 0.55). +1.0 brightens highlights,
-// -1.0 recovers blown highlights. Range ±1.0. Default 0.0 = passthrough.
-#define HIGHLIGHTS  0.0
-
-// ── CHROMA ────────────────────────────────────────────────────────────────────
-// Bipolar shadow cast — full strength below Oklab L 0.40, fades to zero at L 0.70.
-// Positive = warm amber (Deakins pre-flash): saturated warm additive, no desaturation.
-// Negative = scotopic Purkinje: desaturates shadows first (rods are achromatic), then
-//   applies fixed 507nm blue-green bias. Fires on neutrals — not C-weighted.
-// Range ±1.0. 0 = passthrough.
-#define SHADOW_CAST   0.10
 
 
 // Per-band hue rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
@@ -119,16 +96,10 @@
 // Kodak 2383 print emulsion: gentle shadow density bow, restrained shoulder,
 // desaturates mids ~15%. 0 = off. 1 = full 2383.
 #define PRINT_STOCK  0.40
-// Skip the bleach step during print development — retains metallic silver alongside
-// color dye. Desaturates shadows most (denser silver retention in unexposed areas),
-// steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.
-// 0 = off. 1 = full (near-monochrome shadows).
-#define BLEACH_BYPASS  0.00
-
 // R192: Printer lights — per-channel contact-printer exposure after all emulsion work.
 // Mirrors film lab RGB printer head notation: 0 = neutral, ±12 = ±1 stop, 1 point = 1/12 stop.
 // Push R up for warm cast, push B up for cool cast, etc.
-// Applied after print stock and bleach bypass — post-LMT.
+// Applied after print stock — post-LMT.
 #define PRINTER_R   0.0
 #define PRINTER_G   0.0
 #define PRINTER_B   0.0

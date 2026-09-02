@@ -153,21 +153,17 @@ _EFFECTS: "list[tuple[str, dict]]" = [
     # ── CORRECTIVE ─────────────────────────────────────────────────────────────
     ("EXPOSURE",          {"EXPOSURE":         0.0}),
     ("BLACKS_WHITES",     {"BLACKS": 0.0, "WHITES": 1.0}),
-    ("HALATION",          {"HALATION":         0.0}),
     ("FILM_CURVE",        {"FILM_CURVE": 0.0, "CURVE_R_KNEE": 0.0, "CURVE_B_KNEE": 0.0}),
     ("3WAY_CC",           {"SHADOW_TEMP": 0.0, "SHADOW_TINT": 0.0,
                            "MID_TEMP":    0.0, "MID_TINT":    0.0,
                            "HIGHLIGHT_TEMP": 0.0, "HIGHLIGHT_TINT": 0.0}),
     # ── TONAL ──────────────────────────────────────────────────────────────────
-    ("CLARITY",           {"CLARITY":          0.0}),
     ("LUMA_CONTRAST",     {"LUMA_CONTRAST_RED": 0.0, "LUMA_CONTRAST_YELLOW": 0.0,
                            "LUMA_CONTRAST_GREEN": 0.0, "LUMA_CONTRAST_CYAN": 0.0,
                            "LUMA_CONTRAST_BLUE":  0.0, "LUMA_CONTRAST_MAG":  0.0}),
     ("CONTRAST",          {"CONTRAST":         0.0}),
     ("SHADOWS",           {"SHADOWS":          0.0}),
-    ("HIGHLIGHTS",        {"HIGHLIGHTS":       0.0}),
     # ── CHROMA ─────────────────────────────────────────────────────────────────
-    ("SHADOW_CAST",       {"SHADOW_CAST":      0.0}),
     ("HUE_ROTATION",      {"HUE_RED": 0.0, "HUE_YELLOW": 0.0, "HUE_GREEN": 0.0,
                            "HUE_CYAN": 0.0, "HUE_BLUE":  0.0, "HUE_MAG":   0.0}),
     ("VIBRANCE",          {"VIBRANCE":         0.0}),
@@ -175,7 +171,6 @@ _EFFECTS: "list[tuple[str, dict]]" = [
                            "SAT_CYAN": 0.0, "SAT_BLUE":  0.0, "SAT_MAG":   0.0}),
     # ── LOOK ───────────────────────────────────────────────────────────────────
     ("PRINT_STOCK",       {"PRINT_STOCK":      0.0}),
-    ("BLEACH_BYPASS",     {"BLEACH_BYPASS":    0.0}),
     ("PRINTER_LIGHTS",    {"PRINTER_R": 0.0, "PRINTER_G": 0.0, "PRINTER_B": 0.0}),
     # ── OUTPUT ─────────────────────────────────────────────────────────────────
     ("DIFFUSION",         {"DIFFUSION":        0.0}),

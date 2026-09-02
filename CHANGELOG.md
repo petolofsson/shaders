@@ -5,16 +5,22 @@ research notes.
 
 ## 2026-09-02
 
+- **Stable minimal checkpoint**: Arc Raiders now exposes only the core tonal controls;
+  removed game-specific hue, saturation, shadow-cast, and perceptual color design knobs.
+  The reduced chain passed a one-frame vkBasalt compile/render check.
 - **Root docs renamed/trimmed**: `CLAUDE.md` renamed to `AGENTS.md`; root docs
   compressed to operational state, current risks, and validation commands.
 - **Pipeline correctness**: fixed diffusion zero bypass, exact-white histogram
   binning, and exposure order. The 2x2 red activity marker is intentionally restored.
 - **Quality pass**: scene cuts now use p50 plus raw histogram entropy delta;
   guided-filter epsilon is local-variance adaptive.
+- **Pipeline reduction**: removed halation, clarity, negative matrix, chromatic
+  induction, Bezold-Bruecke, Abney, H-K, HELMLAB, gamut-density darkening, and
+  bleach bypass. Rebuilt game profiles around the remaining controls.
 - **Testing tools**: `compare_frame --all-effects` no longer references removed
   DIR/toe knobs and fails on missing knobs; added `tools/noise_floor.py`.
 - **Validation**: one-frame runtime `compare_frame --all-effects --only FILM_CURVE`
-  passed with FilmCurve contribution `DeltaE 1.12`; `bless_all --check` fails 4/4
+  passed with FilmCurve contribution `DeltaE 32.94`; `bless_all --check` fails 4/4
   against old `dcc712f` goldens, pending visual review/rebless.
 
 ## 2026-05-20

@@ -19,8 +19,8 @@ validation/calibration of a dense perceptual stack, not broad architecture.
 | Diffusion zero bypass | fixed | Removed fixed `0.10` midtone overlay baseline; `DIFFUSION=0` now bypasses. |
 | Red activity marker | intentional | Restored 2x2 top-left red pixels by user request; mask in strict image tests. |
 | Exact-white histogram samples | fixed | Frame and zone histograms clamp `luma` to `< 1.0` before binning. |
-| Exposure order | fixed | `INVERSE_LUMA` remains source reconstruction; `EXPOSURE` now feeds halation, M_neg, DIR, FilmCurve, and 3-way CC. |
-| Arc Raiders LOOK gate | open | `LOOK_STRENGTH 000`; configured print stock, bleach, and printer lights do nothing there. |
+| Exposure order | fixed | `INVERSE_LUMA` remains source reconstruction; `EXPOSURE` now feeds DIR, FilmCurve, and 3-way CC. |
+| Arc Raiders LOOK gate | open | `LOOK_STRENGTH 000`; configured print stock and printer lights do nothing there. |
 
 ## Pipeline Notes
 

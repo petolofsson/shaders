@@ -6,9 +6,9 @@ post-processing, not color-science literature.
 | Stage | Finished | Novel | Notes |
 |-------|----------|-------|-------|
 | Input / `inverse_grade` | 99% | 90% | Tonemapper shoulder pre-inverse plus Oklab chroma expansion bounded by hue ceilings. Remaining risk: ACES-biased slope calibration. |
-| Film stock / corrective | 99% | 94% | Negative matrix, DIR couplers, FilmCurve, 2383 print stock, masking/dye couplers. Remaining risk: empirical amplitude calibration. |
+| Film stock / corrective | 99% | 94% | DIR couplers, FilmCurve, 2383 print stock, masking/dye couplers. Remaining risk: empirical amplitude calibration. |
 | Tonal | 98% | 90% | Zone statistics, Retinex, Oklab L substitution, shadow lift, guided-filter detail. Local adaptive epsilon is implemented. |
-| Color + halation | 98% | 89% | HELMLAB, Munsell ceilings, Abney, HK, Purkinje/shadow cast, framebuffer-only halation. Remaining risk: stacked hue interactions. |
+| Color | 98% | 89% | Munsell ceilings and gamut projection. Removed low-value perceptual and surround transforms. Remaining risk: stacked hue interactions. |
 | Output | 98% | 93% | HBM diffusion, temporal dither, Selwyn-style grain, intentional red activity marker. Remaining risk: noise floor and PSF calibration. |
 
 ## Current Priorities

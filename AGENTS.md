@@ -61,14 +61,14 @@ Diffusion is inside `grade.fx`; it is not a separate chain effect.
 1. `inverse_grade`: FilmCurve shoulder pre-inverse plus Oklab chroma expansion,
    bounded by `HueCeil()`.
 2. `corrective`: zone/chroma/slow-key analysis; preserves BackBuffer.
-3. `grade` corrective: `INVERSE_LUMA` on source signal, then `EXPOSURE`, halation,
-   negative matrix, DIR couplers, FilmCurve, and 3-way CC.
+3. `grade` corrective: `INVERSE_LUMA` on source signal, then `EXPOSURE`, DIR
+   couplers, FilmCurve, and 3-way CC.
 4. `grade` tonal: guided-filter detail, Retinex/zone shaping, shadow lift,
    Hunt coupling, ambient tint, highlights.
-5. `grade` chroma: shadow cast, HELMLAB, sat-by-luma, Munsell rolloff, hue rotation,
-   Bezold-Bruecke, vibrance, saturation, compression, Abney, HK, induction, density.
-6. `grade` look: bleach bypass, Kodak 2383 print stock, masking/dye couplers,
-   printer lights; gated by `LOOK_STRENGTH`.
+5. `grade` chroma: sat-by-luma, Munsell rolloff, hue rotation, vibrance,
+   saturation, compression, and gamut projection.
+6. `grade` look: Kodak 2383 print stock, masking/dye couplers, printer lights;
+   gated by `LOOK_STRENGTH`.
 7. Output: HBM diffusion, dither, Selwyn-style grain, 2x2 red activity marker.
 
 ## Highway Slots
