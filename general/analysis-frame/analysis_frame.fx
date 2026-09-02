@@ -62,7 +62,7 @@ sampler2D PercSamp
     MagFilter = POINT;
 };
 
-// R53: scene-cut signal — r=scene_cut [0,1], g=p50 from last frame (for delta)
+// R53: scene-cut signal — r=scene_cut [0,1], g=p50 history, b=entropy history
 // Written here, published to TexHwyTex (HWY_SCENE_CUT slot)
 texture2D SceneCutTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
 sampler2D SceneCutSamp
@@ -177,7 +177,7 @@ float4 LumHistGatherPS(float4 pos : SV_Position,
         {
             float2 s_uv = float2((x + 0.5) / float(DS_W),
                                  (y + 0.5) / float(DS_H) * scale_y);
-            float  luma = tex2Dlod(TexHwySamp, float4(s_uv, 0, 0)).a;
+            float  luma = min(tex2Dlod(TexHwySamp, float4(s_uv, 0, 0)).a, 1.0 - 1e-6);
             count += (luma >= bucket_lo && luma < bucket_hi) ? 1.0 : 0.0;
         }
     }
@@ -355,10 +355,19 @@ float4 CDFWalkPS(float4 pos : SV_Position,
 
 float4 SceneCutPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    float p50_now  = tex2Dlod(PercSamp,    float4(0.5, 0.5, 0, 0)).g;
-    float p50_prev = tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0)).g;
-    float scene_cut = smoothstep(0.10, 0.25, abs(p50_now - p50_prev));
-    return float4(scene_cut, p50_now, 0.0, 1.0);
+    float p50_now      = tex2Dlod(PercSamp,     float4(0.5, 0.5, 0, 0)).g;
+    float entropy_now  = 0.0;
+    [loop] for (int b = 0; b < HIST_BINS; b++)
+    {
+        float h = tex2Dlod(LumHistRaw, float4((b + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
+        entropy_now -= h * log2(max(h, 1e-6));
+    }
+    entropy_now /= log2(float(HIST_BINS));
+    float4 prev_cut    = tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0));
+    float p50_cut      = smoothstep(0.10, 0.25, abs(p50_now - prev_cut.g));
+    float entropy_cut  = smoothstep(0.08, 0.22, abs(entropy_now - prev_cut.b));
+    float scene_cut    = max(p50_cut, entropy_cut);
+    return float4(scene_cut, p50_now, entropy_now, 1.0);
 }
 
 // ─── Pass 7 — Scene median Oklab chroma ───────────────────────────────────

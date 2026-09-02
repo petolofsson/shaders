@@ -153,10 +153,8 @@ _EFFECTS: "list[tuple[str, dict]]" = [
     # ── CORRECTIVE ─────────────────────────────────────────────────────────────
     ("EXPOSURE",          {"EXPOSURE":         0.0}),
     ("BLACKS_WHITES",     {"BLACKS": 0.0, "WHITES": 1.0}),
-    ("DIR_COUPLER",       {"DIR_COUPLER":      0.0}),
     ("HALATION",          {"HALATION":         0.0}),
-    ("FILM_CURVE",        {"CURVE_R_KNEE": 0.0, "CURVE_B_KNEE": 0.0,
-                           "CURVE_R_TOE":  0.0, "CURVE_B_TOE":  0.0}),
+    ("FILM_CURVE",        {"FILM_CURVE": 0.0, "CURVE_R_KNEE": 0.0, "CURVE_B_KNEE": 0.0}),
     ("3WAY_CC",           {"SHADOW_TEMP": 0.0, "SHADOW_TINT": 0.0,
                            "MID_TEMP":    0.0, "MID_TINT":    0.0,
                            "HIGHLIGHT_TEMP": 0.0, "HIGHLIGHT_TINT": 0.0}),
@@ -196,7 +194,7 @@ def _ae_write_knobs(cv: Path, knobs: dict) -> None:
     """Write knob values into creative_values.fx using regex replacement.
 
     Handles both integer gate knobs (100/0) and float effect knobs.
-    Uses multiline \S+ to match the existing value token regardless of format
+    Uses multiline \\S+ to match the existing value token regardless of format
     (handles +0.10, -0.20, 0.005, 100, 1.0, etc.).
     """
     text = cv.read_text()
@@ -209,12 +207,14 @@ def _ae_write_knobs(cv: Path, knobs: dict) -> None:
             valstr = "1.0"
         else:
             valstr = f"{val:g}"
-        text = re.sub(
+        text, replaced = re.subn(
             rf"^(#define\s+{re.escape(name)}\s+)\S+",
             rf"\g<1>{valstr}",
             text,
             flags=re.MULTILINE,
         )
+        if replaced == 0:
+            sys.exit(f"Knob '{name}' not found in {cv}")
     cv.write_text(text)
 
 

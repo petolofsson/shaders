@@ -123,7 +123,7 @@ float4 ComputeZoneHistogramPS(float4 pos : SV_Position,
     {
         float2 suv  = float2(u_lo + (sx + 0.5) / 10.0 * 0.25,
                             (v_lo + (sy + 0.5) / 10.0 * 0.25) * scale_y);
-        float  luma = tex2Dlod(TexHwySamp, float4(suv, 0, 0)).a;
+        float  luma = min(tex2Dlod(TexHwySamp, float4(suv, 0, 0)).a, 1.0 - 1e-6);
         count += (luma >= bucket_lo && luma < bucket_hi) ? 1.0 : 0.0;
     }
 

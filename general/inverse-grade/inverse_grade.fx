@@ -47,11 +47,11 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
         float p75    = ReadHWY(HWY_P75);
         float p25    = ReadHWY(HWY_P25);
         float bowley = (p75 + p25 - 2.0*p50) / max(p75 - p25, 0.01);
-        float fc_knee = saturate(lerp(0.90, 0.80, saturate((p75 - 0.60) / 0.30))
+        float fc_knee = saturate(lerp(0.75, 0.60, saturate((p75 - 0.60) / 0.30))
                       - saturate(bowley) * 0.06);
-        float3 knee = float3(clamp(fc_knee * exp2(float(CURVE_R_KNEE) * 0.10), 0.70, 0.95),
+        float3 knee = float3(clamp(fc_knee * exp2(float(CURVE_R_KNEE) * 0.10), 0.50, 0.92),
                              fc_knee,
-                             clamp(fc_knee * exp2(float(CURVE_B_KNEE) * 0.10), 0.70, 0.95));
+                             clamp(fc_knee * exp2(float(CURVE_B_KNEE) * 0.10), 0.50, 0.92));
         col.r = FilmCurveInvCh(col.r, knee.r);
         col.g = FilmCurveInvCh(col.g, knee.g);
         col.b = FilmCurveInvCh(col.b, knee.b);

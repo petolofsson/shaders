@@ -1,166 +1,81 @@
-# Tools Reference
+# Tools
 
-All tools live in `tools/` and are exposed as fish functions. Run any tool with `--help` for full options.
+All tools live in `tools/`; many are also exposed as shell/fish functions.
+Run Python tools with `--help`.
 
----
+## Capture / Tuning
 
-## Collection
-
-### `auto_capture`
-Automated reference frame collection during gameplay.
-
-Runs in the foreground, screenshots every `--interval` seconds, rejects loading screens and
-near-duplicate scenes, and saves keepers to `gamespecific/<game>/analysis/reference/autof_<ts>.png`.
-Stop with Ctrl-C.
-
-```
-auto_capture                        # auto-detect game from SHADER_GAME env var
-auto_capture --game gzw             # explicit game
-auto_capture --interval 10          # faster capture (default: 20s)
-auto_capture --max-frames 24        # prune oldest beyond this limit (default: 24)
-auto_capture --min-diff 12          # min pixel diff to accept a frame (default: 12)
+```text
+auto_capture --game arc_raiders --interval 20 --max-frames 24
+screenshot arc_raiders
+tune --game arc_raiders --delay 5
 ```
 
-### `screenshot [game]`
-Single reference frame via spectacle. Auto-detects game from `SHADER_GAME` if not passed.
-Saved to `gamespecific/<game>/analysis/reference/<timestamp>.png`.
-
----
-
-## Tuning
-
-### `tune`
-Live visual tuning. Opens all reference frames as an mpv playlist with vkBasalt active.
-Watches `creative_values.fx` — restarts mpv automatically on every save (~3 s SPIR-V compile).
-
-```
-tune                                # default game: arc_raiders
-tune --game gzw
-tune --delay 5                      # longer SPIR-V wait for slow machines
-tune --no-watch                     # disable auto-restart; reload manually
-```
-
-Controls in mpv: `>` / `<` to cycle frames · `q` to quit.
-
----
+Reference PNGs are pre-pipeline screenshots in
+`gamespecific/<game>/analysis/reference/`. `tune` opens them through
+`mpv + vkBasalt` and restarts on `creative_values.fx` edits.
 
 ## Analysis
 
-### `compare_frame`
-Before/after perceptual analysis. Renders a reference PNG through the current pipeline,
-captures the result, and reports ΔE_oklab with ΔL* / ΔC* / Δh° per tonal zone and hue band.
-
-```
-compare_frame gamespecific/gzw/analysis/reference/frame.png
-compare_frame --all --game gzw           # batch over all reference frames
-compare_frame --all --game gzw --keep    # also save EXRs to analysis/YYYY-MM-DD/frames/
-compare_frame --all-effects --game gzw   # per-effect isolation (see below)
-compare_frame --delay 5                  # longer SPIR-V wait
-```
-
-Aggregate output: `gamespecific/<game>/compare_agg.json` (also archived to `analysis/YYYY-MM-DD/`).
-
-`--all-effects` captures FULL pipeline once, then for each named effect zeroes its knobs to
-passthrough and diffs the two outputs (incremental subtraction). ΔE = how much that individual
-effect changes the image in full-pipeline context. Effects with ΔE < 0.5 flagged as silent.
-Effects whose knobs are already at passthrough are skipped automatically.
-~22 effects tested: INVERSE_STRENGTH, INVERSE_LUMA, EXPOSURE, BLACKS_WHITES, DIR_COUPLER,
-HALATION, FILM_CURVE, 3WAY_CC, CLARITY, LUMA_CONTRAST, CONTRAST, SHADOWS, HIGHLIGHTS,
-SHADOW_CAST, HUE_ROTATION, VIBRANCE, SATURATION, PRINT_STOCK, BLEACH_BYPASS, PRINTER_LIGHTS,
-DIFFUSION, GRAIN.
-Results written to `gamespecific/<game>/full_analysis/effects_YYYY-MM-DD_HHMMSS.json` (timestamped)
-and `latest.json`. Each file includes per-effect stats, zone/hue-band deltas, and a snapshot of
-`creative_values.fx` at run time — intended for AI-assisted analysis.
-
-### `stage_isolate`
-Additive stage attribution. Runs four cumulative configurations and measures each stage's
-perceptual contribution. Saves and restores creative_values.fx gate values on exit (even on Ctrl-C).
-
-```
-stage_isolate --game gzw
-stage_isolate --game gzw --delay 5
-```
-
-Stages: CORRECTIVE → +TONAL → +CHROMA → +LOOK.
-Output: `grade_callsheet.txt` at game root + archived copy in `analysis/YYYY-MM-DD/`.
-
-### `analyze_delta`
-Low-level ΔE_oklab comparison between two EXR files. Also supports absolute ColorChecker mode.
-
-```
+```text
+compare_frame gamespecific/<game>/analysis/reference/frame.png --game <game>
+compare_frame --all --game <game> --delay 5
+compare_frame --all-effects --game <game> --max-frames 12 --delay 5
+compare_frame --all-effects --game <game> --only FILM_CURVE EXPOSURE
+stage_isolate --game <game> --delay 5
 analyze_delta before.exr after.exr
-analyze_delta --colorchecker captures/session.exr   # absolute vs. BabelColor D65
-analyze_delta --colorchecker                         # uses most recent capture
+analyze_delta --colorchecker captures/session.exr
+python3 tools/noise_floor.py before.exr after.exr --json-out noise.json
 ```
 
----
+`compare_frame --all-effects` captures the full pipeline, zeroes each effect's
+active knobs, measures full-minus-effect delta, and restores `creative_values.fx`.
+
+Current effect list:
+
+```text
+INVERSE_STRENGTH INVERSE_LUMA EXPOSURE BLACKS_WHITES HALATION FILM_CURVE
+3WAY_CC CLARITY LUMA_CONTRAST CONTRAST SHADOWS HIGHLIGHTS SHADOW_CAST
+HUE_ROTATION VIBRANCE SATURATION PRINT_STOCK BLEACH_BYPASS PRINTER_LIGHTS
+DIFFUSION GRAIN
+```
+
+`stage_isolate` measures cumulative gates:
+
+```text
+CORRECTIVE -> +TONAL -> +CHROMA -> +LOOK
+```
 
 ## Baselines
 
-### `bless_all`
-Promote current pipeline output to golden baselines for all four test images
-(gradient, colorchecker, highlights, skintones). Runs mpv once for the full set,
-then verifies each result against the freshly written golden.
-
-```
-bless_all --game gzw
-bless_all --game gzw --rebless      # overwrite existing goldens
+```text
+python3 tools/bless_all.py --check --game arc_raiders --delay 5
+python3 tools/bless_all.py --game arc_raiders --rebless
+python3 tools/test_golden.py list
+python3 tools/test_golden.py check gradient tests/golden/gradient.exr
 ```
 
-### `check_all`
-Compare current output against existing goldens. Exits non-zero on any failure.
+Do not rebless automatically. Current Arc Raiders output fails old `dcc712f`
+goldens and needs visual review first.
 
-```
-check_all --game gzw
-```
+## Outputs
 
----
-
-## Utilities
-
-### `capture`
-EXR snapshot of the current screen. Used internally by analysis tools; rarely called directly.
-
-```
-capture --game gzw --screen right
+```text
+gamespecific/<game>/compare_agg.json
+gamespecific/<game>/grade_callsheet.txt
+gamespecific/<game>/full_analysis/latest.json
+gamespecific/<game>/analysis/YYYY-MM-DD/
+gamespecific/<game>/captures/
 ```
 
-Saves to `gamespecific/<game>/captures/`.
+## Delta Scale
 
-### `make_test_images`
-Generate synthetic input images for the baseline suite: gradient ramp, 24-patch ColorChecker,
-highlight patches, and Fitzpatrick skin tone patches. Output to `tests/inputs/`.
+| DeltaE_oklab | Meaning |
+|--------------|---------|
+| `< 1` | usually imperceptible |
+| `1-3` | subtle |
+| `3-6` | clearly visible |
+| `> 6` | large error/change |
 
-```
-python3 tools/make_test_images.py
-```
-
----
-
-## ΔE_oklab scale
-
-| Range | Perception |
-|-------|-----------|
-| < 1.0 | Imperceptible |
-| 1 – 3 | Subtle / acceptable |
-| 3 – 6 | Clearly visible |
-| > 6   | Gross error |
-
-ΔL* > 0 = brighter · ΔC* > 0 = more saturated · Δh° > 0 = hue toward yellow.
-
----
-
-## Analysis file layout
-
-```
-gamespecific/<game>/
-  analysis/
-    reference/              ← pre-pipeline PNGs collected by auto_capture / screenshot
-    YYYY-MM-DD/
-      compare_agg.json      ← archived aggregate delta for that session
-      grade_callsheet.txt   ← archived call sheet for that session
-      frames/               ← EXRs from compare_frame --keep
-  compare_agg.json          ← latest aggregate (overwritten each run)
-  grade_callsheet.txt       ← latest call sheet (overwritten each run)
-  captures/                 ← raw EXR snapshots
-```
+`DeltaL* > 0` is brighter. `DeltaC* > 0` is more saturated. `Deltah* > 0`
+means hue moves toward yellow.

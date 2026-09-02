@@ -81,12 +81,14 @@ sampler2D NeutralIllumSamp
 
 
 // R190 guided filter base layer — replaces R189 bilateral H/V passes.
-// Self-guided, log2-luma space. Adaptive ε (Hu et al. 2023): a_k = var/((1+ε)·var + η).
+// Self-guided, log2-luma space. Local variance chooses ε: stronger smoothing in flat fields,
+// lower damping around structured edges.
 // r=3 texels at 1/8-res → 7×7 = 49 taps. No range kernel, no exp() per tap.
-#define GF_R    3                           // box radius in texels at 1/8-res (24 px physical)
-#define GF_EPS  0.05                        // ε scale — a_k ceiling = 1/(1+GF_EPS) ≈ 0.952
-#define GF_ETA  1e-8                        // η bias — pivot at var = GF_ETA/GF_EPS = 2e-7
-#define GF_N    ((2 * GF_R + 1) * (2 * GF_R + 1))   // window sample count (49)
+#define GF_R        3                       // box radius in texels at 1/8-res (24 px physical)
+#define GF_EPS_MIN  0.025                   // high-variance/detail ceiling: a_k <= 0.976
+#define GF_EPS_MAX  0.100                   // low-variance/flat-field ceiling: a_k <= 0.909
+#define GF_ETA      1e-8                    // η bias for near-zero variance stability
+#define GF_N        ((2 * GF_R + 1) * (2 * GF_R + 1))   // window sample count (49)
 
 texture2D GuidedCoeffTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RG16F; MipLevels = 1; };
 sampler2D GuidedCoeffSamp
@@ -215,18 +217,19 @@ float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print
     return lerp(lin, saturate(ps), saturate(print_stock));
 }
 
-float3 ApplyHalation(float3 lin_e, float3 lin_p, float2 uv, float hal_strength)
+float3 ApplyHalation(float3 lin_e, float3 lin_p, float exposure_scale, float2 uv, float hal_strength)
 {
-    float3 lf_mip1  = tex2D(LowFreqMip1Samp, uv).rgb;
-    float  luma_p   = Luma(lin_p);
-    float  luma_b   = Luma(lf_mip1);
-    float  dog      = max(0.0, luma_p - luma_b);
-    // Threshold 0.25–0.40: very diffuse areas (dog < 0.25) don't fire,
-    // isolated point sources and speculars (dog > 0.40) fire fully.
-    // dog² × luma_p: fast spatial falloff, scatter ∝ source brightness.
-    // sky_w: suppresses halation on blue/cool pixels (B>R = sky). Smooth exp, self-limiting.
-    float  sky_w    = exp(-max(0.0, lin_p.b - lin_p.r) * 7.0);
-    float  detail   = smoothstep(0.25, 0.40, dog) * dog * dog * luma_p * sky_w;
+    float3 lf_mip1   = tex2D(LowFreqMip1Samp, uv).rgb * exposure_scale;
+    float  luma_p    = Luma(lin_p);
+    float  luma_b    = Luma(lf_mip1);
+    float  dog       = max(0.0, luma_p - luma_b);
+    // sky_w: suppresses blue/cool pixels (B>R = open sky).
+    float  sky_w     = exp(-max(0.0, lin_p.b - lin_p.r) * 7.0);
+    // compact_w: suppresses large diffuse bright regions (clouds, overcast sky).
+    // Cloud edges: luma_b ≈ 0.40-0.55 (half cloud, half dark sky in 1/16-res window) → suppressed.
+    // Point lamp: luma_b ≈ 0.05-0.25 (mostly dark surroundings) → fires.
+    float  compact_w = 1.0 - smoothstep(0.20, 0.50, luma_b);
+    float  detail    = smoothstep(0.25, 0.40, dog) * dog * dog * luma_p * sky_w * compact_w;
     // Luma-neutral orange: float3(0.63,0.25,0.02) minus its luma (0.314) → hue shift, no bloom.
     return saturate(lin_e + detail * float3(0.316, -0.064, -0.294) * hal_strength);
 }
@@ -317,7 +320,7 @@ SceneCtx BuildSceneCtx()
     // attenuating zone stretch avoids processing well-distributed material.
     // Gate at 0.55: fires only above typical "good" scene entropy. Max 25% attenuation.
     ctx.zone_str          *= lerp(1.0, 0.75, saturate((ReadHWY(HWY_H_NORM) - 0.55) / 0.30));
-    ctx.fc_knee            = lerp(0.90, 0.80, saturate((ctx.perc.b - 0.60) / 0.30));
+    ctx.fc_knee            = lerp(0.75, 0.60, saturate((ctx.perc.b - 0.60) / 0.30));
     // R147: Bowley skewness — right-skewed (dark dominant, bright tail) → lower knee
     // to catch sparse bright tail that p75-based formula misses when p75 is low.
     float  bowley          = (ctx.perc.b + ctx.perc.r - 2.0 * ctx.perc.g)
@@ -328,8 +331,8 @@ SceneCtx BuildSceneCtx()
     ctx.scene_mode         = ReadHWY(HWY_MODE);
     float toe_gap          = saturate((ctx.fc_knee_toe - ctx.scene_mode - 0.05) / 0.10);
     ctx.fc_knee_toe        = lerp(ctx.fc_knee_toe, ctx.scene_mode + 0.05, toe_gap * 0.4);
-    ctx.fc_knee_r          = clamp(ctx.fc_knee     * exp2(CURVE_R_KNEE * 0.10), 0.70, 0.95);
-    ctx.fc_knee_b          = clamp(ctx.fc_knee     * exp2(CURVE_B_KNEE * 0.10), 0.70, 0.95);
+    ctx.fc_knee_r          = clamp(ctx.fc_knee     * exp2(CURVE_R_KNEE * 0.10), 0.50, 0.92);
+    ctx.fc_knee_b          = clamp(ctx.fc_knee     * exp2(CURVE_B_KNEE * 0.10), 0.50, 0.92);
     float _sls_t              = saturate(((ctx.perc.r + ctx.scene_mode) * 0.5 - 0.025) / 0.175);
     float _std_suppress       = smoothstep(0.05, 0.13, ctx.zone_std);
     ctx.shadow_lift_str       = lerp(1.50, 0.45, _sls_t*_sls_t*_sls_t*(_sls_t*(_sls_t*6.0-15.0)+10.0))
@@ -347,18 +350,8 @@ SceneCtx BuildSceneCtx()
 
 float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
 {
-    float3 lin_p = max(lin, 0.0);
     float  E     = exp2(EXPOSURE);
-    float3 lin_e = lin_p;
-    // R104: DIR couplers — developer-inhibitor-release cross-channel masking (hardcoded 0.30)
-    {
-        float3 log_e = log2(lin_e + 1e-5);
-        float3 act   = lin_e * lin_e / (lin_e * lin_e + 0.09);
-        float3 cpl   = float3(act.g * 0.12 + act.b * 0.06,
-                              act.r * 0.10 + act.b * 0.04,
-                              act.r * 0.06 + act.g * 0.08);
-        lin_e = lerp(lin_e, saturate(exp2(log_e - cpl * 0.3)), 0.30);
-    }
+    float3 lin_e = max(lin, 0.0);
 
     // R194: ACES luma inverse — undoes ACES midtone boost below the fixed point (L≈0.728).
     // Bell weight (Mertens et al. 2007): exp(-0.5*((L-mu)/0.18)²). mu tuning range: 0.05–0.20.
@@ -378,10 +371,10 @@ float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex
     }
     lin_e *= E;
     // ── R105: halation — pre-curve, post-exposure (fires at corrected signal level) ──
-    // lf_mip1/lf_mip2 are pre-corrective; lin_p passed for DoG detection baseline.
+    // Low-frequency baseline is scaled by exposure inside ApplyHalation so DoG is same-domain.
     // R151: p90−p50 gap measures isolated bright sources against scene median.
     float eff_hal_str = HALATION * lerp(1.0, 1.4, ctx.specular_contrast);
-    lin_e = ApplyHalation(lin_e, lin_p, uv, eff_hal_str);
+    lin_e = ApplyHalation(lin_e, lin_e, E, uv, eff_hal_str);
     // R202: M_neg — Kodak Vision3 500T (5219) negative spectral sensitivity (H-1-5219t, Gotanda 2010 sampling).
     // Applied in linear sRGB, after EXPOSURE + halation, before FilmCurve — physical negative→H-D chain order.
     // Completes the two-stock chain: M_neg (input sensitivity) + R85 dye masking (print side).
@@ -393,9 +386,18 @@ float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex
         );
         lin_e = mul(m_neg, lin_e);
     }
-    float3 fc_out  = FilmCurveApply(lin_e, ctx.fc_knee_r, ctx.fc_knee, ctx.fc_knee_b);
+    // R104: DIR couplers — developer-inhibitor-release cross-channel masking (hardcoded 0.30)
+    {
+        float3 log_e = log2(lin_e + 1e-5);
+        float3 act   = lin_e * lin_e / (lin_e * lin_e + 0.09);
+        float3 cpl   = float3(act.g * 0.12 + act.b * 0.06,
+                              act.r * 0.10 + act.b * 0.04,
+                              act.r * 0.06 + act.g * 0.08);
+        lin_e = lerp(lin_e, saturate(exp2(log_e - cpl * 0.3)), 0.30);
+    }
+    float3 fc_out   = FilmCurveApply(lin_e, ctx.fc_knee_r, ctx.fc_knee, ctx.fc_knee_b);
     float  hl_taper = 1.0 - smoothstep(ctx.fc_knee, float(WHITES), Luma(lin_e));
-    float3 out_lin = lerp(lin_e, fc_out, saturate(float(FILM_CURVE)) * hl_taper);
+    float3 out_lin  = lerp(lin_e, fc_out, saturate(float(FILM_CURVE)) * hl_taper);
     // ── R19: 3-way CC — primary grade before print emulation ──────────────────
     out_lin = Apply3WayCC(out_lin,
                           SHADOW_TEMP, SHADOW_TINT,
@@ -786,7 +788,8 @@ float2 GuidedCoeffPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
     float mean_I  = sum_I  / GF_N;
     float mean_II = sum_II / GF_N;
     float var_I   = max(mean_II - mean_I * mean_I, 0.0);
-    float a_k     = var_I / ((1.0 + GF_EPS) * var_I + GF_ETA);
+    float eps_k   = lerp(GF_EPS_MAX, GF_EPS_MIN, smoothstep(0.0025, 0.0400, var_I));
+    float a_k     = var_I / ((1.0 + eps_k) * var_I + GF_ETA);
     float b_k     = (1.0 - a_k) * mean_I;
     return float2(a_k, b_k);
 }
@@ -868,7 +871,7 @@ float3 ApplyDiffusionBloom(float3 base_rgb, float3 diff_blur, float adapt_str, f
     float3 result     = saturate(base_rgb + bloom * adapt_str);
     float  luma_r     = Luma(result);
     float  mid_gate   = luma_r * (1.0 - luma_r) * 4.0;
-    return saturate(lerp(result, diff_blur, (0.10 + eff_diff * 0.09) * mid_gate * ch_scatter));
+    return saturate(lerp(result, diff_blur, eff_diff * 0.09 * mid_gate * ch_scatter));
 }
 
 float3 pcg3d_hash(uint3 v)
@@ -963,7 +966,7 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
     result = ApplyFilmGrain(result, pos.xy);
 
-    // 2×2 red activity indicator — top-left corner, pipeline-on check
+    // 2x2 red activity indicator: visual filter-on confirmation in top-left corner.
     result = lerp(result, float3(1.0, 0.0, 0.0), step(pos.x, 1.5) * step(pos.y, 1.5));
 
     return float4(result, base.a);

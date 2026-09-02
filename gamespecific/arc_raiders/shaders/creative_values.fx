@@ -5,20 +5,20 @@
 // Adaptive inverse tone mapping. Expands Oklab chroma using the IQR-derived compression
 // ratio — restoring chroma the game's tonemapper compressed. Luma is handled by zone
 // S-curve. Works on any S-curve tonemapper. 0 = off. Start at 0.30–0.50.
-#define INVERSE_STRENGTH  0.40
+#define INVERSE_STRENGTH  0.5
 
 // Luma inverse — undoes ACES midtone boost (standard UE4/UE5 tonemapper).
 // Bell-weighted: correction peaks at lower mids (smoke/fog zone, L≈0.35), tapers to ~8%
 // at L=0.75 — upper-mid glows are largely preserved, preventing blob expansion.
 // Applied proportionally in Oklab — no saturation or density change.
 // 0 = off. Try 0.20–0.50, recalibrate EXPOSURE to taste.
-#define INVERSE_LUMA 0.40
+#define INVERSE_LUMA 0.4
 
 // ── CORRECTIVE ────────────────────────────────────────────────────────────────
 // BLACKS: black floor, direct linear value. 0.00 = passthrough. 0.05 = 5% floor.
 // WHITES: white ceiling, direct linear value. 1.00 = passthrough. 0.95 = ARRI LogC3 usable ceiling.
 #define BLACKS  0.005
-#define WHITES  0.95
+#define WHITES  1.00
 
 // Exposure in stops. 0 = neutral, +1 = one stop brighter, -1 = one stop darker.
 // Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.
@@ -29,11 +29,11 @@
 // Film emulsion scatter — warm orange/amber tint on highlights that exceed their
 // local blurred context. Fires on the highlight itself. Self-limiting: flat areas
 // and dark pixels unaffected. 0 = off. 0.30–0.60 = film-like. 1.0 = aggressive.
-#define HALATION  0.2
+#define HALATION  0.3
 
 // Adaptive S-curve (histogram-derived knee). Upper-mid lift + shoulder compression.
 // 0 = off (bypass). 1 = full designed effect.
-#define FILM_CURVE  1.0
+#define FILM_CURVE  0.6
 
 // Per-channel knee and toe offsets for the FilmCurve. Encodes the physical dye-layer
 // cross-over character of different film stocks. 0 = passthrough. Range ±1.
@@ -47,7 +47,7 @@
 // TEMP: positive = warm (R up, B down), negative = cool. Range ±1.0.
 // TINT: positive = magenta (G down, R+B up slightly), negative = green. Range ±1.0.
 // All default to 0 — passthrough. No output change at defaults.
-#define SHADOW_TEMP     -0.00
+#define SHADOW_TEMP     -0.15
 #define SHADOW_TINT      0
 #define MID_TEMP         0.00
 #define MID_TINT         0
@@ -59,19 +59,19 @@
 // >0 = micro-contrast punch (Lightroom Clarity equivalent). <0 = spatial softening.
 // Midtone-only: fades in 0.15→0.40, fades out 0.60→0.85. Shadows and highlights unaffected.
 // 0 = off. 0.10–0.30 = subtle punch. 0.50 = strong.
-#define CLARITY 0.35
+#define CLARITY 0.0
 
 // Hue-selective luma contrast — same mechanism as CLARITY, ungated (fires at all luma levels).
 // Amplifies micro-contrast within the hue band. 0 = off. 0.10–0.30 = subtle. 0.50 = strong.
 #define LUMA_CONTRAST_RED    0.0
-#define LUMA_CONTRAST_YELLOW 0.0
+#define LUMA_CONTRAST_YELLOW +0.0
 #define LUMA_CONTRAST_GREEN  0.0
 #define LUMA_CONTRAST_CYAN   0.0
 #define LUMA_CONTRAST_BLUE   0.0
 #define LUMA_CONTRAST_MAG    0.0
 
 // Scales the adaptive zone S-curve strength. 0 = off. 1.0 = full. 2.0 = aggressive.
-#define CONTRAST  1.00
+#define CONTRAST  0.75
 
 // Scales the auto shadow lift. 0 = off. 1.0 = full designed lift.
 // Raise for dark games with poor visibility, lower if lift feels too aggressive.
@@ -87,7 +87,7 @@
 // Negative = scotopic Purkinje: desaturates shadows first (rods are achromatic), then
 //   applies fixed 507nm blue-green bias. Fires on neutrals — not C-weighted.
 // Range ±1.0. 0 = passthrough.
-#define SHADOW_CAST   0.15
+#define SHADOW_CAST   -0.15
 
 
 // Per-band hue rotation in Oklab LCh. ±1.0 → ±36°. Positive = clockwise
@@ -103,7 +103,7 @@
 // lift-only, vibrance-masked (already-saturated pixels are attenuated).
 // Reach for this first before Saturation — lifts flat/dull areas without pushing vivid pixels further.
 // 0 = off. 1.0 = full designed lift.
-#define VIBRANCE   0.30
+#define VIBRANCE   0.20
 
 // Per-band chroma scale in Oklab C. ±1.0 → ±80% chroma per hue band.
 // Applied after Vibrance. Default 0.0 = passthrough.
@@ -118,7 +118,7 @@
 // Applied after all grading and chroma work — ACES LMT position.
 // Kodak 2383 print emulsion: gentle shadow density bow, restrained shoulder,
 // desaturates mids ~15%. 0 = off. 1 = full 2383.
-#define PRINT_STOCK   0.65
+#define PRINT_STOCK   0.6
 // Skip the bleach step during print development — retains metallic silver alongside
 // color dye. Desaturates shadows most (denser silver retention in unexposed areas),
 // steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.
@@ -153,4 +153,4 @@
 #define CORRECTIVE_STRENGTH  100
 #define TONAL_STRENGTH       100
 #define CHROMA_STRENGTH      100
-#define LOOK_STRENGTH        100
+#define LOOK_STRENGTH        000
