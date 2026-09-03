@@ -58,18 +58,19 @@ Diffusion is inside `grade.fx`; it is not a separate chain effect.
 
 ## Stage Order
 
-1. `inverse_grade`: FilmCurve shoulder pre-inverse plus Oklab chroma expansion,
-   bounded by `HueCeil()`.
+1. `inverse_grade`: source reconstruction plus Oklab chroma expansion, bounded
+   by `HueCeil()`; FilmCurve is not inverted here.
 2. `corrective`: zone/chroma/slow-key analysis; preserves BackBuffer.
 3. `grade` corrective: `INVERSE_LUMA` on source signal, then `EXPOSURE`, DIR
-   couplers, FilmCurve, and 3-way CC.
-4. `grade` tonal: guided-filter detail, Retinex/zone shaping, shadow lift,
-   Hunt coupling, ambient tint, highlights.
+   couplers, and 3-way CC.
+4. `grade` tonal: guided-filter detail, Retinex/zone shaping, signed adaptive
+   contrast, shadow lift, Hunt coupling, ambient tint, highlights, then the
+   luminance-preserving FilmCurve shoulder.
 5. `grade` chroma: sat-by-luma, Munsell rolloff, hue rotation, vibrance,
    saturation, compression, and gamut projection.
 6. `grade` look: Kodak 2383 print stock, masking/dye couplers, printer lights;
    gated by `LOOK_STRENGTH`.
-7. Output: HBM diffusion, dither, Selwyn-style grain, 2x2 red activity marker.
+7. Output: thresholded bright-pass diffusion, dither, Selwyn-style grain, 2x2 red activity marker.
 
 ## Highway Slots
 
@@ -90,7 +91,8 @@ Encode/decode out-of-range quantities at the slot boundary.
 - Exact-white histogram samples are clamped into the final bin before counting.
 - Scene cuts use p50 delta plus raw histogram entropy delta.
 - Guided-filter epsilon is local-variance adaptive.
-- Arc Raiders currently has `LOOK_STRENGTH 000`; configured LOOK knobs do nothing.
+- Arc Raiders and GZW share the new stable profile baseline; creative hue-band
+  controls remain omitted from both game profiles.
 - Old `dcc712f` goldens fail against current Arc Raiders output; review before reblessing.
 
 ## Validation

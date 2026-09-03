@@ -24,38 +24,10 @@ sampler2D BackBuffer
 
 // NeutralIllum RGB: read from TexHwyTex data row 0 pixel 4 (grade writes each frame, one-frame delay).
 
-// Exact inverse of FilmCurveApply shoulder (grade.fx). Midrange body_s (≤1.2%) neglected.
-// R198: pre-compensates for the forward FilmCurve, so chroma expansion sees the post-curve domain.
-float FilmCurveInvCh(float y, float knee)
-{
-    float h    = 1.0 - knee;
-    float s    = y - knee;
-    float x_sh = knee + s * h / max(h - s, 1e-5);
-    float w_sh = step(knee, y);   // 1 if y >= knee
-    return lerp(y, x_sh, w_sh);  // shoulder inverse or identity (midrange)
-}
-
 float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float4 col    = tex2D(BackBuffer, uv);
     if (INVERSE_STRENGTH <= 0.0) return col;
-
-    // R198: apply FilmCurve shoulder inverse so chroma expansion sees the post-curve domain.
-    // Reconstruct fc_knee from highway (one-frame delay — same precedent as NeutralIllumTex).
-    {
-        float p50    = ReadHWY(HWY_P50);
-        float p75    = ReadHWY(HWY_P75);
-        float p25    = ReadHWY(HWY_P25);
-        float bowley = (p75 + p25 - 2.0*p50) / max(p75 - p25, 0.01);
-        float fc_knee = saturate(lerp(0.75, 0.60, saturate((p75 - 0.60) / 0.30))
-                      - saturate(bowley) * 0.06);
-        float3 knee = float3(clamp(fc_knee * exp2(float(CURVE_R_KNEE) * 0.10), 0.50, 0.92),
-                             fc_knee,
-                             clamp(fc_knee * exp2(float(CURVE_B_KNEE) * 0.10), 0.50, 0.92));
-        col.r = FilmCurveInvCh(col.r, knee.r);
-        col.g = FilmCurveInvCh(col.g, knee.g);
-        col.b = FilmCurveInvCh(col.b, knee.b);
-    }
 
     float slope_enc   = ReadHWY(HWY_CHROMA_SLOPE);
     float slope       = clamp(slope_enc * 1.5 + 1.0, 1.15, 2.2);

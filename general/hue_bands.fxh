@@ -78,25 +78,6 @@ float HueCeil(float hue)
     return num / max(w0+w1+w2+w3+w4+w5+w6+w7+w8+w9+w10+w11, 1e-6);
 }
 
-// R133 Munsell highlight rolloff exponents.
-// Power n in f=(4(1-L))^n, calibrated from Munsell Renotation V=8→9→10 C_max ratios.
-// f=1 at L≤0.75 (V≈7.5), f=0 at L=1.0. Larger n = faster rolloff into highlights.
-// Yellow n=0.22: slowest — chroma peaks at V=9 (L≈0.90), rolloff only in the last 10%.
-// Green n=0.27: second slowest — stays colorful deep into highlights.
-// Orange n=0.81: fastest — strong highlight desaturation, matches Munsell data.
-#define HB_ROLL_N_RED     0.74
-#define HB_ROLL_N_ORANGE  0.81
-#define HB_ROLL_N_AMBER   0.74
-#define HB_ROLL_N_YELLOW  0.22
-#define HB_ROLL_N_GREEN   0.27
-#define HB_ROLL_N_TEAL    0.42
-#define HB_ROLL_N_CYAN    0.59
-#define HB_ROLL_N_AZURE   0.67
-#define HB_ROLL_N_BLUE    0.59
-#define HB_ROLL_N_VIOLET  0.67
-#define HB_ROLL_N_MAGENTA 0.74
-#define HB_ROLL_N_ROSE    0.74
-
 // 6-band Oklab hue dispatcher (normalized 0–1). Used by grade.fx and corrective.fx.
 // If-ladder is fine: always called from [unroll] loops, so b is a compile-time constant
 // and the compiler resolves each branch statically — no runtime divergence.
@@ -109,30 +90,6 @@ float GetBandCenter(int b)
     if (b == 3) return HB_BAND_CYAN;
     if (b == 4) return HB_BAND_BLUE;
     return HB_BAND_MAGENTA;
-}
-
-float HueBandRollN(float hue)
-{
-    hue = frac(hue);
-    float w0  = HueBandWeight(hue, HB_BAND_RED);
-    float w1  = HueBandWeight(hue, HB_BAND_ORANGE);
-    float w2  = HueBandWeight(hue, HB_BAND_AMBER);
-    float w3  = HueBandWeight(hue, HB_BAND_YELLOW);
-    float w4  = HueBandWeight(hue, HB_BAND_GREEN);
-    float w5  = HueBandWeight(hue, HB_BAND_TEAL);
-    float w6  = HueBandWeight(hue, HB_BAND_CYAN);
-    float w7  = HueBandWeight(hue, HB_BAND_AZURE);
-    float w8  = HueBandWeight(hue, HB_BAND_BLUE);
-    float w9  = HueBandWeight(hue, HB_BAND_VIOLET);
-    float w10 = HueBandWeight(hue, HB_BAND_MAGENTA);
-    float w11 = HueBandWeight(hue, HB_BAND_ROSE);
-    float num = w0  * HB_ROLL_N_RED     + w1  * HB_ROLL_N_ORANGE
-              + w2  * HB_ROLL_N_AMBER   + w3  * HB_ROLL_N_YELLOW
-              + w4  * HB_ROLL_N_GREEN   + w5  * HB_ROLL_N_TEAL
-              + w6  * HB_ROLL_N_CYAN    + w7  * HB_ROLL_N_AZURE
-              + w8  * HB_ROLL_N_BLUE    + w9  * HB_ROLL_N_VIOLET
-              + w10 * HB_ROLL_N_MAGENTA + w11 * HB_ROLL_N_ROSE;
-    return num / max(w0+w1+w2+w3+w4+w5+w6+w7+w8+w9+w10+w11, 1e-6);
 }
 
 // R156: per-hue inverse-grade slope bias.

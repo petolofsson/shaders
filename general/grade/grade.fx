@@ -160,18 +160,21 @@ sampler2D DiffusionHorizSamp
 
 float3 FilmCurveApply(float3 x, float knee_r, float knee_g, float knee_b)
 {
-    float3 knee_rgb  = float3(knee_r, knee_g, knee_b);
-    float3 above     = max(x - knee_rgb, 0.0);
-    float3 headroom  = max(1.0 - knee_rgb, 0.001);
-    // Upper-mid lift: one-sided S normalized to [0.5, fc_knee] so peak tracks the scene knee.
-    // t=0 at x=0.5, t=1 at x=fc_knee — body_s is exactly zero at and above the knee.
-    float3 xs        = saturate(x);
-    float3 t_norm    = saturate((xs - 0.5) / max(knee_rgb - 0.5, 0.001));
-    float3 tw        = t_norm * (1.0 - t_norm);
-    float3 body_s    = max(0.0, tw * tw * (2.0 * t_norm - 1.0)) * 0.65;
-    // Rational shoulder: C1 at knee, asymptotes to 1.0 (SDR ceiling by construction).
-    float3 sh_comp   = above * above / (headroom + above);
-    return x + body_s - sh_comp;
+    float  y         = max(Luma(max(x, 0.0)), 0.0);
+    float  knee      = saturate((knee_r + knee_g + knee_b) / 3.0);
+    float  above     = max(y - knee, 0.0);
+    float  headroom  = max(1.0 - knee, 0.001);
+    // Monotonic rational shoulder: identity through the knee, then smooth
+    // compression with a nonzero slope that asymptotically approaches 1.0.
+    // The wider denominator preserves upper-highlight separation and cloud detail.
+    const float shoulder_softness = 0.65;
+    float  shoulder  = above * above / (headroom / shoulder_softness + above);
+    float  y_curve   = y - shoulder;
+    float  ratio     = y_curve / max(y, 1e-4);
+    float3 mapped    = max(x, 0.0) * ratio;
+    // Preserve hue while keeping overrange channel ratios inside SDR gamut.
+    float  max_ch    = max(mapped.r, max(mapped.g, mapped.b));
+    return mapped / max(max_ch, 1.0);
 }
 
 float LiftChroma(float C, float pivot, float strength)
@@ -362,16 +365,13 @@ float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex
                               act.r * 0.06 + act.g * 0.08);
         lin_e = lerp(lin_e, saturate(exp2(log_e - cpl * 0.3)), 0.30);
     }
-    float3 fc_out   = FilmCurveApply(lin_e, ctx.fc_knee_r, ctx.fc_knee, ctx.fc_knee_b);
-    float  hl_taper = 1.0 - smoothstep(ctx.fc_knee, float(WHITES), Luma(lin_e));
-    float3 out_lin  = lerp(lin_e, fc_out, saturate(float(FILM_CURVE)) * hl_taper);
     // ── R19: 3-way CC — primary grade before print emulation ──────────────────
-    out_lin = Apply3WayCC(out_lin,
+    lin_e = Apply3WayCC(lin_e,
                           SHADOW_TEMP, SHADOW_TINT,
                           MID_TEMP, MID_TINT,
                           HIGHLIGHT_TEMP, HIGHLIGHT_TINT,
                           ctx.key_L);
-    return out_lin;
+    return lin_e;
 }
 
 float HueBandWeightW(float hue, float center)
@@ -421,7 +421,19 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     float nl_safe   = max(luma, 0.001);
     float log_R     = log2(nl_safe / illum_s0);
     float zk_safe   = max(ctx.zone_log_key, 0.001);
-    luma = lerp(luma, saturate(luma * zk_safe / illum_s0), 0.75 * ctx.ss_04_25);
+    // Retinex uses a bounded log-domain correction. The old raw ratio could
+    // overreact when the blurred illuminant approached zero or diverged from
+    // the global zone key.
+    float illum_delta = clamp(log2(zk_safe) - log2(max(illum_s0, 0.001)), -0.35, 0.35);
+    float illum_gain  = exp2(illum_delta);
+    // When the two low-frequency scales disagree, we are near a broad edge or
+    // gradient. Reduce normalization there so it cannot spread across clouds.
+    float edge_protect = 1.0 - smoothstep(0.04, 0.16,
+                                          abs(log2(max(illum_s0, 0.001))
+                                            - log2(max(illum_s2, 0.001))));
+    float highlight_protect = 1.0 - smoothstep(0.55, 0.85, luma);
+    float retinex_strength  = 0.75 * ctx.ss_04_25 * edge_protect * highlight_protect;
+    luma = lerp(luma, saturate(luma * illum_gain), retinex_strength);
 
     float4 zone_lvl   = tex2Dlod(ZoneHistorySamp, float4(uv, 0, 0));
     float zone_median = zone_lvl.r;
@@ -431,9 +443,14 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     float iqr_scale   = min(smoothstep(0.0, 0.25, zone_iqr),
                             (clahe_slope - 1.0) / max(ctx.zone_str, 0.001));
     float delta    = luma_orig - zone_median;   // original position — DEHAZE lift does not inflate delta
-    float zone_adj = ctx.zone_str * iqr_scale * delta * (1.0 - abs(delta));
-    float above_w  = smoothstep(-0.05, 0.10, delta);
-    float new_luma = saturate(luma + zone_adj * above_w);
+    // Signed zone contrast: expand around the local median instead of lifting
+    // only the upper side, which flattened bright cloud texture into white.
+    float zone_highlight_protect = 1.0 - smoothstep(0.55, 0.85, luma_orig);
+    float below_pivot = 1.0 - smoothstep(-0.02, 0.02, delta);
+    float shadow_arm  = lerp(1.0, 0.75, below_pivot);
+    float zone_adj = ctx.zone_str * iqr_scale * delta * (1.0 - abs(delta))
+                   * zone_highlight_protect * shadow_arm;
+    float new_luma = saturate(luma + zone_adj);
 
     float detail_protect  = smoothstep(-4.0, -0.5, log_R);
     // R60: temporal context — slow ambient key boosts lift during dark transitions, suppresses on re-entry
@@ -476,18 +493,10 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
 
     // R22: saturation by luminance — shadow desaturation 20% (baked Munsell calibration)
     // + midtone expansion bell from cinema SDR mastering data (Žaganeli et al. 2026)
-    // Highlight arm removed — R133 HueBandRollN() owns highlight desaturation.
     float mid_C_boost = 0.08 * smoothstep(0.22, 0.40, lab.x)
                              * (1.0 - smoothstep(0.55, 0.70, lab.x));
     C *= (1.0 + mid_C_boost
              - 0.20 * saturate(1.0 - lab.x / 0.25));
-    // R133: Munsell per-hue highlight chroma rolloff (replaces R74 linear ramp).
-    // f = (4(1-L))^n: 1 at L≤0.75, 0 at L=1.0. n from HueBandRollN — yellow 0.22,
-    // yellow-green 0.27, orange 0.81 (Munsell Renotation V=8→9→10 ratios).
-    // Hardcoded — calibration from measured data, not a creative choice.
-    float r133_roll = saturate(pow(max(0.0, 4.0 * (1.0 - lab.x)), HueBandRollN(h_perc)));
-    C *= r133_roll;
-
     // R21: per-band hue rotation — wider band (0.14 vs HB_BAND_WIDTH 0.08) covers full wheel
     // with 6 knobs. Calibrated bands use 0.08; creative rotation needs ±50° to avoid dead zones
     // in azure (CYAN↔BLUE gap) and orange/violet (RED↔YELLOW, BLUE↔MAG gaps).
@@ -614,6 +623,12 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     tonal.new_luma  = lerp(Luma(lin), tonal.new_luma,  tonal_gate);
     tonal.local_var = tonal.local_var * tonal_gate;
 
+    // Apply the film shoulder after spatial tonal work so cloud texture is not
+    // compressed before Retinex and zone shaping have processed the signal.
+    float3 fc_out = FilmCurveApply(tonal.lin, ctx.fc_knee_r, ctx.fc_knee, ctx.fc_knee_b);
+    tonal.lin = lerp(tonal.lin, fc_out, saturate(float(FILM_CURVE)));
+    tonal.new_luma = lerp(tonal.new_luma, Luma(tonal.lin), saturate(float(FILM_CURVE)));
+
     float3 result  = lerp(tonal.lin, ApplyChroma(tonal.lin, tonal.new_luma, tonal.local_var, lf_mip2_tex, ctx), CHROMA_STRENGTH * 0.01);
     result = lerp(result, ApplyLook(result, ctx), LOOK_STRENGTH * 0.01);
 
@@ -704,11 +719,14 @@ float GuidedBasePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 float4 DiffusionDownsamplePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float2 d = float2(1.0 / BUFFER_WIDTH, 1.0 / BUFFER_HEIGHT);
-    float3 c  = tex2D(BackBuffer, uv + float2(-d.x, -d.y)).rgb;
-           c += tex2D(BackBuffer, uv + float2(+d.x, -d.y)).rgb;
-           c += tex2D(BackBuffer, uv + float2(-d.x, +d.y)).rgb;
-           c += tex2D(BackBuffer, uv + float2(+d.x, +d.y)).rgb;
-    return float4(c * 0.25, 1.0);
+    float3 c0 = tex2D(BackBuffer, uv + float2(-d.x, -d.y)).rgb;
+    float3 c1 = tex2D(BackBuffer, uv + float2(+d.x, -d.y)).rgb;
+    float3 c2 = tex2D(BackBuffer, uv + float2(-d.x, +d.y)).rgb;
+    float3 c3 = tex2D(BackBuffer, uv + float2(+d.x, +d.y)).rgb;
+    float3 avg = (c0 + c1 + c2 + c3) * 0.25;
+    // Blur only bright energy; the original image remains sharp in DiffusionPS.
+    float bright_w = smoothstep(0.65, 0.90, Luma(avg));
+    return float4(avg * bright_w, 1.0);
 }
 
 // ─── Diffusion Gaussian blur — separable 9-tap, σ=2 output texels (~8 px at 1080p) ──
@@ -745,17 +763,13 @@ float4 DiffusionBlurVPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 }
 
 // R132: polydisperse scatter — longer λ (red) diffracts more broadly through filter media.
-// R115/R131: A) additive shimmer (blur>sharp only); B) soft midtone overlay (bell-gated).
-float3 ApplyDiffusionBloom(float3 base_rgb, float3 diff_blur, float adapt_str, float eff_diff)
+// Bright-pass bloom only; the base image remains sharp at every screen position.
+float3 ApplyDiffusionBloom(float3 base_rgb, float3 diff_blur, float adapt_str)
 {
     float3 ch_scatter = float3(1.15, 1.00, 0.85);
-    float3 bloom_raw  = max(0.0, diff_blur - base_rgb);
-    float  src_gate   = smoothstep(0.10, 0.40, Luma(diff_blur));
-    float3 bloom      = bloom_raw / (bloom_raw + 0.08) * src_gate * ch_scatter;
-    float3 result     = saturate(base_rgb + bloom * adapt_str);
-    float  luma_r     = Luma(result);
-    float  mid_gate   = luma_r * (1.0 - luma_r) * 4.0;
-    return saturate(lerp(result, diff_blur, eff_diff * 0.09 * mid_gate * ch_scatter));
+    float  src_gate   = smoothstep(0.05, 0.35, Luma(diff_blur));
+    float3 bloom      = diff_blur * src_gate * ch_scatter;
+    return saturate(base_rgb + bloom * adapt_str);
 }
 
 float3 pcg3d_hash(uint3 v)
@@ -815,18 +829,7 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float4 base = tex2D(BackBuffer, uv);
 
-    // Eye shape rotated 90°: points off-screen top/bottom (|dy|=0.70 > screen ±0.50),
-    // widest at vertical center = 25% of screen width (±12.5% from center-x).
-    // Diffusion = 0 inside eye, builds from eye boundary to screen edge.
-    float2 c_diff      = uv - 0.5;
-    float  eye_x_bound = 0.125 * sqrt(max(0.0, 1.0 - (c_diff.y / 0.70) * (c_diff.y / 0.70)));
-    float  dist_out    = max(0.0, abs(c_diff.x) - eye_x_bound);
-    float  r           = saturate(dist_out / 0.375);
-    float  diff_radial = 0.0;
-    diff_radial = lerp(diff_radial, 0.25, smoothstep(0.15, 0.40, r));
-    diff_radial = lerp(diff_radial, 0.75, smoothstep(0.40, 0.70, r));
-    diff_radial = lerp(diff_radial, 1.00, smoothstep(0.70, 0.90, r));
-    float  eff_diff    = DIFFUSION * 1.40 * diff_radial;
+    float  eff_diff    = DIFFUSION;
 
     float3 diff_blur = tex2Dlod(DiffusionSamp, float4(uv, 0, 0)).rgb;
 
@@ -839,7 +842,7 @@ float4 DiffusionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float  diff_bowley    = (perc.b + perc.r - 2.0 * perc.g) / max(perc.b - perc.r, 0.01);
     adapt_str *= diff_key_scale * diff_ap_scale * lerp(1.0, 1.3, saturate(diff_bowley));
 
-    float3 result = ApplyDiffusionBloom(base.rgb, diff_blur, adapt_str, eff_diff);
+    float3 result = ApplyDiffusionBloom(base.rgb, diff_blur, adapt_str);
 
     // R197: golden-ratio temporal offset — each frame lands in the largest gap left by
     // previous frames, giving quasi-random temporal coverage with no visible pattern.

@@ -5,18 +5,17 @@ post-processing, not color-science literature.
 
 | Stage | Finished | Novel | Notes |
 |-------|----------|-------|-------|
-| Input / `inverse_grade` | 99% | 90% | Tonemapper shoulder pre-inverse plus Oklab chroma expansion bounded by hue ceilings. Remaining risk: ACES-biased slope calibration. |
-| Film stock / corrective | 99% | 94% | DIR couplers, FilmCurve, 2383 print stock, masking/dye couplers. Remaining risk: empirical amplitude calibration. |
-| Tonal | 98% | 90% | Zone statistics, Retinex, Oklab L substitution, shadow lift, guided-filter detail. Local adaptive epsilon is implemented. |
+| Input / `inverse_grade` | 99% | 90% | Source reconstruction plus Oklab chroma expansion bounded by hue ceilings; FilmCurve is no longer pre-inverted. Remaining risk: ACES-biased slope calibration. |
+| Film stock / corrective | 99% | 94% | DIR couplers, luminance-preserving FilmCurve, 2383 print stock, masking/dye couplers. Remaining risk: empirical amplitude calibration. |
+| Tonal | 98% | 90% | Zone statistics, Retinex, signed adaptive contrast, Oklab L substitution, shadow lift, guided-filter detail. Local adaptive epsilon is implemented. |
 | Color | 98% | 89% | Munsell ceilings and gamut projection. Removed low-value perceptual and surround transforms. Remaining risk: stacked hue interactions. |
 | Output | 98% | 93% | HBM diffusion, temporal dither, Selwyn-style grain, intentional red activity marker. Remaining risk: noise floor and PSF calibration. |
 
 ## Current Priorities
 
-1. Decide whether Arc Raiders should keep `LOOK_STRENGTH 000`.
-2. Review current Arc Raiders output against stale `dcc712f` goldens before reblessing.
-3. Run full `compare_frame --all-effects --game arc_raiders` after the LOOK gate decision.
-4. Use `tools/noise_floor.py` on matched renders when evaluating dither/grain changes.
+1. Review current Arc Raiders output against stale `dcc712f` goldens before reblessing.
+2. Run cross-game visual validation for the shared Arc Raiders/GZW baseline.
+3. Use `tools/noise_floor.py` on matched renders when evaluating dither/grain changes.
 5. Either use or remove unused highway/context surfaces: `HWY_CHROMA_P75`,
    `HWY_HUE_CONC`, `HWY_P10`, `HWY_IQR`, and `ctx.illum_warm`.
 
