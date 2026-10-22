@@ -1,0 +1,113 @@
+{
+  "date": "2026-09-03",
+  "time": "00:10:11",
+  "game": "arc_raiders",
+  "n_frames": 1,
+  "creative_values": "// Arc Raiders creative values.\n// Keep user-facing tuning here; shader constants and analysis parameters stay in general/.\n\n// INPUT\n#define INVERSE_STRENGTH  0.5\n#define INVERSE_LUMA      0.5\n\n// CORRECTIVE\n#define BLACKS            0.005\n#define WHITES            1.00\n#define EXPOSURE          0.10\n#define FILM_CURVE        0.35\n#define CURVE_R_KNEE     -0.10\n#define CURVE_B_KNEE      0.20\n\n// PRIMARY COLOR CORRECTION\n#define SHADOW_TEMP       0.00\n#define SHADOW_TINT       0.00\n#define MID_TEMP          0.00\n#define MID_TINT          0.00\n#define HIGHLIGHT_TEMP    0.00\n#define HIGHLIGHT_TINT    0.00\n\n// TONAL\n#define CONTRAST              0.50\n#define SHADOWS               0.50\n\n// LOOK\n#define PRINT_STOCK           0.00\n#define PRINTER_R             1.00\n#define PRINTER_G             1.00\n#define PRINTER_B             1.00\n\n// OUTPUT\n#define DIFFUSION             0.00\n#define GRAIN                 0.40\n\n// STAGE GATES: comparison controls, leave at 100 unless isolating a stage.\n#define CORRECTIVE_STRENGTH   100\n#define TONAL_STRENGTH        100\n#define CHROMA_STRENGTH       100\n#define LOOK_STRENGTH         100\n",
+  "effects": {
+    "FILM_CURVE": {
+      "mean_de": 12.984137776886973,
+      "zones": {
+        "shadows": {
+          "mean_de": 12.665181699183611,
+          "dL": -0.5433315169840667,
+          "dC": 0.5142855454355217
+        },
+        "midtones": {
+          "mean_de": 16.85840483284194,
+          "dL": -13.939879186778558,
+          "dC": -0.6780804532931607
+        },
+        "highlights": {
+          "mean_de": 27.767172928944138,
+          "dL": -26.960298245352888,
+          "dC": 0.08574518492612203
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 8.129098806664185,
+          "dL": -4.761758228115025,
+          "dC": -0.6949156388317577
+        },
+        "yellow": {
+          "mean_de": 30.459877805909656,
+          "dL": -21.65570993733093,
+          "dC": -3.207921125052584
+        },
+        "green": {
+          "mean_de": 28.326221072344296,
+          "dL": -14.043811632720846,
+          "dC": -5.229027216154396
+        },
+        "cyan": {
+          "mean_de": 5.473749590637414,
+          "dL": -4.35791198081648,
+          "dC": -0.2536178192701022
+        },
+        "blue": {
+          "mean_de": 1.0064982530519269,
+          "dL": 0.17888686448007807,
+          "dC": 0.11107533168734099
+        },
+        "magenta": {
+          "mean_de": 0.07073573714246925,
+          "dL": 0.011218676663548794,
+          "dC": -0.020478509409257578
+        }
+      }
+    }
+  },
+  "full": {
+    "mean_de": 27.561147345483146,
+    "zones": {
+      "shadows": {
+        "mean_de": 24.868749992161927,
+        "dL": 1.9535852185742326,
+        "dC": 1.8958022855306496
+      },
+      "midtones": {
+        "mean_de": 48.211053499642055,
+        "dL": -45.46121329006187,
+        "dC": -2.252456373376955
+      },
+      "highlights": {
+        "mean_de": 62.90378359500962,
+        "dL": -62.063929632618944,
+        "dC": 1.9103985459848813
+      }
+    },
+    "hue_bands": {
+      "red": {
+        "mean_de": 33.73749007168513,
+        "dL": -24.954982736549017,
+        "dC": -1.8255714916001105
+      },
+      "yellow": {
+        "mean_de": 37.54572886204857,
+        "dL": -33.31398012417211,
+        "dC": -2.3945621938942354
+      },
+      "green": {
+        "mean_de": 51.52299538342625,
+        "dL": -43.25704228509657,
+        "dC": -10.878719473236208
+      },
+      "cyan": {
+        "mean_de": 40.64739569956381,
+        "dL": -28.444131996005247,
+        "dC": -2.561996431498084
+      },
+      "blue": {
+        "mean_de": 31.853244329616235,
+        "dL": -16.62188856882673,
+        "dC": -2.7896121421212703
+      },
+      "magenta": {
+        "mean_de": 29.774278114507286,
+        "dL": -20.10779587869094,
+        "dC": 1.6159625296454758
+      }
+    }
+  }
+}

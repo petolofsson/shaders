@@ -1,0 +1,997 @@
+{
+  "date": "2026-05-16",
+  "time": "22:24:11",
+  "game": "arc_raiders",
+  "n_frames": 12,
+  "creative_values": "// creative_values.fx \u2014 tune here\n// Knobs ordered by pipeline firing position.\n\n// \u2500\u2500 INPUT \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Adaptive inverse tone mapping. Expands Oklab chroma using the IQR-derived compression\n// ratio \u2014 restoring chroma the game's tonemapper compressed. Luma is handled by zone\n// S-curve. Works on any S-curve tonemapper. 0 = off. Start at 0.30\u20130.50.\n#define INVERSE_STRENGTH  0.30\n\n// Luma inverse \u2014 undoes ACES midtone boost (standard UE4/UE5 tonemapper).\n// Darkens display values below L\u22480.73 (ACES fixed point) back toward scene-linear.\n// Highlights above L\u22480.73 are unchanged \u2014 ACES shoulder is irrecoverable in SDR.\n// Midtones darken ~0.5 stops at 1.0 \u2014 increase EXPOSURE to compensate after enabling.\n// 0 = off. Try 0.30\u20130.60 after recalibrating EXPOSURE.\n#define INVERSE_LUMA 0.45\n\n// \u2500\u2500 CORRECTIVE \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// BLACKS: black floor, direct linear value. 0.00 = passthrough. 0.05 = 5% floor.\n// WHITES: white ceiling, direct linear value. 1.00 = passthrough. 0.95 = ARRI LogC3 usable ceiling.\n#define BLACKS  0.005\n#define WHITES  0.95\n\n// DIR couplers \u2014 cross-channel log-space inhibition (film dye chemistry model).\n// Bright channels suppress complementary channels: desaturates vivid colours,\n// adds density to saturated midtones. 0 = off. 1.0 = full designed effect.\n#define DIR_COUPLER  0.50\n\n// Exposure in stops. 0 = neutral, +1 = one stop brighter, -1 = one stop darker.\n// Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.\n// Sets where pixels sit tonally \u2014 which directly changes what every knob below \"sees\".\n// Rule of thumb: dial until overall brightness feels right, then tune beneath.\n#define EXPOSURE 0.60\n\n// Film emulsion scatter \u2014 warm orange/amber tint on highlights that exceed their\n// local blurred context. Fires on the highlight itself. Self-limiting: flat areas\n// and dark pixels unaffected. 0 = off. 0.30\u20130.60 = film-like. 1.0 = aggressive.\n#define HALATION  0.30\n\n// Per-channel knee and toe offsets for the FilmCurve. Encodes the physical dye-layer\n// cross-over character of different film stocks. 0 = passthrough. Range \u00b11.\n// \u00b11.0 = \u00b10.10 stop shift in the auto knee/toe position.\n// R knee < 0 = red compresses earlier (film-like warm shadows).\n// B knee > 0 = blue compresses later (open highlights). B toe < 0 = cool toe.\n// Negative values invert the S-curve direction for that channel.\n#define CURVE_R_KNEE  -0.20\n#define CURVE_B_KNEE  +0.10\n#define CURVE_R_TOE   +0.15\n#define CURVE_B_TOE   -0.10\n\n// Primary color grade. Runs after FilmCurve.\n// TEMP: positive = warm (R up, B down), negative = cool. Range \u00b11.0.\n// TINT: positive = magenta (G down, R+B up slightly), negative = green. Range \u00b11.0.\n// All default to 0 \u2014 passthrough. No output change at defaults.\n#define SHADOW_TEMP     -0.12\n#define SHADOW_TINT      0\n#define MID_TEMP         0\n#define MID_TINT         0\n#define HIGHLIGHT_TEMP  +0.10\n#define HIGHLIGHT_TINT   0\n\n// \u2500\u2500 TONAL \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Local contrast / clarity (R190). Scales the guided filter detail layer before reconstruction.\n// >0 = micro-contrast punch (Lightroom Clarity equivalent). <0 = spatial softening.\n// Midtone-only: fades in 0.15\u21920.40, fades out 0.60\u21920.85. Shadows and highlights unaffected.\n// 0 = off. 0.10\u20130.30 = subtle punch. 0.50 = strong.\n#define CLARITY 0.35\n\n// Hue-selective luma contrast \u2014 same mechanism as CLARITY, ungated (fires at all luma levels).\n// Amplifies micro-contrast within the hue band. 0 = off. 0.10\u20130.30 = subtle. 0.50 = strong.\n#define LUMA_CONTRAST_RED    0.0\n#define LUMA_CONTRAST_YELLOW 0.0\n#define LUMA_CONTRAST_GREEN  0.0\n#define LUMA_CONTRAST_CYAN   0.0\n#define LUMA_CONTRAST_BLUE   0.0\n#define LUMA_CONTRAST_MAG    0.0\n\n// Scales the adaptive zone S-curve strength. 0 = off. 1.0 = full. 2.0 = aggressive.\n#define CONTRAST  0.75\n\n// Scales the auto shadow lift. 0 = off. 1.0 = full designed lift.\n// Raise for dark games with poor visibility, lower if lift feels too aggressive.\n#define SHADOWS  1.00\n\n// Soft luma push/pull in the highlight range (L > 0.55). +1.0 brightens highlights,\n// -1.0 recovers blown highlights. Range \u00b11.0. Default 0.0 = passthrough.\n#define HIGHLIGHTS  0.0\n\n// \u2500\u2500 CHROMA \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Bipolar shadow cast \u2014 fades to zero at mid-gray (Oklab L 0.25\u21920.55).\n// Positive = warm amber (Deakins pre-flash): saturated warm additive, no desaturation.\n// Negative = scotopic Purkinje: desaturates shadows first (rods are achromatic), then\n//   applies fixed 507nm blue-green bias. Fires on neutrals \u2014 not C-weighted.\n// Range \u00b11.0. 0 = passthrough.\n#define SHADOW_CAST   0.12\n\n\n// Per-band hue rotation in Oklab LCh. \u00b11.0 \u2192 \u00b136\u00b0. Positive = clockwise\n// (Red\u2192Yellow, Green\u2192Cyan, Blue\u2192Magenta). Default 0.0 = passthrough.\n#define HUE_RED      0.00\n#define HUE_YELLOW  -0.00\n#define HUE_GREEN    0.00\n#define HUE_CYAN     0.00\n#define HUE_BLUE    -0.00\n#define HUE_MAG      0.00\n\n// Per-hue chroma lift strength. Acts as a gain near each hue band's scene mean \u2014\n// lift-only, vibrance-masked (already-saturated pixels are attenuated).\n// Reach for this first before Saturation \u2014 lifts flat/dull areas without pushing vivid pixels further.\n// 0 = off. 1.0 = full designed lift.\n#define VIBRANCE   0.18\n\n// Per-band chroma scale in Oklab C. \u00b11.0 \u2192 \u00b180% chroma per hue band.\n// Applied after Vibrance. Default 0.0 = passthrough.\n#define SAT_RED     0.05\n#define SAT_YELLOW  0.0\n#define SAT_GREEN   -0.10\n#define SAT_CYAN    -0.12\n#define SAT_BLUE    0.0\n#define SAT_MAG     0.0\n\n// \u2500\u2500 LOOK \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Applied after all grading and chroma work \u2014 ACES LMT position.\n// Kodak 2383 print emulsion: gentle shadow density bow, restrained shoulder,\n// desaturates mids ~15%. 0 = off. 1 = full 2383.\n#define PRINT_STOCK  0.35\n// Skip the bleach step during print development \u2014 retains metallic silver alongside\n// color dye. Desaturates shadows most (denser silver retention in unexposed areas),\n// steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.\n// 0 = off. 1 = full (near-monochrome shadows).\n#define BLEACH_BYPASS  0.00\n\n// R192: Printer lights \u2014 per-channel contact-printer exposure after all emulsion work.\n// Mirrors film lab RGB printer head notation: 0 = neutral, \u00b112 = \u00b11 stop, 1 point = 1/12 stop.\n// Push R up for warm cast, push B up for cool cast, etc.\n// Applied after print stock and bleach bypass \u2014 post-LMT.\n#define PRINTER_R   2.0\n#define PRINTER_G   2.0\n#define PRINTER_B   2.0\n\n// \u2500\u2500 OUTPUT \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Hollywood Black Magic dual-component model (R131):\n//   A) Additive shimmer \u2014 highlight bloom into dark areas only (micro-lenslet).\n//   B) Soft midtone overlay \u2014 gentle airbrushed smoothing, zero at blacks/whites.\n// R132 polydisperse: per-channel scatter \u2014 red \u00d71.15, green \u00d71.00, blue \u00d70.85.\n// 0 = off. 0.5 = subtle. 1.0 = Hollywood workhorse (HBM 1/2 grade). 1.5 = aggressive.\n#define DIFFUSION  0.3\n\n// R136: Selwyn 2383 granularity \u2014 three decorrelated dye layers (R:G:B = 1.00:0.80:1.50).\n// Envelope sqrt(1\u2212L_gamma): mathematically highest at pure black, tapers to zero at white.\n// Perceived peak is in upper shadows \u2014 grain at pure black is invisible against the dark.\n// Framerate-independent: turns over at ~24fps regardless of display fps.\n// 0 = off. 1.0 = 2383 amplitude. 1.5 = pushed. 2.0 = stylistic.\n#define GRAIN  0.3\n\n// \u2500\u2500 STAGE GATES \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Bypass entire stages for A/B comparison. Not tuning knobs \u2014 leave at 100.\n#define CORRECTIVE_STRENGTH  100\n#define TONAL_STRENGTH       100\n#define CHROMA_STRENGTH      100\n#define LOOK_STRENGTH        100\n",
+  "effects": {
+    "INVERSE_STRENGTH": {
+      "mean_de": 0.7527976309621955,
+      "zones": {
+        "shadows": {
+          "mean_de": 0.8113469031164989,
+          "dL": -0.6191388429857656,
+          "dC": 0.12973812174547658
+        },
+        "midtones": {
+          "mean_de": 0.17663558921684422,
+          "dL": -0.0002284966457176481,
+          "dC": 0.003416598023310288
+        },
+        "highlights": {
+          "mean_de": 0.6838902543843947,
+          "dL": 0.47594413964372645,
+          "dC": 0.05411482477866301
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 0.33889368989309476,
+          "dL": -0.09431889913360043,
+          "dC": 0.10340470815093954
+        },
+        "yellow": {
+          "mean_de": 0.4365161252511891,
+          "dL": 0.18249659055741504,
+          "dC": 0.09923896052334763
+        },
+        "green": {
+          "mean_de": 0.4033495462362078,
+          "dL": 0.10499809596141473,
+          "dC": 0.047530493632827735
+        },
+        "cyan": {
+          "mean_de": 0.23160921662182307,
+          "dL": -0.01862907712632407,
+          "dC": 0.015276170105242846
+        },
+        "blue": {
+          "mean_de": 0.2874157952882899,
+          "dL": -0.0852847315360603,
+          "dC": 0.019445259060793325
+        },
+        "magenta": {
+          "mean_de": 0.39710097946300743,
+          "dL": -0.1177807164305159,
+          "dC": 0.053389763051101796
+        }
+      }
+    },
+    "INVERSE_LUMA": {
+      "mean_de": 11.999235367218928,
+      "zones": {
+        "shadows": {
+          "mean_de": 8.205511526146484,
+          "dL": -8.041350530983978,
+          "dC": -1.0857338148091225
+        },
+        "midtones": {
+          "mean_de": 25.30622979401951,
+          "dL": -25.18163808596491,
+          "dC": -2.0811864420663686
+        },
+        "highlights": {
+          "mean_de": 20.2302397622844,
+          "dL": -19.571269333044455,
+          "dC": 1.9026796321676127
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 14.923322772787133,
+          "dL": -14.726666094438675,
+          "dC": -1.949628225299592
+        },
+        "yellow": {
+          "mean_de": 21.270197946872667,
+          "dL": -20.97115458310517,
+          "dC": -1.4273351029062704
+        },
+        "green": {
+          "mean_de": 13.220579421233134,
+          "dL": -12.17463323151742,
+          "dC": 0.18181686813801876
+        },
+        "cyan": {
+          "mean_de": 28.980761959681775,
+          "dL": -28.647193442633597,
+          "dC": -0.9446710854181273
+        },
+        "blue": {
+          "mean_de": 15.456376557613245,
+          "dL": -15.162542156281347,
+          "dC": -2.0517722561921357
+        },
+        "magenta": {
+          "mean_de": 17.397558668824402,
+          "dL": -17.275585687417966,
+          "dC": -1.4777841585409108
+        }
+      }
+    },
+    "EXPOSURE": {
+      "mean_de": 7.567020691797439,
+      "zones": {
+        "shadows": {
+          "mean_de": 5.762486645824279,
+          "dL": 5.6606074990991475,
+          "dC": 0.6827715915068646
+        },
+        "midtones": {
+          "mean_de": 22.418844874201813,
+          "dL": 22.289471081944253,
+          "dC": -0.6171848457481001
+        },
+        "highlights": null
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 15.6559309424173,
+          "dL": 15.450558439017561,
+          "dC": 0.05809315702620752
+        },
+        "yellow": {
+          "mean_de": 16.562969082504218,
+          "dL": 16.412975015753055,
+          "dC": 0.9538926740251968
+        },
+        "green": {
+          "mean_de": 16.75259161380748,
+          "dL": 16.29867636172339,
+          "dC": 3.5415311983844817
+        },
+        "cyan": {
+          "mean_de": 16.18454625142066,
+          "dL": 15.987965139652092,
+          "dC": 2.4577012297289342
+        },
+        "blue": {
+          "mean_de": 11.04337217237275,
+          "dL": 10.786843801384485,
+          "dC": 1.9634160852939806
+        },
+        "magenta": {
+          "mean_de": 8.377976021185464,
+          "dL": 8.129602271060008,
+          "dC": 1.621159810206056
+        }
+      }
+    },
+    "BLACKS_WHITES": {
+      "mean_de": 0.26646647755009323,
+      "zones": {
+        "shadows": {
+          "mean_de": 0.2963584006546479,
+          "dL": 0.06382297559682712,
+          "dC": -0.012421012599219594
+        },
+        "midtones": {
+          "mean_de": 0.1265838443291609,
+          "dL": 0.0012358120376122848,
+          "dC": -0.00016599400342688596
+        },
+        "highlights": {
+          "mean_de": 0.08501044063653468,
+          "dL": 0.01475279606770235,
+          "dC": -0.005520637149394509
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 0.2099626829945783,
+          "dL": 0.013166048574148994,
+          "dC": -0.017527141016237837
+        },
+        "yellow": {
+          "mean_de": 0.1306492784224321,
+          "dL": 0.005170631885454428,
+          "dC": 0.004442954548467107
+        },
+        "green": {
+          "mean_de": 0.1577665609363186,
+          "dL": 0.011749532858383904,
+          "dC": -0.020327620758838493
+        },
+        "cyan": {
+          "mean_de": 0.1561539780367698,
+          "dL": 0.0006557169502409717,
+          "dC": -0.0027570127669057404
+        },
+        "blue": {
+          "mean_de": 0.22738621840413753,
+          "dL": 0.013658275468550307,
+          "dC": -0.048855539787798004
+        },
+        "magenta": {
+          "mean_de": 0.2471472247553887,
+          "dL": 0.06201473546078792,
+          "dC": -0.05848805194392019
+        }
+      }
+    },
+    "DIR_COUPLER": {
+      "mean_de": 0.41089596980616133,
+      "zones": {
+        "shadows": {
+          "mean_de": 0.3373674146405852,
+          "dL": -0.08750625043467364,
+          "dC": -0.007838297353977362
+        },
+        "midtones": {
+          "mean_de": 0.711197791287121,
+          "dL": -0.6861915564866002,
+          "dC": -0.056947392784092575
+        },
+        "highlights": {
+          "mean_de": 0.7665839503226176,
+          "dL": -0.6996164964162244,
+          "dC": 0.07537007868818037
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 0.42164089700943314,
+          "dL": -0.27063628494124475,
+          "dC": -0.031076576358147825
+        },
+        "yellow": {
+          "mean_de": 0.5595278757289466,
+          "dL": -0.4753088379180685,
+          "dC": -0.013186504278019923
+        },
+        "green": {
+          "mean_de": 3.8983126456941144,
+          "dL": -3.697818652874385,
+          "dC": -0.7683426299446839
+        },
+        "cyan": {
+          "mean_de": 0.5541236395785815,
+          "dL": -0.4985497620373616,
+          "dC": -0.045160899212474494
+        },
+        "blue": {
+          "mean_de": 0.4438904111640152,
+          "dL": -0.25634585520123254,
+          "dC": -0.0637664567168194
+        },
+        "magenta": {
+          "mean_de": 5.58491104477145,
+          "dL": -5.42403902162993,
+          "dC": -0.2972655063759494
+        }
+      }
+    },
+    "HALATION": {
+      "mean_de": 1.1361758033915443,
+      "zones": {
+        "shadows": {
+          "mean_de": 0.3971981445820472,
+          "dL": 0.11594233288752542,
+          "dC": 0.010433125341841784
+        },
+        "midtones": {
+          "mean_de": 3.428935320895907,
+          "dL": 2.9563544261587507,
+          "dC": 0.2714674019682436
+        },
+        "highlights": {
+          "mean_de": 5.59422921555685,
+          "dL": 4.866519413195799,
+          "dC": 0.478895614567961
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 0.8096504976020139,
+          "dL": 0.5448681207465177,
+          "dC": 0.23282320525742142
+        },
+        "yellow": {
+          "mean_de": 1.8905671398481732,
+          "dL": 1.5083008249869756,
+          "dC": 0.5032135151438709
+        },
+        "green": {
+          "mean_de": 3.1214950076522765,
+          "dL": 0.48385627687295424,
+          "dC": -0.022448196224500373
+        },
+        "cyan": {
+          "mean_de": 3.141996913554868,
+          "dL": 2.867664939466135,
+          "dC": -0.9810414800087656
+        },
+        "blue": {
+          "mean_de": 2.006035566403572,
+          "dL": 1.6725979164987805,
+          "dC": -0.7781397344533186
+        },
+        "magenta": {
+          "mean_de": 2.016468888549449,
+          "dL": -0.8171918724536382,
+          "dC": -0.16000580556831237
+        }
+      }
+    },
+    "FILM_CURVE": {
+      "mean_de": 0.2743601864653082,
+      "zones": {
+        "shadows": {
+          "mean_de": 0.30157266829300583,
+          "dL": 0.0015086565481289551,
+          "dC": 0.0017730199912679417
+        },
+        "midtones": {
+          "mean_de": 0.1536732138356063,
+          "dL": 0.001623267077470811,
+          "dC": 0.0008953390979336296
+        },
+        "highlights": {
+          "mean_de": 0.10825555126586099,
+          "dL": -0.00611353717251831,
+          "dC": 0.02806669857659423
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 0.23499440355878798,
+          "dL": 0.003905522573293612,
+          "dC": -0.005744467491031567
+        },
+        "yellow": {
+          "mean_de": 0.1647800288135386,
+          "dL": 0.0009234173993161551,
+          "dC": -0.001437494549062031
+        },
+        "green": {
+          "mean_de": 0.18456158693300304,
+          "dL": -0.005517890500754237,
+          "dC": -0.012294597943225571
+        },
+        "cyan": {
+          "mean_de": 0.18722388322722905,
+          "dL": -0.010428561021142826,
+          "dC": -0.0008207360538588746
+        },
+        "blue": {
+          "mean_de": 0.26275135289182033,
+          "dL": 0.006913207884234912,
+          "dC": -0.04993856811013012
+        },
+        "magenta": {
+          "mean_de": 0.2647368114543593,
+          "dL": 0.0233455826377397,
+          "dC": -0.02849956294154671
+        }
+      }
+    },
+    "3WAY_CC": {
+      "mean_de": 0.2800304496614108,
+      "zones": {
+        "shadows": {
+          "mean_de": 0.307187999710954,
+          "dL": -0.017041907242458906,
+          "dC": -0.019381412392452387
+        },
+        "midtones": {
+          "mean_de": 0.16186561845005462,
+          "dL": 0.010695653661817163,
+          "dC": 0.012525397019984312
+        },
+        "highlights": {
+          "mean_de": 0.1242037574016227,
+          "dL": -0.00168580405918737,
+          "dC": 0.059330188299053614
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 0.24135487142121928,
+          "dL": -0.005495328125311241,
+          "dC": -0.0055464413124363295
+        },
+        "yellow": {
+          "mean_de": 0.17662470728613278,
+          "dL": -0.00665499242256011,
+          "dC": 0.02333151554069061
+        },
+        "green": {
+          "mean_de": 0.18808577342449176,
+          "dL": -0.003363106860815627,
+          "dC": -0.014546369928889974
+        },
+        "cyan": {
+          "mean_de": 0.1901980048013228,
+          "dL": -0.001180606109387839,
+          "dC": -0.006444142485472699
+        },
+        "blue": {
+          "mean_de": 0.26353814951906607,
+          "dL": 0.0011405704545594509,
+          "dC": -0.04564672501833969
+        },
+        "magenta": {
+          "mean_de": 0.3012964210845627,
+          "dL": 0.039948808831390695,
+          "dC": -0.035400333596383914
+        }
+      }
+    },
+    "CLARITY": {
+      "mean_de": 0.8835524258601128,
+      "zones": {
+        "shadows": {
+          "mean_de": 0.45751125108425117,
+          "dL": 0.20651684979236992,
+          "dC": 0.017989307406714495
+        },
+        "midtones": {
+          "mean_de": 2.669746256901089,
+          "dL": 2.6569986558159697,
+          "dC": 0.1461245890554682
+        },
+        "highlights": {
+          "mean_de": 3.0178280590186812,
+          "dL": 2.938169924666157,
+          "dC": -0.1925573434306712
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 1.0336752243492349,
+          "dL": 0.8777220624838266,
+          "dC": 0.049775834222997146
+        },
+        "yellow": {
+          "mean_de": 1.9071406266852262,
+          "dL": 1.807757915253495,
+          "dC": -0.021714574022752887
+        },
+        "green": {
+          "mean_de": 1.700896180316228,
+          "dL": 1.5889860693865974,
+          "dC": 0.212541270771322
+        },
+        "cyan": {
+          "mean_de": 2.1458649686468685,
+          "dL": 2.108207752179219,
+          "dC": 0.259012995114354
+        },
+        "blue": {
+          "mean_de": 1.1136530602732113,
+          "dL": 0.9503389034916099,
+          "dC": 0.025158833413155324
+        },
+        "magenta": {
+          "mean_de": 0.9203965145074293,
+          "dL": 0.79088537341181,
+          "dC": 0.0014824040730382342
+        }
+      }
+    },
+    "LUMA_CONTRAST": null,
+    "CONTRAST": {
+      "mean_de": 0.26692372715577933,
+      "zones": {
+        "shadows": {
+          "mean_de": 0.3005832021587594,
+          "dL": -1.925016779569848e-05,
+          "dC": -0.00015031382580235183
+        },
+        "midtones": {
+          "mean_de": 0.1509780611001398,
+          "dL": -0.0002771255009637522,
+          "dC": 8.8067310227164e-07
+        },
+        "highlights": {
+          "mean_de": 0.05985904154799409,
+          "dL": -0.00011786609967916655,
+          "dC": 7.478393312433693e-05
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 0.23286894108211686,
+          "dL": 0.00255199006037842,
+          "dC": -0.005832550578015425
+        },
+        "yellow": {
+          "mean_de": 0.1523464767805954,
+          "dL": -0.003856062417645981,
+          "dC": -0.00824574924028471
+        },
+        "green": {
+          "mean_de": 0.17968114538535773,
+          "dL": -0.015749714076777378,
+          "dC": -0.024329635733906386
+        },
+        "cyan": {
+          "mean_de": 0.18496605241704137,
+          "dL": -0.004856356239576815,
+          "dC": -0.00025460431490359324
+        },
+        "blue": {
+          "mean_de": 0.2632126055042007,
+          "dL": 0.006970718514335111,
+          "dC": -0.048688315798406316
+        },
+        "magenta": {
+          "mean_de": 0.26751575531069444,
+          "dL": 0.012708963018566029,
+          "dC": -0.04971536251868846
+        }
+      }
+    },
+    "SHADOWS": {
+      "mean_de": 2.0741824914589966,
+      "zones": {
+        "shadows": {
+          "mean_de": 2.526956234917327,
+          "dL": 2.4883086266223047,
+          "dC": 0.13872547064802201
+        },
+        "midtones": {
+          "mean_de": 0.1636400227722614,
+          "dL": 0.035130038493931474,
+          "dC": 0.0018991170465829331
+        },
+        "highlights": {
+          "mean_de": 0.06113756522273071,
+          "dL": 0.004309607184105563,
+          "dC": 6.226412895822765e-05
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 1.9642770488450718,
+          "dL": 1.897511152931339,
+          "dC": 0.21502288536504688
+        },
+        "yellow": {
+          "mean_de": 0.8377214885642014,
+          "dL": 0.769931977930022,
+          "dC": 0.06859261499955491
+        },
+        "green": {
+          "mean_de": 1.0265097488427533,
+          "dL": 0.9674913524699328,
+          "dC": 0.08603186442205561
+        },
+        "cyan": {
+          "mean_de": 0.3297766043253357,
+          "dL": 0.2114715966572025,
+          "dC": 0.012886891265153551
+        },
+        "blue": {
+          "mean_de": 1.328048498371868,
+          "dL": 1.2327009200498393,
+          "dC": 0.17381570945501468
+        },
+        "magenta": {
+          "mean_de": 1.7109899093209668,
+          "dL": 1.6089009568975088,
+          "dC": 0.21131365908735059
+        }
+      }
+    },
+    "HIGHLIGHTS": null,
+    "SHADOW_CAST": {
+      "mean_de": 0.36134029952825547,
+      "zones": {
+        "shadows": {
+          "mean_de": 0.40985940134258486,
+          "dL": 0.028708899036259436,
+          "dC": 0.10753484227990347
+        },
+        "midtones": {
+          "mean_de": 0.16548230273430167,
+          "dL": -0.012519914445251036,
+          "dC": -0.0018095826203121353
+        },
+        "highlights": {
+          "mean_de": 0.06648976831418754,
+          "dL": -0.006704645239025812,
+          "dC": -0.0004121647858292138
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 0.2582736527625285,
+          "dL": 0.020006531892349872,
+          "dC": 0.07465011824364072
+        },
+        "yellow": {
+          "mean_de": 0.15824251992440588,
+          "dL": -0.0006041446918307044,
+          "dC": -0.0010627883820891542
+        },
+        "green": {
+          "mean_de": 0.2569473027648402,
+          "dL": -0.04172382747244593,
+          "dC": -0.046248883681559105
+        },
+        "cyan": {
+          "mean_de": 0.19047337061761135,
+          "dL": -0.004704912780162146,
+          "dC": -0.0055217148156019615
+        },
+        "blue": {
+          "mean_de": 0.32730223741876757,
+          "dL": 0.01160610284031968,
+          "dC": -0.10728570558677064
+        },
+        "magenta": {
+          "mean_de": 0.901744818699325,
+          "dL": -0.42798308745367,
+          "dC": -0.17132460900334315
+        }
+      }
+    },
+    "HUE_ROTATION": null,
+    "VIBRANCE": {
+      "mean_de": 0.29884465958345763,
+      "zones": {
+        "shadows": {
+          "mean_de": 0.3154812426784685,
+          "dL": -0.040570540885677416,
+          "dC": 0.061670393314687155
+        },
+        "midtones": {
+          "mean_de": 0.2254949765130955,
+          "dL": -0.027188424128569793,
+          "dC": 0.13789763554169848
+        },
+        "highlights": {
+          "mean_de": 0.22627221737800662,
+          "dL": -0.05899065988380655,
+          "dC": 0.17609827799908948
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 0.27278755204500377,
+          "dL": -0.022325438468592574,
+          "dC": 0.08332040185780504
+        },
+        "yellow": {
+          "mean_de": 0.2559686698804014,
+          "dL": -0.050694604896853006,
+          "dC": 0.11650656097876687
+        },
+        "green": {
+          "mean_de": 0.19744286453443613,
+          "dL": -0.017863706494057306,
+          "dC": 0.023104702894313742
+        },
+        "cyan": {
+          "mean_de": 0.19908779111033972,
+          "dL": -0.009553845296295006,
+          "dC": 0.02984856029411283
+        },
+        "blue": {
+          "mean_de": 0.2970587948265062,
+          "dL": -0.03812145128022571,
+          "dC": 0.05177276391915609
+        },
+        "magenta": {
+          "mean_de": 0.2852813836387134,
+          "dL": -0.06767812965421637,
+          "dC": 0.07125669310150975
+        }
+      }
+    },
+    "SATURATION": {
+      "mean_de": 0.2772285204477865,
+      "zones": {
+        "shadows": {
+          "mean_de": 0.3102274427039315,
+          "dL": -0.0007409797394552328,
+          "dC": 0.011683396836715099
+        },
+        "midtones": {
+          "mean_de": 0.17014220984001624,
+          "dL": -0.003289450845518263,
+          "dC": 0.024654746761325213
+        },
+        "highlights": {
+          "mean_de": 0.06963541824282322,
+          "dL": -0.0007617812869279228,
+          "dC": -0.004808246485400309
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 0.25128180571780995,
+          "dL": -0.013394399806924818,
+          "dC": 0.0633025338179463
+        },
+        "yellow": {
+          "mean_de": 0.1601068901045896,
+          "dL": 0.00299802851473594,
+          "dC": -0.025459498637327004
+        },
+        "green": {
+          "mean_de": 0.43136841536639453,
+          "dL": -0.02525972238322551,
+          "dC": -0.35221639524348286
+        },
+        "cyan": {
+          "mean_de": 0.4292351266445101,
+          "dL": -0.039341502158090826,
+          "dC": -0.34559709118658793
+        },
+        "blue": {
+          "mean_de": 0.2681279868330865,
+          "dL": 0.007540870307791227,
+          "dC": -0.062124735788531754
+        },
+        "magenta": {
+          "mean_de": 0.2692366341492777,
+          "dL": -0.001828539634005182,
+          "dC": -0.03778809496633406
+        }
+      }
+    },
+    "PRINT_STOCK": {
+      "mean_de": 1.4622527877920548,
+      "zones": {
+        "shadows": {
+          "mean_de": 1.41696000011279,
+          "dL": -1.37506599890931,
+          "dC": -0.04384544918681955
+        },
+        "midtones": {
+          "mean_de": 1.570836648363523,
+          "dL": -1.5547091458040505,
+          "dC": 0.026332047457508164
+        },
+        "highlights": {
+          "mean_de": 1.9456203280537867,
+          "dL": -1.7268611909685265,
+          "dC": 0.0022729496192295134
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 1.5246023861470703,
+          "dL": -1.4955758101687655,
+          "dC": -0.06441776002275278
+        },
+        "yellow": {
+          "mean_de": 1.8106931065655505,
+          "dL": -1.7293485733295757,
+          "dC": -0.1203807544740698
+        },
+        "green": {
+          "mean_de": 2.046517164839677,
+          "dL": -2.009706781889274,
+          "dC": -0.2647725860175822
+        },
+        "cyan": {
+          "mean_de": 1.6895738019734152,
+          "dL": -1.6738066192239565,
+          "dC": -0.08952689972815038
+        },
+        "blue": {
+          "mean_de": 1.4755900622674591,
+          "dL": -1.409497135460633,
+          "dC": -0.20348333966933194
+        },
+        "magenta": {
+          "mean_de": 1.5837636915918671,
+          "dL": -1.5336263992042567,
+          "dC": -0.16905585333760742
+        }
+      }
+    },
+    "BLEACH_BYPASS": null,
+    "PRINTER_LIGHTS": {
+      "mean_de": 2.7958658490203194,
+      "zones": {
+        "shadows": {
+          "mean_de": 2.0059340621101533,
+          "dL": 1.957799624536319,
+          "dC": 0.20326339448252292
+        },
+        "midtones": {
+          "mean_de": 6.368577436953832,
+          "dL": 6.3427374071995315,
+          "dC": 0.43605246739693704
+        },
+        "highlights": {
+          "mean_de": 7.885271721194557,
+          "dL": 7.858650168654129,
+          "dC": 0.07826774915564046
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 3.381260860586535,
+          "dL": 3.3291127436700325,
+          "dC": 0.44996799621031275
+        },
+        "yellow": {
+          "mean_de": 5.356204284500765,
+          "dL": 5.316421754817874,
+          "dC": 0.41612065338289556
+        },
+        "green": {
+          "mean_de": 4.999714645941623,
+          "dL": 4.887617793303241,
+          "dC": 0.889595810117072
+        },
+        "cyan": {
+          "mean_de": 4.525935958891671,
+          "dL": 4.479556301553097,
+          "dC": 0.6013097293894413
+        },
+        "blue": {
+          "mean_de": 3.1039602419060563,
+          "dL": 3.0561390350972246,
+          "dC": 0.36409023141557584
+        },
+        "magenta": {
+          "mean_de": 2.919802454228103,
+          "dL": 2.860862022586239,
+          "dC": 0.3743240856854662
+        }
+      }
+    },
+    "DIFFUSION": {
+      "mean_de": 0.37550382325293835,
+      "zones": {
+        "shadows": {
+          "mean_de": 0.42955297460275665,
+          "dL": 0.14084856850412514,
+          "dC": -0.004847629625887739
+        },
+        "midtones": {
+          "mean_de": 0.3557458486042608,
+          "dL": 0.04617781052407491,
+          "dC": -0.022961647550389732
+        },
+        "highlights": {
+          "mean_de": 0.1294325120110028,
+          "dL": -0.00848216674796745,
+          "dC": -0.008662333716641423
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 0.35580693317210027,
+          "dL": 0.040550176130226843,
+          "dC": -0.022740143091627547
+        },
+        "yellow": {
+          "mean_de": 0.26095766932289216,
+          "dL": 0.028097208276650607,
+          "dC": -0.022843464277530878
+        },
+        "green": {
+          "mean_de": 0.736593480267314,
+          "dL": 0.1592103263745898,
+          "dC": -0.17480958828063156
+        },
+        "cyan": {
+          "mean_de": 0.5927990905991334,
+          "dL": -0.012316928081828488,
+          "dC": -0.21925738670539108
+        },
+        "blue": {
+          "mean_de": 0.4530319959497464,
+          "dL": 0.2001912835455705,
+          "dC": -0.09722638523692682
+        },
+        "magenta": {
+          "mean_de": 0.9984999139525844,
+          "dL": 0.6833168917813766,
+          "dC": -0.1759319009064826
+        }
+      }
+    },
+    "GRAIN": {
+      "mean_de": 0.20448752765962938,
+      "zones": {
+        "shadows": {
+          "mean_de": 0.2304915303602143,
+          "dL": 0.0006438664435776674,
+          "dC": 0.007548559604268992
+        },
+        "midtones": {
+          "mean_de": 0.11493376179115772,
+          "dL": -0.0002514203333263912,
+          "dC": 0.0005802121379901124
+        },
+        "highlights": {
+          "mean_de": 0.04458487030558372,
+          "dL": -0.00034855917372166294,
+          "dC": 0.0005997447809816505
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 0.17769381204110324,
+          "dL": 0.0022528702188131136,
+          "dC": -0.0007867569734242379
+        },
+        "yellow": {
+          "mean_de": 0.11520718189763703,
+          "dL": -0.0018909542821650607,
+          "dC": -0.0013155375955306119
+        },
+        "green": {
+          "mean_de": 0.13850379435214308,
+          "dL": -0.0011639746655974633,
+          "dC": -0.00561950298930362
+        },
+        "cyan": {
+          "mean_de": 0.1410552961059582,
+          "dL": -0.0013750083306788266,
+          "dC": 0.0001833487439035827
+        },
+        "blue": {
+          "mean_de": 0.19691705701271597,
+          "dL": 0.003083203329023351,
+          "dC": -0.0013674346689217674
+        },
+        "magenta": {
+          "mean_de": 0.18698929261594888,
+          "dL": -0.007157463643918144,
+          "dC": 0.0022454214757395424
+        }
+      }
+    }
+  },
+  "full": {
+    "mean_de": 2.1667818788060145,
+    "zones": {
+      "shadows": {
+        "mean_de": 1.9720671266751815,
+        "dL": -0.1450243506830099,
+        "dC": 0.07313578113080725
+      },
+      "midtones": {
+        "mean_de": 3.0880137911056846,
+        "dL": -2.0254623963443943,
+        "dC": 0.18714496885542242
+      },
+      "highlights": {
+        "mean_de": 3.1798655596499423,
+        "dL": 1.9362558164215276,
+        "dC": 0.47849469682521256
+      }
+    },
+    "hue_bands": {
+      "red": {
+        "mean_de": 1.9465856200539138,
+        "dL": -1.2741958103193698,
+        "dC": 0.1935533742018822
+      },
+      "yellow": {
+        "mean_de": 2.5719741314333837,
+        "dL": -1.644456416897655,
+        "dC": 0.1760505985285655
+      },
+      "green": {
+        "mean_de": 3.911206782339687,
+        "dL": -2.8231680453426713,
+        "dC": -1.2953970062068587
+      },
+      "cyan": {
+        "mean_de": 5.885714362889968,
+        "dL": -3.7998473567257736,
+        "dC": -2.049368232971087
+      },
+      "blue": {
+        "mean_de": 3.408744575100967,
+        "dL": -2.1730729138063567,
+        "dC": -1.0650182575737677
+      },
+      "magenta": {
+        "mean_de": 3.7813963156685673,
+        "dL": -2.2707665330556037,
+        "dC": -0.6849831396688894
+      }
+    }
+  }
+}

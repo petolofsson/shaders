@@ -35,9 +35,9 @@ Current effect list:
 
 ```text
 INVERSE_STRENGTH INVERSE_LUMA EXPOSURE BLACKS_WHITES FILM_CURVE
-3WAY_CC LUMA_CONTRAST CONTRAST SHADOWS
+3WAY_CC LUMA_CONTRAST CONTRAST ZONE_CONTRAST_STRENGTH SHADOWS
+RETINEX_STRENGTH SHADOW_LIFT_STRENGTH
 HUE_ROTATION VIBRANCE SATURATION PRINT_STOCK PRINTER_LIGHTS
-DIFFUSION GRAIN
 ```
 
 `stage_isolate` measures cumulative gates:
@@ -62,7 +62,6 @@ goldens and needs visual review first.
 
 ```text
 gamespecific/<game>/compare_agg.json
-gamespecific/<game>/grade_callsheet.txt
 gamespecific/<game>/full_analysis/latest.json
 gamespecific/<game>/analysis/YYYY-MM-DD/
 gamespecific/<game>/captures/

@@ -12,15 +12,14 @@ Configured in `gamespecific/arc_raiders/arc_raiders.conf` and
 analysis_frame : inverse_grade : corrective : grade
 ```
 
-`grade.fx` is an 11-pass technique:
+`grade.fx` is a 7-pass technique:
 
 ```text
 LFDownscale1 -> LFDownscale2 -> NeutralIllum -> GuidedCoeff -> GuidedBase
--> ColorTransform -> DiffusionDownsample -> DiffusionBlurH -> DiffusionBlurV
--> Diffusion -> TexHwyWrite
+-> ColorTransform -> TexHwyWrite
 ```
 
-Diffusion is inside `grade.fx`; it is not a separate chain effect.
+Diffusion has been removed from `grade.fx`.
 
 ## Hard Rules
 
@@ -40,7 +39,7 @@ Diffusion is inside `grade.fx`; it is not a separate chain effect.
 - Cross-technique RT mips are not populated beyond mip0. Build required lower-res
   surfaces inside the reading technique.
 - Inter-effect BackBuffer is 8-bit UNORM; overrange values clip between effects.
-- `FRAME_TIMER` works for temporal grain/dither; `framecount` has failed in vkBasalt.
+- `FRAME_TIMER` is retained only for compatibility; active output uses spatial dither and no temporal grain.
 
 ## Key Files
 
@@ -50,7 +49,7 @@ Diffusion is inside `grade.fx`; it is not a separate chain effect.
 | `general/analysis-frame/analysis_frame.fx` | Histogram, percentiles, scene cut, highway write |
 | `general/inverse-grade/inverse_grade.fx` | Pre-corrective inverse tone/chroma reconstruction |
 | `general/corrective/corrective.fx` | Zone/chroma history, slow key, passthrough |
-| `general/grade/grade.fx` | Corrective, tonal, chroma, look, diffusion, grain |
+| `general/grade/grade.fx` | Corrective, tonal, chroma, look, adaptive automation |
 | `general/highway.fxh` | Scalar highway slots and `ReadHWY()` |
 | `general/hue_bands.fxh` | Hue weights, rolloff, chroma ceilings |
 | `tools/compare_frame.py` | Runtime before/after and effect attribution |
@@ -70,7 +69,7 @@ Diffusion is inside `grade.fx`; it is not a separate chain effect.
    saturation, compression, and gamut projection.
 6. `grade` look: Kodak 2383 print stock, masking/dye couplers, printer lights;
    gated by `LOOK_STRENGTH`.
-7. Output: thresholded bright-pass diffusion, dither, Selwyn-style grain, 2x2 red activity marker.
+7. Output: dither and 2x2 red activity marker.
 
 ## Highway Slots
 
@@ -81,18 +80,26 @@ Encode/decode out-of-range quantities at the slot boundary.
 194 p25, 195 p50, 196 p75, 197 chroma slope, 198 median C, 199 scene cut
 200 p90, 201 mean chroma angle, 202 achromatic fraction
 203 zone key, 204 zone std, 205 slow key
-206 luma mode, 207 entropy, 208 IQR, 209 p10, 210 p75 C, 211 hue concentration
+206 luma mode, 207 entropy, 208 IQR, 209 p10
 ```
 
 ## Current State
 
-- `DIFFUSION=0` is a true bypass.
+- Diffusion is removed from the active grade; no diffusion setting is exposed.
 - The 2x2 red activity marker is intentional; mask it in strict image tests.
 - Exact-white histogram samples are clamped into the final bin before counting.
 - Scene cuts use p50 delta plus raw histogram entropy delta.
 - Guided-filter epsilon is local-variance adaptive.
 - Arc Raiders and GZW share the new stable profile baseline; creative hue-band
   controls remain omitted from both game profiles.
+- `RETINEX_STRENGTH`, `ZONE_CONTRAST_STRENGTH`, and `SHADOW_LIFT_STRENGTH` are
+  independent diagnostic gates; each zero value is a visual bypass.
+- Shadow lift uses the histogram p10 shadow floor as an adaptive black-level guard.
+- Film-curve strength adapts to highlight-tail separation, highlight presence, and entropy;
+  `FILM_CURVE` remains the manual ceiling.
+- Print stock, soft gamut compression, and chroma protection adapt to scene statistics;
+  scene-cut confidence temporarily damps those adaptations.
+- Diffusion and grain are removed; the 2x2 activity marker remains in `ColorTransformPS`.
 - Old `dcc712f` goldens fail against current Arc Raiders output; review before reblessing.
 
 ## Validation

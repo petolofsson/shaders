@@ -9,20 +9,20 @@ post-processing, not color-science literature.
 | Film stock / corrective | 99% | 94% | DIR couplers, luminance-preserving FilmCurve, 2383 print stock, masking/dye couplers. Remaining risk: empirical amplitude calibration. |
 | Tonal | 98% | 90% | Zone statistics, Retinex, signed adaptive contrast, Oklab L substitution, shadow lift, guided-filter detail. Local adaptive epsilon is implemented. |
 | Color | 98% | 89% | Munsell ceilings and gamut projection. Removed low-value perceptual and surround transforms. Remaining risk: stacked hue interactions. |
-| Output | 98% | 93% | HBM diffusion, temporal dither, Selwyn-style grain, intentional red activity marker. Remaining risk: noise floor and PSF calibration. |
+| Output | 98% | 93% | Spatial dither and intentional red activity marker. Diffusion and grain are removed. |
 
 ## Current Priorities
 
 1. Review current Arc Raiders output against stale `dcc712f` goldens before reblessing.
 2. Run cross-game visual validation for the shared Arc Raiders/GZW baseline.
-3. Use `tools/noise_floor.py` on matched renders when evaluating dither/grain changes.
-5. Either use or remove unused highway/context surfaces: `HWY_CHROMA_P75`,
-   `HWY_HUE_CONC`, `HWY_P10`, `HWY_IQR`, and `ctx.illum_warm`.
+3. Use `tools/noise_floor.py` on matched renders when evaluating dither and quantization changes.
+5. Validate the new scene-adaptive automation across Arc Raiders and GZW before
+   reblessing goldens.
 
 ## Scoring Discipline
 
 - Directional constants should be literature-backed where possible.
 - Amplitudes and blend endpoints are allowed to be empirical, but must be tested.
 - Do not inflate novelty for standard concepts such as exposure, saturation,
-  bloom, LUT-like color shifts, or generic film grain.
+  bloom, LUT-like color shifts, or removed optical finishing effects.
 - Prefer effect-attribution data over theoretical confidence when stages interact.

@@ -162,7 +162,10 @@ _EFFECTS: "list[tuple[str, dict]]" = [
                            "LUMA_CONTRAST_GREEN": 0.0, "LUMA_CONTRAST_CYAN": 0.0,
                            "LUMA_CONTRAST_BLUE":  0.0, "LUMA_CONTRAST_MAG":  0.0}),
     ("CONTRAST",          {"CONTRAST":         0.0}),
+    ("RETINEX",           {"RETINEX_STRENGTH": 0.0}),
+    ("ZONE_CONTRAST",     {"ZONE_CONTRAST_STRENGTH": 0.0}),
     ("SHADOWS",           {"SHADOWS":          0.0}),
+    ("SHADOW_LIFT",       {"SHADOW_LIFT_STRENGTH": 0.0}),
     # ── CHROMA ─────────────────────────────────────────────────────────────────
     ("HUE_ROTATION",      {"HUE_RED": 0.0, "HUE_YELLOW": 0.0, "HUE_GREEN": 0.0,
                            "HUE_CYAN": 0.0, "HUE_BLUE":  0.0, "HUE_MAG":   0.0}),

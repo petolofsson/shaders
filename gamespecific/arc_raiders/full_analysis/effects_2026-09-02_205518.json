@@ -1,0 +1,113 @@
+{
+  "date": "2026-09-02",
+  "time": "20:55:18",
+  "game": "arc_raiders",
+  "n_frames": 1,
+  "creative_values": "// Arc Raiders creative values.\n// Keep user-facing tuning here; shader constants and analysis parameters stay in general/.\n\n// INPUT\n#define INVERSE_STRENGTH  0.30\n#define INVERSE_LUMA      0.25\n\n// CORRECTIVE\n#define BLACKS            0.005\n#define WHITES            1.00\n#define EXPOSURE          0.10\n#define FILM_CURVE        0.65\n#define CURVE_R_KNEE     -0.10\n#define CURVE_B_KNEE      0.20\n\n// PRIMARY COLOR CORRECTION\n#define SHADOW_TEMP      -0.25\n#define SHADOW_TINT       0.00\n#define MID_TEMP          0.00\n#define MID_TINT          0.00\n#define HIGHLIGHT_TEMP    0.00\n#define HIGHLIGHT_TINT    0.00\n\n// TONAL\n#define LUMA_CONTRAST_RED     0.00\n#define LUMA_CONTRAST_YELLOW  0.00\n#define LUMA_CONTRAST_GREEN   0.00\n#define LUMA_CONTRAST_CYAN    0.00\n#define LUMA_CONTRAST_BLUE    0.00\n#define LUMA_CONTRAST_MAG     0.00\n#define CONTRAST              0.50\n#define SHADOWS               0.50\n#define HIGHLIGHTS            0.00\n\n// CHROMA\n#define SHADOW_CAST          -0.25\n#define HUE_RED               0.00\n#define HUE_YELLOW            0.00\n#define HUE_GREEN             0.00\n#define HUE_CYAN              0.00\n#define HUE_BLUE              0.00\n#define HUE_MAG               0.00\n#define VIBRANCE              0.00\n#define SAT_RED               0.10\n#define SAT_YELLOW            0.10\n#define SAT_GREEN             0.10\n#define SAT_CYAN              0.10\n#define SAT_BLUE              0.10\n#define SAT_MAG               0.10\n\n// LOOK\n#define PRINT_STOCK           0.75\n#define PRINTER_R             1.00\n#define PRINTER_G             1.00\n#define PRINTER_B             1.00\n\n// OUTPUT\n#define DIFFUSION             0.00\n#define GRAIN                 0.40\n\n// STAGE GATES: comparison controls, leave at 100 unless isolating a stage.\n#define CORRECTIVE_STRENGTH   100\n#define TONAL_STRENGTH        100\n#define CHROMA_STRENGTH       000\n#define LOOK_STRENGTH         000\n",
+  "effects": {
+    "FILM_CURVE": {
+      "mean_de": 3.3233717362643755,
+      "zones": {
+        "shadows": {
+          "mean_de": 2.120251534857563,
+          "dL": 1.1899086104001992,
+          "dC": 0.05815830381768649
+        },
+        "midtones": {
+          "mean_de": 26.261998272043133,
+          "dL": -25.600032315360853,
+          "dC": -1.5727020213764558
+        },
+        "highlights": {
+          "mean_de": 17.836124626607926,
+          "dL": -17.791118732394416,
+          "dC": -0.3066717881754726
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 11.30682083855566,
+          "dL": -11.032605537853721,
+          "dC": -1.6225343288815648
+        },
+        "yellow": {
+          "mean_de": 11.000129495835534,
+          "dL": 1.888225938789029,
+          "dC": -0.054301446674040244
+        },
+        "green": {
+          "mean_de": 9.937664246353945,
+          "dL": -9.584784175271484,
+          "dC": -2.481505489284193
+        },
+        "cyan": {
+          "mean_de": 0.08026354260269014,
+          "dL": -0.08002699430789004,
+          "dC": -0.005815283171010911
+        },
+        "blue": {
+          "mean_de": 0.4215849827900694,
+          "dL": -0.34173995277209174,
+          "dC": -0.17221326657557223
+        },
+        "magenta": {
+          "mean_de": 0.003956796020033201,
+          "dL": -0.003490821105261984,
+          "dC": -0.00047520979103499606
+        }
+      }
+    }
+  },
+  "full": {
+    "mean_de": 23.680095820384896,
+    "zones": {
+      "shadows": {
+        "mean_de": 19.66687471818573,
+        "dL": -2.973264749355538,
+        "dC": 1.0708278132003748
+      },
+      "midtones": {
+        "mean_de": 50.31891788514696,
+        "dL": -48.78932873336141,
+        "dC": -3.3775874405164923
+      },
+      "highlights": {
+        "mean_de": 82.21282297567416,
+        "dL": -81.69923120778765,
+        "dC": -0.004356107873112752
+      }
+    },
+    "hue_bands": {
+      "red": {
+        "mean_de": 35.50632769958105,
+        "dL": -31.7046811312114,
+        "dC": -3.479120569881912
+      },
+      "yellow": {
+        "mean_de": 51.99311114865889,
+        "dL": -49.3998096444727,
+        "dC": -3.6037690846320336
+      },
+      "green": {
+        "mean_de": 57.78405142054234,
+        "dL": -51.205514592575796,
+        "dC": -12.246280391955112
+      },
+      "cyan": {
+        "mean_de": 37.18577051382053,
+        "dL": -30.97321904122156,
+        "dC": -2.4634510774438425
+      },
+      "blue": {
+        "mean_de": 25.772743359094672,
+        "dL": -21.136937010443216,
+        "dC": -3.2131801460931873
+      },
+      "magenta": {
+        "mean_de": 32.97725888615838,
+        "dL": -25.44396008900375,
+        "dC": -1.820814495907397
+      }
+    }
+  }
+}

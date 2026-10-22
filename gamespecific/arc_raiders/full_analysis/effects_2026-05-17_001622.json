@@ -1,0 +1,113 @@
+{
+  "date": "2026-05-17",
+  "time": "00:16:22",
+  "game": "arc_raiders",
+  "n_frames": 12,
+  "creative_values": "// creative_values.fx \u2014 tune here\n// Knobs ordered by pipeline firing position.\n\n// \u2500\u2500 INPUT \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Adaptive inverse tone mapping. Expands Oklab chroma using the IQR-derived compression\n// ratio \u2014 restoring chroma the game's tonemapper compressed. Luma is handled by zone\n// S-curve. Works on any S-curve tonemapper. 0 = off. Start at 0.30\u20130.50.\n#define INVERSE_STRENGTH  0.30\n\n// Luma inverse \u2014 undoes ACES midtone boost (standard UE4/UE5 tonemapper).\n// Darkens display values below L\u22480.73 (ACES fixed point) back toward scene-linear.\n// Highlights above L\u22480.73 are unchanged \u2014 ACES shoulder is irrecoverable in SDR.\n// Midtones darken ~0.5 stops at 1.0 \u2014 increase EXPOSURE to compensate after enabling.\n// 0 = off. Try 0.30\u20130.60 after recalibrating EXPOSURE.\n#define INVERSE_LUMA 0.45\n\n// \u2500\u2500 CORRECTIVE \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// BLACKS: black floor, direct linear value. 0.00 = passthrough. 0.05 = 5% floor.\n// WHITES: white ceiling, direct linear value. 1.00 = passthrough. 0.95 = ARRI LogC3 usable ceiling.\n#define BLACKS  0.005\n#define WHITES  0.95\n\n// Exposure in stops. 0 = neutral, +1 = one stop brighter, -1 = one stop darker.\n// Applied as rgb * pow(2, EXPOSURE) before any zone or curve work.\n// Sets where pixels sit tonally \u2014 which directly changes what every knob below \"sees\".\n// Rule of thumb: dial until overall brightness feels right, then tune beneath.\n#define EXPOSURE 0.60\n\n// Film emulsion scatter \u2014 warm orange/amber tint on highlights that exceed their\n// local blurred context. Fires on the highlight itself. Self-limiting: flat areas\n// and dark pixels unaffected. 0 = off. 0.30\u20130.60 = film-like. 1.0 = aggressive.\n#define HALATION  0.30\n\n// Per-channel knee and toe offsets for the FilmCurve. Encodes the physical dye-layer\n// cross-over character of different film stocks. 0 = passthrough. Range \u00b11.\n// \u00b11.0 = \u00b10.10 stop shift in the auto knee/toe position.\n// R knee < 0 = red compresses earlier (film-like warm shadows).\n// B knee > 0 = blue compresses later (open highlights). B toe < 0 = cool toe.\n// Negative values invert the S-curve direction for that channel.\n#define CURVE_R_KNEE  -0.20\n#define CURVE_B_KNEE  +0.10\n#define CURVE_R_TOE   +0.15\n#define CURVE_B_TOE   -0.10\n\n// Primary color grade. Runs after FilmCurve.\n// TEMP: positive = warm (R up, B down), negative = cool. Range \u00b11.0.\n// TINT: positive = magenta (G down, R+B up slightly), negative = green. Range \u00b11.0.\n// All default to 0 \u2014 passthrough. No output change at defaults.\n#define SHADOW_TEMP     -0.05\n#define SHADOW_TINT      0\n#define MID_TEMP         0\n#define MID_TINT         0\n#define HIGHLIGHT_TEMP  +0.04\n#define HIGHLIGHT_TINT   0\n\n// \u2500\u2500 TONAL \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Local contrast / clarity (R190). Scales the guided filter detail layer before reconstruction.\n// >0 = micro-contrast punch (Lightroom Clarity equivalent). <0 = spatial softening.\n// Midtone-only: fades in 0.15\u21920.40, fades out 0.60\u21920.85. Shadows and highlights unaffected.\n// 0 = off. 0.10\u20130.30 = subtle punch. 0.50 = strong.\n#define CLARITY 0.35\n\n// Hue-selective luma contrast \u2014 same mechanism as CLARITY, ungated (fires at all luma levels).\n// Amplifies micro-contrast within the hue band. 0 = off. 0.10\u20130.30 = subtle. 0.50 = strong.\n#define LUMA_CONTRAST_RED    0.0\n#define LUMA_CONTRAST_YELLOW 0.0\n#define LUMA_CONTRAST_GREEN  0.0\n#define LUMA_CONTRAST_CYAN   0.0\n#define LUMA_CONTRAST_BLUE   0.0\n#define LUMA_CONTRAST_MAG    0.0\n\n// Scales the adaptive zone S-curve strength. 0 = off. 1.0 = full. 2.0 = aggressive.\n#define CONTRAST  0.75\n\n// Scales the auto shadow lift. 0 = off. 1.0 = full designed lift.\n// Raise for dark games with poor visibility, lower if lift feels too aggressive.\n#define SHADOWS  1.00\n\n// Soft luma push/pull in the highlight range (L > 0.55). +1.0 brightens highlights,\n// -1.0 recovers blown highlights. Range \u00b11.0. Default 0.0 = passthrough.\n#define HIGHLIGHTS  0.0\n\n// \u2500\u2500 CHROMA \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Bipolar shadow cast \u2014 full strength below Oklab L 0.40, fades to zero at L 0.70.\n// Positive = warm amber (Deakins pre-flash): saturated warm additive, no desaturation.\n// Negative = scotopic Purkinje: desaturates shadows first (rods are achromatic), then\n//   applies fixed 507nm blue-green bias. Fires on neutrals \u2014 not C-weighted.\n// Range \u00b11.0. 0 = passthrough.\n#define SHADOW_CAST   0.12\n\n\n// Per-band hue rotation in Oklab LCh. \u00b11.0 \u2192 \u00b136\u00b0. Positive = clockwise\n// (Red\u2192Yellow, Green\u2192Cyan, Blue\u2192Magenta). Default 0.0 = passthrough.\n#define HUE_RED      0.00\n#define HUE_YELLOW  -0.00\n#define HUE_GREEN    0.00\n#define HUE_CYAN     0.00\n#define HUE_BLUE    -0.00\n#define HUE_MAG      0.00\n\n// Per-hue chroma lift strength. Acts as a gain near each hue band's scene mean \u2014\n// lift-only, vibrance-masked (already-saturated pixels are attenuated).\n// Reach for this first before Saturation \u2014 lifts flat/dull areas without pushing vivid pixels further.\n// 0 = off. 1.0 = full designed lift.\n#define VIBRANCE   0.18\n\n// Per-band chroma scale in Oklab C. \u00b11.0 \u2192 \u00b180% chroma per hue band.\n// Applied after Vibrance. Default 0.0 = passthrough.\n#define SAT_RED     0.05\n#define SAT_YELLOW  0.0\n#define SAT_GREEN   -0.10\n#define SAT_CYAN    -0.12\n#define SAT_BLUE    0.0\n#define SAT_MAG     0.0\n\n// \u2500\u2500 LOOK \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Applied after all grading and chroma work \u2014 ACES LMT position.\n// Kodak 2383 print emulsion: gentle shadow density bow, restrained shoulder,\n// desaturates mids ~15%. 0 = off. 1 = full 2383.\n#define PRINT_STOCK  0.35\n// Skip the bleach step during print development \u2014 retains metallic silver alongside\n// color dye. Desaturates shadows most (denser silver retention in unexposed areas),\n// steepens midtone contrast, adds grit. Se7en, Saving Private Ryan, Traffic.\n// 0 = off. 1 = full (near-monochrome shadows).\n#define BLEACH_BYPASS  0.00\n\n// R192: Printer lights \u2014 per-channel contact-printer exposure after all emulsion work.\n// Mirrors film lab RGB printer head notation: 0 = neutral, \u00b112 = \u00b11 stop, 1 point = 1/12 stop.\n// Push R up for warm cast, push B up for cool cast, etc.\n// Applied after print stock and bleach bypass \u2014 post-LMT.\n#define PRINTER_R   2.0\n#define PRINTER_G   2.0\n#define PRINTER_B   2.0\n\n// \u2500\u2500 OUTPUT \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Hollywood Black Magic dual-component model (R131):\n//   A) Additive shimmer \u2014 highlight bloom into dark areas only (micro-lenslet).\n//   B) Soft midtone overlay \u2014 gentle airbrushed smoothing, zero at blacks/whites.\n// R132 polydisperse: per-channel scatter \u2014 red \u00d71.15, green \u00d71.00, blue \u00d70.85.\n// 0 = off. 0.5 = subtle. 1.0 = Hollywood workhorse (HBM 1/2 grade). 1.5 = aggressive.\n#define DIFFUSION  0.3\n\n// R136: Selwyn 2383 granularity \u2014 three decorrelated dye layers (R:G:B = 1.00:0.80:1.50).\n// Envelope sqrt(1\u2212L_gamma): mathematically highest at pure black, tapers to zero at white.\n// Perceived peak is in upper shadows \u2014 grain at pure black is invisible against the dark.\n// Framerate-independent: turns over at ~24fps regardless of display fps.\n// 0 = off. 1.0 = 2383 amplitude. 1.5 = pushed. 2.0 = stylistic.\n#define GRAIN  0.3\n\n// \u2500\u2500 STAGE GATES \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// Bypass entire stages for A/B comparison. Not tuning knobs \u2014 leave at 100.\n#define CORRECTIVE_STRENGTH  100\n#define TONAL_STRENGTH       100\n#define CHROMA_STRENGTH      100\n#define LOOK_STRENGTH        100\n",
+  "effects": {
+    "INVERSE_LUMA": {
+      "mean_de": 2.7718094901034704,
+      "zones": {
+        "shadows": {
+          "mean_de": 2.2182364984638223,
+          "dL": -2.0937410909825576,
+          "dC": -0.22466705000553025
+        },
+        "midtones": {
+          "mean_de": 8.310551731907994,
+          "dL": -8.2644238603924,
+          "dC": -0.5636376822919499
+        },
+        "highlights": {
+          "mean_de": 2.671596716178529,
+          "dL": -2.5209344309852932,
+          "dC": 0.32118240520108315
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 4.119536929629633,
+          "dL": -4.037242317181973,
+          "dC": -0.39582273809438573
+        },
+        "yellow": {
+          "mean_de": 5.1702136876046,
+          "dL": -5.002978560475834,
+          "dC": -0.2038218047429087
+        },
+        "green": {
+          "mean_de": 3.1310297437019616,
+          "dL": -3.0562553913102444,
+          "dC": -0.3354645276643178
+        },
+        "cyan": {
+          "mean_de": 6.30830984306093,
+          "dL": -6.021814237882222,
+          "dC": 0.2553030722699467
+        },
+        "blue": {
+          "mean_de": 4.691134403884232,
+          "dL": -4.567787346994421,
+          "dC": -0.34530801241720027
+        },
+        "magenta": {
+          "mean_de": 4.993264277052719,
+          "dL": -4.9078588476406955,
+          "dC": -0.32443231529575356
+        }
+      }
+    }
+  },
+  "full": {
+    "mean_de": 9.366961700672022,
+    "zones": {
+      "shadows": {
+        "mean_de": 7.696223410024132,
+        "dL": 7.550904472260142,
+        "dC": 1.1182013350017388
+      },
+      "midtones": {
+        "mean_de": 22.667202009878892,
+        "dL": 22.35727181816216,
+        "dC": -0.6109119704175153
+      },
+      "highlights": {
+        "mean_de": 8.025214799165807,
+        "dL": 7.40672047624282,
+        "dC": -2.5775657753783716
+      }
+    },
+    "hue_bands": {
+      "red": {
+        "mean_de": 11.790157310678614,
+        "dL": 11.45078779618671,
+        "dC": 1.5295603381425629
+      },
+      "yellow": {
+        "mean_de": 14.172806777970642,
+        "dL": 13.66474483831648,
+        "dC": 0.2557916798291956
+      },
+      "green": {
+        "mean_de": 12.347241480469982,
+        "dL": 9.26164958255221,
+        "dC": -1.9744593115432167
+      },
+      "cyan": {
+        "mean_de": 15.353104240829643,
+        "dL": 14.834164846829575,
+        "dC": -1.0876044620216776
+      },
+      "blue": {
+        "mean_de": 12.597698820894015,
+        "dL": 12.303998322836497,
+        "dC": -0.20399288196437906
+      },
+      "magenta": {
+        "mean_de": 11.773120261625472,
+        "dL": 11.38595685217389,
+        "dC": 0.9271497461207866
+      }
+    }
+  }
+}

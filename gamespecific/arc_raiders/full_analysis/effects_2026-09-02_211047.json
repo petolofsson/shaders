@@ -1,0 +1,113 @@
+{
+  "date": "2026-09-02",
+  "time": "21:10:47",
+  "game": "arc_raiders",
+  "n_frames": 1,
+  "creative_values": "// Arc Raiders creative values.\n// Keep user-facing tuning here; shader constants and analysis parameters stay in general/.\n\n// INPUT\n#define INVERSE_STRENGTH  1.0\n#define INVERSE_LUMA      0.0\n\n// CORRECTIVE\n#define BLACKS            0.005\n#define WHITES            1.00\n#define EXPOSURE          0.10\n#define FILM_CURVE        0.65\n#define CURVE_R_KNEE     -0.10\n#define CURVE_B_KNEE      0.20\n\n// PRIMARY COLOR CORRECTION\n#define SHADOW_TEMP       0.00\n#define SHADOW_TINT       0.00\n#define MID_TEMP          0.00\n#define MID_TINT          0.00\n#define HIGHLIGHT_TEMP    0.00\n#define HIGHLIGHT_TINT    0.00\n\n// TONAL\n#define CONTRAST              0.50\n#define SHADOWS               0.50\n\n// LOOK\n#define PRINT_STOCK           0.75\n#define PRINTER_R             1.00\n#define PRINTER_G             1.00\n#define PRINTER_B             1.00\n\n// OUTPUT\n#define DIFFUSION             0.00\n#define GRAIN                 0.40\n\n// STAGE GATES: comparison controls, leave at 100 unless isolating a stage.\n#define CORRECTIVE_STRENGTH   100\n#define TONAL_STRENGTH        100\n#define CHROMA_STRENGTH       100\n#define LOOK_STRENGTH         100\n",
+  "effects": {
+    "FILM_CURVE": {
+      "mean_de": 32.939318995803546,
+      "zones": {
+        "shadows": {
+          "mean_de": 27.09409458712064,
+          "dL": 8.5627829228391,
+          "dC": -1.9501603600525652
+        },
+        "midtones": {
+          "mean_de": 47.094086992925895,
+          "dL": -40.22429703494137,
+          "dC": -5.520895796693687
+        },
+        "highlights": {
+          "mean_de": 50.85943362391459,
+          "dL": -49.11824023297607,
+          "dC": -2.270970990547218
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 35.49601013272103,
+          "dL": -21.868462969595747,
+          "dC": -4.945005326190225
+        },
+        "yellow": {
+          "mean_de": 50.697798458822625,
+          "dL": -42.31802260882244,
+          "dC": -7.0377234015746115
+        },
+        "green": {
+          "mean_de": 9.920147831007183,
+          "dL": -9.76234363422586,
+          "dC": -0.33303181244471636
+        },
+        "cyan": {
+          "mean_de": 33.550175378579375,
+          "dL": -32.2431729722265,
+          "dC": -5.015059387430458
+        },
+        "blue": {
+          "mean_de": 26.55724057934714,
+          "dL": 5.311628575148015,
+          "dC": -3.848964119113094
+        },
+        "magenta": {
+          "mean_de": 18.420342796897295,
+          "dL": -3.124736518122134,
+          "dC": -3.304077744302953
+        }
+      }
+    }
+  },
+  "full": {
+    "mean_de": 23.45568669011547,
+    "zones": {
+      "shadows": {
+        "mean_de": 22.832578969267416,
+        "dL": 8.339119585066836,
+        "dC": -0.4422279866805791
+      },
+      "midtones": {
+        "mean_de": 41.82738361936193,
+        "dL": -27.58279120915073,
+        "dC": -3.7294799040823796
+      },
+      "highlights": {
+        "mean_de": 12.428579666498296,
+        "dL": -9.974384710822266,
+        "dC": -2.267560835086567
+      }
+    },
+    "hue_bands": {
+      "red": {
+        "mean_de": 37.85122774324602,
+        "dL": 0.6824863672509585,
+        "dC": -3.7285357141451487
+      },
+      "yellow": {
+        "mean_de": 42.59829791339946,
+        "dL": 1.180330000481489,
+        "dC": -4.612979013957921
+      },
+      "green": {
+        "mean_de": 16.50370260988521,
+        "dL": -10.690653487691584,
+        "dC": -5.1751127566729025
+      },
+      "cyan": {
+        "mean_de": 28.04695661531714,
+        "dL": -26.037014686634233,
+        "dC": -3.8695908199480966
+      },
+      "blue": {
+        "mean_de": 29.86202998747401,
+        "dL": -1.5362528697103428,
+        "dC": -3.624413033257669
+      },
+      "magenta": {
+        "mean_de": 28.31940220094876,
+        "dL": -21.171969681634877,
+        "dC": -2.1185340296981745
+      }
+    }
+  }
+}

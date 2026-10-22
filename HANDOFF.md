@@ -5,7 +5,7 @@ Read at session start. Keep under 60 lines. One fact per line.
 ## Active Chain
 
 `analysis_frame : inverse_grade : corrective : grade`
-`grade`: LFDownscale1 -> LFDownscale2 -> NeutralIllum -> GuidedCoeff -> GuidedBase -> ColorTransform -> DiffusionDownsample -> DiffusionBlurH -> DiffusionBlurV -> Diffusion -> TexHwyWrite
+`grade`: LFDownscale1 -> LFDownscale2 -> NeutralIllum -> GuidedCoeff -> GuidedBase -> ColorTransform -> TexHwyWrite
 
 ## Current State
 
@@ -28,18 +28,19 @@ Read at session start. Keep under 60 lines. One fact per line.
 - Retinex and zone shaping attenuate smoothly in bright highlights to protect cloud detail.
 - Retinex now uses a bounded log-domain gain and attenuates where 1/16 and 1/32 low-frequency
   scales disagree, reducing broad-edge haloing.
-- Diffusion now uses a soft-thresholded bright pass and uniform additive bloom; the radial eye
-  mask, full-image blur subtraction, and midtone blur overlay were removed.
-- `DIFFUSION=0` is a true bypass.
+- Diffusion and grain were removed; the 2x2 red top-left activity marker remains in ColorTransform.
 - The 2x2 red top-left activity marker is intentional and should be masked in strict image tests.
 - Exact-white frame/zone histogram samples are clamped into the final bin.
 - Scene cut combines p50 delta with raw entropy delta.
 - Guided-filter epsilon is local-variance adaptive.
 - `compare_frame --all-effects` no longer references removed DIR/toe knobs.
 - `tools/noise_floor.py` measures EXR high-frequency energy.
-- Arc Raiders and GZW now share the new stable profile baseline: inverse controls `0.70`,
-  FilmCurve `0.15`, Contrast/Shadows `1.00`, PrintStock `0.35`, Diffusion `0.5`, Grain `0.60`.
+- Arc Raiders and GZW share the current adaptive profile baseline; diffusion and grain are absent.
 - Chroma and LOOK gates are enabled; creative hue-band controls remain absent from both profiles.
+- Retinex, zone contrast, and shadow lift have independent profile gates; corrective chroma
+  history now samples original-scene highway RGB instead of inverse-graded BackBuffer RGB.
+- Shadow lift, film-curve strength, print stock, gamut compression, and chroma protection are
+  scene-adaptive; scene-cut confidence damps those adaptations during transitions.
 - `bless_all --check --game arc_raiders --delay 5` fails 4/4 vs old `dcc712f` goldens; review before reblessing.
 
 ## Next

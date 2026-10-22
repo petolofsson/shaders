@@ -108,17 +108,6 @@ sampler2D ModeSamp
     MagFilter = POINT;
 };
 
-// p75 Oklab C and hue concentration κ — written by ChromaExtraPS
-texture2D ChromaExtraTex { Width = 1; Height = 1; Format = RG16F; MipLevels = 1; };
-sampler2D ChromaExtraSamp
-{
-    Texture   = ChromaExtraTex;
-    AddressU  = CLAMP;
-    AddressV  = CLAMP;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
-
 // R195: normalized histogram entropy H_norm, EMA-smoothed
 texture2D EntropyTex { Width = 1; Height = 1; Format = R16F; MipLevels = 1; };
 sampler2D EntropySamp
@@ -210,8 +199,7 @@ float4 TexHwyWriteDataPS(float4 pos : SV_Position,
         if (col == 0) return tex2Dlod(PercSamp,         float4(0.5, 0.5, 0, 0));
         if (col == 1) {
             float2 ph = tex2Dlod(PercHighSamp,    float4(0.5, 0.5, 0, 0)).rg;
-            float2 ce = tex2Dlod(ChromaExtraSamp, float4(0.5, 0.5, 0, 0)).rg;
-            return float4(ph.r, ph.g, ce.r, ce.g);
+            return float4(ph.r, ph.g, 0.0, 0.0);
         }
         if (col == 2) return tex2Dlod(MeanChromaSamp,   float4(0.5, 0.5, 0, 0));
         if (col == 3) {
@@ -262,10 +250,6 @@ float4 HighwayWritePS(float4 pos : SV_Position,
         return float4(perc.b - perc.r, 0, 0, 1);
     if (xi == HWY_P10)
         return float4(tex2Dlod(PercHighSamp,   float4(0.5, 0.5, 0, 0)).g, 0, 0, 1);
-    if (xi == HWY_CHROMA_P75)
-        return float4(tex2Dlod(ChromaExtraSamp, float4(0.5, 0.5, 0, 0)).r, 0, 0, 1);
-    if (xi == HWY_HUE_CONC)
-        return float4(tex2Dlod(ChromaExtraSamp, float4(0.5, 0.5, 0, 0)).g, 0, 0, 1);
     return float4(ReadHWY(xi), 0, 0, 1);  // pass through corrective's slots unchanged
 }
 
@@ -447,66 +431,6 @@ float4 MeanChromaPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     );
 }
 
-// ─── Pass 7b — p75 Oklab C and hue concentration κ ───────────────────────
-// p75_C: 75th percentile of per-pixel Oklab C over chromatic pixels (C > 0.05).
-//   Complements median_C: median tracks typical chroma, p75_C tracks the vivid tail.
-//   High p75_C with low median_C = a few vivid objects in a muted scene.
-// κ: mean resultant length = |mean_ab| / median_C.
-//   κ≈1: all chromatic pixels share one hue (sunset, underwater).
-//   κ≈0: hue distribution is uniform (forest, cityscape).
-//   Computed from existing MeanChromaSamp — no extra pixel loop needed for κ.
-
-float4 ChromaExtraPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
-{
-    float hist[CHROMA_BINS];
-    [unroll] for (int i = 0; i < CHROMA_BINS; i++) hist[i] = 0.0;
-
-    float count = 0.0;
-    float scale_y = float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
-    [loop]
-    for (int y = 0; y < DS_H; y++)
-    {
-        [loop]
-        for (int x = 0; x < DS_W; x++)
-        {
-            float2 s_uv = float2((x + 0.5) / float(DS_W),
-                                 (y + 0.5) / float(DS_H) * scale_y);
-            float3 lab  = RGBtoOklab(tex2Dlod(TexHwySamp, float4(s_uv, 0, 0)).rgb);
-            float  C    = length(lab.yz);
-            float  in_b = step(0.05, C);
-            int    bin  = clamp(int(C / CHROMA_C_MAX * CHROMA_BINS), 0, CHROMA_BINS - 1);
-            hist[bin]  += in_b;
-            count      += in_b;
-        }
-    }
-
-    float target = max(count, 1.0) * 0.75;
-    float cumul  = 0.0;
-    float p75_C  = CHROMA_C_MAX * 0.75;
-    float lk     = 0.0;
-    [loop] for (int b = 0; b < CHROMA_BINS; b++)
-    {
-        float prev_c = cumul;
-        cumul       += hist[b];
-        float inv    = (hist[b] > 0.0) ? 1.0 / hist[b] : 0.0;
-        float t      = saturate((target - prev_c) * inv);
-        float bv     = (float(b) + t) / float(CHROMA_BINS) * CHROMA_C_MAX;
-        float at     = step(target, cumul) * (1.0 - lk);
-        p75_C        = lerp(p75_C, bv, at);
-        lk           = saturate(lk + at);
-    }
-    float valid = step(0.5, count);
-    p75_C = lerp(CHROMA_C_MAX * 0.75, p75_C, valid);
-
-    float4 mc    = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0));
-    float  kappa = saturate(length(mc.gb) / max(mc.r, 0.001));
-
-    float2 prev      = tex2Dlod(ChromaExtraSamp, float4(0.5, 0.5, 0, 0)).rg;
-    float  scene_cut = tex2Dlod(SceneCutSamp,    float4(0.5, 0.5, 0, 0)).r;
-    float  alpha     = lerp(saturate(frametime * 0.001), 1.0, scene_cut);
-    return float4(lerp(prev.r, p75_C, alpha), lerp(prev.g, kappa, alpha), 0.0, 1.0);
-}
-
 // ─── Pass 8 — p90 luma percentile ────────────────────────────────────────
 // Same 64-bin CDF walk as CDFWalkPS but targets the 90th percentile.
 // No Kalman — simple EMA is sufficient for a coarse highlight threshold signal.
@@ -621,12 +545,6 @@ technique FrameAnalysis
         VertexShader = PostProcessVS;
         PixelShader  = MeanChromaPS;
         RenderTarget = MeanChromaTex;
-    }
-    pass ChromaExtra
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = ChromaExtraPS;
-        RenderTarget = ChromaExtraTex;
     }
     pass CDFWalkMode
     {

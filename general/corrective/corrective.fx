@@ -237,7 +237,12 @@ float4 UpdateChromaKalman(int band_idx)
     {
         uint   idx  = (base_idx + uint(i)) % 256u;
         float2 s_uv = float2(Halton2(idx), Halton3(idx));
-        float3 lab  = RGBtoOklab(tex2D(BackBuffer, s_uv).rgb);
+        // Chroma history is measured from the original-scene highway, not the
+        // inverse-graded BackBuffer, so inverse reconstruction cannot feed back
+        // into its own adaptive statistics.
+        float scale_y = float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
+        float3 lab  = RGBtoOklab(tex2Dlod(TexHwySamp,
+                                           float4(s_uv.x, s_uv.y * scale_y, 0, 0)).rgb);
         float  C    = length(lab.yz);
         float  h    = OklabHueNorm(lab.y, lab.z);
         float  w    = HueBandWeight(h, GetBandCenter(band_idx)) * smoothstep(0.03, 0.08, C);

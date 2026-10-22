@@ -37,8 +37,6 @@ sampler2D HighwaySamp
 #define HWY_H_NORM          207    // normalized histogram entropy [0,1]; 0=all mass one bin, 1=uniform
 #define HWY_IQR             208    // IQR = p75 − p25 [0,1]; scene contrast width
 #define HWY_P10             209    // scene p10 luma (shadow floor) [0,1]
-#define HWY_CHROMA_P75      210    // scene p75 Oklab C (vividness ceiling) [0, 0.30]
-#define HWY_HUE_CONC        211    // hue concentration κ = |mean_ab|/median_C [0,1]; 1=monochromatic scene
 
 // ── corrective ────────────────────────────────────────────────────────────────
 #define HWY_ZONE_KEY        203    // zone_log_key — linear mean of zone medians [0,1]

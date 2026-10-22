@@ -3,6 +3,15 @@
 Chronological record of recent code changes. Older detail lives in git history and
 research notes.
 
+## 2026-10-22
+
+- **Scene automation**: added bounded automation for print-stock strength, soft gamut
+  compression, chroma protection, and scene-cut transition damping. Film-curve strength and
+  shadow lift also use highlight and shadow-floor statistics; manual creative values remain
+  ceilings or bypasses.
+- **Diffusion removal**: removed the diffusion downsample, Gaussian blur, bloom pass, and
+  profile controls from both game configurations. The 2x2 activity marker remains active.
+
 ## 2026-09-03
 
 - **New stable baseline**: synchronized Arc Raiders and GZW profiles with the accepted shared
@@ -24,6 +33,8 @@ research notes.
   soft-thresholded bright pass, sharp base preservation, and restrained additive bloom.
 - **Adaptive contrast**: changed the zone adjustment from a one-sided upper lift to a signed
   local-median contrast adjustment with a 75% shadow arm.
+- **Stage separation**: added independent Retinex, zone-contrast, and shadow-lift gates;
+  corrective chroma history now measures original-scene highway samples to avoid feedback.
 
 - **Stable minimal checkpoint**: Arc Raiders now exposes only the core tonal controls;
   removed game-specific hue, saturation, shadow-cast, and perceptual color design knobs.
