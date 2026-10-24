@@ -41,7 +41,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from compare_frame import (  # noqa: E402
     _load_png_linear, _launch_mpv, _mpv_cmd, _goto_frame,
-    _save_exr, GAME_MONITOR,
+    _save_exr, GAME_MONITOR, _acquire_capture_lock,
 )
 from analyze_delta import compute_relative, _de_fmt, _BLD, _RST, HUE_BANDS  # noqa: E402
 from capture import take_screenshot  # noqa: E402
@@ -84,6 +84,7 @@ def _read_gates(cv: Path) -> dict:
 
 
 def _write_gates(cv: Path, gates: dict) -> None:
+    _acquire_capture_lock()
     text = cv.read_text()
     for name, val in gates.items():
         text = re.sub(rf"(#define\s+{name}\s+)\d+", rf"\g<1>{val}", text)
@@ -402,6 +403,7 @@ def main() -> None:
     ap.add_argument("--delay", type=int, default=2,
                     help="Seconds to wait for SPIR-V compile per stage (default: 2)")
     args = ap.parse_args()
+    _acquire_capture_lock()
 
     cv     = _cv_path(args.game)
     config = ROOT / "gamespecific" / args.game / f"{args.game}.conf"

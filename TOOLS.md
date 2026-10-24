@@ -22,6 +22,10 @@ compare_frame gamespecific/<game>/analysis/reference/frame.png --game <game>
 compare_frame --all --game <game> --delay 5
 compare_frame --all-effects --game <game> --max-frames 12 --delay 5
 compare_frame --all-effects --game <game> --only FILM_CURVE EXPOSURE
+compare_frame gamespecific/gzw/analysis/reference/frame.png --game gzw --config gamespecific/gzw/gzw_stronger_trial.conf
+compare_frame gamespecific/gzw/analysis/reference/autof_20260515_133932.png --all-effects --game gzw --config gamespecific/gzw/gzw_stronger_trial.conf --only CORRECTIVE_GATE TONAL_GATE CHROMA_GATE LOOK_GATE --settle 20 --keep
+compare_frame gamespecific/gzw/analysis/reference/autof_20260515_133058.png --transition gamespecific/gzw/analysis/reference/autof_20260515_133932.png --game gzw --config gamespecific/gzw/gzw_stronger_trial.conf
+compare_frame gamespecific/gzw/analysis/reference/autof_20260515_133932.png --perf-probe --game gzw --config gamespecific/gzw/gzw_stronger_trial.conf
 stage_isolate --game <game> --delay 5
 analyze_delta before.exr after.exr
 analyze_delta --colorchecker captures/session.exr
@@ -30,14 +34,36 @@ python3 tools/noise_floor.py before.exr after.exr --json-out noise.json
 
 `compare_frame --all-effects` captures the full pipeline, zeroes each effect's
 active knobs, measures full-minus-effect delta, and restores `creative_values.fx`.
+Both sides use stage gates at 100. An optional positional PNG selects one reference.
+It converts each source PNG into a byte-exact lossless FFV1 RGB clip (requires
+FFmpeg), restarts mpv per image, waits `--delay` for compilation and `--settle`
+for continuous playback (default 5 seconds), and records source/reference
+SHA-256 hashes. It rejects paused/stalled playback and pauses only at the
+settled capture point before the desktop screenshot. This is a fixed startup
+protocol, not a guarantee of steady state. Use `--settle 20` for small effects.
+Older still-image `--settle` results did not have continuous rendered frames;
+do not use them as evidence of temporal convergence. `--keep` retains paired
+PNG captures under `full_analysis/.../captures_<timestamp>/`.
+An unchanged FULL repeat measures capture/history variation before effect ablations;
+small effect deltas near that baseline are inconclusive.
+
+mpv is launched without user configuration, with an explicit sRGB/BT.709 target.
+Diagnostics serialize desktop/profile access, use a private IPC socket, and print
+`/tmp/shader-runtime-*/` log paths. An absent activity marker or failed IPC command
+fails the comparison. Use a reference with the same dimensions as the display.
+`analyze_delta` masks the intentional top-left 2×2 marker and reports endpoint
+occupancy. DeltaE measures change, not improvement in fidelity.
+
+`capture` writes RGB EXRs only. HighwayTex is offscreen: `--dump` and `--no-frame`
+fail explicitly instead of decoding scene pixels as telemetry.
 
 Current effect list:
 
 ```text
 INVERSE_STRENGTH INVERSE_LUMA EXPOSURE BLACKS_WHITES FILM_CURVE
-3WAY_CC LUMA_CONTRAST CONTRAST ZONE_CONTRAST_STRENGTH SHADOWS
-RETINEX_STRENGTH SHADOW_LIFT_STRENGTH
-HUE_ROTATION VIBRANCE SATURATION PRINT_STOCK PRINTER_LIGHTS
+3WAY_CC MID_TEMPERATURE LUMA_CONTRAST CONTRAST RETINEX ZONE_CONTRAST
+SHADOWS SHADOW_LIFT HUE_ROTATION VIBRANCE SATURATION PRINT_STOCK
+PRINTER_LIGHTS CORRECTIVE_GATE TONAL_GATE CHROMA_GATE LOOK_GATE
 ```
 
 `stage_isolate` measures cumulative gates:
@@ -46,17 +72,22 @@ HUE_ROTATION VIBRANCE SATURATION PRINT_STOCK PRINTER_LIGHTS
 CORRECTIVE -> +TONAL -> +CHROMA -> +LOOK
 ```
 
-## Baselines
+`stage_isolate` uses the game's default config and paused PNG playback. For the
+combined GZW trial and temporal stage checks, use `compare_frame --all-effects`
+with the four `*_GATE` labels instead. Input black/white mapping and FilmCurve
+sit outside those gates in `ColorTransformPS`.
 
-```text
-python3 tools/bless_all.py --check --game arc_raiders --delay 5
-python3 tools/bless_all.py --game arc_raiders --rebless
-python3 tools/test_golden.py list
-python3 tools/test_golden.py check gradient tests/golden/gradient.exr
-```
+`--transition` plays first/second/first references for 20/8/8 seconds at 30 fps,
+capturing each target from a fresh playback paused only for the desktop screenshot.
+It saves PNGs, same-source temporal deltas and mpv drop counters. `--perf-probe`
+stress-plays a 120 fps FFV1 clip with MangoHud; add `--perf-baseline` to disable
+vkBasalt for a paired baseline. These mpv data do not measure in-game GPU time.
 
-Do not rebless automatically. Current Arc Raiders output fails old `dcc712f`
-goldens and needs visual review first.
+## Validation
+
+There is no golden-image regression suite. Use matched captures, stage isolation,
+effect attribution, and `tools/noise_floor.py` for validation.
+Tool regression checks: `python3 -B -m unittest discover -s tests -p 'test_diagnostics.py'`.
 
 ## Outputs
 

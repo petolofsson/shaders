@@ -1,7 +1,8 @@
 # Shader Pipeline
 
-vkBasalt HLSL post-process chain for SDR game output. Work is linear-light after
-vkBasalt's sRGB swapchain read. HDR must be off in-game.
+vkBasalt HLSL post-process chain for SDR game output. BackBuffer uses UNORM
+views; shaders explicitly decode/encode sRGB at processing boundaries. Internal
+work is linear-light. HDR must be off in-game.
 
 ## Active Chain
 
@@ -12,11 +13,11 @@ Configured in `gamespecific/arc_raiders/arc_raiders.conf` and
 analysis_frame : inverse_grade : corrective : grade
 ```
 
-`grade.fx` is a 7-pass technique:
+`grade.fx` is an 8-pass technique:
 
 ```text
 LFDownscale1 -> LFDownscale2 -> NeutralIllum -> GuidedCoeff -> GuidedBase
--> ColorTransform -> TexHwyWrite
+-> ColorTransform -> AdaptiveHistory -> TexHwyWrite
 ```
 
 Diffusion has been removed from `grade.fx`.
@@ -36,9 +37,12 @@ Diffusion has been removed from `grade.fx`.
 - No `static const float[]` or `static const float3`: can compile with wrong output.
 - No variable named `out`: reserved by HLSL/SPIR-V.
 - No `tex2Dlod(BackBuffer, ...)`: it returns zero; use `tex2D(BackBuffer, uv)`.
-- Cross-technique RT mips are not populated beyond mip0. Build required lower-res
-  surfaces inside the reading technique.
-- Inter-effect BackBuffer is 8-bit UNORM; overrange values clip between effects.
+- Explicit render targets in separate `.fx` effects do not share data, even at
+  mip0. Build and read required surfaces inside one effect technique.
+- Inter-effect BackBuffer is UNORM; overrange values clip between effects.
+- SDR games commonly use 8-bit; mpv validation used a 10-bit UNORM swapchain.
+- Keep BackBuffer `SRGBTexture`/`SRGBWriteEnable` false with explicit sRGB math;
+  10-bit UNORM has no corresponding sRGB image-view format.
 - `FRAME_TIMER` is retained only for compatibility; active output uses spatial dither and no temporal grain.
 
 ## Key Files
@@ -80,7 +84,7 @@ Encode/decode out-of-range quantities at the slot boundary.
 194 p25, 195 p50, 196 p75, 197 chroma slope, 198 median C, 199 scene cut
 200 p90, 201 mean chroma angle, 202 achromatic fraction
 203 zone key, 204 zone std, 205 slow key
-206 luma mode, 207 entropy, 208 IQR, 209 p10
+206 luma mode, 207 entropy, 208 IQR, 209 p10, 210 near-clip fraction
 ```
 
 ## Current State
@@ -88,10 +92,12 @@ Encode/decode out-of-range quantities at the slot boundary.
 - Diffusion is removed from the active grade; no diffusion setting is exposed.
 - The 2x2 red activity marker is intentional; mask it in strict image tests.
 - Exact-white histogram samples are clamped into the final bin before counting.
+- Percentile and entropy reads normalize the temporally smoothed histogram;
+  its total mass can be below one during startup.
 - Scene cuts use p50 delta plus raw histogram entropy delta.
 - Guided-filter epsilon is local-variance adaptive.
-- Arc Raiders and GZW share the new stable profile baseline; creative hue-band
-  controls remain omitted from both game profiles.
+- Arc Raiders and GZW share shader code; current profiles still need visual
+  recalibration after the color-space and reconstruction fixes.
 - `RETINEX_STRENGTH`, `ZONE_CONTRAST_STRENGTH`, and `SHADOW_LIFT_STRENGTH` are
   independent diagnostic gates; each zero value is a visual bypass.
 - Shadow lift uses the histogram p10 shadow floor as an adaptive black-level guard.
@@ -99,16 +105,28 @@ Encode/decode out-of-range quantities at the slot boundary.
   `FILM_CURVE` remains the manual ceiling.
 - Print stock, soft gamut compression, and chroma protection adapt to scene statistics;
   scene-cut confidence temporarily damps those adaptations.
+- Internal grade Oklab conversions preserve signed RGB and positive overrange;
+  final gamut projection checks negative and over-one channels before `saturate()`.
+- Retinex reconstructs against pre-Retinex luma; chroma reconstructs against input C.
+- Local max-channel protection supplements the global near-clip history.
+- Film, shadow, print, and gamut hysteresis uses elapsed time, with no forced
+  maximum-strength target on scene cuts; other analysis Kalman filters remain separate.
+- Dither uses the sRGB code domain and preserves exact black/white endpoints.
+- Local Retinex and zone contrast use a confidence-weighted blend toward the global path.
 - Diffusion and grain are removed; the 2x2 activity marker remains in `ColorTransformPS`.
-- Old `dcc712f` goldens fail against current Arc Raiders output; review before reblessing.
+- Golden-image regression testing has been removed; use matched captures and effect attribution instead.
+- The configured four-effect chain leaves grade's cross-effect highway and zone
+  reads at zero in vkBasalt. `gzw_stronger_trial.conf` tests a combined technique;
+  the active GZW config has not been switched.
 
 ## Validation
 
 ```text
-python3 -m py_compile tools/*.py
-python3 tools/compare_frame.py --all-effects --game arc_raiders --max-frames 1 --only FILM_CURVE --delay 5
-python3 tools/bless_all.py --check --game arc_raiders --delay 5
+python3 -B -m unittest discover -s tests -p 'test_diagnostics.py'
+python3 -B tools/compare_frame.py gamespecific/gzw/analysis/reference/autof_20260515_133058.png --all-effects --game gzw --only FILM_CURVE RETINEX BLACKS_WHITES --delay 5 --settle 5
 ```
 
-If logging is configured, inspect `/tmp/vkbasalt.log`; recent successful runtime
-passes did not create that file.
+Capture runs print a unique `/tmp/shader-runtime-*/` directory containing mpv
+and vkBasalt logs. All-effects uses a fresh process per image. Five seconds of
+warmup is a reproducible protocol, not proof of full temporal convergence.
+Screenshot captures contain no highway telemetry; `capture --dump` is unsupported.

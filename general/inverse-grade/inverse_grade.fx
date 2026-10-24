@@ -7,20 +7,25 @@
 // are excluded; only clearly coloured pixels see expansion.
 // slope=1.0 for uncompressed content (no-op). No confidence gate.
 
+#ifndef SHADER_PIPELINE_COMBINED
 #include "creative_values.fx"
+#endif
 #include "../highway.fxh"
 #include "../hue_bands.fxh"
 #include "../common.fxh"
 
+#ifndef SHADER_PIPELINE_COMBINED
 texture2D BackBufferTex : COLOR;
 sampler2D BackBuffer
 {
     Texture   = BackBufferTex;
+    SRGBTexture = false;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = LINEAR;
     MagFilter = LINEAR;
 };
+#endif
 
 // NeutralIllum RGB: read from TexHwyTex data row 0 pixel 4 (grade writes each frame, one-frame delay).
 
@@ -28,6 +33,7 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
 {
     float4 col    = tex2D(BackBuffer, uv);
     if (INVERSE_STRENGTH <= 0.0) return col;
+    col.rgb = SRGBToLinear(col.rgb);
 
     float slope_enc   = ReadHWY(HWY_CHROMA_SLOPE);
     float slope       = clamp(slope_enc * 1.5 + 1.0, 1.15, 2.2);
@@ -52,6 +58,13 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     // In warm scenes bright pixels are especially likely to be practicals, not compressed reflectance.
     float  illum_luma_w = smoothstep(0.35, 0.75, lab.x);
     float  illum_gate   = illum_luma_w * lerp(0.65, 1.0, warm_scene);
+    float  near_clip    = ReadHWY(HWY_NEAR_CLIP);
+    float  clip_scene_w = smoothstep(0.01, 0.12, near_clip);
+    float  clip_pixel_w = smoothstep(0.65, 0.92, lab.x);
+    // A small saturated emitter can clip one channel without moving the global
+    // luminance histogram. Protect that local signal independently of area.
+    float  clip_local_w = smoothstep(0.85, 0.99, max(col.r, max(col.g, col.b)));
+    float  clip_guard   = 1.0 - 0.75 * max(clip_local_w, clip_scene_w * clip_pixel_w);
     float  bias        = HueSlopeBias(hue);
     float  bias_adj    = max(bias, 0.0) * (1.0 - warm_scene * 0.50) + min(bias, 0.0);
     float  slope_eff   = clamp(slope * (1.0 + bias_adj), 1.0, 2.2);
@@ -77,25 +90,25 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     // achromatic scenes get 100%. Range [0.7, 1.0] — slope is a scene modifier, not the gate.
     float  slope_frac = lerp(0.7, 1.0, saturate((slope_eff - 1.0) / 0.8));
     float  c1      = float(INVERSE_STRENGTH) * slope_frac * zone_w * c_weight * dir_scale
-                   * (1.0 - illum_gate);
+                   * (1.0 - illum_gate) * clip_guard;
     float  k2      = 0.01;
     float  k1      = sqrt(c1 * c1 + k2 * k2);
     float  k3      = (ceil_C + k1) / (ceil_C + k2);
     float  new_C   = (C * C + k1 * C) / (k3 * (C + k2));
     new_C          = max(new_C, C);
     lab.yz          = dir * max(new_C, 0.0);
-    float3 rgb_test = OklabToRGB(lab);
-    float  max_ch   = max(max(rgb_test.r, rgb_test.g), rgb_test.b);
-    lab.yz         /= max(max_ch, 1.0);
-    col.rgb         = saturate(OklabToRGB(lab));
+    col.rgb         = LinearToSRGB(OklabToSDR(lab));
     return col;
 }
 
+#ifndef SHADER_PIPELINE_COMBINED
 technique OlofssonianInverseGrade
 {
     pass InverseGradePass
     {
         VertexShader = PostProcessVS;
         PixelShader  = InverseGradePS;
+        SRGBWriteEnable = false;
     }
 }
+#endif

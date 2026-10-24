@@ -11,6 +11,9 @@
 //
 // Band width: smoothstep falloff over ±0.08 normalized hue (~29°).
 
+#ifndef SHADER_HUE_BANDS_FXH_INCLUDED
+#define SHADER_HUE_BANDS_FXH_INCLUDED
+
 #define HB_BAND_WIDTH   0.08
 
 #define HB_BAND_RED     0.083   // ~30°
@@ -132,3 +135,5 @@ float HueSlopeBias(float hue)
               + w10 * HB_SLOPE_BIAS_MAGENTA + w11 * HB_SLOPE_BIAS_ROSE;
     return num / max(w0+w1+w2+w3+w4+w5+w6+w7+w8+w9+w10+w11, 1e-6);
 }
+
+#endif

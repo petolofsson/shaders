@@ -33,7 +33,7 @@ except ImportError:
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# BabelColor sRGB D65 reference (8-bit) — matches make_test_images.py exactly
+# BabelColor sRGB D65 reference (8-bit) for optional color-reference analysis
 CC_PATCHES = [
     ("Dark skin",      115,  82,  68),
     ("Light skin",     194, 150, 130),
@@ -61,7 +61,7 @@ CC_PATCHES = [
     ("Black 2",         52,  52,  52),
 ]
 
-# ColorChecker layout — must match make_test_images.py
+# ColorChecker layout for optional color-reference analysis
 _W, _H          = 2560, 1440
 _COLS, _ROWS    = 6, 4
 _MARGIN, _GAP   = 80, 20
@@ -69,13 +69,14 @@ _PW = (_W - 2 * _MARGIN - (_COLS - 1) * _GAP) // _COLS   # 383 px
 _PH = (_H - 2 * _MARGIN - (_ROWS - 1) * _GAP) // _ROWS   # 305 px
 _SAMPLE = 40   # center-sample square per patch (pixels)
 
-# 6 hue bands in Oklab hue angle: atan2(b, a) in [0, 360°)
-# Centers from hue_bands.fxh: red ~30°, yellow ~110°, green ~143°,
-#                              cyan ~195°, blue ~265°, magenta ~329°.
-# Boundaries at midpoints between adjacent primaries.
+# Hue bands in Oklab hue angle: atan2(b, a) in [0, 360°).
+# Warm bands are split at the hue_bands.fxh red/orange/amber/yellow midpoints,
+# so an orange cast cannot hide inside the former 80-degree red range.
 HUE_BANDS = [
-    ("red",     350, 360,   0, 70),   # wraps through 0°; pure red ~30°
-    ("yellow",   70, 126),            # pure yellow ~110°
+    ("red",     330, 360,   0, 47.5),
+    ("orange",   47.5, 76),
+    ("amber",    76, 99),
+    ("yellow",  99, 126),
     ("green",   126, 169),            # pure green ~143°
     ("cyan",    169, 230),            # pure cyan ~195°
     ("blue",    230, 297),            # pure blue ~265°
@@ -171,6 +172,15 @@ def compute_relative(before: np.ndarray, after: np.ndarray) -> dict:
     Zone/band entries: mean_de, max_de, n, dL, dC, dh (dh=None if no chromatic pixels).
     All ΔL/ΔC values are in Oklab ×100 units (L range 0–100, C range ~0–35).
     """
+    if before.shape != after.shape or before.ndim != 3 or before.shape[2] != 3:
+        raise ValueError("Expected matching H×W×3 linear RGB frames")
+    if not np.isfinite(before).all() or not np.isfinite(after).all():
+        raise ValueError("Frames contain non-finite values")
+    valid = np.ones(before.shape[:2], dtype=bool)
+    valid[:2, :2] = False  # intentional activity marker, not image content
+    if not valid.any():
+        raise ValueError("No pixels remain after masking the activity marker")
+    before, after = before[valid], after[valid]
     lab_b = _linear_rgb_to_oklab(before)
     lab_a = _linear_rgb_to_oklab(after)
     de    = _delta_e_oklab(lab_b, lab_a)
@@ -183,6 +193,13 @@ def compute_relative(before: np.ndarray, after: np.ndarray) -> dict:
         "pct_gt3": float((de > 3.0).mean() * 100),
         "zones":   {},
         "hue_bands": {},
+        "masked_pixels": int((~valid).sum()),
+        "endpoints": {
+            label: {
+                "black_pct": float((rgb.max(axis=-1) <= 0.5 / (255 * 12.92)).mean() * 100),
+                "any_channel_white_pct": float((rgb.max(axis=-1) >= 0.995545).mean() * 100),
+            } for label, rgb in (("before", before), ("after", after))
+        },
     }
 
     luma = 0.2126 * before[..., 0] + 0.7152 * before[..., 1] + 0.0722 * before[..., 2]

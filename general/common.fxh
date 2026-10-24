@@ -2,6 +2,9 @@
 // Included by all effect files in this pipeline.
 // Edit here; do not copy these functions into individual effect files.
 
+#ifndef SHADER_COMMON_FXH_INCLUDED
+#define SHADER_COMMON_FXH_INCLUDED
+
 // ─── Texture Highway ────────────────────────────────────────────────────────
 // TexHwyTex (BUFFER_WIDTH/8 × BUFFER_HEIGHT/8+TEX_HWY_ROWS, RGBA16F):
 //   Rows 0..BUFFER_HEIGHT/8-1  : spatial lane  r=R g=G b=B a=Luma  written by analysis_frame
@@ -35,11 +38,20 @@ sampler2D TexHwySamp
     MagFilter = LINEAR;
 };
 
+// Clamp already-mapped highway UVs to spatial texel centers so filtering never
+// blends metadata into the bottom of the image.
+float2 ClampSpatialUV(float2 uv)
+{
+    float2 lo = float2(0.5 / float(BUFFER_WIDTH / 8), 0.5 / float(TEX_HWY_TOTAL_H));
+    float2 hi = float2(1.0 - lo.x, (float(TEX_HWY_SPATIAL_H) - 0.5) / float(TEX_HWY_TOTAL_H));
+    return clamp(uv, lo, hi);
+}
+
 // Read spatial lane luma at full-screen UV uv∈[0,1].
 float ZoneLuma(float2 uv)
 {
     float sy = uv.y * float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
-    return tex2Dlod(TexHwySamp, float4(uv.x, sy, 0, 0)).a;
+    return tex2Dlod(TexHwySamp, float4(ClampSpatialUV(float2(uv.x, sy)), 0, 0)).a;
 }
 
 // Read data row pixel. dr = row offset from spatial lane base (0..TEX_HWY_ROWS-1).
@@ -69,6 +81,30 @@ void PostProcessVS(in  uint   id  : SV_VertexID,
 
 float Luma(float3 c) { return dot(c, float3(0.2126, 0.7152, 0.0722)); }
 
+float3 LinearToSRGB(float3 rgb)
+{
+    rgb = saturate(rgb);
+    return lerp(12.92 * rgb, 1.055 * pow(rgb, 1.0 / 2.4) - 0.055,
+                step(0.0031308, rgb));
+}
+
+float3 SRGBToLinear(float3 rgb)
+{
+    rgb = saturate(rgb);
+    return lerp(rgb / 12.92, pow((rgb + 0.055) / 1.055, 2.4),
+                step(0.04045, rgb));
+}
+
+// Dither in the 8-bit sRGB code domain before the explicit output encode.
+// Symmetric endpoint attenuation preserves exact black/white without a bias
+// from clipping the noise. noise is in [-0.5, 0.5].
+float3 DitherSDR(float3 rgb, float noise)
+{
+    float3 encoded = LinearToSRGB(rgb);
+    float3 amplitude = min(1.0 / 255.0, 2.0 * min(encoded, 1.0 - encoded));
+    return saturate(SRGBToLinear(encoded + noise * amplitude));
+}
+
 float3 RGBtoOklab(float3 rgb)
 {
     rgb = saturate(rgb);
@@ -76,6 +112,22 @@ float3 RGBtoOklab(float3 rgb)
     float m = dot(rgb, float3(0.2119034982, 0.6806995451, 0.1073969566));
     float s = dot(rgb, float3(0.0883024619, 0.2817188376, 0.6299787005));
     float3 lms_cbrt = exp2(log2(max(float3(l, m, s), 1e-10)) * (1.0 / 3.0));
+    l = lms_cbrt.x; m = lms_cbrt.y; s = lms_cbrt.z;
+    return float3(
+        dot(float3(l, m, s), float3( 0.2104542553,  0.7936177850, -0.0040720468)),
+        dot(float3(l, m, s), float3( 1.9779984951, -2.4285922050,  0.4505937099)),
+        dot(float3(l, m, s), float3( 0.0259040371,  0.7827717662, -0.8086757660))
+    );
+}
+
+// Internal signed, high-range variant; gamut mapping belongs at SDR boundaries.
+float3 RGBtoOklabLinear(float3 rgb)
+{
+    float l = dot(rgb, float3(0.4122214708, 0.5363325363, 0.0514459929));
+    float m = dot(rgb, float3(0.2119034982, 0.6806995451, 0.1073969566));
+    float s = dot(rgb, float3(0.0883024619, 0.2817188376, 0.6299787005));
+    float3 lms = float3(l, m, s);
+    float3 lms_cbrt = sign(lms) * exp2(log2(max(abs(lms), 1e-30)) * (1.0 / 3.0));
     l = lms_cbrt.x; m = lms_cbrt.y; s = lms_cbrt.z;
     return float3(
         dot(float3(l, m, s), float3( 0.2104542553,  0.7936177850, -0.0040720468)),
@@ -97,6 +149,28 @@ float3 OklabToRGB(float3 lab)
         dot(float3(l, m, s), float3(-1.2684380046,  2.6097574011, -0.3413193965)),
         dot(float3(l, m, s), float3(-0.0041960863, -0.7034186147,  1.7076147010))
     );
+}
+
+// Contract chroma toward the neutral axis at fixed lightness/hue. Test both
+// gamut faces; max-channel-only projection misses negative RGB channels.
+float3 OklabToSDR(float3 lab)
+{
+    lab.x = saturate(lab.x);
+    float lower = 0.0;
+    float upper = 1.0;
+    float3 original = OklabToRGB(lab);
+    float valid = step(0.0, min(original.r, min(original.g, original.b)))
+                * step(max(original.r, max(original.g, original.b)), 1.0);
+    [unroll] for (int i = 0; i < 10; i++)
+    {
+        float mid = (lower + upper) * 0.5;
+        float3 rgb = OklabToRGB(float3(lab.x, lab.yz * mid));
+        float inside = step(0.0, min(rgb.r, min(rgb.g, rgb.b)))
+                     * step(max(rgb.r, max(rgb.g, rgb.b)), 1.0);
+        lower = lerp(lower, mid, inside);
+        upper = lerp(mid, upper, inside);
+    }
+    return saturate(OklabToRGB(float3(lab.x, lab.yz * lerp(lower, 1.0, valid))));
 }
 
 float OklabHueNorm(float a, float b)
@@ -137,5 +211,7 @@ float IllumWarm(float3 rgb)
     float S  = dot(n, float3(0.027974, 0.147911, 0.908874));
     return saturate((L - S) / max(M, 0.001) + 0.5);
 }
+
+#endif
 
 

@@ -2,24 +2,12 @@
 """
 tools/capture.py — Pipeline session capture.
 
-Takes a screenshot, decodes the data highway (BackBuffer y=0), and writes a
-structured EXR. All analysis tools read from this shared format instead of
-re-implementing PNG parsing and highway decoding independently.
-
-EXR channels (all float16):
-    R, G, B              linearized sRGB frame (omitted with --no-frame)
-    hwy.*                decoded highway scalars (constant across image)
-    luma.hist.NNN        128-bin luma histogram (x=0..127, analysis_scope_pre)
-    hue.hist.NN          64-bin hue histogram (x=130..193, analysis_scope_pre)
-
-EXR header attributes:
-    game, timestamp, git_commit, note
+Captures a linearized RGB EXR from the desktop. HighwayTex is offscreen;
+screenshots contain no scalar or histogram telemetry. The obsolete --dump
+and --no-frame modes fail explicitly.
 
 Usage:
-    python3 tools/capture.py [--game NAME] [--note TEXT] [--no-frame] [--dump] [OUT.exr]
-
-    --no-frame   write 1×1 EXR (scalars + histograms only, no full-res image)
-    --dump       print decoded highway to stdout, skip EXR write
+    python3 tools/capture.py [--game NAME] [--note TEXT] [OUT.exr]
 
 Requires:
     pip install openexr numpy
@@ -27,7 +15,6 @@ Requires:
 """
 
 import argparse
-import math
 import os
 import struct
 import subprocess
@@ -46,42 +33,6 @@ try:
     import Imath
 except ImportError:
     sys.exit("Missing: pip install openexr")
-
-
-# ── Highway slot table ────────────────────────────────────────────────────────
-# (x_pixel, channel_name, decode_fn)
-# decode_fn: raw sRGB-linearized [0,1] float → physical value
-# Encoding convention documented in general/highway.fxh.
-
-SCALAR_SLOTS = [
-    (128, "hwy.luma_mean_pre",   lambda v: v),
-    (129, "hwy.luma_mean_post",  lambda v: v),
-    (194, "hwy.p25",             lambda v: v),
-    (195, "hwy.p50",             lambda v: v),
-    (196, "hwy.p75",             lambda v: v),
-    (197, "hwy.slope",           lambda v: v * 1.5 + 1.0),           # encode (v-1)/1.5, range [1.15, 1.80]
-    (198, "hwy.chroma_med",      lambda v: v),                        # Oklab C, raw [0, 0.4]
-    (199, "hwy.scene_cut",       lambda v: v),
-    (200, "hwy.p90",             lambda v: v),
-    (201, "hwy.chroma_angle",    lambda v: v * 2.0 * math.pi - math.pi),  # encode (atan2+π)/2π
-    (202, "hwy.achrom_frac",     lambda v: v),
-    (203, "hwy.zone_key",         lambda v: v),
-    (204, "hwy.zone_std",         lambda v: v),
-    (205, "hwy.slow_key",         lambda v: v),
-    (210, "hwy.warm_bias",        lambda v: v),
-    (213, "hwy.fc_stevens",       lambda v: v * 1.3),                  # encode v/1.3, range [0.72, 1.22]
-    (214, "hwy.fc_knee",          lambda v: v),
-    (215, "hwy.zone_str",         lambda v: v * 0.30),                 # encode v/0.30
-    (217, "hwy.shadow_lift_str",  lambda v: v * 1.5),                  # encode v/1.5, range [0, 1.5]
-    (218, "hwy.chroma_str",       lambda v: v * 0.10),                 # encode v/0.10, range [0, 0.10]
-    (219, "hwy.mist_str",         lambda v: v * 0.10),                 # encode v/0.10, range [0, 0.10]
-]
-
-LUMA_HIST_START = 0
-LUMA_HIST_BINS  = 128   # x=0..127, written by analysis_scope_pre
-
-HUE_HIST_OFFSET = 130
-HUE_HIST_BINS   = 64    # x=130..193, written by analysis_scope_pre
 
 
 # ── Game auto-detection ───────────────────────────────────────────────────────
@@ -207,26 +158,17 @@ def load_png(data: bytes):
 
 def decode_scalars(linear_rgb: np.ndarray) -> dict:
     """Decode named scalar slots from row y=0, R channel."""
-    row = linear_rgb[0, :, 0]
-    out = {}
-    for x, name, fn in SCALAR_SLOTS:
-        if x < row.shape[0]:
-            out[name] = fn(float(row[x]))
-    return out
+    raise RuntimeError("HighwayTex is offscreen; screenshots contain no highway telemetry")
 
 
 def decode_luma_hist(linear_rgb: np.ndarray) -> list:
     """128 normalized luma histogram bins from x=0..127, row y=0."""
-    row = linear_rgb[0, :, 0]
-    n   = min(LUMA_HIST_BINS, row.shape[0] - LUMA_HIST_START)
-    return [float(row[LUMA_HIST_START + i]) for i in range(n)]
+    raise RuntimeError("HighwayTex is offscreen; screenshots contain no highway telemetry")
 
 
 def decode_hue_hist(linear_rgb: np.ndarray) -> list:
     """64 normalized hue histogram bins from x=130..193, row y=0."""
-    row = linear_rgb[0, :, 0]
-    n   = min(HUE_HIST_BINS, row.shape[0] - HUE_HIST_OFFSET)
-    return [float(row[HUE_HIST_OFFSET + i]) for i in range(n)]
+    raise RuntimeError("HighwayTex is offscreen; screenshots contain no highway telemetry")
 
 
 # ── EXR write ─────────────────────────────────────────────────────────────────
@@ -285,50 +227,6 @@ def write_exr(
     path.with_suffix(".json").write_text(json.dumps(metadata, indent=2))
 
 
-# ── Dump (human-readable stdout) ──────────────────────────────────────────────
-
-def _bar(v: float, peak: float, width: int = 36) -> str:
-    return "█" * int(v / max(peak, 1e-9) * width)
-
-
-def dump_highway(scalars: dict, luma_hist: list, hue_hist: list) -> None:
-    print(f"\n  {'channel':<24} {'value':>12}   note")
-    print(f"  {'-'*60}")
-    notes = {
-        "hwy.slope":           "R90 chroma expansion slope, range [1.15, 1.80]",
-        "hwy.fc_stevens":      "Stevens exponent curve, range [0.72, 1.22]",
-        "hwy.chroma_angle":    lambda v: f"{math.degrees(v):.1f}° dominant hue",
-        "hwy.p25":             "scene p25 luma",
-        "hwy.p75":             "scene p75 luma",
-        "hwy.achrom_frac":     "fraction of pixels with Oklab C < 0.05",
-        "hwy.zone_key":        "linear mean of zone medians [0,1]",
-        "hwy.zone_std":        "mean intra-zone pixel variance [0,1]",
-        "hwy.slow_key":        "slow ambient key EMA [0,1]",
-        "hwy.fc_knee":         "FilmCurve knee position [0,1]",
-        "hwy.zone_str":        "zone contrast strength (effective) [0,0.30]",
-        "hwy.shadow_lift_str": "shadow lift strength (effective) [0,1.5]",
-        "hwy.chroma_str":      "chroma lift base (pre-spatial-mod) [0,0.10]",
-        "hwy.mist_str":        "pro-mist adapt_str (effective) [0,0.10]",
-    }
-    for name, value in scalars.items():
-        note = notes.get(name, "")
-        if callable(note):
-            note = note(value)
-        print(f"  {name:<24} {value:>12.5f}   {note}")
-
-    print(f"\n  Luma histogram (128 bins, pre-correction):")
-    peak = max(luma_hist) if luma_hist else 1.0
-    for i, v in enumerate(luma_hist):
-        print(f"    [{i:03d}] {v:.4f}  {_bar(v, peak)}")
-
-    print(f"\n  Hue histogram (64 bins, pre-correction):")
-    peak = max(hue_hist) if hue_hist else 1.0
-    hue_labels = ["Red", "Yellow", "Green", "Cyan", "Blue", "Magenta"]
-    for i, v in enumerate(hue_hist):
-        label = hue_labels[round(i / HUE_HIST_BINS * 6) % 6] if i % 11 == 5 else ""
-        print(f"    [{i:02d}] {v:.4f}  {_bar(v, peak, 24)}  {label}")
-
-
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def _screen_offset(screen_arg: str, total_width: int) -> int:
@@ -347,10 +245,12 @@ def main() -> None:
     ap.add_argument("--game",        default=None,       help="game name (auto-detected from SHADER_GAME if omitted)")
     ap.add_argument("--note",        default="",         help="free-text session note")
     ap.add_argument("--screen",      default="left",     help="which monitor the game is on: left|right|0|1|<pixel offset>")
-    ap.add_argument("--no-frame",    action="store_true", help="1×1 scalars-only output, no frame image")
-    ap.add_argument("--dump",        action="store_true", help="print highway to stdout, skip EXR write")
+    ap.add_argument("--no-frame",    action="store_true", help="unsupported: telemetry requires GPU readback")
+    ap.add_argument("--dump",        action="store_true", help="unsupported: telemetry requires GPU readback")
     ap.add_argument("--detect-game", action="store_true", help="print detected game name and exit")
     args = ap.parse_args()
+    if args.dump or args.no_frame:
+        ap.error("HighwayTex is offscreen: screenshot telemetry is unavailable. Capture RGB instead.")
 
     if args.detect_game:
         game = detect_game()
@@ -382,9 +282,7 @@ def main() -> None:
         x_end  = x_off + half_w if x_off + half_w <= width else width
         lr     = lr[:, x_off:x_end, :]
 
-    scalars   = decode_scalars(lr)
-    luma_hist = decode_luma_hist(lr)
-    hue_hist  = decode_hue_hist(lr)
+    scalars, luma_hist, hue_hist = {}, [], []
     tmp.unlink(missing_ok=True)
     crop_w = lr.shape[1]
     print(f"{width}×{height} → cropped to {crop_w}×{height} (screen={args.screen})")
@@ -398,10 +296,6 @@ def main() -> None:
     except Exception:
         commit = "unknown"
 
-    if args.dump:
-        dump_highway(scalars, luma_hist, hue_hist)
-        return
-
     ROOT = Path(__file__).resolve().parent.parent
     if args.game != "unknown":
         default_dir = ROOT / "gamespecific" / args.game / "captures"
@@ -414,6 +308,7 @@ def main() -> None:
         "timestamp":  ts,
         "git_commit": commit,
         "note":       args.note,
+        "telemetry":  "unavailable: offscreen render targets are not in screenshots",
         "scalars":    scalars,
         "luma_hist":  luma_hist,
         "hue_hist":   hue_hist,

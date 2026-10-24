@@ -19,6 +19,8 @@ Saves aggregate to gamespecific/<game>/compare_agg.json for call sheet.
 """
 
 import argparse
+import fcntl
+import hashlib
 import json
 import os
 import re
@@ -45,9 +47,34 @@ from analyze_delta import compute_relative, print_relative, _de_fmt, _BLD, _RST,
 from capture import take_screenshot  # noqa: E402
 
 ROOT         = Path(__file__).resolve().parent.parent
-SOCK         = Path("/tmp/mpv-tune.sock")
+SOCK         = Path(f"/tmp/mpv-compare-{os.getpid()}.sock")
 SCREEN       = 0        # KDE Wayland: primary (right, DP-2) = index 0
 GAME_MONITOR = "right"  # which half of a dual-monitor grim capture to use
+SETTLE_SECONDS = 5.0
+_capture_lock = None
+
+
+def _acquire_capture_lock() -> None:
+    """Serialize desktop capture and temporary profile edits across diagnostics."""
+    global _capture_lock
+    if _capture_lock is not None:
+        return
+    lock = open("/tmp/shader-diagnostics.lock", "a")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        lock.close()
+        sys.exit("Another shader diagnostic owns the desktop/profile capture lock.")
+    _capture_lock = lock
+
+
+def _source_hashes(game: str) -> dict:
+    files = sorted((ROOT / "general").rglob("*.fx*"))
+    files += sorted((ROOT / "gamespecific" / game / "shaders").glob("*.fx*"))
+    files += [ROOT / "gamespecific" / game / f"{game}.conf"]
+    files += sorted((ROOT / "tools").glob("*.py"))
+    return {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in files if p.is_file()}
 
 
 def _infer_game(png: Path) -> "str | None":
@@ -96,45 +123,145 @@ def _save_exr(arr: np.ndarray, path: Path) -> None:
     out.close()
 
 
-def _launch_mpv(pngs: "list[Path]", config: Path, delay: int) -> subprocess.Popen:
+def _launch_mpv(pngs: "list[Path]", config: Path, delay: int,
+                extra_options: "list[str] | None" = None,
+                env_overrides: "dict[str, str] | None" = None,
+                require_vkbasalt: bool = True) -> subprocess.Popen:
     """Launch mpv with a playlist. Single SPIR-V compile; navigate with _goto_frame."""
+    _acquire_capture_lock()
     SOCK.unlink(missing_ok=True)
+    log_dir = Path(tempfile.mkdtemp(prefix="shader-runtime-"))
     env = os.environ.copy()
     env["ENABLE_VKBASALT"]      = "1"
     env["VKBASALT_CONFIG_FILE"] = str(config)
+    env["VKBASALT_LOG_FILE"] = str(log_dir / "vkbasalt.log")
+    env["VKBASALT_LOG_LEVEL"] = "debug"
+    if env_overrides:
+        env.update(env_overrides)
     cmd = [
-        "mpv", "--vo=gpu", "--gpu-api=vulkan",
-        "--image-display-duration=inf", "--loop-playlist=inf", "--fs",
+        "mpv", "--no-config", "--vo=gpu", "--gpu-api=vulkan",
+        "--target-trc=srgb", "--target-prim=bt.709", "--target-colorspace-hint=no",
+        "--image-display-duration=inf", "--loop-playlist=inf", "--loop-file=inf", "--fs",
         f"--screen={SCREEN}", f"--fs-screen={SCREEN}",
         f"--input-ipc-server={SOCK}",
-    ] + [str(p) for p in pngs]
-    proc = subprocess.Popen(
-        cmd, env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
-    )
-    print(f"  mpv pid {proc.pid} — compiling SPIR-V, waiting {delay}s...")
-    time.sleep(delay)
-    if proc.poll() is not None:
-        sys.exit("mpv exited early — check /tmp/vkbasalt.log")
-    return proc
-
-
-def _mpv_cmd(cmd_list: list) -> None:
-    """Send a command to the running mpv via IPC socket."""
+    ] + (extra_options or []) + [str(p) for p in pngs]
+    with (log_dir / "mpv.log").open("w") as log:
+        proc = subprocess.Popen(cmd, env=env, stdout=log, stderr=subprocess.STDOUT)
+    print(f"  mpv pid {proc.pid} — logs: {log_dir}")
     try:
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        s.settimeout(1.0)
+        deadline = time.monotonic() + max(delay, 15)
+        while not SOCK.exists():
+            if proc.poll() is not None or time.monotonic() >= deadline:
+                raise RuntimeError(f"mpv did not start; inspect {log_dir}/mpv.log")
+            time.sleep(0.1)
+        time.sleep(max(delay, 0))
+        _mpv_cmd(["get_property", "path"])
+        vk_log = log_dir / "vkbasalt.log"
+        if require_vkbasalt:
+            if not vk_log.exists():
+                raise RuntimeError(f"vkBasalt did not create a log; inspect {log_dir}/mpv.log")
+            if re.search(r"\berror\b|failed", vk_log.read_text(errors="replace"), re.I):
+                raise RuntimeError(f"vkBasalt reported an error; inspect {vk_log}")
+        return proc
+    except BaseException:
+        _stop_mpv(proc)
+        raise
+
+
+def _stop_mpv(proc: subprocess.Popen) -> None:
+    proc.terminate()
+    try:
+        proc.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=3)
+    SOCK.unlink(missing_ok=True)
+
+
+def _require_activity_marker(frame: np.ndarray) -> None:
+    """Reject a desktop capture that does not show the active grade output."""
+    marker = frame[:2, :2]
+    if not (np.all(marker[..., 0] > 0.5) and np.all(marker[..., 1:] < 0.05)):
+        raise RuntimeError("Grade activity marker missing: check display selection and vkBasalt logs")
+
+
+def _make_loop_clip(png: Path, clip: Path, fps: int = 30, frames: int = 60) -> None:
+    """Encode exact RGB source pixels as a continuously playable lossless clip."""
+    cmd = [
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-loop", "1",
+        "-framerate", str(fps), "-i", str(png),
+        "-vf", "setparams=color_primaries=bt709:color_trc=iec61966-2-1:colorspace=gbr",
+        "-frames:v", str(frames), "-c:v", "ffv1", "-pix_fmt", "bgr0",
+        "-y", str(clip),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"Lossless playback clip failed: {result.stderr.strip()}")
+
+
+def _make_transition_clip(first: Path, second: Path, directory: Path) -> Path:
+    """Twenty seconds of first scene, then eight seconds each of second/first."""
+    a = directory / "first.mkv"
+    b = directory / "second.mkv"
+    _make_loop_clip(first, a)
+    _make_loop_clip(second, b)
+    entries = [a] * 10 + [b] * 4 + [a] * 4
+    playlist = directory / "segments.txt"
+    playlist.write_text("".join(f"file '{p}'\n" for p in entries))
+    clip = directory / "transition.mkv"
+    result = subprocess.run([
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "concat",
+        "-safe", "0", "-i", str(playlist), "-c", "copy", "-y", str(clip),
+    ], capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"Transition clip failed: {result.stderr.strip()}")
+    return clip
+
+
+def _require_playback_advancing() -> None:
+    """Catch a paused or stalled mpv source before calling it temporal warmup."""
+    paused = _mpv_cmd(["get_property", "pause"])
+    start = _mpv_cmd(["get_property", "time-pos"])
+    time.sleep(0.25)
+    end = _mpv_cmd(["get_property", "time-pos"])
+    if paused or start is None or end is None or abs(end - start) < 0.05:
+        raise RuntimeError(
+            f"Playback did not advance during temporal warmup "
+            f"(pause={paused}, time-pos={start}->{end})"
+        )
+
+
+def _wait_for_video_time(target: float) -> float:
+    """Wait for continuous playback to reach a target within one clip cycle."""
+    deadline = time.monotonic() + 50
+    while time.monotonic() < deadline:
+        position = _mpv_cmd(["get_property", "time-pos"])
+        if position is not None and position >= target:
+            return float(position)
+        time.sleep(0.05)
+    raise RuntimeError(f"Video did not reach {target:.1f}s")
+
+
+def _mpv_cmd(cmd_list: list):
+    """Send a command to the running mpv via IPC socket."""
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.settimeout(5.0)
         s.connect(str(SOCK))
-        s.send((json.dumps({"command": cmd_list}) + "\n").encode())
-        s.recv(4096)
-        s.close()
-    except Exception:
-        pass
+        s.sendall((json.dumps({"command": cmd_list, "request_id": 1}) + "\n").encode())
+        with s.makefile("r") as replies:
+            for line in replies:
+                reply = json.loads(line)
+                if reply.get("request_id") == 1:
+                    if reply.get("error") != "success":
+                        raise RuntimeError(f"mpv command {cmd_list!r}: {reply}")
+                    return reply.get("data")
+        raise RuntimeError(f"mpv closed IPC before acknowledging {cmd_list!r}")
 
 
-def _goto_frame(idx: int, settle: float = 0.25) -> None:
+def _goto_frame(idx: int, settle: "float | None" = None) -> None:
     """Navigate mpv playlist to frame idx and wait for it to render."""
     _mpv_cmd(["set_property", "playlist-pos", idx])
-    time.sleep(settle)
+    time.sleep(SETTLE_SECONDS if settle is None else settle)
 
 
 # ── All-effects mode ──────────────────────────────────────────────────────────
@@ -153,10 +280,11 @@ _EFFECTS: "list[tuple[str, dict]]" = [
     # ── CORRECTIVE ─────────────────────────────────────────────────────────────
     ("EXPOSURE",          {"EXPOSURE":         0.0}),
     ("BLACKS_WHITES",     {"BLACKS": 0.0, "WHITES": 1.0}),
-    ("FILM_CURVE",        {"FILM_CURVE": 0.0, "CURVE_R_KNEE": 0.0, "CURVE_B_KNEE": 0.0}),
+    ("FILM_CURVE",        {"FILM_CURVE": 0.0}),
     ("3WAY_CC",           {"SHADOW_TEMP": 0.0, "SHADOW_TINT": 0.0,
                            "MID_TEMP":    0.0, "MID_TINT":    0.0,
                            "HIGHLIGHT_TEMP": 0.0, "HIGHLIGHT_TINT": 0.0}),
+    ("MID_TEMPERATURE",   {"MID_TEMP": 0.0}),
     # ── TONAL ──────────────────────────────────────────────────────────────────
     ("LUMA_CONTRAST",     {"LUMA_CONTRAST_RED": 0.0, "LUMA_CONTRAST_YELLOW": 0.0,
                            "LUMA_CONTRAST_GREEN": 0.0, "LUMA_CONTRAST_CYAN": 0.0,
@@ -170,14 +298,17 @@ _EFFECTS: "list[tuple[str, dict]]" = [
     ("HUE_ROTATION",      {"HUE_RED": 0.0, "HUE_YELLOW": 0.0, "HUE_GREEN": 0.0,
                            "HUE_CYAN": 0.0, "HUE_BLUE":  0.0, "HUE_MAG":   0.0}),
     ("VIBRANCE",          {"VIBRANCE":         0.0}),
-    ("SATURATION",        {"SAT_RED": 0.0, "SAT_YELLOW": 0.0, "SAT_GREEN": 0.0,
+    ("SATURATION",        {"SATURATION": 0.0, "SAT_RED": 0.0, "SAT_YELLOW": 0.0, "SAT_GREEN": 0.0,
                            "SAT_CYAN": 0.0, "SAT_BLUE":  0.0, "SAT_MAG":   0.0}),
     # ── LOOK ───────────────────────────────────────────────────────────────────
     ("PRINT_STOCK",       {"PRINT_STOCK":      0.0}),
     ("PRINTER_LIGHTS",    {"PRINTER_R": 0.0, "PRINTER_G": 0.0, "PRINTER_B": 0.0}),
-    # ── OUTPUT ─────────────────────────────────────────────────────────────────
-    ("DIFFUSION",         {"DIFFUSION":        0.0}),
-    ("GRAIN",             {"GRAIN":            0.0}),
+    # Grade gates are measured separately from individual controls. Input
+    # black/white mapping and FilmCurve sit outside these gates in grade.fx.
+    ("CORRECTIVE_GATE",   {"CORRECTIVE_STRENGTH": 0}),
+    ("TONAL_GATE",        {"TONAL_STRENGTH": 0}),
+    ("CHROMA_GATE",       {"CHROMA_STRENGTH": 0}),
+    ("LOOK_GATE",         {"LOOK_STRENGTH": 0}),
 ]
 
 
@@ -195,6 +326,7 @@ def _ae_write_knobs(cv: Path, knobs: dict) -> None:
     Uses multiline \\S+ to match the existing value token regardless of format
     (handles +0.10, -0.20, 0.005, 100, 1.0, etc.).
     """
+    _acquire_capture_lock()
     text = cv.read_text()
     for name, val in knobs.items():
         if isinstance(val, int):
@@ -212,8 +344,22 @@ def _ae_write_knobs(cv: Path, knobs: dict) -> None:
             flags=re.MULTILINE,
         )
         if replaced == 0:
+            if _optional_default(text, name) == val:
+                continue
             sys.exit(f"Knob '{name}' not found in {cv}")
     cv.write_text(text)
+
+
+def _optional_default(text: str, name: str) -> "float | None":
+    # Match grade.fx's single guarded fallback block, not arbitrary missing knobs.
+    if name == "SATURATION" and not re.search(r"^#define\s+SATURATION\b", text, re.M):
+        return 0.0
+    optional = {f"{group}_{band}" for group in ("LUMA_CONTRAST", "HUE", "SAT")
+                for band in ("RED", "YELLOW", "GREEN", "CYAN", "BLUE", "MAG")}
+    optional.add("VIBRANCE")
+    if name in optional and not re.search(r"^#define\s+LUMA_CONTRAST_RED\b", text, re.M):
+        return 0.0
+    return None
 
 
 def _ae_knobs_at_passthrough(cv: Path, passthrough: dict) -> bool:
@@ -226,6 +372,8 @@ def _ae_knobs_at_passthrough(cv: Path, passthrough: dict) -> bool:
     for name, pval in passthrough.items():
         m = re.search(rf"^#define\s+{re.escape(name)}\s+(\S+)", text, re.MULTILINE)
         if not m:
+            if _optional_default(text, name) == float(pval):
+                continue
             return False
         try:
             cur = float(m.group(1))
@@ -237,7 +385,8 @@ def _ae_knobs_at_passthrough(cv: Path, passthrough: dict) -> bool:
 
 
 def _capture_pipeline_output(
-    pngs: "list[Path]", ref_images: "list[np.ndarray]", config: Path, delay: int
+    pngs: "list[Path]", ref_images: "list[np.ndarray]", config: Path, delay: int,
+    playback_paths: "list[Path] | None" = None, keep_dir: "Path | None" = None,
 ) -> "list[np.ndarray | None]":
     """Launch mpv and capture pipeline output for each PNG.
 
@@ -246,15 +395,23 @@ def _capture_pipeline_output(
     multiple calls so frame i from one config can be compared to frame i of another.
     """
     outputs: "list[np.ndarray | None]" = [None] * len(pngs)
-    proc = _launch_mpv(pngs, config, delay)
+    proc = None
     try:
         for i, (png, before) in enumerate(zip(pngs, ref_images)):
+            # Fresh history per image: each ablation receives the same startup
+            # and settling protocol, with no carry-over from a different scene.
+            proc = _launch_mpv([playback_paths[i] if playback_paths else png], config, delay)
             print(f"    [{i+1}/{len(pngs)}] {png.name}", end="", flush=True)
-            _goto_frame(i)
+            _goto_frame(0)
+            if playback_paths:
+                _require_playback_advancing()
+                _mpv_cmd(["set_property", "pause", True])
 
             tmp       = Path(tempfile.mkdtemp(prefix="compare_ae_"))
             after_png = tmp / f"{png.stem}_after.png"
             take_screenshot(after_png)
+            _stop_mpv(proc)
+            proc = None
 
             if not after_png.exists() or after_png.stat().st_size == 0:
                 print("  SKIP (capture failed)")
@@ -266,20 +423,22 @@ def _capture_pipeline_output(
             if after.shape[1] > bw:
                 x = after.shape[1] // 2 if GAME_MONITOR == "right" else 0
                 after = after[:, x:x + bw, :]
-            shutil.rmtree(tmp, ignore_errors=True)
 
             if before.shape != after.shape:
-                print("  SKIP (resolution mismatch)")
+                print(f"  SKIP (resolution mismatch: reference {before.shape}, capture {after.shape})")
+                shutil.rmtree(tmp, ignore_errors=True)
                 continue
 
             outputs[i] = after
+            _require_activity_marker(after)
+            if keep_dir:
+                keep_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(after_png, keep_dir / f"{png.stem}.png")
+            shutil.rmtree(tmp, ignore_errors=True)
             print("  ok")
     finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=3)
-        except Exception:
-            proc.kill()
+        if proc is not None:
+            _stop_mpv(proc)
 
     return outputs
 
@@ -305,22 +464,34 @@ def _ae_aggregate(all_stats: "list[dict]") -> dict:
             "mean_de": sum(b["mean_de"] for b in bands) / len(bands),
             "dL":      sum(b["dL"]      for b in bands) / len(bands),
             "dC":      sum(b["dC"]      for b in bands) / len(bands),
+            "dh":      sum(b["dh"]      for b in bands if b["dh"] is not None)
+                       / max(1, sum(b["dh"] is not None for b in bands)),
+            "n":       sum(b["n"] for b in bands),
         }
 
     return {
         "mean_de":   sum(s["mean_de"] for s in all_stats) / n,
+        "n_frames": n,
+        "endpoints": {
+            side: {metric: sum(s["endpoints"][side][metric] for s in all_stats) / n
+                   for metric in ("black_pct", "any_channel_white_pct")}
+            for side in ("before", "after")
+        },
         "zones":     {lbl: avg_zone(lbl) for lbl in ("shadows", "midtones", "highlights")},
         "hue_bands": {e[0]: avg_band(e[0]) for e in HUE_BANDS},
     }
 
 
 def _run_all_effects(game: str, config: Path, delay: int, max_frames: int = 12,
-                     only: "list[str] | None" = None) -> None:
+                     only: "list[str] | None" = None, reference: "Path | None" = None,
+                     continuous: bool = True, keep: bool = False) -> None:
     cv            = _ae_cv_path(game)
     original_text = cv.read_text()
 
     frames_dir = ROOT / "gamespecific" / game / "analysis" / "reference"
-    pngs       = sorted(frames_dir.glob("*.png"))[:max_frames]
+    pngs       = [reference] if reference is not None else sorted(frames_dir.glob("*.png"))[:max_frames]
+    if any(not p.is_file() for p in pngs):
+        sys.exit("Reference image does not exist")
     if not pngs:
         sys.exit(f"No PNGs in {frames_dir}")
 
@@ -332,6 +503,26 @@ def _run_all_effects(game: str, config: Path, delay: int, max_frames: int = 12,
             sys.exit(f"Unknown effect(s): {', '.join(unknown)}\nValid: {', '.join(sorted(valid))}")
         effects = [(label, pt) for label, pt in _EFFECTS if label in only]
 
+    started = datetime.now()
+    out_dir = ROOT / "gamespecific" / game / "full_analysis"
+    default_config = ROOT / "gamespecific" / game / f"{game}.conf"
+    if config.resolve() != default_config.resolve():
+        out_dir = out_dir / "alternate"
+    capture_dir = out_dir / f"captures_{started.strftime('%Y-%m-%d_%H%M%S')}" if keep else None
+    clip_dir = Path(tempfile.mkdtemp(prefix="shader-loop-clips-")) if continuous else None
+    playback_paths = None
+    try:
+        if clip_dir:
+            playback_paths = []
+            for i, png in enumerate(pngs):
+                clip = clip_dir / f"{i:03d}.mkv"
+                _make_loop_clip(png, clip)
+                playback_paths.append(clip)
+    except BaseException:
+        if clip_dir:
+            shutil.rmtree(clip_dir, ignore_errors=True)
+        raise
+
     print(f"compare_frame --all-effects  game={game}  {len(pngs)} frame(s)")
     print(f"Mode: incremental subtraction — ΔE(full pipeline) vs ΔE(full minus effect)")
     print(f"Effects: {', '.join(label for label, _ in effects)}\n")
@@ -342,6 +533,7 @@ def _run_all_effects(game: str, config: Path, delay: int, max_frames: int = 12,
         if sig is not None:
             sys.exit(1)
     signal.signal(signal.SIGINT, _restore)
+    signal.signal(signal.SIGTERM, _restore)
 
     ref_images = [_load_png_linear(p) for p in pngs]
     results: "list[tuple[str, dict | None]]" = []
@@ -352,14 +544,26 @@ def _run_all_effects(game: str, config: Path, delay: int, max_frames: int = 12,
         print("── FULL  (reference)")
         _ae_write_knobs(cv, {k: 100 for k in _AE_GATE_NAMES})
         time.sleep(0.1)
-        full_out = _capture_pipeline_output(pngs, ref_images, config, delay)
+        full_out = _capture_pipeline_output(
+            pngs, ref_images, config, delay, playback_paths,
+            capture_dir / "full" if capture_dir else None)
+        print("── FULL repeat  (capture/history variation)")
+        repeat_out = _capture_pipeline_output(
+            pngs, ref_images, config, delay, playback_paths,
+            capture_dir / "repeat" if capture_dir else None)
+        repeat_stats = [compute_relative(full_out[i], repeat_out[i])
+                        for i in range(len(pngs))
+                        if full_out[i] is not None and repeat_out[i] is not None]
+        if not repeat_stats:
+            raise RuntimeError("No matched FULL repeats; effect attribution has no variation baseline")
+        repeatability = _ae_aggregate(repeat_stats)
+        print(f"  Unchanged-pipeline repeat ΔE {repeatability['mean_de']:.3f}\n")
         # restore after FULL capture so cv is back to original state for subtraction runs
         cv.write_text(original_text)
         n_ok = sum(1 for o in full_out if o is not None)
         print(f"  {n_ok}/{len(pngs)} frames ok\n")
         if n_ok == 0:
-            print("FULL capture failed — aborting.")
-            return
+            raise RuntimeError("FULL capture failed: no matched frames; no analysis was saved")
 
         full_raw_stats = [
             compute_relative(ref_images[i], full_out[i])
@@ -377,9 +581,11 @@ def _run_all_effects(game: str, config: Path, delay: int, max_frames: int = 12,
                 continue
 
             print(f"── without {label}")
-            _ae_write_knobs(cv, passthrough)
+            _ae_write_knobs(cv, {**{k: 100 for k in _AE_GATE_NAMES}, **passthrough})
             time.sleep(0.1)
-            wo_out = _capture_pipeline_output(pngs, ref_images, config, delay)
+            wo_out = _capture_pipeline_output(
+                pngs, ref_images, config, delay, playback_paths,
+                capture_dir / label if capture_dir else None)
             cv.write_text(original_text)   # restore before next iteration
 
             frame_stats = [
@@ -399,6 +605,8 @@ def _run_all_effects(game: str, config: Path, delay: int, max_frames: int = 12,
 
     finally:
         cv.write_text(original_text)
+        if clip_dir:
+            shutil.rmtree(clip_dir, ignore_errors=True)
         print("creative_values.fx restored.\n")
 
     if not results and full_agg is None:
@@ -409,7 +617,8 @@ def _run_all_effects(game: str, config: Path, delay: int, max_frames: int = 12,
     print("─" * 72)
     print(f"\n{_BLD}EFFECT ATTRIBUTION  (incremental — full pipeline minus that effect){_RST}")
     print(f"  ΔE = how much the output changes when that effect is zeroed")
-    print(f"  ΔE < {DEAD} flagged as silent — effect may be broken or knobs at passthrough\n")
+    print(f"  Unchanged-pipeline repeat ΔE {repeatability['mean_de']:.3f}")
+    print(f"  ΔE < {DEAD}: small contribution; compare with repeat variation and scene gates\n")
 
     hdr = f"  {'Effect':<18}  {'ΔE':>5}  {'shadows ΔL*/ΔC*':>18}  {'mids ΔL*/ΔC*':>14}  {'highs ΔL*/ΔC*':>14}"
     sep_line = "  " + "─" * 74
@@ -439,7 +648,7 @@ def _run_all_effects(game: str, config: Path, delay: int, max_frames: int = 12,
 
     # Hue band table
     band_names = [e[0] for e in HUE_BANDS]
-    print(f"\n  by hue band  (ΔL*/ΔC*, chromatic pixels C*>3)")
+    print(f"\n  by hue band  (ΔL*/ΔC*, Δh°; orange isolated; chromatic pixels C*>3)")
     print(f"  {'Effect':<18}  " + "  ".join(f"{b:<12}" for b in band_names))
     print("  " + "─" * (20 + 14 * len(band_names)))
 
@@ -448,7 +657,7 @@ def _run_all_effects(game: str, config: Path, delay: int, max_frames: int = 12,
             print(f"  {label:<18}  (skipped)")
             return
         cells = [
-            (f"{agg['hue_bands'][b]['dL']:+.1f}/{agg['hue_bands'][b]['dC']:+.1f}"
+            (f"{agg['hue_bands'][b]['dC']:+.1f}/{agg['hue_bands'][b]['dh']:+.1f}°"
              if agg["hue_bands"].get(b) else "   —   ")
             for b in band_names
         ]
@@ -463,14 +672,27 @@ def _run_all_effects(game: str, config: Path, delay: int, max_frames: int = 12,
     # ── Persist to full_analysis/ ─────────────────────────────────────────────
     now      = datetime.now()
     cv_path  = ROOT / "gamespecific" / game / "shaders" / "creative_values.fx"
-    out_dir  = ROOT / "gamespecific" / game / "full_analysis"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     payload = {
         "date":            str(now.date()),
         "time":            now.strftime("%H:%M:%S"),
         "game":            game,
+        "runtime_config":  str(config.resolve()),
+        "runtime_config_sha256": hashlib.sha256(config.read_bytes()).hexdigest(),
         "n_frames":        len(pngs),
+        "n_valid_full_frames": n_ok,
+        "unchanged_pipeline_repeat": repeatability,
+        "settle_seconds":  SETTLE_SECONDS,
+        "history":         ("fresh process per image; continuous RGB lossless playback, fixed warmup, not guaranteed steady state"
+                            if continuous else "fresh process per image; paused still image, elapsed wait is not temporal warmup"),
+        "continuous_playback": continuous,
+        "retained_capture_dir": str(capture_dir.relative_to(ROOT)) if capture_dir else None,
+        "display_target":  "sRGB / BT.709, target-colorspace-hint=no",
+        "diagnostic_gates": {k: 100 for k in _AE_GATE_NAMES},
+        "compile_delay_seconds": delay,
+        "source_sha256":   _source_hashes(game),
+        "reference_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in pngs},
         "creative_values": cv_path.read_text() if cv_path.exists() else None,
         "effects": {
             label: agg
@@ -488,6 +710,159 @@ def _run_all_effects(game: str, config: Path, delay: int, max_frames: int = 12,
 
     print(f"  saved → {run_path.relative_to(ROOT)}")
     print(f"  latest → {latest.relative_to(ROOT)}")
+    if capture_dir:
+        print(f"  captures → {capture_dir.relative_to(ROOT)}")
+
+
+def _run_scene_cut_probe(first: Path, second: Path, game: str,
+                         config: Path, delay: int) -> None:
+    """Compare matched outputs early and late after two real-image scene cuts."""
+    _acquire_capture_lock()
+    first_ref = _load_png_linear(first)
+    second_ref = _load_png_linear(second)
+    if first_ref.shape != second_ref.shape:
+        raise RuntimeError("Scene-cut references must have identical dimensions")
+
+    now = datetime.now()
+    out_dir = ROOT / "gamespecific" / game / "full_analysis"
+    if config.resolve() != (ROOT / "gamespecific" / game / f"{game}.conf").resolve():
+        out_dir /= "alternate"
+    out_dir = out_dir / f"transition_{now.strftime('%Y-%m-%d_%H%M%S')}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    targets = [
+        ("first_steady", 18.0, first_ref),
+        ("second_early", 20.5, second_ref),
+        ("second_late", 26.0, second_ref),
+        ("first_early", 28.5, first_ref),
+        ("first_late", 34.5, first_ref),
+    ]
+    frames = {}
+    positions = {}
+    playback = {}
+    with tempfile.TemporaryDirectory(prefix="shader-transition-") as tmp:
+        clip = _make_transition_clip(first, second, Path(tmp))
+        for label, target, reference in targets:
+            proc = None
+            try:
+                proc = _launch_mpv([clip], config, delay)
+                _mpv_cmd(["seek", 0, "absolute", "exact"])
+                _require_playback_advancing()
+                start_pos = _wait_for_video_time(target)
+                _mpv_cmd(["set_property", "pause", True])
+                shot = out_dir / f"{label}.png"
+                take_screenshot(shot)
+                end_pos = _mpv_cmd(["get_property", "time-pos"])
+                positions[label] = {"before": start_pos, "after": end_pos}
+                lo, hi = ((20.0, 28.0) if label.startswith("second") else
+                          (28.0, 36.0) if label.startswith("first_e") or label == "first_late" else
+                          (0.0, 20.0))
+                if not lo <= start_pos < hi or end_pos is None or not lo <= end_pos < hi:
+                    raise RuntimeError(f"{label} capture crossed a scene boundary: {positions[label]}")
+                frame = _load_png_linear(shot)
+                if frame.shape != reference.shape:
+                    raise RuntimeError(f"{label} capture resolution does not match reference")
+                _require_activity_marker(frame)
+                frames[label] = frame
+                print(f"  {label}: target {target:.1f}s, captured {start_pos:.2f}–{end_pos:.2f}s")
+                playback[label] = {}
+                for key in ("frame-drop-count", "mistimed-frame-count",
+                            "vo-delayed-frame-count", "display-fps"):
+                    try:
+                        playback[label][key] = _mpv_cmd(["get_property", key])
+                    except RuntimeError:
+                        playback[label][key] = None
+            finally:
+                if proc is not None:
+                    _stop_mpv(proc)
+
+    pairs = {
+        "second_early_to_late": ("second_early", "second_late"),
+        "first_early_to_late": ("first_early", "first_late"),
+        "first_before_to_after": ("first_steady", "first_late"),
+    }
+    comparisons = {name: compute_relative(frames[a], frames[b])
+                   for name, (a, b) in pairs.items()}
+    source_comparisons = {
+        label: compute_relative(reference, frames[label])
+        for label, _, reference in targets
+    }
+    report = {
+        "date": str(now.date()), "time": now.strftime("%H:%M:%S"),
+        "game": game, "runtime_config": str(config.resolve()),
+        "runtime_config_sha256": hashlib.sha256(config.read_bytes()).hexdigest(),
+        "source_sha256": _source_hashes(game),
+        "reference_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+                             for p in (first, second)},
+        "method": "lossless RGB video: first 20s, second 8s, first 8s; 30 fps; fresh playback for each paused snapshot",
+        "positions_seconds": positions,
+        "playback": playback,
+        "temporal_comparisons": comparisons,
+        "source_comparisons": source_comparisons,
+    }
+    (out_dir / "report.json").write_text(json.dumps(report, indent=2))
+    for name, stats in comparisons.items():
+        print(f"  {name}: ΔE {stats['mean_de']:.3f}")
+    print(f"  playback counters: {playback}")
+    print(f"  saved → {out_dir.relative_to(ROOT)}")
+
+
+def _run_perf_probe(png: Path, game: str, config: Path, delay: int,
+                    baseline: bool) -> None:
+    """Stress mpv presentation and retain MangoHud frametime logs."""
+    _acquire_capture_lock()
+    stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    label = "baseline" if baseline else "pipeline"
+    out_dir = ROOT / "gamespecific" / game / "full_analysis"
+    if config.resolve() != (ROOT / "gamespecific" / game / f"{game}.conf").resolve():
+        out_dir /= "alternate"
+    out_dir /= f"perf_{stamp}_{label}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    mango_config = out_dir / "MangoHud.conf"
+    mango_config.write_text(
+        f"fps_only\nautostart_log=1\nlog_duration=16\nlog_interval=0\noutput_folder={out_dir}\n"
+    )
+    proc = None
+    with tempfile.TemporaryDirectory(prefix="shader-perf-") as tmp:
+        clip = Path(tmp) / "source.mkv"
+        _make_loop_clip(png, clip, fps=120, frames=240)
+        env = {
+            "MANGOHUD": "1",
+            "MANGOHUD_CONFIGFILE": str(mango_config),
+        }
+        if baseline:
+            env["ENABLE_VKBASALT"] = "0"
+        try:
+            proc = _launch_mpv(
+                [clip], config, delay,
+                extra_options=["--untimed", "--framedrop=no", "--no-audio"],
+                env_overrides=env, require_vkbasalt=not baseline)
+            _require_playback_advancing()
+            time.sleep(12)
+            playback = {}
+            for key in ("frame-drop-count", "vo-delayed-frame-count", "display-fps"):
+                try:
+                    playback[key] = _mpv_cmd(["get_property", key])
+                except RuntimeError:
+                    playback[key] = None
+        finally:
+            if proc is not None:
+                _stop_mpv(proc)
+
+    logs = [str(p.relative_to(out_dir)) for p in out_dir.rglob("*") if p.is_file()]
+    if not any(name.endswith(".csv") and not name.endswith("_summary.csv") for name in logs):
+        raise RuntimeError(f"MangoHud did not produce a frame-time CSV in {out_dir}")
+    report = {
+        "game": game, "reference": str(png.resolve()),
+        "reference_sha256": hashlib.sha256(png.read_bytes()).hexdigest(),
+        "runtime_config": str(config.resolve()), "baseline": baseline,
+        "method": "mpv untimed 120 fps FFV1 RGB loop at source size, 12 second observation; MangoHud logging",
+        "playback": playback, "mangohud_files": logs,
+    }
+    (out_dir / "report.json").write_text(json.dumps(report, indent=2))
+    print(f"  playback counters: {playback}")
+    print(f"  MangoHud files: {logs}")
+    print(f"  saved → {out_dir.relative_to(ROOT)}")
 
 
 def _run_batch(game: str, config: Path, delay: int, keep: bool) -> None:
@@ -642,6 +1017,7 @@ def _run_batch(game: str, config: Path, delay: int, keep: bool) -> None:
 
 
 def main() -> None:
+    global SETTLE_SECONDS
     ap = argparse.ArgumentParser(
         description="One-command before/after pipeline analysis",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -658,34 +1034,81 @@ def main() -> None:
                     help="Batch-analyse all reference frames for the game")
     ap.add_argument("--all-effects", action="store_true",
                     help="Measure each pipeline stage individually (not cumulative) — shows silent effects")
+    ap.add_argument("--transition", type=Path, default=None,
+                    help="Second reference PNG for a continuous scene-cut probe")
+    ap.add_argument("--perf-probe", action="store_true",
+                    help="Run a high-rate mpv/MangoHud throughput probe")
+    ap.add_argument("--perf-baseline", action="store_true",
+                    help="Disable vkBasalt during --perf-probe")
     ap.add_argument("--game",  default=None,
                     help="Game name (auto-inferred from path, required with --all / --all-effects)")
+    ap.add_argument("--config", type=Path, default=None,
+                    help="vkBasalt config to use for this capture")
     ap.add_argument("--delay", type=int, default=3,
                     help="Seconds to wait for SPIR-V compile (default: 3)")
     ap.add_argument("--keep",  action="store_true",
-                    help="Keep temp EXR files instead of deleting after analysis")
+                    help="Retain captures for inspection (or EXRs in batch mode)")
+    ap.add_argument("--settle", type=float, default=5.0,
+                    help="Seconds of history warmup per image (default: 5; not steady state)")
     ap.add_argument("--max-frames", type=int, default=None,
                     help="Cap number of reference frames (default: 12 for --all-effects, unlimited for --all)")
     ap.add_argument("--only", nargs="+", default=None, metavar="EFFECT",
                     help="Test only these effects (space-separated, e.g. --only INVERSE_LUMA EXPOSURE)")
     args = ap.parse_args()
+    if not 0 <= args.settle <= 60 or not 0 <= args.delay <= 60:
+        ap.error("--settle and --delay must be between 0 and 60 seconds")
+    SETTLE_SECONDS = args.settle
+    _acquire_capture_lock()
+
+    if args.perf_probe:
+        if not args.png:
+            ap.error("--perf-probe requires a reference PNG")
+        png = Path(args.png)
+        if not png.is_file():
+            ap.error(f"Reference PNG not found: {png}")
+        game = args.game or _infer_game(png)
+        if not game:
+            ap.error("Cannot infer game; pass --game")
+        config = args.config or ROOT / "gamespecific" / game / f"{game}.conf"
+        if not config.exists():
+            ap.error(f"Config not found: {config}")
+        _run_perf_probe(png, game, config, args.delay, args.perf_baseline)
+        return
+
+    if args.transition is not None:
+        if not args.png:
+            ap.error("--transition requires the first reference PNG")
+        first = Path(args.png)
+        second = args.transition
+        if not first.is_file() or not second.is_file():
+            ap.error("Both scene-cut reference PNGs must exist")
+        game = args.game or _infer_game(first)
+        if not game:
+            ap.error("Cannot infer game; pass --game")
+        config = args.config or ROOT / "gamespecific" / game / f"{game}.conf"
+        if not config.exists():
+            ap.error(f"Config not found: {config}")
+        _run_scene_cut_probe(first, second, game, config, args.delay)
+        return
 
     if args.all_effects:
         game = args.game
         if not game:
             sys.exit("--all-effects requires --game <name>")
-        config = ROOT / "gamespecific" / game / f"{game}.conf"
+        config = args.config or ROOT / "gamespecific" / game / f"{game}.conf"
         if not config.exists():
             sys.exit(f"Config not found: {config}")
         max_frames = args.max_frames if args.max_frames is not None else 12
-        _run_all_effects(game, config, args.delay, max_frames, args.only)
+        _run_all_effects(game, config, args.delay, max_frames, args.only,
+                         Path(args.png) if args.png else None,
+                         True, args.keep)
         return
 
     if args.all:
         game = args.game
         if not game:
             sys.exit("--all requires --game <name>")
-        config = ROOT / "gamespecific" / game / f"{game}.conf"
+        config = args.config or ROOT / "gamespecific" / game / f"{game}.conf"
         if not config.exists():
             sys.exit(f"Config not found: {config}")
         _run_batch(game, config, args.delay, args.keep)
@@ -703,7 +1126,7 @@ def main() -> None:
     if not game:
         sys.exit("Cannot infer game from path. Pass --game <name>.")
 
-    config = ROOT / "gamespecific" / game / f"{game}.conf"
+    config = args.config or ROOT / "gamespecific" / game / f"{game}.conf"
     if not config.exists():
         sys.exit(f"Config not found: {config}")
 
@@ -711,6 +1134,7 @@ def main() -> None:
     tmp       = Path(tempfile.mkdtemp(prefix="compare_frame_"))
     after_png = tmp / f"{stem}_after.png"
 
+    proc = None
     try:
         print(f"compare_frame  game={game}  source={png.name}")
         print()
@@ -723,6 +1147,7 @@ def main() -> None:
 
         print("After: launching mpv + vkBasalt...")
         proc = _launch_mpv([png], config, args.delay)
+        _goto_frame(0)
 
         print("Capturing screen...")
         take_screenshot(after_png)
@@ -739,11 +1164,8 @@ def main() -> None:
             ah, aw = after.shape[:2]
         print(f"  {aw}×{ah}")
 
-        proc.terminate()
-        try:
-            proc.wait(timeout=3)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+        _stop_mpv(proc)
+        proc = None
         print("mpv closed.")
         print()
 
@@ -752,6 +1174,7 @@ def main() -> None:
                 f"Resolution mismatch: reference {bw}×{bh}, capture {aw}×{ah}.\n"
                 f"Ensure the reference PNG matches the display resolution ({aw}×{ah})."
             )
+        _require_activity_marker(after)
 
         if args.keep:
             _save_exr(before, tmp / f"{stem}_before.exr")
@@ -761,6 +1184,8 @@ def main() -> None:
         print_relative(stats, png.name, after_png.name)
 
     finally:
+        if proc is not None:
+            _stop_mpv(proc)
         if not args.keep:
             shutil.rmtree(tmp, ignore_errors=True)
         else:

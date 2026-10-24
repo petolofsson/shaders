@@ -15,6 +15,7 @@
 #define KALMAN_Q_PERC_MAX  0.05
 #define KALMAN_R_PERC      0.005
 #define VFF_E_SIGMA_PERC   0.06
+#define NEAR_CLIP_LUMA     0.90
 
 uniform float frametime < source = "frametime"; >;
 
@@ -24,6 +25,7 @@ texture2D BackBufferTex : COLOR;
 sampler2D BackBuffer
 {
     Texture   = BackBufferTex;
+    SRGBTexture = false;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = LINEAR;
@@ -68,6 +70,17 @@ texture2D SceneCutTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; 
 sampler2D SceneCutSamp
 {
     Texture   = SceneCutTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
+// Temporally smoothed near-clip fraction used by inverse-grade highlight protection.
+texture2D NearClipTex { Width = 1; Height = 1; Format = R16F; MipLevels = 1; };
+sampler2D NearClipSamp
+{
+    Texture   = NearClipTex;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = POINT;
@@ -136,10 +149,11 @@ float4 TexHwyWriteSpatialPS(float4 pos : SV_Position,
     float2 bb_uv = float2(uv.x, bb_y);
     float2 px = float2(1.0 / BUFFER_WIDTH, 1.0 / BUFFER_HEIGHT);
     float3 rgb = 0.0;
-    rgb += tex2D(BackBuffer, bb_uv + float2(-1.5, -1.5) * px).rgb;
-    rgb += tex2D(BackBuffer, bb_uv + float2( 1.5, -1.5) * px).rgb;
-    rgb += tex2D(BackBuffer, bb_uv + float2(-1.5,  1.5) * px).rgb;
-    rgb += tex2D(BackBuffer, bb_uv + float2( 1.5,  1.5) * px).rgb;
+    // Decode explicitly: 10-bit UNORM swapchains have no sRGB image-view format.
+    rgb += SRGBToLinear(tex2D(BackBuffer, bb_uv + float2(-1.5, -1.5) * px).rgb);
+    rgb += SRGBToLinear(tex2D(BackBuffer, bb_uv + float2( 1.5, -1.5) * px).rgb);
+    rgb += SRGBToLinear(tex2D(BackBuffer, bb_uv + float2(-1.5,  1.5) * px).rgb);
+    rgb += SRGBToLinear(tex2D(BackBuffer, bb_uv + float2( 1.5,  1.5) * px).rgb);
     rgb *= 0.25;
     return float4(rgb, Luma(rgb));
 }
@@ -250,6 +264,8 @@ float4 HighwayWritePS(float4 pos : SV_Position,
         return float4(perc.b - perc.r, 0, 0, 1);
     if (xi == HWY_P10)
         return float4(tex2Dlod(PercHighSamp,   float4(0.5, 0.5, 0, 0)).g, 0, 0, 1);
+    if (xi == HWY_NEAR_CLIP)
+        return float4(tex2Dlod(NearClipSamp, float4(0.5, 0.5, 0, 0)).r, 0, 0, 1);
     return float4(ReadHWY(xi), 0, 0, 1);  // pass through corrective's slots unchanged
 }
 
@@ -263,6 +279,14 @@ float4 LumHistSmoothPS(float4 pos : SV_Position,
     return float4(lerp(prev, raw, saturate((LERP_SPEED / 100.0) * (frametime / 10.0))), 0.0, 0.0, 1.0);
 }
 
+float LumHistMass()
+{
+    float mass = 0.0;
+    [loop] for (int b = 0; b < HIST_BINS; b++)
+        mass += tex2Dlod(LumHist, float4((float(b) + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
+    return mass;
+}
+
 // ─── Pass 4b — Normalized histogram entropy (R195) ────────────────────────
 // H_norm = −Σ h_i·log₂(h_i) / log₂(64). Source: EMA-smoothed LumHist.
 // H_norm=0: all mass at one luminance (fog/overexposure). H_norm=1: uniform spread.
@@ -271,9 +295,10 @@ float4 LumHistSmoothPS(float4 pos : SV_Position,
 float4 HistEntropyPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float H = 0.0;
+    float inv_mass = 1.0 / max(LumHistMass(), 1e-5);
     [loop] for (int b = 0; b < 64; b++)
     {
-        float h  = tex2Dlod(LumHist, float4((float(b) + 0.5) / 64.0, 0.5, 0, 0)).r;
+        float h  = tex2Dlod(LumHist, float4((float(b) + 0.5) / 64.0, 0.5, 0, 0)).r * inv_mass;
         H       -= h * log2(max(h, 1e-6));
     }
     float h_norm = saturate(H / 6.0);
@@ -291,12 +316,13 @@ float4 CDFWalkPS(float4 pos : SV_Position,
                  float2 uv  : TEXCOORD0) : SV_Target
 {
     float cumul = 0.0;
+    float inv_mass = 1.0 / max(LumHistMass(), 1e-5);
     float p25 = 0.25, p50 = 0.50, p75 = 0.75;
     float lk25 = 0.0, lk50 = 0.0, lk75 = 0.0;
 
     [loop] for (int b = 0; b < HIST_BINS; b++)
     {
-        float frc  = tex2Dlod(LumHist, float4((float(b) + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
+        float frc  = tex2Dlod(LumHist, float4((float(b) + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r * inv_mass;
         float prev = cumul;
         cumul += frc;
 
@@ -352,6 +378,25 @@ float4 SceneCutPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float entropy_cut  = smoothstep(0.08, 0.22, abs(entropy_now - prev_cut.b));
     float scene_cut    = max(p50_cut, entropy_cut);
     return float4(scene_cut, p50_now, entropy_now, 1.0);
+}
+
+float4 NearClipPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    float count = 0.0;
+    float scale_y = float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
+    [loop] for (int y = 0; y < DS_H; y++)
+    [loop] for (int x = 0; x < DS_W; x++)
+    {
+        float2 s_uv = float2((x + 0.5) / float(DS_W),
+                             (y + 0.5) / float(DS_H) * scale_y);
+        float luma = tex2Dlod(TexHwySamp, float4(s_uv, 0, 0)).a;
+        count += step(NEAR_CLIP_LUMA, luma);
+    }
+    float raw = count / float(DS_W * DS_H);
+    float prev = tex2Dlod(NearClipSamp, float4(0.5, 0.5, 0, 0)).r;
+    float scene_cut = tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0)).r;
+    float alpha = lerp(1.0 - exp2(-max(frametime, 0.0) / 167.5), 1.0, scene_cut);
+    return float4(lerp(prev, raw, alpha), 0, 0, 1);
 }
 
 // ─── Pass 7 — Scene median Oklab chroma ───────────────────────────────────
@@ -438,12 +483,13 @@ float4 MeanChromaPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 float4 CDFWalkHighPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float cumul = 0.0;
+    float inv_mass = 1.0 / max(LumHistMass(), 1e-5);
     float p90 = 0.90, p10 = 0.10;
     float lk90 = 0.0,  lk10 = 0.0;
 
     [loop] for (int b = 0; b < HIST_BINS; b++)
     {
-        float frc  = tex2Dlod(LumHist, float4((float(b) + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
+        float frc  = tex2Dlod(LumHist, float4((float(b) + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r * inv_mass;
         float prev = cumul;
         cumul += frc;
 
@@ -491,6 +537,7 @@ float4 CDFWalkModePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
 
 // ─── Technique ─────────────────────────────────────────────────────────────
 
+#ifndef SHADER_PIPELINE_COMBINED
 technique FrameAnalysis
 {
     pass TexHwyWriteSpatial
@@ -504,11 +551,6 @@ technique FrameAnalysis
         VertexShader = PostProcessVS;
         PixelShader  = LumHistGatherPS;
         RenderTarget = LumHistRawTex;
-    }
-    pass Passthrough
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = PassthroughPS;
     }
     pass LumHistSmooth
     {
@@ -533,6 +575,12 @@ technique FrameAnalysis
         VertexShader = PostProcessVS;
         PixelShader  = SceneCutPS;
         RenderTarget = SceneCutTex;
+    }
+    pass NearClip
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = NearClipPS;
+        RenderTarget = NearClipTex;
     }
     pass CDFWalkHigh
     {
@@ -564,4 +612,11 @@ technique FrameAnalysis
         PixelShader  = HighwayWritePS;
         RenderTarget = HighwayTex;
     }
+    pass Passthrough
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = PassthroughPS;
+        SRGBWriteEnable = false;
+    }
 }
+#endif

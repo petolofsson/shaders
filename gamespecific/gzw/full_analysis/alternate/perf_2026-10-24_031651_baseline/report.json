@@ -1,0 +1,14 @@
+{
+  "game": "gzw",
+  "reference": "/home/pol/code/shaders/gamespecific/gzw/analysis/reference/autof_20260515_133932.png",
+  "reference_sha256": "df34551b92b0637f2c9ccecf397c9852738c2dca46a877a6f9ba2661271b5a74",
+  "runtime_config": "/home/pol/code/shaders/gamespecific/gzw/gzw_stronger_trial.conf",
+  "baseline": true,
+  "method": "mpv untimed 120 fps FFV1 RGB loop, 2560x1440 source, 12 second observation; MangoHud logging",
+  "playback": {
+    "frame-drop-count": 0,
+    "vo-delayed-frame-count": 0,
+    "display-fps": 143.973
+  },
+  "mangohud_files": []
+}

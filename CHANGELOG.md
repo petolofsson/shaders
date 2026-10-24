@@ -3,6 +3,39 @@
 Chronological record of recent code changes. Older detail lives in git history and
 research notes.
 
+## 2026-10-23
+
+- Neutralized GZW MID_TEMP after isolated attribution showed a +4.2° orange-to-yellow
+  shift; source-matched high-chroma orange hue drift fell from +3.52° to -0.76°.
+  Broader scene validation remains pending.
+- Prevented hue-ceiling rolloff and the gamut pre-knee from reducing input chroma
+  after luminance/saturation adjustments; final SDR projection still bounds output.
+  The current GZW capture compiled; this frame's orange was already in gamut.
+- Completed internal range handling through corrective and tonal stages; fixed
+  Retinex and saturation-by-luma reconstruction denominators.
+- Made SDR sRGB decode/encode explicit on UNORM views, including 10-bit playback.
+- Replaced max-only gamut projection with a fixed-iteration Oklab chroma search
+  against both RGB bounds; inverse-grade also protects small single-channel emitters.
+- Corrected FilmCurve's asymptote; preserved zero in DIR, shadow tint and print toe;
+  moved output dither to the sRGB code domain with symmetric endpoint attenuation.
+- Made selective hysteresis and zone/slow-key smoothing time-based, removed
+  cut-triggered maximum film/print targets, and clamped spatial highway filter taps.
+- Repaired capture logs, IPC errors, profile-edit locking, optional-knob handling,
+  effect gate consistency, fresh per-image histories, and activity-marker masking.
+- Disabled obsolete screenshot telemetry decoding; added diagnostic unit tests.
+- At time of the prior capture, GZW was set to `BLACKS=0.05` and `EXPOSURE=0.2`;
+  the user later corrected BLACKS to 0.005 and exposure to 0.15.
+
+- Added high-range internal Oklab processing, corrected post-knee gamut probing,
+  removed misleading FilmCurve channel-knee controls, and neutralized printer-light defaults.
+- Added smoothed near-clip analysis for inverse-grade highlight protection and selective
+  rise/fall hysteresis for scene-adaptive controls.
+- Added a confidence-weighted local/global blend that reduces Retinex and zone contrast
+  near multi-scale illumination edges and during unstable scene transitions.
+- Fixed the masking coupler adding colored energy to true black and set GZW's explicit
+  black floor to zero.
+- Removed the obsolete golden-image regression system and synthetic golden fixtures.
+
 ## 2026-10-22
 
 - **Scene automation**: added bounded automation for print-stock strength, soft gamut
@@ -57,8 +90,8 @@ research notes.
 - **Testing tools**: `compare_frame --all-effects` no longer references removed
   DIR/toe knobs and fails on missing knobs; added `tools/noise_floor.py`.
 - **Validation**: one-frame runtime `compare_frame --all-effects --only FILM_CURVE`
-  passed with FilmCurve contribution `DeltaE 32.94`; `bless_all --check` fails 4/4
-  against old `dcc712f` goldens, pending visual review/rebless.
+  passed with FilmCurve contribution `DeltaE 32.94`; the legacy image baseline check
+  failed against the old `dcc712f` reference set, pending visual review.
 
 ## 2026-05-20
 

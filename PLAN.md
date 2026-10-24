@@ -1,23 +1,27 @@
 # Pipeline Plan
 
-Tracks completion/novelty at stage level. Novelty is judged against game
-post-processing, not color-science literature.
+Tracks implementation and validation. Earlier completion/novelty percentages were
+subjective estimates, not measured fidelity scores.
 
-| Stage | Finished | Novel | Notes |
-|-------|----------|-------|-------|
-| Input / `inverse_grade` | 99% | 90% | Source reconstruction plus Oklab chroma expansion bounded by hue ceilings; FilmCurve is no longer pre-inverted. Remaining risk: ACES-biased slope calibration. |
-| Film stock / corrective | 99% | 94% | DIR couplers, luminance-preserving FilmCurve, 2383 print stock, masking/dye couplers. Remaining risk: empirical amplitude calibration. |
-| Tonal | 98% | 90% | Zone statistics, Retinex, signed adaptive contrast, Oklab L substitution, shadow lift, guided-filter detail. Local adaptive epsilon is implemented. |
-| Color | 98% | 89% | Munsell ceilings and gamut projection. Removed low-value perceptual and surround transforms. Remaining risk: stacked hue interactions. |
-| Output | 98% | 93% | Spatial dither and intentional red activity marker. Diffusion and grain are removed. |
+| Stage | Implemented | Remaining validation |
+|-------|-------------|----------------------|
+| Input / inverse-grade | Local max-channel protection plus global near-clip history; bounded chroma expansion; inverse chroma changed a bright real-game stress input by 0.15 ΔE | GZW-specific vivid objects, reconstruction assumptions, small emitters |
+| Corrective / FilmCurve | Explicit linear processing, internal range retention, zero-preserving DIR/tint, corrected shoulder; fixed-endpoint GZW corrective gate 2.38 ΔE, Arc bright-cloud FilmCurve 0.15 ΔE | GZW broad highlights and empirical strength calibration |
+| Tonal | Corrected Retinex reconstruction, independent gates, spatial confidence, time-based selective adaptation; GZW tonal gate 1.51 ΔE and dark shadow lift 2.35 ΔE | Halos, real motion, longer transition recovery |
+| Color | Corrected chroma normalization and two-sided Oklab gamut projection; GZW chroma gate 0.97 ΔE | Hue continuity, GZW saturation, GPU cost |
+| Look | Print stock and dye/masking controls; GZW look gate 2.94 ΔE | Live preference and scene-specific print strength |
+| Output | Explicit sRGB encode, endpoint-preserving code-domain dither, marker; runtime endpoints and marker checked | Display quantization and gradients in-game; noise-floor measurement |
+| Diagnostics | Continuous lossless RGB playback, private IPC/logs, serial access, equal gates, repeat baseline, source hashes, cut probe | Direct offscreen highway readback and live game/performance capture |
 
 ## Current Priorities
 
-1. Review current Arc Raiders output against stale `dcc712f` goldens before reblessing.
-2. Run cross-game visual validation for the shared Arc Raiders/GZW baseline.
-3. Use `tools/noise_floor.py` on matched renders when evaluating dither and quantization changes.
-5. Validate the new scene-adaptive automation across Arc Raiders and GZW before
-   reblessing goldens.
+1. Review the combined GZW trial live before changing `gzw.conf`; the four-effect config still loses cross-effect data.
+2. Capture bright saturated GZW objects, broad highlights, emitters, and actual motion; use matched raw/graded captures for hue, halos, and transitions.
+3. The user reports roughly a 10 FPS in-game cost and accepts it. Prioritize visual verification; profile GPU time only if performance becomes a concern.
+4. Use `tools/noise_floor.py` on matched renders when evaluating dither and quantization changes.
+5. Recalibrate profiles only from matched current captures; preserve user values until testing supports a change. Current GZW BLACKS is 0.0; do not reuse earlier BLACKS=0.05 conclusions.
+
+Current run details and exact JSON artifacts: [research/2026-10-24_stage_verification.md](research/2026-10-24_stage_verification.md).
 
 ## Scoring Discipline
 

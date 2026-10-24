@@ -59,6 +59,23 @@ summary to `gamespecific/<game>/compare_agg.json`.
 Options: `--game gzw` (auto-inferred from path; required with `--all`) · `--delay 5`
 (longer SPIR-V wait) · `--keep` (save EXRs to `analysis/YYYY-MM-DD/frames/`).
 
+For controlled effect attribution, pass `--all-effects --only FILM_CURVE RETINEX`
+and optionally a single positional PNG. This mode creates a lossless 30 fps RGB
+clip from each PNG (requires FFmpeg), then starts a fresh mpv process for each
+image and configuration. `--settle 20` gives small effects 20 seconds of actual
+rendered history, then pauses at the capture point. It checks playback
+progression, records source and reference hashes, enforces equal stage gates,
+and restores the profile. Older paused-PNG
+`--settle` runs are not evidence of temporal convergence.
+Use display-sized references; mismatched captures are rejected. Logs are retained
+in the printed `/tmp/shader-runtime-*/` directory. The intentional 2×2 activity
+marker is required in captures and excluded from delta metrics. `--keep` saves
+paired PNGs under `full_analysis/.../captures_<timestamp>/`.
+
+DeltaE describes the amount of change, not visual quality. A small effect delta
+can mean the scene does not engage that effect. Capture writes RGB only; offscreen
+HighwayTex telemetry cannot be recovered from screenshots.
+
 ---
 
 ## Step 4 — Stage isolation + call sheet
@@ -70,6 +87,17 @@ stage_isolate --game gzw
 Runs four cumulative configurations (CORRECTIVE → +TONAL → +CHROMA → +LOOK), measures
 each stage's perceptual contribution, and writes `grade_callsheet.txt` combining the
 current knobs, delta analysis, and plain-language attribution. Knobs restored on exit.
+It uses the default game config and paused images. For the combined GZW trial use
+`compare_frame --all-effects --only CORRECTIVE_GATE TONAL_GATE CHROMA_GATE LOOK_GATE
+--config gamespecific/gzw/gzw_stronger_trial.conf --settle 20` with a positional
+reference PNG. The input black/white mapping and FilmCurve sit outside those gates.
+
+For abrupt-cut response, use `compare_frame first.png --transition second.png
+--game gzw --config gamespecific/gzw/gzw_stronger_trial.conf`. It builds a
+20/8/8-second first/second/first clip, samples each timepoint from a fresh
+playback, and saves a report and snapshots. `--perf-probe` with and without
+`--perf-baseline` records MangoHud frame times during untimed mpv playback;
+it is a throughput proxy, not in-game GPU timing.
 
 ---
 
@@ -84,8 +112,6 @@ current knobs, delta analysis, and plain-language attribution. Knobs restored on
 | `compare_frame <png>` | Full before/after ΔE_oklab analysis on one reference frame. |
 | `compare_frame --all --game <name>` | Batch analysis over all reference frames + aggregate JSON. |
 | `stage_isolate --game <name>` | Additive stage attribution + grade call sheet. |
-| `bless_all --game <name>` | Accept current output as new golden baseline for all test images. |
-| `check_all --game <name>` | Compare current output against blessed baselines. |
 
 ---
 

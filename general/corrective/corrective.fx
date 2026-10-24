@@ -17,7 +17,9 @@
 // R152: WarmBias pass removed (dead — no consumer).
 // ComputeLowFreqPS removed — TexHwyTex spatial lane (analysis_frame) replaces it.
 
+#ifndef SHADER_PIPELINE_COMBINED
 #include "creative_values.fx"
+#endif
 
 #define KALMAN_Q_MIN     0.0001   // process noise: steady-state (scene stable)
 #define KALMAN_Q_MAX     0.10     // process noise: scene cut (K rises to ~0.91)
@@ -31,15 +33,18 @@ uniform float FRAME_TIME  < source = "frametime"; >;    // ms since last frame
 
 // ─── Textures ──────────────────────────────────────────────────────────────
 
+#ifndef SHADER_PIPELINE_COMBINED
 texture2D BackBufferTex : COLOR;
 sampler2D BackBuffer
 {
     Texture   = BackBufferTex;
+    SRGBTexture = false;
     AddressU  = CLAMP;
     AddressV  = CLAMP;
     MinFilter = LINEAR;
     MagFilter = LINEAR;
 };
+#endif
 
 texture2D CreativeZoneHistTex { Width = 32; Height = 16; Format = R16F; MipLevels = 1; };
 sampler2D CreativeZoneHistSamp
@@ -188,7 +193,8 @@ float4 SmoothZoneLevelsPS(float4 pos : SV_Position,
     float4 prev    = tex2D(ZoneHistorySamp, uv);
 
     float scene_cut = ReadHWY(HWY_SCENE_CUT);
-    float k         = lerp(KALMAN_K_INF, 1.0, scene_cut);
+    float alpha     = 1.0 - pow(1.0 - KALMAN_K_INF, max(FRAME_TIME, 0.0) * 0.06);
+    float k         = lerp(alpha, 1.0, scene_cut);
     float median    = lerp(prev.r, current.r, k);
     float p25       = lerp(prev.g, current.g, k);
     float p75       = lerp(prev.b, current.b, k);
@@ -222,8 +228,8 @@ float4 ComputeSlowKey()
     // R200: dual-rate EMA — slow cortical T_half=20s (K=0.0000346), fast scene-cut T_half=67ms (K=0.01034).
     // Rinner & Gegenfurtner 2000; Ji et al. 2023. Framerate-independent via FRAME_TIME.
     float scene_cut   = ReadHWY(HWY_SCENE_CUT);
-    float alpha_slow  = saturate(FRAME_TIME * 0.0000346f);
-    float alpha_fast  = saturate(FRAME_TIME * 0.01034f);
+    float alpha_slow  = 1.0 - exp2(-max(FRAME_TIME, 0.0) / 20000.0);
+    float alpha_fast  = 1.0 - exp2(-max(FRAME_TIME, 0.0) / 67.0);
     return float4(lerp(prev_slow, zone_log_key, lerp(alpha_slow, alpha_fast, scene_cut)), 0, 0, 0);
 }
 
@@ -337,6 +343,7 @@ float4 HighwayWritePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
 
 // ─── Technique ─────────────────────────────────────────────────────────────
 
+#ifndef SHADER_PIPELINE_COMBINED
 technique Corrective
 {
     pass ComputeZoneHistogram
@@ -369,15 +376,17 @@ technique Corrective
         PixelShader  = TexHwyWritePS;
         RenderTarget = TexHwyTex;
     }
-    pass Passthrough
-    {
-        VertexShader = PostProcessVS;
-        PixelShader  = PassthroughPS;
-    }
     pass HighwayWrite
     {
         VertexShader = PostProcessVS;
         PixelShader  = HighwayWritePS;
         RenderTarget = HighwayTex;
     }
+    pass Passthrough
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = PassthroughPS;
+        SRGBWriteEnable = false;
+    }
 }
+#endif

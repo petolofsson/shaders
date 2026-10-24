@@ -13,6 +13,9 @@
 //   Slots 203–205       written by corrective     (HighwayWritePS, last pass)
 //   Both passes pass through the other's slots from the previous HighwayTex state.
 
+#ifndef SHADER_HIGHWAY_FXH_INCLUDED
+#define SHADER_HIGHWAY_FXH_INCLUDED
+
 texture2D HighwayTex { Width = 256; Height = 1; Format = R16F; MipLevels = 1; };
 sampler2D HighwaySamp
 {
@@ -37,6 +40,7 @@ sampler2D HighwaySamp
 #define HWY_H_NORM          207    // normalized histogram entropy [0,1]; 0=all mass one bin, 1=uniform
 #define HWY_IQR             208    // IQR = p75 − p25 [0,1]; scene contrast width
 #define HWY_P10             209    // scene p10 luma (shadow floor) [0,1]
+#define HWY_NEAR_CLIP      210    // smoothed fraction with luma > 0.90 [0,1]
 
 // ── corrective ────────────────────────────────────────────────────────────────
 #define HWY_ZONE_KEY        203    // zone_log_key — linear mean of zone medians [0,1]
@@ -46,3 +50,5 @@ sampler2D HighwaySamp
 // ── Helper ───────────────────────────────────────────────────────────────────
 #define ReadHWY(slot) \
     tex2Dlod(HighwaySamp, float4(((slot) + 0.5) / 256.0, 0.5, 0, 0)).r
+
+#endif

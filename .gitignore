@@ -1,1 +1,6 @@
 captures/
+**/__pycache__/
+gamespecific/*/full_analysis/**/*.png
+gamespecific/*/full_analysis/**/*.exr
+gamespecific/*/full_analysis/**/*.csv
+gamespecific/*/full_analysis/**/MangoHud.conf
