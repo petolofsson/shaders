@@ -1,0 +1,59 @@
+Continue in `/home/pol/code/shaders`. Read `AGENTS.md`, `GOAL.md`, `HANDOFF.md`, `PLAN.md`,
+`research/2026-10-24_background_motion_resume.md`,
+`research/2026-10-24_shadow_history_readback.md`, and
+`research/2026-10-24_retinex_edge_halo.md` before changes.
+
+The saved pause has been resumed. Headless Babylon held and matched motion
+export/replay now work. Full-course coverage passed after one fresh retry set:
+17 exact three-way identities across all seven assessment windows, zero mpv
+dropped/delayed frames. Source is 15 poses/sec duplicated at 30 fps, with
+20-second initial pre-roll; sparse matches do not prove dense continuity.
+Do not repeat the old background-conversion work or earlier shadow audit.
+
+Direct diagnostic GPU readback and repeated output interventions isolate the
+fixed dark/sunset return tail to slow key, not local-zone lag. Its intentional
+slow rate is unchanged; do not blindly speed it up. Read the evidence.
+
+A demonstrated Retinex edge-strength fade painted borders into uniform sky.
+The shared grade fix retains bounded gain and global confidence, while zone
+contrast keeps its local confidence. Four matched moving poses reduced border
+gaps from 3.50–3.61 to 0.37–0.88 Oklab-L. Fifteen fresh 20-second GZW/Arc held
+regression captures, two matched candidate motion replays, and final shared
+GZW/Arc captures passed. Twenty diagnostic tests pass. Retained artifacts are
+under ignored `captures/halo_attribution_20261024/`, and the full source cache
+is `captures/babylon_scene_runs/20261024_160908/motion-source/`.
+
+The agreed product goal is a game-agnostic SDR tool with fuller, more
+dimensional colors, deep nuanced shadows and convincing highlights, evoking
+some HDR richness while preserving each game's visual identity. Processing
+should feel considerably better without announcing an effect. Richness is not
+increased saturation, crushed blacks or maximizing gamut/hue coverage. Output
+stays SDR; no auto-exposure, HDR claims or invented clipped detail. Aim for
+automatic restraint without per-game/effect tuning; existing profiles remain
+unchanged during assessment.
+
+Follow the current ordered priorities in PLAN. Start with a matched visual
+baseline for color richness and shadow depth across existing GZW/Arc sources
+and the Babylon course, then assess shadow nuance, color distinctions across
+brightness, highlights, automatic stage/print coordination and cross-game/live
+review. Prioritize cooperation of existing stages. Earlier sharpening/debanding
+ideas are deferred until a goal-relevant gap is demonstrated. Do not repeat
+completed capture-tooling work or optimize for change magnitude, saturation,
+darkness or occupied color bins.
+
+Preserve the adopted halo fix and prior shadow-toe/zone-precision changes.
+Review the documented sunset bright-region change (-1.28 L) and vivid hue
+change (-0.41 degrees) against the goal; do not infer universal improvement.
+
+Keep every runtime test private and headless; never fall back to a desktop
+window or take focus. GPU/localhost commands need sandbox escalation. Use
+fresh processes, exact source identities, unchanged repeats, and 20-second
+settling for small effects. Cache reuse verifies the requested protocol.
+
+Preserve all existing working-tree changes, both creative tuning profiles,
+shader header comments, and committed removals of obsolete startup prompts.
+Use gamespecific/gzw/gzw_stronger_trial.conf. Do not edit or switch gzw.conf;
+its active four-effect chain still lacks cross-effect resource sharing. Shared
+shader changes require Arc checks. No golden suite or GPU cost profiling.
+Keep HANDOFF below 60 lines and record evidence plus remaining limits.
+Use startup-prompt-latest as the sole startup prompt; do not recreate dated copies.

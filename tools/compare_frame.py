@@ -10,6 +10,8 @@ Usage:
     compare_frame <reference.png> [--game gzw] [--delay 3] [--keep]
     compare_frame --all --game gzw [--delay 3]
 
+Captures use a private headless GPU display by default. Select
+--capture-backend desktop explicitly for the visible-monitor capture path.
 The reference PNG must be a raw game screenshot (pre-vkBasalt, sRGB).
 Auto-detects game from gamespecific/<game>/... path structure.
 
@@ -45,6 +47,7 @@ except ImportError:
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from analyze_delta import compute_relative, print_relative, _de_fmt, _BLD, _RST, HUE_BANDS  # noqa: E402
 from capture import take_screenshot  # noqa: E402
+from headless_display import HeadlessDisplay  # noqa: E402
 
 ROOT         = Path(__file__).resolve().parent.parent
 SOCK         = Path(f"/tmp/mpv-compare-{os.getpid()}.sock")
@@ -52,10 +55,12 @@ SCREEN       = 0        # KDE Wayland: primary (right, DP-2) = index 0
 GAME_MONITOR = "right"  # which half of a dual-monitor grim capture to use
 SETTLE_SECONDS = 5.0
 _capture_lock = None
+CAPTURE_BACKEND = "desktop"
+_headless_display = None
 
 
 def _acquire_capture_lock() -> None:
-    """Serialize desktop capture and temporary profile edits across diagnostics."""
+    """Serialize capture and temporary profile edits across diagnostics."""
     global _capture_lock
     if _capture_lock is not None:
         return
@@ -64,7 +69,7 @@ def _acquire_capture_lock() -> None:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         lock.close()
-        sys.exit("Another shader diagnostic owns the desktop/profile capture lock.")
+        sys.exit("Another shader diagnostic owns the capture/profile lock.")
     _capture_lock = lock
 
 
@@ -128,6 +133,7 @@ def _launch_mpv(pngs: "list[Path]", config: Path, delay: int,
                 env_overrides: "dict[str, str] | None" = None,
                 require_vkbasalt: bool = True) -> subprocess.Popen:
     """Launch mpv with a playlist. Single SPIR-V compile; navigate with _goto_frame."""
+    global _headless_display
     _acquire_capture_lock()
     SOCK.unlink(missing_ok=True)
     log_dir = Path(tempfile.mkdtemp(prefix="shader-runtime-"))
@@ -141,25 +147,41 @@ def _launch_mpv(pngs: "list[Path]", config: Path, delay: int,
     cmd = [
         "mpv", "--no-config", "--vo=gpu", "--gpu-api=vulkan",
         "--target-trc=srgb", "--target-prim=bt.709", "--target-colorspace-hint=no",
-        "--image-display-duration=inf", "--loop-playlist=inf", "--loop-file=inf", "--fs",
+        # Keep ordinary desktop windows from obscuring a fullscreen capture
+        # while leaving the top-left activity marker visible.
+        "--image-display-duration=inf", "--loop-playlist=inf", "--loop-file=inf", "--fs", "--ontop",
         f"--screen={SCREEN}", f"--fs-screen={SCREEN}",
         f"--input-ipc-server={SOCK}",
     ] + (extra_options or []) + [str(p) for p in pngs]
-    with (log_dir / "mpv.log").open("w") as log:
-        proc = subprocess.Popen(cmd, env=env, stdout=log, stderr=subprocess.STDOUT)
+    if CAPTURE_BACKEND == "headless":
+        size = subprocess.run([
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=width,height", "-of", "json", str(pngs[0]),
+        ], check=True, capture_output=True, text=True)
+        dimensions = json.loads(size.stdout)["streams"][0]
+        # X11 Vulkan presentation stays entirely inside the private Xwayland
+        # server; no host display, focus changes or desktop screenshots.
+        cmd[1:1] = ["--gpu-context=x11vk", "--audio=no"]
+        _headless_display = HeadlessDisplay(cmd, env, log_dir,
+                                            dimensions["width"], dimensions["height"])
+        proc = _headless_display.process
+    else:
+        with (log_dir / "mpv.log").open("w") as log:
+            proc = subprocess.Popen(cmd, env=env, stdout=log, stderr=subprocess.STDOUT)
     print(f"  mpv pid {proc.pid} — logs: {log_dir}")
     try:
-        deadline = time.monotonic() + max(delay, 15)
+        player_log = log_dir / ("gamescope.log" if CAPTURE_BACKEND == "headless" else "mpv.log")
+        deadline = time.monotonic() + max(delay, 30 if CAPTURE_BACKEND == "headless" else 15)
         while not SOCK.exists():
             if proc.poll() is not None or time.monotonic() >= deadline:
-                raise RuntimeError(f"mpv did not start; inspect {log_dir}/mpv.log")
+                raise RuntimeError(f"mpv did not start; inspect {player_log}")
             time.sleep(0.1)
         time.sleep(max(delay, 0))
         _mpv_cmd(["get_property", "path"])
         vk_log = log_dir / "vkbasalt.log"
         if require_vkbasalt:
             if not vk_log.exists():
-                raise RuntimeError(f"vkBasalt did not create a log; inspect {log_dir}/mpv.log")
+                raise RuntimeError(f"vkBasalt did not create a log; inspect {player_log}")
             if re.search(r"\berror\b|failed", vk_log.read_text(errors="replace"), re.I):
                 raise RuntimeError(f"vkBasalt reported an error; inspect {vk_log}")
         return proc
@@ -169,6 +191,14 @@ def _launch_mpv(pngs: "list[Path]", config: Path, delay: int,
 
 
 def _stop_mpv(proc: subprocess.Popen) -> None:
+    global _headless_display
+    if _headless_display is not None and _headless_display.process is proc:
+        display, _headless_display = _headless_display, None
+        try:
+            display.close()
+        finally:
+            SOCK.unlink(missing_ok=True)
+        return
     proc.terminate()
     try:
         proc.wait(timeout=3)
@@ -176,6 +206,15 @@ def _stop_mpv(proc: subprocess.Popen) -> None:
         proc.kill()
         proc.wait(timeout=3)
     SOCK.unlink(missing_ok=True)
+
+
+def _capture_frame(path: Path) -> None:
+    if CAPTURE_BACKEND == "headless":
+        if _headless_display is None:
+            raise RuntimeError("No private display is running; refusing a desktop capture")
+        _headless_display.screenshot(path)
+    else:
+        take_screenshot(path)
 
 
 def _require_activity_marker(frame: np.ndarray) -> None:
@@ -200,12 +239,12 @@ def _make_loop_clip(png: Path, clip: Path, fps: int = 30, frames: int = 60) -> N
 
 
 def _make_transition_clip(first: Path, second: Path, directory: Path) -> Path:
-    """Twenty seconds of first scene, then eight seconds each of second/first."""
+    """Twenty seconds of first scene, eight of second, then twenty of first."""
     a = directory / "first.mkv"
     b = directory / "second.mkv"
     _make_loop_clip(first, a)
     _make_loop_clip(second, b)
-    entries = [a] * 10 + [b] * 4 + [a] * 4
+    entries = [a] * 10 + [b] * 4 + [a] * 10
     playlist = directory / "segments.txt"
     playlist.write_text("".join(f"file '{p}'\n" for p in entries))
     clip = directory / "transition.mkv"
@@ -406,10 +445,22 @@ def _capture_pipeline_output(
             if playback_paths:
                 _require_playback_advancing()
                 _mpv_cmd(["set_property", "pause", True])
+            # KDE can drop mpv out of fullscreen while another desktop window
+            # takes focus. Restore it and give temporal effects the same warmup
+            # after the swapchain changes, rather than measuring a titled window.
+            if not _mpv_cmd(["get_property", "fullscreen"]):
+                _mpv_cmd(["set_property", "fullscreen", True])
+                if playback_paths:
+                    _mpv_cmd(["set_property", "pause", False])
+                    time.sleep(SETTLE_SECONDS)
+                    _require_playback_advancing()
+                    _mpv_cmd(["set_property", "pause", True])
+                else:
+                    time.sleep(1)
 
             tmp       = Path(tempfile.mkdtemp(prefix="compare_ae_"))
             after_png = tmp / f"{png.stem}_after.png"
-            take_screenshot(after_png)
+            _capture_frame(after_png)
             _stop_mpv(proc)
             proc = None
 
@@ -689,6 +740,7 @@ def _run_all_effects(game: str, config: Path, delay: int, max_frames: int = 12,
         "continuous_playback": continuous,
         "retained_capture_dir": str(capture_dir.relative_to(ROOT)) if capture_dir else None,
         "display_target":  "sRGB / BT.709, target-colorspace-hint=no",
+        "capture_backend": CAPTURE_BACKEND,
         "diagnostic_gates": {k: 100 for k in _AE_GATE_NAMES},
         "compile_delay_seconds": delay,
         "source_sha256":   _source_hashes(game),
@@ -736,6 +788,7 @@ def _run_scene_cut_probe(first: Path, second: Path, game: str,
         ("second_late", 26.0, second_ref),
         ("first_early", 28.5, first_ref),
         ("first_late", 34.5, first_ref),
+        ("first_recovered", 46.0, first_ref),
     ]
     frames = {}
     positions = {}
@@ -746,16 +799,18 @@ def _run_scene_cut_probe(first: Path, second: Path, game: str,
             proc = None
             try:
                 proc = _launch_mpv([clip], config, delay)
+                if not _mpv_cmd(["get_property", "fullscreen"]):
+                    _mpv_cmd(["set_property", "fullscreen", True])
                 _mpv_cmd(["seek", 0, "absolute", "exact"])
                 _require_playback_advancing()
                 start_pos = _wait_for_video_time(target)
                 _mpv_cmd(["set_property", "pause", True])
                 shot = out_dir / f"{label}.png"
-                take_screenshot(shot)
+                _capture_frame(shot)
                 end_pos = _mpv_cmd(["get_property", "time-pos"])
                 positions[label] = {"before": start_pos, "after": end_pos}
                 lo, hi = ((20.0, 28.0) if label.startswith("second") else
-                          (28.0, 36.0) if label.startswith("first_e") or label == "first_late" else
+                          (28.0, 48.0) if label.startswith("first_e") or label in ("first_late", "first_recovered") else
                           (0.0, 20.0))
                 if not lo <= start_pos < hi or end_pos is None or not lo <= end_pos < hi:
                     raise RuntimeError(f"{label} capture crossed a scene boundary: {positions[label]}")
@@ -779,7 +834,9 @@ def _run_scene_cut_probe(first: Path, second: Path, game: str,
     pairs = {
         "second_early_to_late": ("second_early", "second_late"),
         "first_early_to_late": ("first_early", "first_late"),
+        "first_late_to_recovered": ("first_late", "first_recovered"),
         "first_before_to_after": ("first_steady", "first_late"),
+        "first_before_to_recovered": ("first_steady", "first_recovered"),
     }
     comparisons = {name: compute_relative(frames[a], frames[b])
                    for name, (a, b) in pairs.items()}
@@ -794,7 +851,8 @@ def _run_scene_cut_probe(first: Path, second: Path, game: str,
         "source_sha256": _source_hashes(game),
         "reference_sha256": {p.name: hashlib.sha256(p.read_bytes()).hexdigest()
                              for p in (first, second)},
-        "method": "lossless RGB video: first 20s, second 8s, first 8s; 30 fps; fresh playback for each paused snapshot",
+        "method": "lossless RGB video: first 20s, second 8s, first 20s; 30 fps; fresh playback for each paused snapshot",
+        "capture_backend": CAPTURE_BACKEND,
         "positions_seconds": positions,
         "playback": playback,
         "temporal_comparisons": comparisons,
@@ -894,7 +952,7 @@ def _run_batch(game: str, config: Path, delay: int, keep: bool) -> None:
 
             tmp       = Path(tempfile.mkdtemp(prefix="compare_frame_"))
             after_png = tmp / f"{png.stem}_after.png"
-            take_screenshot(after_png)
+            _capture_frame(after_png)
 
             if not after_png.exists() or after_png.stat().st_size == 0:
                 print("  SKIP — screen capture failed")
@@ -1017,7 +1075,7 @@ def _run_batch(game: str, config: Path, delay: int, keep: bool) -> None:
 
 
 def main() -> None:
-    global SETTLE_SECONDS
+    global SETTLE_SECONDS, CAPTURE_BACKEND
     ap = argparse.ArgumentParser(
         description="One-command before/after pipeline analysis",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1044,6 +1102,10 @@ def main() -> None:
                     help="Game name (auto-inferred from path, required with --all / --all-effects)")
     ap.add_argument("--config", type=Path, default=None,
                     help="vkBasalt config to use for this capture")
+    ap.add_argument("--capture-backend", choices=("desktop", "headless"), default="headless",
+                    help="headless (default) uses a private GPU display; desktop uses your visible monitor")
+    ap.add_argument("--baseline", action="store_true",
+                    help="Single-reference capture with vkBasalt disabled, for transfer validation")
     ap.add_argument("--delay", type=int, default=3,
                     help="Seconds to wait for SPIR-V compile (default: 3)")
     ap.add_argument("--keep",  action="store_true",
@@ -1055,9 +1117,12 @@ def main() -> None:
     ap.add_argument("--only", nargs="+", default=None, metavar="EFFECT",
                     help="Test only these effects (space-separated, e.g. --only INVERSE_LUMA EXPOSURE)")
     args = ap.parse_args()
+    if args.baseline and (args.all or args.all_effects or args.transition or args.perf_probe):
+        ap.error("--baseline requires single-reference capture mode")
     if not 0 <= args.settle <= 60 or not 0 <= args.delay <= 60:
         ap.error("--settle and --delay must be between 0 and 60 seconds")
     SETTLE_SECONDS = args.settle
+    CAPTURE_BACKEND = args.capture_backend
     _acquire_capture_lock()
 
     if args.perf_probe:
@@ -1146,11 +1211,13 @@ def main() -> None:
         print()
 
         print("After: launching mpv + vkBasalt...")
-        proc = _launch_mpv([png], config, args.delay)
+        proc = _launch_mpv([png], config, args.delay,
+                           env_overrides={"ENABLE_VKBASALT": "0"} if args.baseline else None,
+                           require_vkbasalt=not args.baseline)
         _goto_frame(0)
 
         print("Capturing screen...")
-        take_screenshot(after_png)
+        _capture_frame(after_png)
         if not after_png.exists() or after_png.stat().st_size == 0:
             proc.terminate()
             sys.exit("Screen capture failed.")
@@ -1174,7 +1241,8 @@ def main() -> None:
                 f"Resolution mismatch: reference {bw}×{bh}, capture {aw}×{ah}.\n"
                 f"Ensure the reference PNG matches the display resolution ({aw}×{ah})."
             )
-        _require_activity_marker(after)
+        if not args.baseline:
+            _require_activity_marker(after)
 
         if args.keep:
             _save_exr(before, tmp / f"{stem}_before.exr")

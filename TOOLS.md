@@ -1,7 +1,11 @@
 # Tools
 
 All tools live in `tools/`; many are also exposed as shell/fish functions.
-Run Python tools with `--help`.
+Run Python tools with `--help`. Assess changes against [GOAL.md](GOAL.md) and
+follow [PLAN.md](PLAN.md): fuller color distinctions and nuanced shadow depth,
+with unobtrusive behavior across games. Delta magnitude is not a quality score.
+Runtime tests stay private and headless. The visible tools below are documented
+for explicit interactive use; do not launch them as unattended validation.
 
 ## Capture / Tuning
 
@@ -32,6 +36,18 @@ analyze_delta --colorchecker captures/session.exr
 python3 tools/noise_floor.py before.exr after.exr --json-out noise.json
 ```
 
+`compare_frame` now defaults to a private Gamescope headless GPU display.
+It creates no desktop window, changes no focus or monitor mode, and captures
+post-vkBasalt output with `gamescopectl`. You can use other applications while
+it runs. It requires Gamescope/gamescopectl and refuses to fall back to desktop
+capture. Use `--capture-backend desktop` explicitly for the old visible path.
+`--baseline` disables vkBasalt for a single-reference transfer check. The
+20-second settling protocol remains; background execution does not accelerate
+time-based shader histories. Babylon now also defaults to a private display;
+its [runner documentation](tools/babylon_scene/README.md) covers exact source
+identities, cached lossless motion and repeat/coverage validation. `tune`,
+`capture` and `stage_isolate` retain visible-desktop workflows.
+
 `compare_frame --all-effects` captures the full pipeline, zeroes each effect's
 active knobs, measures full-minus-effect delta, and restores `creative_values.fx`.
 Both sides use stage gates at 100. An optional positional PNG selects one reference.
@@ -39,7 +55,7 @@ It converts each source PNG into a byte-exact lossless FFV1 RGB clip (requires
 FFmpeg), restarts mpv per image, waits `--delay` for compilation and `--settle`
 for continuous playback (default 5 seconds), and records source/reference
 SHA-256 hashes. It rejects paused/stalled playback and pauses only at the
-settled capture point before the desktop screenshot. This is a fixed startup
+settled capture point before the private-display screenshot. This is a fixed startup
 protocol, not a guarantee of steady state. Use `--settle 20` for small effects.
 Older still-image `--settle` results did not have continuous rendered frames;
 do not use them as evidence of temporal convergence. `--keep` retains paired
@@ -48,14 +64,16 @@ An unchanged FULL repeat measures capture/history variation before effect ablati
 small effect deltas near that baseline are inconclusive.
 
 mpv is launched without user configuration, with an explicit sRGB/BT.709 target.
-Diagnostics serialize desktop/profile access, use a private IPC socket, and print
+Diagnostics serialize capture/profile access, use a private IPC socket, and print
 `/tmp/shader-runtime-*/` log paths. An absent activity marker or failed IPC command
 fails the comparison. Use a reference with the same dimensions as the display.
 `analyze_delta` masks the intentional top-left 2×2 marker and reports endpoint
 occupancy. DeltaE measures change, not improvement in fidelity.
 
 `capture` writes RGB EXRs only. HighwayTex is offscreen: `--dump` and `--no-frame`
-fail explicitly instead of decoding scene pixels as telemetry.
+fail explicitly instead of decoding scene pixels as telemetry. Deliberate
+readback requires an instrumented technique that renders diagnostic values;
+see [history attribution](research/2026-10-24_shadow_history_readback.md).
 
 Current effect list:
 
@@ -77,10 +95,10 @@ combined GZW trial and temporal stage checks, use `compare_frame --all-effects`
 with the four `*_GATE` labels instead. Input black/white mapping and FilmCurve
 sit outside those gates in `ColorTransformPS`.
 
-`--transition` plays first/second/first references for 20/8/8 seconds at 30 fps,
-capturing each target from a fresh playback paused only for the desktop screenshot.
-It saves PNGs, same-source temporal deltas and mpv drop counters. `--perf-probe`
-stress-plays a 120 fps FFV1 clip with MangoHud; add `--perf-baseline` to disable
+`--transition` plays first/second/first references for 20/8/20 seconds at 30 fps,
+capturing each target from a fresh playback paused only for the output screenshot.
+It saves PNGs, same-source temporal deltas and mpv drop counters. GPU cost profiling is deprioritized; do not run it without a new request. The
+existing `--perf-probe` stress-plays a 120 fps FFV1 clip with MangoHud; add `--perf-baseline` to disable
 vkBasalt for a paired baseline. These mpv data do not measure in-game GPU time.
 
 ## Validation
@@ -108,4 +126,5 @@ gamespecific/<game>/captures/
 | `> 6` | large error/change |
 
 `DeltaL* > 0` is brighter. `DeltaC* > 0` is more saturated. `Deltah* > 0`
-means hue moves toward yellow.
+means positive angular rotation in the Oklab a/b plane; the destination hue
+depends on the starting hue.

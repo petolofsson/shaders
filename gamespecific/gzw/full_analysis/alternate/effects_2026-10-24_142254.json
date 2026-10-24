@@ -1,0 +1,166 @@
+{
+  "date": "2026-10-24",
+  "time": "14:22:54",
+  "game": "gzw",
+  "runtime_config": "/home/pol/code/shaders/gamespecific/gzw/gzw_stronger_trial.conf",
+  "runtime_config_sha256": "82d2b63ea5fa6051b867fb59ddd9207a93aec6ca4161a403caf57a048bec4e9f",
+  "n_frames": 1,
+  "n_valid_full_frames": 1,
+  "unchanged_pipeline_repeat": {
+    "mean_de": 0.004809028093427355,
+    "n_frames": 1,
+    "endpoints": {
+      "before": {
+        "black_pct": 0.8151321778777972,
+        "any_channel_white_pct": 0.0
+      },
+      "after": {
+        "black_pct": 0.81578322025089,
+        "any_channel_white_pct": 0.0
+      }
+    },
+    "zones": {
+      "shadows": {
+        "mean_de": 0.00521456100446325,
+        "dL": -0.002963988450714042,
+        "dC": -0.00013825128231865453
+      },
+      "midtones": {
+        "mean_de": 0.0034485693817515655,
+        "dL": -0.001893719876736323,
+        "dC": 0.0001886267001634264
+      },
+      "highlights": {
+        "mean_de": 0.0016531143097374044,
+        "dL": -0.0010984693123142733,
+        "dC": -0.0003909834328127592
+      }
+    },
+    "hue_bands": {
+      "red": null,
+      "orange": null,
+      "amber": null,
+      "yellow": null,
+      "green": null,
+      "cyan": null,
+      "blue": null,
+      "magenta": null
+    }
+  },
+  "settle_seconds": 20.0,
+  "history": "fresh process per image; continuous RGB lossless playback, fixed warmup, not guaranteed steady state",
+  "continuous_playback": true,
+  "retained_capture_dir": "gamespecific/gzw/full_analysis/alternate/captures_2026-10-24_142103",
+  "display_target": "sRGB / BT.709, target-colorspace-hint=no",
+  "diagnostic_gates": {
+    "CORRECTIVE_STRENGTH": 100,
+    "TONAL_STRENGTH": 100,
+    "CHROMA_STRENGTH": 100,
+    "LOOK_STRENGTH": 100
+  },
+  "compile_delay_seconds": 5,
+  "source_sha256": {
+    "general/analysis-frame/analysis_frame.fx": "84170347b590184d669d103c858764d9a2c216843d0f3c2daddbef8f8ab77fc5",
+    "general/common.fxh": "7e5638fef7ff43caae92b67b5bc4dae706c4d2c2604dc7f58bfb0969a1dffa83",
+    "general/corrective/corrective.fx": "1e43e41ddceaac496b9e6fb88784645e3b2b64feb1626bac4f8b4ee3b48be274",
+    "general/grade/grade.fx": "e62a180fa74d02ebbf969e5833f075b0744096ba933497c1962c4d37de5d3902",
+    "general/highway.fxh": "c31507754c3a73ba2bc9c2b8cf26955a5896f05553951419f07233696fee1be7",
+    "general/hue_bands.fxh": "5c16933182ecbf665ec292aaa9ea02b6cc8515e2831d1858d9d5f4450c111d25",
+    "general/inverse-grade/inverse_grade.fx": "30fbd42af5618acc5aee8f0b05a175b8d52e95dc4ab76c532e82be334e5e71a5",
+    "general/inverse-grade/inverse_grade_debug.fx": "1b660737b0d60739ffe379497da4a6ac1325e300e781a2aa5d72103667c56ca1",
+    "general/pipeline/pipeline.fx": "90de34366e80b589255c24a80fafe9ca6467349474d3ffcc121da00f0847e7ba",
+    "gamespecific/gzw/shaders/creative_values.fx": "ed371ec361c6590442dd6f0aaaf35aeab93f829395576fffe60fe5d5f4811aa1",
+    "gamespecific/gzw/gzw.conf": "77b33ac87692b6cfe84a9981f7dbefae598c0787c8c95f0a97f78f2e921e5fe1",
+    "tools/analyze_delta.py": "ffeb6e05c521383b926aafff34947e0d0b7cea71c922c870f654be2a0edf714d",
+    "tools/auto_capture.py": "7f41c62fade3d3240756d9c8aec55426a9a901f6e8af0b94a9704fff74ea5b50",
+    "tools/capture.py": "4e780a39fc220ef7c7df5a61a389a96fdbc5631c00c5492ac42c47db527f2328",
+    "tools/compare_frame.py": "9a4fe1e4557be81ef4a1951482b7510e69b5636826a69729e58362ced6d1546a",
+    "tools/noise_floor.py": "17240b7f5bb74aca1fb272b5434bb81134279ef485c3f4b6f4e7ce332f1ee893",
+    "tools/stage_isolate.py": "3cd9e96db86e4669f5d793b34da5245390b7cabdffbca8f4e4e0680c7430ef16",
+    "tools/tune.py": "9a1736bc3505aeb7c956d2632ce2948156c76eaecb57029e183d8aefdcd9f84c"
+  },
+  "reference_sha256": {
+    "shadow_ramp.png": "22a1266b4f57665aeb99a95dac55f3cac1620be21881bdf4cd7bfc212342dc1c"
+  },
+  "creative_values": "// Arc Raiders creative values.\n// Keep user-facing tuning here; shader constants and analysis parameters stay in general/.\n\n// INPUT\n#define INVERSE_STRENGTH  0.75\n#define INVERSE_LUMA      0.6\n\n// CORRECTIVE\n#define BLACKS            0.0\n#define WHITES            0.995\n#define EXPOSURE          0.00\n#define FILM_CURVE        0.75\n\n// PRIMARY COLOR CORRECTION\n#define SHADOW_TEMP       -0.15\n#define SHADOW_TINT       -0.05\n#define MID_TEMP          0.00\n#define MID_TINT          0.00\n#define HIGHLIGHT_TEMP    0.10\n#define HIGHLIGHT_TINT    0.00\n\n// TONAL\n#define CONTRAST              1.5\n#define SHADOWS               1.0\n#define RETINEX_STRENGTH      1.0\n#define ZONE_CONTRAST_STRENGTH 1.0\n#define SHADOW_LIFT_STRENGTH   0.75\n\n// CHROMA\n#define SATURATION           0.25\n\n// LOOK\n#define PRINT_STOCK           1.0\n#define PRINTER_R             0.0\n#define PRINTER_G             0.00\n#define PRINTER_B             0.00\n\n// OUTPUT\n\n// STAGE GATES: comparison controls, leave at 100 unless isolating a stage.\n#define CORRECTIVE_STRENGTH   100\n#define TONAL_STRENGTH        100\n#define CHROMA_STRENGTH       100\n#define LOOK_STRENGTH         100\n",
+  "effects": {
+    "ZONE_CONTRAST": {
+      "mean_de": 1.512769247071697,
+      "n_frames": 1,
+      "endpoints": {
+        "before": {
+          "black_pct": 0.25897923066322776,
+          "any_channel_white_pct": 0.0
+        },
+        "after": {
+          "black_pct": 0.8151321778777972,
+          "any_channel_white_pct": 0.0
+        }
+      },
+      "zones": {
+        "shadows": {
+          "mean_de": 1.5218500490008895,
+          "dL": -1.4942387988485948,
+          "dC": 0.010692584640324118
+        },
+        "midtones": {
+          "mean_de": 1.4720922842014799,
+          "dL": 1.0433767520461157,
+          "dC": -0.0012916157442076296
+        },
+        "highlights": null
+      },
+      "hue_bands": {
+        "red": null,
+        "orange": null,
+        "amber": null,
+        "yellow": null,
+        "green": null,
+        "cyan": null,
+        "blue": null,
+        "magenta": null
+      }
+    }
+  },
+  "full": {
+    "mean_de": 5.55034147075407,
+    "n_frames": 1,
+    "endpoints": {
+      "before": {
+        "black_pct": 0.2083335593897129,
+        "any_channel_white_pct": 0.0
+      },
+      "after": {
+        "black_pct": 0.8151321778777972,
+        "any_channel_white_pct": 0.0
+      }
+    },
+    "zones": {
+      "shadows": {
+        "mean_de": 5.045232432031292,
+        "dL": -4.9022827718443756,
+        "dC": 0.9365152111663602
+      },
+      "midtones": {
+        "mean_de": 9.195408247936236,
+        "dL": -9.193797844161184,
+        "dC": 0.16595832330091104
+      },
+      "highlights": {
+        "mean_de": 1.3404689651715418,
+        "dL": -1.2688958914181134,
+        "dC": 0.41832630680605726
+      }
+    },
+    "hue_bands": {
+      "red": null,
+      "orange": null,
+      "amber": null,
+      "yellow": null,
+      "green": null,
+      "cyan": null,
+      "blue": null,
+      "magenta": null
+    }
+  }
+}

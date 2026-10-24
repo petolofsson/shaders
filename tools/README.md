@@ -1,6 +1,9 @@
 # Shader Tuning Tools
 
-Three-step workflow: collect reference frames → tune visually → measure the delta.
+The product target is [fuller SDR color and nuanced shadow depth](../GOAL.md)
+with game-agnostic automatic restraint. Follow [the current plan](../PLAN.md)
+for assessment. The interactive collection/tuning workflow below remains
+available; unattended runtime validation must use private headless rendering.
 
 ---
 
@@ -51,6 +54,16 @@ compare_frame gamespecific/gzw/analysis/reference/frame.png   # single frame
 compare_frame --all --game gzw                                 # all reference frames
 ```
 
+`compare_frame` runs on a private Gamescope headless GPU display by default:
+no visible player, desktop focus change, or physical display resize. Captures
+come from `gamescopectl` after the client's vkBasalt processing. Requires
+Gamescope and gamescopectl. A failed headless capture stops rather than using
+your desktop. `--capture-backend desktop` explicitly selects the visible path.
+`--baseline` is a single-reference shader-disabled transfer check. The separate
+[Babylon runner](babylon_scene/README.md) also defaults to private headless
+source export and exact-identity motion replay. Live tuning/game-capture and
+legacy stage-isolation tools remain visible desktop tools.
+
 Renders each reference frame through the current pipeline, captures the result, and
 reports ΔE_oklab perceptual delta with directional ΔL*, ΔC*, Δh° per tonal zone and
 hue band. `--all` runs every PNG in `analysis/reference/` and writes an aggregate
@@ -67,7 +80,7 @@ rendered history, then pauses at the capture point. It checks playback
 progression, records source and reference hashes, enforces equal stage gates,
 and restores the profile. Older paused-PNG
 `--settle` runs are not evidence of temporal convergence.
-Use display-sized references; mismatched captures are rejected. Logs are retained
+Headless output matches the source dimensions; mismatched captures are rejected. Logs are retained
 in the printed `/tmp/shader-runtime-*/` directory. The intentional 2×2 activity
 marker is required in captures and excluded from delta metrics. `--keep` saves
 paired PNGs under `full_analysis/.../captures_<timestamp>/`.
@@ -94,10 +107,11 @@ reference PNG. The input black/white mapping and FilmCurve sit outside those gat
 
 For abrupt-cut response, use `compare_frame first.png --transition second.png
 --game gzw --config gamespecific/gzw/gzw_stronger_trial.conf`. It builds a
-20/8/8-second first/second/first clip, samples each timepoint from a fresh
+20/8/20-second first/second/first clip, samples each timepoint from a fresh
 playback, and saves a report and snapshots. `--perf-probe` with and without
 `--perf-baseline` records MangoHud frame times during untimed mpv playback;
-it is a throughput proxy, not in-game GPU timing.
+it is a throughput proxy, not in-game GPU timing. GPU cost profiling remains
+deprioritized; do not run it without a new request.
 
 ---
 
@@ -127,3 +141,15 @@ gamespecific/<game>/
   grade_callsheet.txt          ← latest call sheet (overwritten each stage_isolate run)
   <game>.conf                  ← vkBasalt chain config (do not edit without asking)
 ```
+
+
+## Evidence and local artifacts
+
+Use matched raw/full/repeat/bypass comparisons to assess the visual goal;
+stronger saturation or a larger delta does not establish richer color.
+Shader changes require cross-game checks, including Arc regressions.
+Research notes retain measured findings and limitations. Large capture media,
+Babylon vendor cache and private runtime logs remain local ignored artifacts;
+links into `captures/` require those artifacts on the current machine. The
+runner can regenerate sources and captures; cached reuse verifies the protocol.
+For explicitly rendered history readback, see the [diagnostic evidence](../research/2026-10-24_shadow_history_readback.md).

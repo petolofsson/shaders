@@ -14,6 +14,9 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import compare_frame as compare
 import capture
+from babylon_scene import background as motion
+from types import SimpleNamespace
+from headless_display import HeadlessDisplay
 from analyze_delta import compute_relative
 
 
@@ -44,7 +47,126 @@ class FrameMetricsTests(unittest.TestCase):
                 compute_relative(good, bad)
 
 
+class MotionIdentityTests(unittest.TestCase):
+    @staticmethod
+    def label(frame, token):
+        payload = frame | (token << 12) | (((frame ^ token ^ 0xa5) & 255) << 24)
+        rgb = np.zeros((16, 256, 3), dtype=np.uint8)
+        for i in range(32):
+            start = i * 8 + (0 if (payload >> i) & 1 else 4)
+            rgb[-4:, start:start + 4] = 255
+        return rgb
+
+    def test_identity_roundtrip_and_corruption(self):
+        rgb = self.label(2160, 4095)
+        self.assertEqual(motion.read_identity(rgb), (2160, 4095))
+        rgb[-4:, :8] = 255 - rgb[-4:, :8]
+        with self.assertRaisesRegex(RuntimeError, "checksum"):
+            motion.read_identity(rgb)
+        with self.assertRaisesRegex(RuntimeError, "contrast"):
+            motion.read_identity(np.zeros_like(rgb))
+
+    def test_mismatch_excluded_and_cut_coverage_required(self):
+        frames = [420, 1080, 1420, 1452, 1620, 2140, 2172]
+        captures = {f"{f}:1": {"frame": f, "image": str(f)} for f in frames}
+        runs = {name: {"captures": dict(captures)} for name in ("baseline", "trial", "repeat")}
+        runs["trial"]["captures"]["444:2"] = {"frame": 444, "image": "mismatch"}
+        with patch.object(motion, "compare_images", return_value={"mean_de": 0}):
+            summary = motion.summarize_motion(runs, 2220)
+            self.assertEqual(summary["matched_frames"], 7)
+            self.assertEqual(summary["unmatched_frames_excluded"]["trial"], 1)
+            del runs["repeat"]["captures"]["1452:1"]
+            with self.assertRaisesRegex(RuntimeError, "after_night_cut"):
+                motion.summarize_motion(runs, 2220)
+
+    def test_coverage_retry_preserves_captures_and_attempt_counters(self):
+        runs = {}
+        for name, frame in (("baseline", 0), ("trial", 4), ("repeat", 8)):
+            runs[name] = {"captures": {f"{frame}:1": {"frame": frame, "image": f"original-{name}"}},
+                          "playback": {"frame-drop-count": 0}, "sample_ranges": [(0, 48)]}
+        extra = {"captures": {"8:1": {"frame": 8, "image": "new"}},
+                 "playback": {"frame-drop-count": 2}, "sample_ranges": [(0, 48)]}
+        with patch.object(motion, "replay_motion", return_value=extra), \
+             patch.object(motion, "compare_images", return_value={"mean_de": 0}):
+            result = motion.collect_motion({"route_frames": [0, 48]}, Path("unused"), runs, max_attempts=2)
+        self.assertEqual(result["matched_frames"], 1)
+        self.assertEqual(runs["repeat"]["captures"]["8:1"]["image"], "original-repeat")
+        self.assertEqual(len(runs["baseline"]["attempts"]), 2)
+        self.assertEqual(runs["baseline"]["attempts"][1]["playback"]["frame-drop-count"], 2)
+
+    def test_cache_rejects_different_settling_before_hash_check(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "manifest.json").write_text(json.dumps({"pre_roll_s": 1}))
+            with self.assertRaisesRegex(RuntimeError, "protocol differs"):
+                motion.load_motion(Path(tmp), SimpleNamespace(settle=20, source_fps=15, stop_frame=2220))
+
+
 class CaptureTests(unittest.TestCase):
+    def test_private_cleanup_handles_a_compositor_that_already_exited(self):
+        display = HeadlessDisplay.__new__(HeadlessDisplay)
+        display.process = MagicMock()
+        display.process.pid = 12345
+        display.process.poll.return_value = 1
+        display.log = MagicMock()
+        with patch("headless_display.os.killpg") as kill_group:
+            display.close()
+        kill_group.assert_called_once()
+        self.assertEqual(kill_group.call_args.args[0], 12345)
+        display.process.wait.assert_called_once()
+        display.log.close.assert_called_once()
+
+    def test_private_capture_cannot_fall_back_to_desktop(self):
+        with patch.object(compare, "CAPTURE_BACKEND", "headless"), \
+             patch.object(compare, "_headless_display", None), \
+             patch.object(compare, "take_screenshot") as desktop:
+            with self.assertRaisesRegex(RuntimeError, "refusing a desktop capture"):
+                compare._capture_frame(Path("unused.png"))
+            desktop.assert_not_called()
+
+    def test_private_capture_routes_control_to_its_own_display(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            display = HeadlessDisplay.__new__(HeadlessDisplay)
+            display.width, display.height = 8, 8
+            display.log_dir = root
+            display.client_info = root / "display.json"
+            display.client_info.write_text(json.dumps({
+                "GAMESCOPE_WAYLAND_DISPLAY": "private-0", "XDG_RUNTIME_DIR": str(root),
+            }))
+            display.process = MagicMock()
+            display.process.poll.return_value = None
+            output = root / "frame.png"
+
+            def capture_private(command, **kwargs):
+                self.assertEqual(kwargs["env"]["GAMESCOPE_WAYLAND_DISPLAY"], "private-0")
+                self.assertEqual(kwargs["env"]["XDG_RUNTIME_DIR"], str(root))
+                self.assertNotIn("DISPLAY", kwargs["env"])
+                self.assertNotIn("WAYLAND_DISPLAY", kwargs["env"])
+                Image.new("RGB", (8, 8)).save(output)
+                return subprocess.CompletedProcess(command, 0, "", "")
+
+            with patch.dict("os.environ", {"DISPLAY": ":host", "WAYLAND_DISPLAY": "host-0"}), \
+                 patch("headless_display.subprocess.run", side_effect=capture_private):
+                display.screenshot(output)
+            self.assertTrue(output.exists())
+
+    def test_private_startup_failure_closes_the_display(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sock = Path(tmp) / "absent.sock"
+            display = MagicMock()
+            display.process.poll.return_value = 1
+            probe = subprocess.CompletedProcess([], 0, '{"streams":[{"width":8,"height":8}]}', "")
+            with patch.object(compare, "CAPTURE_BACKEND", "headless"), \
+                 patch.object(compare, "_headless_display", None), \
+                 patch.object(compare, "SOCK", sock), \
+                 patch.object(compare, "_acquire_capture_lock"), \
+                 patch.object(compare.subprocess, "run", return_value=probe), \
+                 patch.object(compare, "HeadlessDisplay", return_value=display):
+                with self.assertRaisesRegex(RuntimeError, "mpv did not start"):
+                    compare._launch_mpv([Path("source.png")], Path("trial.conf"), 0)
+                display.close.assert_called_once()
+                self.assertIsNone(compare._headless_display)
+
     def test_paused_playback_is_rejected_as_temporal_warmup(self):
         with patch.object(compare, "_mpv_cmd", side_effect=[True, 0.0, 0.2]), \
              patch.object(compare.time, "sleep"):

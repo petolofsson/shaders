@@ -3,6 +3,49 @@
 Chronological record of recent code changes. Older detail lives in git history and
 research notes.
 
+## 2026-10-24
+
+- Documented the agreed game-agnostic visual goal: fuller SDR color relationships,
+  deep nuanced shadows and convincing light with unobtrusive automatic restraint.
+  Reordered assessment around that goal; new effects remain deferred until a
+  relevant gap is demonstrated. Existing tuning and active configs stay intact.
+- Consolidated startup instructions into `startup-prompt-latest`, removed obsolete
+  prompts, and synchronized agent, handoff and tool documentation with current
+  headless validation, completed evidence and remaining limits.
+
+- Fixed demonstrated Retinex halos from fading normalization strength at coarse
+  edges. Keep bounded illuminant gain and global confidence; zone confidence
+  stays local. Four matched moving clearing poses reduced sky border gaps from
+  3.50–3.61 to 0.37–0.88 Oklab-L. GZW/Arc regression captures and repeats passed;
+  profiles and active configs remain unchanged. [Evidence](research/2026-10-24_retinex_edge_halo.md).
+- Isolated the long dark-return residual with explicit packed GPU readback and
+  a temporary slow-key consumer intervention. Local zones are settled by the
+  +0.5-second sample; slow key accounts for the material tail. Its deliberate
+  adaptation rate remains unchanged. [Evidence](research/2026-10-24_shadow_history_readback.md).
+
+- Completed private Babylon source export and matched lossless motion replay.
+  Validate complementary identity/checksum labels, scene/clip hashes and cached
+  protocol; reject missing cut coverage, retry with fresh processes, and retain
+  per-attempt playback evidence. Fixed sampling stuck at held EOF. Full course
+  yielded 17 three-way identities across all seven windows with zero mpv
+  dropped/delayed frames. [Evidence](research/2026-10-24_background_motion_resume.md).
+
+- Made `compare_frame` captures use a private headless Gamescope GPU display by
+  default. Capture post-vkBasalt frames without taking desktop focus, retain
+  temporal settling and repeats, and fail instead of falling back to the desktop.
+  Added a shader-disabled transfer check and private-display cleanup/routing tests.
+- Increased local zone-histogram precision near black using 64 bins with squared
+  edges and linear-light percentile/moment decoding. GPU median estimates for
+  uniform dark patches now differ by at most 2 equivalent 8-bit codes, versus
+  a maximum error of 33 previously; creative values remain unchanged. See
+  [validation](research/2026-10-24_shadow_zone_precision.md).
+- Bound the negative local-contrast arm relative to available luminance so
+  positive shadows approach black smoothly instead of collapsing against a
+  subtractive clamp. In the matched GZW sunset, source-selected shadows becoming
+  exact black fell from 4.31% to 0.11%; the hardest contextual ramp retained
+  46 output levels instead of 20. User tuning remains unchanged. See
+  [validation](research/2026-10-24_contrast_shadow_toe.md).
+
 ## 2026-10-23
 
 - Neutralized GZW MID_TEMP after isolated attribution showed a +4.2° orange-to-yellow

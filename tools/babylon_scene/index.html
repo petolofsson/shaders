@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shader Test Course</title>
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #111826; }
+    #view { display: block; width: 100vw; height: 100vh; }
+    #status { position: fixed; left: 50%; top: 12px; transform: translateX(-50%);
+      padding: 6px 10px; color: white; background: #101825b8; font: 14px sans-serif; }
+    #patches { position: fixed; right: 12px; bottom: 12px; display: flex; gap: 1px;
+      padding: 3px; background: #777; }
+    #patches span { display: block; width: 22px; height: 22px; }
+    #frame-code { position: fixed; left: 0; bottom: 0; display: flex; height: 4px;
+      z-index: 10; }
+    #frame-code span { width: 4px; height: 4px; display: block; }
+  </style>
+</head>
+<body>
+  <canvas id="view"></canvas>
+  <div id="status">Loading scene…</div>
+  <div id="patches" aria-hidden="true"></div>
+  <script src="/babylon.js"></script>
+  <script src="/scene.js"></script>
+</body>
+</html>

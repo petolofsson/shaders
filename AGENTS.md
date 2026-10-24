@@ -4,6 +4,17 @@ vkBasalt HLSL post-process chain for SDR game output. BackBuffer uses UNORM
 views; shaders explicitly decode/encode sRGB at processing boundaries. Internal
 work is linear-light. HDR must be off in-game.
 
+## Product Direction and Startup
+
+Read [GOAL.md](GOAL.md) for the agreed game-agnostic visual direction:
+fuller SDR color relationships, deep nuanced shadows and convincing light,
+with unobtrusive automatic restraint. Preserve the game's palette and lighting.
+Richness is not a saturation, darkness or hue-coverage target. Existing profiles
+remain intact during assessment; no auto-exposure or HDR output is introduced.
+Use [PLAN.md](PLAN.md) for current priorities, [HANDOFF.md](HANDOFF.md) for state,
+and [startup-prompt-latest](startup-prompt-latest) as the sole startup prompt.
+All runtime testing must remain private and headless; no desktop fallback.
+
 ## Active Chain
 
 Configured in `gamespecific/arc_raiders/arc_raiders.conf` and
@@ -43,7 +54,7 @@ Diffusion has been removed from `grade.fx`.
 - SDR games commonly use 8-bit; mpv validation used a 10-bit UNORM swapchain.
 - Keep BackBuffer `SRGBTexture`/`SRGBWriteEnable` false with explicit sRGB math;
   10-bit UNORM has no corresponding sRGB image-view format.
-- `FRAME_TIMER` is retained only for compatibility; active output uses spatial dither and no temporal grain.
+- Active output uses spatial dither and no temporal grain; analysis sampling retains `FRAME_TIMER`.
 
 ## Key Files
 
@@ -96,6 +107,8 @@ Encode/decode out-of-range quantities at the slot boundary.
   its total mass can be below one during startup.
 - Scene cuts use p50 delta plus raw histogram entropy delta.
 - Guided-filter epsilon is local-variance adaptive.
+- Zone statistics use 64 squared-edge bins decoded to linear light for near-black precision.
+- Local contrast's negative arm uses a luminance-relative smooth bound to preserve shadows.
 - Arc Raiders and GZW share shader code; current profiles still need visual
   recalibration after the color-space and reconstruction fixes.
 - `RETINEX_STRENGTH`, `ZONE_CONTRAST_STRENGTH`, and `SHADOW_LIFT_STRENGTH` are
@@ -112,7 +125,12 @@ Encode/decode out-of-range quantities at the slot boundary.
 - Film, shadow, print, and gamut hysteresis uses elapsed time, with no forced
   maximum-strength target on scene cuts; other analysis Kalman filters remain separate.
 - Dither uses the sRGB code domain and preserves exact black/white endpoints.
-- Local Retinex and zone contrast use a confidence-weighted blend toward the global path.
+- Retinex retains bounded gain and global confidence without coarse-edge strength
+  fading, which produced halos. Zone contrast retains local confidence.
+- Matched headless Babylon motion is validated with sparse frame identities;
+  15 source poses/sec duplicated at 30 fps does not prove dense continuity.
+- Explicit diagnostic GPU readback isolates the measured dark-return tail to slow
+  key rather than local-zone lag. Its intentional adaptation rate is unchanged.
 - Diffusion and grain are removed; the 2x2 activity marker remains in `ColorTransformPS`.
 - Golden-image regression testing has been removed; use matched captures and effect attribution instead.
 - The configured four-effect chain leaves grade's cross-effect highway and zone
@@ -123,10 +141,13 @@ Encode/decode out-of-range quantities at the slot boundary.
 
 ```text
 python3 -B -m unittest discover -s tests -p 'test_diagnostics.py'
-python3 -B tools/compare_frame.py gamespecific/gzw/analysis/reference/autof_20260515_133058.png --all-effects --game gzw --only FILM_CURVE RETINEX BLACKS_WHITES --delay 5 --settle 5
+python3 -B tools/compare_frame.py gamespecific/gzw/analysis/reference/autof_20260515_133058.png --all-effects --game gzw --config gamespecific/gzw/gzw_stronger_trial.conf --only FILM_CURVE RETINEX BLACKS_WHITES --delay 5 --settle 20
 ```
 
 Capture runs print a unique `/tmp/shader-runtime-*/` directory containing mpv
-and vkBasalt logs. All-effects uses a fresh process per image. Five seconds of
-warmup is a reproducible protocol, not proof of full temporal convergence.
+and vkBasalt logs. All-effects uses a fresh process per image. Use 20 seconds of
+settling for small effects and an unchanged repeat; elapsed warmup alone does
+not prove full temporal convergence. Private GPU/localhost tests require sandbox
+escalation. Diagnostic techniques may explicitly render offscreen history for
+readback; ordinary screenshot captures contain no such telemetry.
 Screenshot captures contain no highway telemetry; `capture --dump` is unsupported.

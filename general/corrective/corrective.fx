@@ -46,7 +46,9 @@ sampler2D BackBuffer
 };
 #endif
 
-texture2D CreativeZoneHistTex { Width = 32; Height = 16; Format = R16F; MipLevels = 1; };
+#define ZONE_HIST_BINS 64
+
+texture2D CreativeZoneHistTex { Width = ZONE_HIST_BINS; Height = 16; Format = R16F; MipLevels = 1; };
 sampler2D CreativeZoneHistSamp
 {
     Texture   = CreativeZoneHistTex;
@@ -118,8 +120,12 @@ float4 ComputeZoneHistogramPS(float4 pos : SV_Position,
 
     float u_lo      = float(zone_col) / 4.0;
     float v_lo      = float(zone_row) / 4.0;
-    float bucket_lo = float(b)     / 32.0;
-    float bucket_hi = float(b + 1) / 32.0;
+    // Squared edges resolve near-black signal while keeping all statistics
+    // in linear light. The widest bin is no wider than the old 1/32 bins.
+    float bucket_lo = float(b)     / float(ZONE_HIST_BINS);
+    float bucket_hi = float(b + 1) / float(ZONE_HIST_BINS);
+    bucket_lo *= bucket_lo;
+    bucket_hi *= bucket_hi;
     float scale_y   = float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
 
     float count = 0.0;
@@ -150,24 +156,28 @@ float4 BuildZoneLevelsPS(float4 pos : SV_Position,
     float lock25 = 0.0, lock50 = 0.0, lock75 = 0.0;
     float sum_x = 0.0, sum_x2 = 0.0;  // R116: histogram moments for intra-zone variance
 
-    [loop] for (int b = 0; b < 32; b++)
+    [loop] for (int b = 0; b < ZONE_HIST_BINS; b++)
     {
-        float bc   = (float(b) + 0.5) / 32.0;  // bin centre for variance moments
+        float bc   = (float(b) + 0.5) / float(ZONE_HIST_BINS);
+        bc *= bc;  // decode the bin centre for linear-light variance moments
         float frac = tex2Dlod(CreativeZoneHistSamp,
-            float4((float(b) + 0.5) / 32.0, (float(zone) + 0.5) / 16.0, 0, 0)).r;
+            float4((float(b) + 0.5) / float(ZONE_HIST_BINS), (float(zone) + 0.5) / 16.0, 0, 0)).r;
         float prev = cumulative;
         cumulative += frac;
         sum_x      += bc * frac;
         sum_x2     += bc * bc * frac;
 
-        // Intra-bin interpolation — matches CDFWalkPS precision (~8× vs raw bin edge)
+        // Interpolate in the square-root coordinate, then return linear luma.
         float inv  = (frac > 0.0) ? 1.0 / frac : 0.0;
         float t25  = saturate((0.25 - prev) * inv);
         float t50  = saturate((0.50 - prev) * inv);
         float t75  = saturate((0.75 - prev) * inv);
-        float bv25 = (float(b) + t25) / 32.0;
-        float bv50 = (float(b) + t50) / 32.0;
-        float bv75 = (float(b) + t75) / 32.0;
+        float bv25 = (float(b) + t25) / float(ZONE_HIST_BINS);
+        float bv50 = (float(b) + t50) / float(ZONE_HIST_BINS);
+        float bv75 = (float(b) + t75) / float(ZONE_HIST_BINS);
+        bv25 *= bv25;
+        bv50 *= bv50;
+        bv75 *= bv75;
         float at25 = step(0.25, cumulative) * (1.0 - lock25);
         float at50 = step(0.50, cumulative) * (1.0 - lock50);
         float at75 = step(0.75, cumulative) * (1.0 - lock75);

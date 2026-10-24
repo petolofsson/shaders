@@ -499,8 +499,7 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     // the global zone key.
     float illum_delta = clamp(log2(zk_safe) - log2(max(illum_s0, 0.001)), -0.35, 0.35);
     float illum_gain  = exp2(illum_delta);
-    // When the two low-frequency scales disagree, we are near a broad edge or
-    // gradient. Reduce normalization there so it cannot spread across clouds.
+    // Coarse-scale disagreement reduces confidence in local zone contrast.
     float edge_protect = 1.0 - smoothstep(0.04, 0.16,
                                           abs(log2(max(illum_s0, 0.001))
                                             - log2(max(illum_s2, 0.001))));
@@ -510,8 +509,11 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     float local_confidence = edge_protect * lerp(0.75, 1.0, ctx.ss_04_25)
                            * ctx.adaptation_gate;
     float highlight_protect = 1.0 - smoothstep(0.55, 0.85, luma);
+    // Fading Retinex strength at coarse edges outlines otherwise uniform fields.
+    // Keep its bounded gain and global confidence consistent across those edges.
     float retinex_strength  = 0.75 * ctx.ss_04_25 * highlight_protect
-                            * local_confidence * saturate(float(RETINEX_STRENGTH));
+                            * lerp(0.75, 1.0, ctx.ss_04_25) * ctx.adaptation_gate
+                            * saturate(float(RETINEX_STRENGTH));
     luma = lerp(luma, max(luma * illum_gain, 0.0), retinex_strength);
 
     float4 zone_lvl   = tex2Dlod(ZoneHistorySamp, float4(uv, 0, 0));
@@ -532,7 +534,12 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
                    * zone_highlight_protect * shadow_arm
                    * lerp(0.65, 1.0, local_confidence)
                    * saturate(float(ZONE_CONTRAST_STRENGTH));
-    float new_luma = max(luma + zone_adj, 0.0);
+    // A subtractive shadow arm can flatten positive inputs against zero.
+    // Bound its loss relative to available luma, retaining a smooth toe and
+    // the positive arm while preserving exact black and a zero-strength bypass.
+    float shadow_loss = max(-zone_adj, 0.0);
+    float new_luma = luma / (1.0 + shadow_loss / max(luma, 1e-10))
+                   + max(zone_adj, 0.0);
 
     float detail_protect  = smoothstep(-4.0, -0.5, log_R);
     // R60: temporal context — slow ambient key boosts lift during dark transitions, suppresses on re-entry

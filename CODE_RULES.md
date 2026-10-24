@@ -10,8 +10,9 @@ Compact checklist for HLSL/vkBasalt shader edits.
    effect header. No runtime allocation or hidden resource construction.
 4. **Short helpers.** Keep helpers and pixel shaders under one screen where
    possible. `ColorTransformPS` is the only large orchestration exception.
-5. **Bound outputs locally.** Clamp/saturate hue, chroma, luma, UVs, and encoded
-   highway values where they are produced.
+5. **Respect signal domains.** Bound UVs and encoded highway values where produced.
+   Preserve signed RGB and positive overrange in internal grade math; apply gamut
+   projection and the SDR ceiling at processing/output boundaries, as in `AGENTS.md`.
 6. **Small scope.** Declare variables at first use and do not reuse a name for a
    different meaning.
 7. **Use outputs.** Every non-void helper result must be consumed. No throwaway

@@ -1,6 +1,9 @@
 # Pipeline Changelog
 
-Session history extracted from HANDOFF.md. Most recent first.
+Historical session excerpts extracted from HANDOFF.md. Current changes are in
+[the root changelog](../CHANGELOG.md); current direction and task order are in
+[GOAL.md](../GOAL.md) and [PLAN.md](../PLAN.md). Historical implementations below
+may have been replaced and do not define the active chain.
 
 ---
 

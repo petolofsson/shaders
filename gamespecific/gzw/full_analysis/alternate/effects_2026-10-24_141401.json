@@ -1,0 +1,314 @@
+{
+  "date": "2026-10-24",
+  "time": "14:14:01",
+  "game": "gzw",
+  "runtime_config": "/home/pol/code/shaders/gamespecific/gzw/gzw_stronger_trial.conf",
+  "runtime_config_sha256": "82d2b63ea5fa6051b867fb59ddd9207a93aec6ca4161a403caf57a048bec4e9f",
+  "n_frames": 1,
+  "n_valid_full_frames": 1,
+  "unchanged_pipeline_repeat": {
+    "mean_de": 2.123630982833181e-05,
+    "n_frames": 1,
+    "endpoints": {
+      "before": {
+        "black_pct": 0.029839442100089084,
+        "any_channel_white_pct": 0.0
+      },
+      "after": {
+        "black_pct": 0.029839442100089084,
+        "any_channel_white_pct": 0.0
+      }
+    },
+    "zones": {
+      "shadows": {
+        "mean_de": 2.096965166487782e-05,
+        "dL": -1.7769692507258297e-06,
+        "dC": 2.0783672683022733e-07
+      },
+      "midtones": {
+        "mean_de": 4.1336840208693634e-05,
+        "dL": 8.8960026158323e-06,
+        "dC": -1.5379479904117433e-06
+      },
+      "highlights": {
+        "mean_de": 0.0,
+        "dL": 0.0,
+        "dC": 0.0
+      }
+    },
+    "hue_bands": {
+      "red": {
+        "mean_de": 0.0,
+        "dL": 0.0,
+        "dC": 0.0,
+        "dh": 0.0,
+        "n": 1550
+      },
+      "orange": {
+        "mean_de": 0.0,
+        "dL": 0.0,
+        "dC": 0.0,
+        "dh": 0.0,
+        "n": 14995
+      },
+      "amber": {
+        "mean_de": 2.221454184564677e-05,
+        "dL": 1.1294442207439937e-07,
+        "dC": 7.42885220979764e-07,
+        "dh": 5.4921978251949656e-06,
+        "n": 842327
+      },
+      "yellow": {
+        "mean_de": 1.3309571093556977e-05,
+        "dL": 7.943212001850506e-06,
+        "dC": 6.99360900949556e-07,
+        "dh": -0.0001990676407660136,
+        "n": 12778
+      },
+      "green": {
+        "mean_de": 1.902883795208986e-05,
+        "dL": -6.657403622319408e-06,
+        "dC": -6.987841567203601e-06,
+        "dh": -1.1174957325094248e-05,
+        "n": 80483
+      },
+      "cyan": {
+        "mean_de": 0.0,
+        "dL": 0.0,
+        "dC": 0.0,
+        "dh": 0.0,
+        "n": 19
+      },
+      "blue": {
+        "mean_de": 2.679018939016175e-05,
+        "dL": 3.4838178566303352e-06,
+        "dC": -3.4953749642153567e-06,
+        "dh": 1.3311381534710032e-05,
+        "n": 274585
+      },
+      "magenta": {
+        "mean_de": 0.0,
+        "dL": 0.0,
+        "dC": 0.0,
+        "dh": 0.0,
+        "n": 23
+      }
+    }
+  },
+  "settle_seconds": 20.0,
+  "history": "fresh process per image; continuous RGB lossless playback, fixed warmup, not guaranteed steady state",
+  "continuous_playback": true,
+  "retained_capture_dir": "gamespecific/gzw/full_analysis/alternate/captures_2026-10-24_141208",
+  "display_target": "sRGB / BT.709, target-colorspace-hint=no",
+  "diagnostic_gates": {
+    "CORRECTIVE_STRENGTH": 100,
+    "TONAL_STRENGTH": 100,
+    "CHROMA_STRENGTH": 100,
+    "LOOK_STRENGTH": 100
+  },
+  "compile_delay_seconds": 5,
+  "source_sha256": {
+    "general/analysis-frame/analysis_frame.fx": "84170347b590184d669d103c858764d9a2c216843d0f3c2daddbef8f8ab77fc5",
+    "general/common.fxh": "7e5638fef7ff43caae92b67b5bc4dae706c4d2c2604dc7f58bfb0969a1dffa83",
+    "general/corrective/corrective.fx": "1e43e41ddceaac496b9e6fb88784645e3b2b64feb1626bac4f8b4ee3b48be274",
+    "general/grade/grade.fx": "32e7ecced8673f4c91988e14510efb2306ac047a077ac2fc05717ecbc093350b",
+    "general/highway.fxh": "c31507754c3a73ba2bc9c2b8cf26955a5896f05553951419f07233696fee1be7",
+    "general/hue_bands.fxh": "5c16933182ecbf665ec292aaa9ea02b6cc8515e2831d1858d9d5f4450c111d25",
+    "general/inverse-grade/inverse_grade.fx": "30fbd42af5618acc5aee8f0b05a175b8d52e95dc4ab76c532e82be334e5e71a5",
+    "general/inverse-grade/inverse_grade_debug.fx": "1b660737b0d60739ffe379497da4a6ac1325e300e781a2aa5d72103667c56ca1",
+    "general/pipeline/pipeline.fx": "90de34366e80b589255c24a80fafe9ca6467349474d3ffcc121da00f0847e7ba",
+    "gamespecific/gzw/shaders/creative_values.fx": "ed371ec361c6590442dd6f0aaaf35aeab93f829395576fffe60fe5d5f4811aa1",
+    "gamespecific/gzw/gzw.conf": "77b33ac87692b6cfe84a9981f7dbefae598c0787c8c95f0a97f78f2e921e5fe1",
+    "tools/analyze_delta.py": "ffeb6e05c521383b926aafff34947e0d0b7cea71c922c870f654be2a0edf714d",
+    "tools/auto_capture.py": "7f41c62fade3d3240756d9c8aec55426a9a901f6e8af0b94a9704fff74ea5b50",
+    "tools/capture.py": "4e780a39fc220ef7c7df5a61a389a96fdbc5631c00c5492ac42c47db527f2328",
+    "tools/compare_frame.py": "9a4fe1e4557be81ef4a1951482b7510e69b5636826a69729e58362ced6d1546a",
+    "tools/noise_floor.py": "17240b7f5bb74aca1fb272b5434bb81134279ef485c3f4b6f4e7ce332f1ee893",
+    "tools/stage_isolate.py": "3cd9e96db86e4669f5d793b34da5245390b7cabdffbca8f4e4e0680c7430ef16",
+    "tools/tune.py": "9a1736bc3505aeb7c956d2632ce2948156c76eaecb57029e183d8aefdcd9f84c"
+  },
+  "reference_sha256": {
+    "autof_20260515_133058.png": "2d4f69c97438f40d50c1b82601392440339682efb293590e053e6bee174d9225"
+  },
+  "creative_values": "// Arc Raiders creative values.\n// Keep user-facing tuning here; shader constants and analysis parameters stay in general/.\n\n// INPUT\n#define INVERSE_STRENGTH  0.75\n#define INVERSE_LUMA      0.6\n\n// CORRECTIVE\n#define BLACKS            0.0\n#define WHITES            0.995\n#define EXPOSURE          0.00\n#define FILM_CURVE        0.75\n\n// PRIMARY COLOR CORRECTION\n#define SHADOW_TEMP       -0.15\n#define SHADOW_TINT       -0.05\n#define MID_TEMP          0.00\n#define MID_TINT          0.00\n#define HIGHLIGHT_TEMP    0.10\n#define HIGHLIGHT_TINT    0.00\n\n// TONAL\n#define CONTRAST              1.5\n#define SHADOWS               1.0\n#define RETINEX_STRENGTH      1.0\n#define ZONE_CONTRAST_STRENGTH 1.0\n#define SHADOW_LIFT_STRENGTH   0.75\n\n// CHROMA\n#define SATURATION           0.25\n\n// LOOK\n#define PRINT_STOCK           1.0\n#define PRINTER_R             0.0\n#define PRINTER_G             0.00\n#define PRINTER_B             0.00\n\n// OUTPUT\n\n// STAGE GATES: comparison controls, leave at 100 unless isolating a stage.\n#define CORRECTIVE_STRENGTH   100\n#define TONAL_STRENGTH        100\n#define CHROMA_STRENGTH       100\n#define LOOK_STRENGTH         100\n",
+  "effects": {
+    "SHADOW_LIFT": {
+      "mean_de": 2.3472418133107396,
+      "n_frames": 1,
+      "endpoints": {
+        "before": {
+          "black_pct": 0.04033750036621134,
+          "any_channel_white_pct": 0.0
+        },
+        "after": {
+          "black_pct": 0.029839442100089084,
+          "any_channel_white_pct": 0.0
+        }
+      },
+      "zones": {
+        "shadows": {
+          "mean_de": 2.3592393988058538,
+          "dL": 2.345682815918109,
+          "dC": 0.051309574298764184
+        },
+        "midtones": {
+          "mean_de": 1.1972282929086717,
+          "dL": 1.1901750057539031,
+          "dC": -0.002337785852150232
+        },
+        "highlights": {
+          "mean_de": 0.0002720963637242326,
+          "dL": -8.69502820398372e-05,
+          "dC": -0.00013091146351684773
+        }
+      },
+      "hue_bands": {
+        "red": {
+          "mean_de": 2.608178342627251,
+          "dL": 2.5990697682733876,
+          "dC": 0.1618128718901578,
+          "dh": 1.3408584879036902,
+          "n": 1634
+        },
+        "orange": {
+          "mean_de": 2.865794609460052,
+          "dL": 2.856052604752767,
+          "dC": 0.1552823956891238,
+          "dh": 0.506494923965575,
+          "n": 12723
+        },
+        "amber": {
+          "mean_de": 2.7778527744768184,
+          "dL": 2.7662107297965677,
+          "dC": 0.18051951545192851,
+          "dh": -0.23817537490153373,
+          "n": 812424
+        },
+        "yellow": {
+          "mean_de": 3.066338913607773,
+          "dL": 3.0604841428762875,
+          "dC": -0.04769890118178759,
+          "dh": 0.037761048183322314,
+          "n": 11526
+        },
+        "green": {
+          "mean_de": 1.8797212336980296,
+          "dL": 1.8660305818324674,
+          "dC": 0.12783822630916672,
+          "dh": -0.19128471178857004,
+          "n": 78793
+        },
+        "cyan": {
+          "mean_de": 2.7756363449097012,
+          "dL": 2.7703655274811108,
+          "dC": -0.009456493410236117,
+          "dh": -2.0593357072137186,
+          "n": 15
+        },
+        "blue": {
+          "mean_de": 2.992677371653198,
+          "dL": 2.988585625161947,
+          "dC": -0.018322467068106894,
+          "dh": -0.21011245088313807,
+          "n": 302843
+        },
+        "magenta": {
+          "mean_de": 2.3667668190094906,
+          "dL": 2.3601207099884887,
+          "dC": 0.10516244095354725,
+          "dh": 0.5483124843102637,
+          "n": 23
+        }
+      }
+    }
+  },
+  "full": {
+    "mean_de": 1.3824122498114277,
+    "n_frames": 1,
+    "endpoints": {
+      "before": {
+        "black_pct": 0.0,
+        "any_channel_white_pct": 0.006401916668746385
+      },
+      "after": {
+        "black_pct": 0.029839442100089084,
+        "any_channel_white_pct": 0.0
+      }
+    },
+    "zones": {
+      "shadows": {
+        "mean_de": 1.2871241749120934,
+        "dL": -0.9136601271671541,
+        "dC": 0.3831827513595611
+      },
+      "midtones": {
+        "mean_de": 6.659771650902662,
+        "dL": -6.654375224762448,
+        "dC": 0.1295518320820692
+      },
+      "highlights": {
+        "mean_de": 2.469440660413055,
+        "dL": -2.3640295242888913,
+        "dC": 0.5751223207691993
+      }
+    },
+    "hue_bands": {
+      "red": {
+        "mean_de": 1.4958958314437525,
+        "dL": -0.7716530090044043,
+        "dC": 1.0640874618152663,
+        "dh": -1.6047048028539377,
+        "n": 35
+      },
+      "orange": {
+        "mean_de": 1.4758733174642122,
+        "dL": -0.5996417958221357,
+        "dC": 1.162815191085746,
+        "dh": 0.13506229647759613,
+        "n": 2495
+      },
+      "amber": {
+        "mean_de": 1.6176937205976465,
+        "dL": -0.8436117257927997,
+        "dC": 1.1131466114403095,
+        "dh": -0.8541117780557622,
+        "n": 716695
+      },
+      "yellow": {
+        "mean_de": 3.1613200190532007,
+        "dL": -2.683000530417401,
+        "dC": 1.0920298823608443,
+        "dh": -1.7533050603100613,
+        "n": 9725
+      },
+      "green": {
+        "mean_de": 1.7367789004966157,
+        "dL": -1.3338365297356085,
+        "dC": 0.3547993476578674,
+        "dh": 9.870197559351109,
+        "n": 76474
+      },
+      "cyan": {
+        "mean_de": 0.9962195989501895,
+        "dL": -0.3105459832540084,
+        "dC": 0.74806060804386,
+        "dh": -7.798083118428271,
+        "n": 9
+      },
+      "blue": {
+        "mean_de": 1.7184143984472524,
+        "dL": -1.5128742511151512,
+        "dC": 0.2304439882382204,
+        "dh": 3.8876388976763514,
+        "n": 2976
+      },
+      "magenta": {
+        "mean_de": 1.4950044954505286,
+        "dL": -0.5725463730219438,
+        "dC": 1.2576022084713694,
+        "dh": -1.6584534420930068,
+        "n": 11
+      }
+    }
+  }
+}
