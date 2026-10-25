@@ -156,7 +156,7 @@ sampler2D GuidedCoeffSamp
     MinFilter = LINEAR;
     MagFilter = LINEAR;
 };
-texture2D BilateralLogTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = R16F; MipLevels = 1; };
+texture2D BilateralLogTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 1; };
 sampler2D BilateralLogSamp
 {
     Texture   = BilateralLogTex;
@@ -417,7 +417,8 @@ float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex
     // Bell weight (Mertens et al. 2007): exp(-0.5*((L-mu)/0.18)²). mu tuning range: 0.05–0.20.
     // Lower mu → correction peaks in near-black zone, glow penumbra untouched (diffusion reach preserved).
     // Higher mu → more correction in smoke/fog zone. Above 0.35 causes blob expansion.
-    // Proportional Oklab (L,a,b) scaling: C/L ratio unchanged, no artificial density.
+    // Apply the linear-light luminance ratio in RGB; direct Oklab scaling cubes it.
+    // Proportional RGB scaling also preserves Oklab C/L and hue.
     if (INVERSE_LUMA > 0.0) {
         const float Aa = 2.51, Bb = 0.03, Cc = 2.43, Dd = 0.59, Ee = 0.14;
         float  disc  = ((Dd*Dd - 4.0*Cc*Ee)*col_luma + 4.0*Aa*Ee - 2.0*Bb*Dd)*col_luma + Bb*Bb;
@@ -425,9 +426,8 @@ float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex
         float  delta = min(L_sc / max(col_luma, 1e-5) - 1.0, 0.0);
         float  t     = (col_luma - 0.05) / 0.18;
         float  bell  = exp(-0.5 * t * t);
-        float3 ok    = RGBtoOklabLinear(lin_e);
-        ok          *= 1.0 + delta * float(INVERSE_LUMA) * bell;
-        lin_e        = OklabToRGB(ok);
+        float inverse_luma_ratio = max(1.0 + delta * float(INVERSE_LUMA) * bell, 0.0);
+        lin_e *= inverse_luma_ratio;
     }
     lin_e *= E;
     // R104: DIR couplers — developer-inhibitor-release cross-channel masking (hardcoded 0.30)
@@ -497,17 +497,15 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     // Retinex uses a bounded log-domain correction. The old raw ratio could
     // overreact when the blurred illuminant approached zero or diverged from
     // the global zone key.
-    float illum_delta = clamp(log2(zk_safe) - log2(max(illum_s0, 0.001)), -0.35, 0.35);
+    // Reconstruct the existing guided model at native input luma. Sampling its
+    // low-resolution base across material boundaries still paints bright rims.
+    float4 guided_model = tex2D(BilateralLogSamp, uv);
+    float guided_illum_log = guided_model.g * log2(max(col_luma, 0.001)) + guided_model.b;
+    float illum_delta = clamp(log2(zk_safe) - guided_illum_log, -0.35, 0.35);
     float illum_gain  = exp2(illum_delta);
-    // Coarse-scale disagreement reduces confidence in local zone contrast.
-    float edge_protect = 1.0 - smoothstep(0.04, 0.16,
-                                          abs(log2(max(illum_s0, 0.001))
-                                            - log2(max(illum_s2, 0.001))));
-    // Global/local confidence budget: local operators are trusted in stable,
-    // textured regions and blended back toward the global path near broad
-    // illumination edges or while scene statistics are settling.
-    float local_confidence = edge_protect * lerp(0.75, 1.0, ctx.ss_04_25)
-                           * ctx.adaptation_gate;
+    // Coarse-edge strength fading outlines otherwise uniform materials.
+    // Use its existing minimum confidence budget uniformly; scene statistics
+    // still set the slope and shadow-toe bounds.
     float highlight_protect = 1.0 - smoothstep(0.55, 0.85, luma);
     // Fading Retinex strength at coarse edges outlines otherwise uniform fields.
     // Keep its bounded gain and global confidence consistent across those edges.
@@ -532,7 +530,7 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     float shadow_arm  = lerp(1.0, 0.75, below_pivot);
     float zone_adj = ctx.zone_str * iqr_scale * delta * (1.0 - abs(delta))
                    * zone_highlight_protect * shadow_arm
-                   * lerp(0.65, 1.0, local_confidence)
+                   * 0.65
                    * saturate(float(ZONE_CONTRAST_STRENGTH));
     // A subtractive shadow arm can flatten positive inputs against zero.
     // Bound its loss relative to available luma, retaining a smooth toe and
@@ -804,8 +802,8 @@ float2 GuidedCoeffPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
 
 // R190 guided filter — Pass 2: average coefficients over window, reconstruct base layer.
 // Reads GuidedCoeffSamp (RG16F) + center pixel from TexHwySamp.
-// Writes BilateralLogTex (R16F) — log2-luma base layer read by ApplyTonal.
-float GuidedBasePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+// Writes base log-luma in .r and mean guide coefficients in .gb (RGBA16F).
+float4 GuidedBasePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float px = 8.0 / BUFFER_WIDTH;
     float py = 8.0 / BUFFER_HEIGHT;
@@ -820,7 +818,7 @@ float GuidedBasePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     float mean_a = sum_a / GF_N;
     float mean_b = sum_b / GF_N;
     float I_c    = log2(max(Luma(tex2D(TexHwySamp, float2(uv.x, uv.y * float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H))).rgb), 1e-3));
-    return mean_a * I_c + mean_b;
+    return float4(mean_a * I_c + mean_b, mean_a, mean_b, 0.0);
 }
 
 // ─── R124B: Neutral-pixel-weighted illuminant estimation ───────────────────

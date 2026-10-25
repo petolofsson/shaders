@@ -110,6 +110,10 @@ active game config was changed.
 
 ## Provisional effect assessment
 
+Historical assessment: superseded by the [2026-10-25 ratings](2026-10-25_effect_ratings.md)
+after the spatial and inverse-luma corrections. The earlier table is retained
+as evidence of the assessment at that time.
+
 The following 1–100 ratings are engineering judgment from the current code and
 the limited captures above, **not measured fidelity**. “Working” means evidence
 that a stage executes and produces a plausible bounded result; “importance”

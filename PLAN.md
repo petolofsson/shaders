@@ -10,6 +10,12 @@ Automatic restraint across games is the product direction; existing profiles
 remain unchanged while evidence is gathered. Earlier completion/novelty
 percentages were subjective estimates, not measured fidelity scores.
 
+Current [provisional ratings](research/2026-10-25_effect_ratings.md) distinguish
+technical working, effectiveness and importance. Combined-chain effectiveness
+is estimated at 75/100, with palette/print and temporal coverage gaps; this is
+not accepted achievement of the 75+ target or a rating of the active broken
+cross-effect chain. Novelty has not been re-scored.
+
 | Stage | Implemented | Remaining validation |
 |-------|-------------|----------------------|
 | Input / inverse-grade | Local max-channel protection plus global near-clip history; bounded chroma expansion; inverse chroma changed a bright real-game stress input by 0.15 ΔE | GZW-specific vivid objects, reconstruction assumptions, small emitters |
@@ -25,6 +31,12 @@ percentages were subjective estimates, not measured fidelity scores.
 Work in this order toward [GOAL.md](GOAL.md). Preserve creative values, shader
 headers and existing changes. Use the combined trial for GZW assessment;
 `gzw.conf` stays unchanged. All runtime testing remains private and headless.
+
+The current assessment pass and its remaining preference/coverage decisions
+are summarized in the [review pack](research/2026-10-25_review_pack.md). Shelf,
+sunset, overcast and emitter attribution is completed for the retained inputs;
+the verified inverse-luma gain-units correction is adopted. Earlier effect-size
+numbers predate that correction and are historical, not current acceptance scores.
 
 1. **Establish a visual baseline for richness and depth.** Review matched raw,
    current full and unchanged-repeat captures from existing GZW/Arc references
@@ -74,6 +86,46 @@ measurements explain it and expose costs.
 
 These support the current priorities; they are not pending tooling tasks.
 
+- **Inverse-luma units — corrected and checked on active/combined chains.** A
+  GPU function probe confirms the previous Oklab scaling cubed a linear-light
+  gain. Applying that gain in RGB restores sunset ground median L 38.82→41.46
+  and group separation 27.46→30.70 L with unchanged black coverage in six held
+  cases. Twelve fresh candidate/repeats, two matched motion replays, six active
+  config captures and four applied-path checks pass scoped validation. Blue-sky
+  group separation decreases 9.61→6.94 L; retain that print/tonal tradeoff for
+  visual review. Profiles and configs remain intact; twenty diagnostics pass.
+  [Evidence](research/2026-10-25_inverse_luma_units.md).
+- **Shadow/color/print/highlight attribution — initial pass complete.** Eighteen
+  fresh captures attribute shelf warmth loss chiefly to the current cool CC,
+  sunset density to inverse luma/print, and added colorfulness chiefly to chroma.
+  Overcast and compact real lamps broaden coverage. Keep tuning intact pending
+  palette/print review; no new effect is justified by these inputs.
+  [Review](research/2026-10-25_stage_review.md), [pack](research/2026-10-25_review_pack.md).
+- **Zone confidence rims — corrected conservatively.** Independent confidence
+  and fixed-field interventions isolate the rim to coarse-edge strength fading.
+  Uniform use of the existing 0.65 lower confidence budget reduces held purple
+  spread 1.07→0.34 L and edge gap 0.73→0.00 L. Ten fresh candidate/repeats and
+  five motion processes pass scoped checks; fifteen exact assessment matches
+  cover foliage/clearing/corridor. The stronger candidate was rejected for its
+  shadow cost. Remaining work is shelf color, sunset/stage interactions, muted
+  inputs and small emitters; coarse-zone interior gradients remain.
+  [Evidence](research/2026-10-25_zone_confidence.md).
+- **Flat-face Retinex shading — attributed and corrected.** Native-resolution
+  guide reconstruction reduces held orange's edge gap +2.63→−0.30 L and
+  magenta interior spread 1.71→0.73 L. Twelve GZW/Arc held captures and two
+  candidate motion replays pass scoped checks with repeats; ten exact motion
+  matches cover foliage, clearing and corridor. Purple zone shading remains,
+  with a modest boundary regression on two poses; attribute that next, then
+  shelf shadow color and sunset interactions. Profiles/configs stay intact.
+  [Evidence and limits](research/2026-10-25_flat_face_attribution.md).
+- **First color/shadow baseline — reviewed from retained captures.** Four held
+  GZW/Arc cases and three exact Babylon poses identify residual flat-face shading,
+  reduced shelf shadow color, and strong sunset/sky redistribution. On a uniform
+  magenta face, L95−L5 is 0.187 in the matched shader-disabled replay and 1.763
+  in both full/repeat. Attribute that spatial shading first, then shelf and
+  sunset interactions; retain useful cloud separation. Profiles remain intact.
+  This is initial coverage, not cross-game acceptance or a 75+ rating.
+  [Evidence and crops](research/2026-10-25_visual_baseline.md).
 - **Background matched motion — validated, with sparse coverage limits.** Private
    Babylon source export and lossless replay now produce exact identity matches
    in foliage, clearing, corridor and both sides of both cuts. Two fresh passes
@@ -99,11 +151,19 @@ These support the current priorities; they are not pending tooling tasks.
 GPU cost remains deprioritized. Use `tools/noise_floor.py` when a dither or
 quantization change warrants it. No golden-image suite is to be restored.
 Latest workflow evidence: [background capture](research/2026-10-24_background_capture.md).
-Latest shader evidence: [Retinex halo correction](research/2026-10-24_retinex_edge_halo.md);
+Latest shader evidence: [inverse-luma units correction](research/2026-10-25_inverse_luma_units.md),
+[zone confidence correction](research/2026-10-25_zone_confidence.md),
+[Retinex flat-face correction](research/2026-10-25_flat_face_attribution.md),
+[earlier halo correction](research/2026-10-24_retinex_edge_halo.md);
 [shadow zone precision](research/2026-10-24_shadow_zone_precision.md) remains preserved.
 
 ## Scoring Discipline
 
+- Target **75+ effectiveness** for the complete chain and each retained effect
+  in its intended role, using the [acceptance definition](GOAL.md#effectiveness-target-75).
+  Require evidence and visual review; current scores remain provisional. Novelty
+  and improvement potential have no minimum. Effects may be simplified, merged
+  or removed, and should back off automatically when unnecessary.
 - Success means fuller color relationships, nuanced shadow depth, convincing
   light and unobtrusive processing across games, as defined in [GOAL.md](GOAL.md).
 - Saturation, darkness, delta-E, entropy and occupied color bins are diagnostic

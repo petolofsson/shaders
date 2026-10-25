@@ -67,6 +67,30 @@ profiles, switch active configs or move controls out of `creative_values.fx`.
    Record regressions and scene-specific tradeoffs. Live user review decides
    aesthetic success; measurements constrain and substantiate it.
 
+## Effectiveness target: 75+
+
+Aim for at least 75/100 effectiveness for the complete chain and every retained
+effect in its intended role. The complete chain must earn its rating separately;
+individual effect scores do not establish the quality of their combination.
+
+A score of 75 means a repeatable, useful contribution to this visual goal across
+representative scenes, with unobtrusive behavior, acceptable tradeoffs and
+automatic restraint when intervention is unnecessary. An effect can meet its
+role by contributing nothing when the source does not need it. Do not force
+visible engagement in every scene to satisfy a score.
+
+Support ratings with matched comparisons, unchanged repeats, varied game inputs,
+motion/cut checks where relevant, and visual review against the agreed goal.
+Record supporting evidence, uncertainty and regressions. Scores are provisional
+judgments, not measured fidelity percentages; do not raise them merely to meet
+the target. Current estimates are not validated acceptance results.
+
+Novelty has no minimum: established techniques are welcome. Improvement potential
+has no minimum either; it describes remaining opportunity, not achievement.
+Simplify, merge or remove an effect if that better serves the complete chain.
+The objective is a game-agnostic experience that earns 75+ effectiveness, rather
+than preserving every existing effect or maximizing any individual score.
+
 ## Scope of new effects
 
 First make the existing tonal, chroma and print stages cooperate toward this

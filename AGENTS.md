@@ -120,13 +120,19 @@ Encode/decode out-of-range quantities at the slot boundary.
   scene-cut confidence temporarily damps those adaptations.
 - Internal grade Oklab conversions preserve signed RGB and positive overrange;
   final gamut projection checks negative and over-one channels before `saturate()`.
+- Inverse-luma reconstruction applies its weighted linear-light gain in RGB;
+  scaling Oklab coordinates directly cubed that gain and over-darkened midtones.
 - Retinex reconstructs against pre-Retinex luma; chroma reconstructs against input C.
 - Local max-channel protection supplements the global near-clip history.
 - Film, shadow, print, and gamut hysteresis uses elapsed time, with no forced
   maximum-strength target on scene cuts; other analysis Kalman filters remain separate.
 - Dither uses the sRGB code domain and preserves exact black/white endpoints.
 - Retinex retains bounded gain and global confidence without coarse-edge strength
-  fading, which produced halos. Zone contrast retains local confidence.
+  fading, which produced halos. Zone contrast uses its existing conservative
+  0.65 confidence floor uniformly; its coarse-edge fade also produced false rims.
+- Retinex reconstructs its illuminant guide at native input luma from averaged
+  coefficients stored alongside the existing base in `BilateralLogTex` RGBA16F.
+  This reduces flat-face rims; smaller coarse-zone interior gradients remain.
 - Matched headless Babylon motion is validated with sparse frame identities;
   15 source poses/sec duplicated at 30 fps does not prove dense continuity.
 - Explicit diagnostic GPU readback isolates the measured dark-return tail to slow

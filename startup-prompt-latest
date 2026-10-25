@@ -1,59 +1,87 @@
-Continue in `/home/pol/code/shaders`. Read `AGENTS.md`, `GOAL.md`, `HANDOFF.md`, `PLAN.md`,
+Continue in `/home/pol/code/shaders`. Read `AGENTS.md`, `GOAL.md`, `HANDOFF.md`,
+`PLAN.md`, `research/2026-10-25_review_pack.md`, and
+`research/2026-10-25_effect_ratings.md` first. Before shader changes also read
+`research/2026-10-25_inverse_luma_units.md`,
+`research/2026-10-25_zone_confidence.md`, and
+`research/2026-10-25_flat_face_attribution.md`.
+
+Latest completed work
+- Retinex reconstructs its illuminant guide at native input luma from averaged
+  coefficients stored in BilateralLogTex RGBA16F (.r retains the existing base,
+  .gb stores mean a/b). Its bounded gain and global confidence remain. This
+  reduces flat-face rims while preserving the earlier coarse-edge halo fix.
+- Zone contrast uses its existing conservative 0.65 confidence floor uniformly;
+  geometry-dependent strength fading painted false rims. Held purple spread
+  falls 1.07 to 0.34 L and edge gap 0.73 to 0.00 L. Six exact moving poses retain
+  0.00-0.09 L gaps. A stronger candidate was rejected for shadow clipping.
+  Local zone fields, slope limits, shadow toe and history rates are preserved.
+- Inverse luma now applies its computed linear-light gain in RGB. Previously
+  direct Oklab scaling cubed that gain. Two explicit GPU function probes verify
+  the units mismatch. Existing partial ACES model, INVERSE_LUMA ceiling and
+  exposure order remain. Sunset ground L rises 38.82 to 41.46 and source-group
+  separation 27.46 to 30.70 L; black coverage is unchanged across six held cases.
+- Eighteen private stage captures attribute shelf warmth loss chiefly to the
+  current cool CC and sunset density to inverse/print work. Overcast GZW and
+  small Arc lamps broaden coverage. Profiles, active configs and shader headers
+  are unchanged. Shadow-color preference remains open; preserve current values.
+
+Verification and limits
+Twenty diagnostic tests pass. Inverse-luma checks include twelve fresh
+candidate/repeats across six scenes, two matched motion replays, six active
+config before/candidate/repeat captures and four final shared-path checks.
+Successful runs report zero dropped/delayed frames. Source/profile/config hashes
+and executable candidate equivalence are retained. Reports separately preserve
+rejected candidates, initial identity-coverage failures and a corrected temporary
+probe compile failure. Do not count those failures as passing checks.
+
+The complete combined chain is provisionally estimated at 75/100 effectiveness,
+not accepted at the 75+ target. Current ratings distinguish technical working,
+effectiveness and importance. Print/look and CC remain about 65 effectiveness;
+inverse-grade reconstruction assumptions remain about 65. Novelty has not been
+re-scored; correctness fixes do not establish novelty or a fidelity percentage.
+
+The pointwise inverse-luma fix engages on both active four-effect configs, but
+their cross-effect highway/zone reads remain unavailable. Combined-trial adaptive
+ratings cannot be assigned to those active chains. Use
+`gamespecific/gzw/gzw_stronger_trial.conf` for assessment. Do not edit/switch
+`gzw.conf` without an explicit user request.
+
+Next work
+1. Review palette/print preference with the linked source/previous/current/repeat
+   crops. Preserve current cooler shadow tuning while preference is unresolved.
+2. Assess the remaining blue-sky tradeoff: median L improves 58.61 to 61.92 toward
+   source 67.45, but selected group separation decreases 9.61 to 6.94 L against
+   source 9.71. Overcast greens retain a roughly +10-degree hue shift under the
+   current profile. Do not assume either tradeoff is universally acceptable.
+3. Broaden game inputs and denser motion/cut coverage using the same candidate
+   logic. Current GZW/Arc profile differences are disclosed, not a unified preset.
+   Smaller coarse-zone interior gradients and general inverse-model assumptions
+   remain open. Calibrate automatic restraint only for demonstrated needs.
+
+Evidence and runtime protocol
+Latest artifacts are under ignored `captures/inverse_luma_units_20261025/`,
+`captures/stage_review_20261025/`, `captures/zone_field_attribution_20261025/`,
+and `captures/flat_face_attribution_20261025/`. The retained full source cache is
+`captures/babylon_scene_runs/20261024_160908/motion-source/`. Versioned reports
+contain measurements and protocol; images/scripts/configs remain local/ignored.
+Do not repeat completed capture conversion, stage attribution or fixed-pair
+shadow-history audits. Earlier evidence:
 `research/2026-10-24_background_motion_resume.md`,
 `research/2026-10-24_shadow_history_readback.md`, and
-`research/2026-10-24_retinex_edge_halo.md` before changes.
+`research/2026-10-24_retinex_edge_halo.md`.
 
-The saved pause has been resumed. Headless Babylon held and matched motion
-export/replay now work. Full-course coverage passed after one fresh retry set:
-17 exact three-way identities across all seven assessment windows, zero mpv
-dropped/delayed frames. Source is 15 poses/sec duplicated at 30 fps, with
+Use fresh private headless processes, exact source identities, unchanged repeats
+and 20-second settling for small effects. GPU/localhost tests need sandbox
+escalation; never fall back to a desktop window or take focus. Cache reuse must
+verify protocol. The cached motion is 15 poses/sec duplicated at 30 fps, with
 20-second initial pre-roll; sparse matches do not prove dense continuity.
-Do not repeat the old background-conversion work or earlier shadow audit.
+The fixed dark/sunset return tail is isolated to intentional slow key, not local
+zone lag; do not blindly speed it up. Screenshots contain no highway telemetry.
 
-Direct diagnostic GPU readback and repeated output interventions isolate the
-fixed dark/sunset return tail to slow key, not local-zone lag. Its intentional
-slow rate is unchanged; do not blindly speed it up. Read the evidence.
-
-A demonstrated Retinex edge-strength fade painted borders into uniform sky.
-The shared grade fix retains bounded gain and global confidence, while zone
-contrast keeps its local confidence. Four matched moving poses reduced border
-gaps from 3.50–3.61 to 0.37–0.88 Oklab-L. Fifteen fresh 20-second GZW/Arc held
-regression captures, two matched candidate motion replays, and final shared
-GZW/Arc captures passed. Twenty diagnostic tests pass. Retained artifacts are
-under ignored `captures/halo_attribution_20261024/`, and the full source cache
-is `captures/babylon_scene_runs/20261024_160908/motion-source/`.
-
-The agreed product goal is a game-agnostic SDR tool with fuller, more
-dimensional colors, deep nuanced shadows and convincing highlights, evoking
-some HDR richness while preserving each game's visual identity. Processing
-should feel considerably better without announcing an effect. Richness is not
-increased saturation, crushed blacks or maximizing gamut/hue coverage. Output
-stays SDR; no auto-exposure, HDR claims or invented clipped detail. Aim for
-automatic restraint without per-game/effect tuning; existing profiles remain
-unchanged during assessment.
-
-Follow the current ordered priorities in PLAN. Start with a matched visual
-baseline for color richness and shadow depth across existing GZW/Arc sources
-and the Babylon course, then assess shadow nuance, color distinctions across
-brightness, highlights, automatic stage/print coordination and cross-game/live
-review. Prioritize cooperation of existing stages. Earlier sharpening/debanding
-ideas are deferred until a goal-relevant gap is demonstrated. Do not repeat
-completed capture-tooling work or optimize for change magnitude, saturation,
-darkness or occupied color bins.
-
-Preserve the adopted halo fix and prior shadow-toe/zone-precision changes.
-Review the documented sunset bright-region change (-1.28 L) and vivid hue
-change (-0.41 degrees) against the goal; do not infer universal improvement.
-
-Keep every runtime test private and headless; never fall back to a desktop
-window or take focus. GPU/localhost commands need sandbox escalation. Use
-fresh processes, exact source identities, unchanged repeats, and 20-second
-settling for small effects. Cache reuse verifies the requested protocol.
-
-Preserve all existing working-tree changes, both creative tuning profiles,
-shader header comments, and committed removals of obsolete startup prompts.
-Use gamespecific/gzw/gzw_stronger_trial.conf. Do not edit or switch gzw.conf;
-its active four-effect chain still lacks cross-effect resource sharing. Shared
-shader changes require Arc checks. No golden suite or GPU cost profiling.
-Keep HANDOFF below 60 lines and record evidence plus remaining limits.
-Use startup-prompt-latest as the sole startup prompt; do not recreate dated copies.
+Preserve working-tree changes, profiles, shader headers and prior fixes. Keep
+creative_values.fx as the only user-facing tuning surface. SDR output stays in
+[0,1], with no auto-exposure or HDR output. Preserve source palette/lighting;
+richness is not increased saturation, darkness or hue coverage. New effects,
+golden-image testing and GPU cost profiling remain deferred. Do not block on
+new recordings. Keep HANDOFF below 60 lines. Use startup-prompt-latest as the
+sole startup prompt; do not recreate dated startup copies.
