@@ -43,7 +43,7 @@ sampler2D LumHistRaw
 };
 
 // Shared smoothed luma histogram
-texture2D LumHistTex { Width = HIST_BINS; Height = 1; Format = R16F; MipLevels = 1; };
+texture2D LumHistTex { Width = HIST_BINS; Height = 1; Format = R32F; MipLevels = 1; };
 sampler2D LumHist
 {
     Texture   = LumHistTex;
@@ -54,7 +54,7 @@ sampler2D LumHist
 };
 
 // Percentile cache — r=p25, g=p50, b=p75, a=P (Kalman variance); published to TexHwyTex
-texture2D PercTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+texture2D PercTex { Width = 1; Height = 1; Format = RGBA32F; MipLevels = 1; };
 sampler2D PercSamp
 {
     Texture   = PercTex;
@@ -77,7 +77,7 @@ sampler2D SceneCutSamp
 };
 
 // Temporally smoothed near-clip fraction used by inverse-grade highlight protection.
-texture2D NearClipTex { Width = 1; Height = 1; Format = R16F; MipLevels = 1; };
+texture2D NearClipTex { Width = 1; Height = 1; Format = R32F; MipLevels = 1; };
 sampler2D NearClipSamp
 {
     Texture   = NearClipTex;
@@ -89,7 +89,7 @@ sampler2D NearClipSamp
 
 // Scene chroma stats — r=median_C, g=mean_a, b=mean_b, a=achromatic_fraction
 // median_C: histogram p50 over all pixels (R116). mean_a/b: arithmetic centroid of ab plane.
-texture2D MeanChromaTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+texture2D MeanChromaTex { Width = 1; Height = 1; Format = RGBA32F; MipLevels = 1; };
 sampler2D MeanChromaSamp
 {
     Texture   = MeanChromaTex;
@@ -100,7 +100,7 @@ sampler2D MeanChromaSamp
 };
 
 // p90 luma cache (r) and p10 shadow floor (g) — EMA-smoothed
-texture2D PercHighTex { Width = 1; Height = 1; Format = RG16F; MipLevels = 1; };
+texture2D PercHighTex { Width = 1; Height = 1; Format = RG32F; MipLevels = 1; };
 sampler2D PercHighSamp
 {
     Texture   = PercHighTex;
@@ -111,7 +111,7 @@ sampler2D PercHighSamp
 };
 
 // R147: histogram mode (argmax bin center), EMA-smoothed
-texture2D ModeTex { Width = 1; Height = 1; Format = R16F; MipLevels = 1; };
+texture2D ModeTex { Width = 1; Height = 1; Format = R32F; MipLevels = 1; };
 sampler2D ModeSamp
 {
     Texture   = ModeTex;
@@ -122,7 +122,7 @@ sampler2D ModeSamp
 };
 
 // R195: normalized histogram entropy H_norm, EMA-smoothed
-texture2D EntropyTex { Width = 1; Height = 1; Format = R16F; MipLevels = 1; };
+texture2D EntropyTex { Width = 1; Height = 1; Format = R32F; MipLevels = 1; };
 sampler2D EntropySamp
 {
     Texture   = EntropyTex;
@@ -271,10 +271,17 @@ float4 HighwayWritePS(float4 pos : SV_Position,
 
 // ─── Pass 4 — Smooth luminance histogram ───────────────────────────────────
 
+float DecodeLumHistFraction(float encoded)
+{
+    float sample_count = float(DS_W * DS_H);
+    return floor(encoded * sample_count + 0.5) / sample_count;
+}
+
 float4 LumHistSmoothPS(float4 pos : SV_Position,
                        float2 uv  : TEXCOORD0) : SV_Target
 {
     float raw  = tex2D(LumHistRaw, uv).r;
+    raw = DecodeLumHistFraction(raw);
     float prev = tex2D(LumHist,    uv).r;
     return float4(lerp(prev, raw, saturate((LERP_SPEED / 100.0) * (frametime / 10.0))), 0.0, 0.0, 1.0);
 }
@@ -370,6 +377,7 @@ float4 SceneCutPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     [loop] for (int b = 0; b < HIST_BINS; b++)
     {
         float h = tex2Dlod(LumHistRaw, float4((b + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
+        h = DecodeLumHistFraction(h);
         entropy_now -= h * log2(max(h, 1e-6));
     }
     entropy_now /= log2(float(HIST_BINS));

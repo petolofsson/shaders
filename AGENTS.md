@@ -107,6 +107,9 @@ Encode/decode out-of-range quantities at the slot boundary.
 - Exact-white histogram samples are clamped into the final bin before counting.
 - Percentile and entropy reads normalize the temporally smoothed histogram;
   its total mass can be below one during startup.
+- Raw global/zone histogram fractions recover their exact 576/100 sample counts
+  before statistics. Global smoothed fractions remain continuous; zone CDF walks
+  integer counts and uses weighted Welford population variance.
 - Scene cuts use p50 delta plus raw histogram entropy delta.
 - Median chroma includes all 576 samples; hue-centroid filtering stays restricted
   to colored samples. Percentile covariance initializes only from nonpositive
@@ -115,7 +118,16 @@ Encode/decode out-of-range quantities at the slot boundary.
   blend adjacent fields.
 - `ChromaHistoryTex` is RGBA32F. Slow key reads its authoritative history directly;
   published highways remain RGBA16F/R16F. Its 20-second/67-ms half-lives are
-  unchanged. Other history precision/consumer audits remain open.
+  unchanged. Remaining authoritative histories are audited below.
+- `MeanChromaTex` is RGBA32F with direct feedback; coefficients and half-float
+  publications are unchanged. GPU signed/startup/cut/timing probes verify the
+  recurrence; matched motion retains a small one-code black quantization cost.
+- Six per-hue chroma-history records have no ordinary image consumer; zone and
+  slow-key columns remain live. Do not repair unused filters by association.
+- Histogram, percentile, near-clip, high-percentile, mode, entropy, zone and
+  adaptive accumulators now use 32-bit formats after independent GPU probes.
+  Their formulas, rates and initialization are unchanged. Raw observations and
+  publications remain half-float; bounded one-frame scene-cut storage stays RGBA16F.
 - Guided-filter epsilon is local-variance adaptive.
 - Zone statistics use 64 squared-edge bins decoded to linear light for near-black precision.
 - Local contrast's negative arm uses a luminance-relative smooth bound to preserve shadows.
@@ -130,6 +142,8 @@ Encode/decode out-of-range quantities at the slot boundary.
   scene-cut confidence temporarily damps those adaptations.
 - Internal grade Oklab conversions preserve signed RGB and positive overrange;
   final gamut projection checks negative and over-one channels before `saturate()`.
+  Its initial SDR-face test permits only 1e-6 matrix roundoff; gamut-search bounds
+  remain strict and final output remains saturated.
 - Inverse-luma reconstruction applies its weighted linear-light gain in RGB;
   scaling Oklab coordinates directly cubed that gain and over-darkened midtones.
 - Retinex reconstructs against pre-Retinex luma; chroma reconstructs against input C.

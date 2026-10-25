@@ -23,9 +23,24 @@ Current code and evidence
   Eighteen fresh held captures and twenty matched motion interiors add no clipping.
   Eighteen assessment matches span all seven windows, including both sides of cuts.
   Two final shared-shader captures match candidates. Twenty diagnostic tests pass.
+- Scene-chroma history (`MeanChromaTex`) is now RGBA32F with unchanged coefficients
+  and half-float publications. Three GPU probes verify signed channels, startup,
+  cuts and variable timing; maximum candidate error 0.000002159, repeat identical.
+  Eighteen held captures add no clipping. Sixteen exact motion matches span all
+  seven windows; four frames retain a one-code black cost (1–38 pixels/frame).
+  Two final shared-path checks pass; see the scene-chroma precision report.
+- Remaining histogram, percentile, near-clip, high-percentile, mode, entropy,
+  zone and adaptive accumulators use independently GPU-verified 32-bit histories.
+  Formulas/rates/initialization, observations and publications are unchanged.
+  Max candidate error is 0.000002354; repeat identical. Bounded one-frame cut
+  storage stays RGBA16F. Eighteen held captures, eight individual reversions,
+  sixteen matched motion frames and four shared/standalone checks complete.
+  One-code costs: seven vivid and one muted held pixels; one motion pixel.
 
 Read before changing these paths:
 `research/2026-10-25_slow_key_precision.md`,
+`research/2026-10-25_scene_chroma_precision.md`,
+`research/2026-10-25_remaining_histories.md`,
 `research/2026-10-25_highway_resolution.md`,
 `research/2026-10-25_percentile_initialization.md`,
 `research/2026-10-25_chroma_median_contract.md`.
@@ -34,12 +49,15 @@ Retinex reports linked from PLAN. Do not undo those fixes or repeat completed
 capture conversion, stage attribution or fixed-pair shadow-history audits.
 
 Next work
-1. Audit remaining history precision, initialization and live consumers,
-   including per-band chroma analysis. Prove each issue; do not widen every
-   texture or change rates because one history needed repair.
-2. Verify units, numerical stability, bypasses, endpoints and stage cooperation.
-   Attribute coarse-zone gradients, sky shade-separation loss and green hue shifts
-   technically, without preference-driven retuning.
+1. The user-requested PLAN 1 then 2 are complete for this audit. Read
+   `research/2026-10-25_signal_contracts.md` before touching histogram/gamut math.
+   Raw histograms recover fixed sample counts; zone spread uses stable weighted
+   moments. Oklab SDR-face classification tolerates only matrix roundoff.
+   Actual GPU helper and two-profile 768-patch complete-bypass checks pass.
+   Zone-only quantization costs and remaining temporal uncertainty are recorded.
+   Do not repeat completed history probes or repair unused per-hue filters.
+2. PLAN 3 is next: attribute coarse-zone gradients, sky shade-separation loss
+   and green hue shifts technically, without preference-driven retuning.
 3. Broaden games, denser motion/cuts, variable timing and actual high-refresh
    coverage. Simulated cadence is not physical 144 Hz acceptance.
 
@@ -62,7 +80,7 @@ use explicit diagnostic output. Mask markers, labels and diagnostic strips.
 Motion cache: `captures/babylon_scene_runs/20261024_160908/motion-source/`.
 Verify its manifest/hashes and 15-pose/sec, duplicate-30-fps, 20-second-pre-roll
 protocol. It is not dense native gameplay. Latest local artifacts:
-`captures/{slow_key_precision,highway_resolution,percentile_initialization,chroma_median}_20261025/`.
+`captures/{signal_contracts,history_completion,scene_chroma_precision,history_consumers,slow_key_precision,highway_resolution,percentile_initialization,chroma_median}_20261025/`.
 Reports are versioned; ignored scripts/media stay local. Keep HANDOFF below
 60 lines. New effects, golden-image testing and GPU profiling remain deferred.
 Do not block independent work on new recordings or personal taste decisions.

@@ -159,8 +159,9 @@ float3 OklabToSDR(float3 lab)
     float lower = 0.0;
     float upper = 1.0;
     float3 original = OklabToRGB(lab);
-    float valid = step(0.0, min(original.r, min(original.g, original.b)))
-                * step(max(original.r, max(original.g, original.b)), 1.0);
+    // Matrix roundoff at an SDR face must not trigger a large chroma contraction.
+    float valid = step(-1e-6, min(original.r, min(original.g, original.b)))
+                * step(max(original.r, max(original.g, original.b)), 1.0 + 1e-6);
     [unroll] for (int i = 0; i < 10; i++)
     {
         float mid = (lower + upper) * 0.5;

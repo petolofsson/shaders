@@ -80,7 +80,7 @@ sampler2D BackBuffer
 
 // Zone medians (from corrective.fx SmoothZoneLevels)
 #ifndef SHADER_PIPELINE_COMBINED
-texture2D ZoneHistoryTex { Width = 4; Height = 4; Format = RGBA16F; MipLevels = 1; };
+texture2D ZoneHistoryTex { Width = 4; Height = 4; Format = RGBA32F; MipLevels = 1; };
 sampler2D ZoneHistorySamp
 {
     Texture   = ZoneHistoryTex;
@@ -129,7 +129,7 @@ sampler2D NeutralIllumSamp
 // Scene-adaptive controls are persisted separately so gradual lighting changes
 // do not pump the grade. ColorTransform reads the previous frame; the final
 // history pass writes the current smoothed values.
-texture2D AdaptiveHistoryTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+texture2D AdaptiveHistoryTex { Width = 1; Height = 1; Format = RGBA32F; MipLevels = 1; };
 sampler2D AdaptiveHistorySamp
 {
     Texture   = AdaptiveHistoryTex;

@@ -7,16 +7,29 @@ and fix demonstrated issues individually, with evidence and unchanged repeats.
 
 ## Current Priorities
 
-1. **History precision, initialization and consumers.** Audit remaining histories
+1. **History precision, initialization and consumers — audited.** Audit remaining histories
    and per-band chroma analysis. Determine which produced values have live
    consumers. Check valid state is never mistaken for startup and that storage
    can accumulate the intended update. Slow-key precision and percentile
    initialization are fixed; do not repeat them or blanket-widen textures.
-2. **Signal and control contracts.** Verify producer/consumer units, pass order,
+   The [consumer audit](research/2026-10-25_history_consumers.md) separates unused
+   per-hue histories from live scene-chroma state. `MeanChromaTex` precision is
+   now [GPU-verified and repaired](research/2026-10-25_scene_chroma_precision.md).
+   The [remaining-history audit](research/2026-10-25_remaining_histories.md)
+   independently proves and repairs eight remaining accumulators, checks
+   initialization and retains bounded one-frame scene-cut precision. Rates,
+   observations and publications remain. Recorded one-code endpoint costs stay
+   part of assessment; broader temporal/visual acceptance remains open.
+2. **Signal and control contracts — audited.** Verify producer/consumer units, pass order,
    numerical stability, bounded output, endpoint preservation and clean bypasses.
    Assess reconstruction assumptions and inverse/tonal/chroma/print interactions
    using isolated GPU probes and matched ablations.
-3. **Spatial and color behavior.** Attribute remaining coarse-zone interior
+   The [signal-contract audit](research/2026-10-25_signal_contracts.md) proves
+   and repairs raw histogram count loss, unstable zone moments and numerical
+   gamut-face misclassification. GPU helper and complete-bypass probes pass;
+   matched scene/motion evidence records one-code shadow costs. Existing stage
+   gate semantics remain. Broader model/spatial acceptance stays under 3–5.
+3. **Spatial and color behavior — next.** Attribute remaining coarse-zone interior
    gradients, blue-sky shade-separation loss and overcast-green hue shifts.
    Check hue/gamut continuity, colored highlights, dark materials and illumination
    boundaries. Address technical artifacts without preference-driven retuning.
@@ -36,6 +49,10 @@ and fix demonstrated issues individually, with evidence and unchanged repeats.
 
 | Correction | Evidence and scope |
 |---|---|
+| Signal/control contracts | [Report](research/2026-10-25_signal_contracts.md): native fixed-population histogram decoding, stable zone moments and SDR-face guard; signed/gamut/film/dither probes and two-profile 768-patch bypass pass. Matched scene/motion checks retain quantified shadow costs. |
+| Remaining histories | [Report](research/2026-10-25_remaining_histories.md): eight independently probed accumulators repaired, max candidate error 0.000002354; one-frame cut storage retained. Eighteen held captures, eight individual reversions, sixteen exact motion matches and four final shared/standalone checks. One-code black costs are recorded. |
+| Scene-chroma precision | [Report](research/2026-10-25_scene_chroma_precision.md): RGBA32F 1x1 authoritative history, unchanged coefficients/publications. Three GPU probes, max candidate error 0.000002159; eighteen held captures and sixteen motion matches. Four motion frames retain a small one-code black cost. |
+| History consumers | [Audit](research/2026-10-25_history_consumers.md): remaining-state inventory and isolated GPU perturbations of the six unused per-hue records. Its follow-up repairs the live scene-chroma history. |
 | Slow-key precision | [Report](research/2026-10-25_slow_key_precision.md): RGBA32F authoritative history, direct feedback; publications and 20-second/67-ms half-lives unchanged. Three 63-value GPU probes, eighteen fresh held captures, twenty exact motion matches, two final shared-path checks. |
 | Metadata addressing | [Report](research/2026-10-25_highway_resolution.md): actual integer texture width; eleven probes at five resolutions recover all 40 slots. Twelve full-chain comparisons retain unchanged native controls. |
 | Percentile initialization | [Report](research/2026-10-25_percentile_initialization.md): valid covariance no longer triggers six-update cold-start cycles. GPU histories/cuts verify behavior; one-code overcast quantization cost is recorded. |

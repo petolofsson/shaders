@@ -22,27 +22,27 @@ Grade: LFDownscale1 → LFDownscale2 → NeutralIllum → GuidedCoeff → Guided
 ColorTransform → AdaptiveHistory → TexHwyWrite. Diffusion/grain are removed;
 the 2x2 red activity marker is intentional.
 
-## Latest completed fixes
+## Latest completed audits
 
-- [Slow-key precision](research/2026-10-25_slow_key_precision.md): RGBA32F internal
-  history and direct feedback; publications remain half-float. The 20-second and
-  67-ms half-lives are unchanged. GPU max error 0.000005171 at simulated
-  30/60/144 updates/sec, identical repeat. Eighteen fresh held captures and twenty
-  matched motion interiors add no clipping; eighteen matches span all seven windows.
-- [Metadata coordinates](research/2026-10-25_highway_resolution.md): integer
-  texture width; all 40 slots read without error across five tested sizes.
-- [Percentile initialization](research/2026-10-25_percentile_initialization.md):
-  no false cold starts on valid covariance; controlled-cut response retained.
-- [Chroma median](research/2026-10-25_chroma_median_contract.md): all 576 samples
-  count. Inverse-luma, Retinex guide, conservative zone confidence and earlier
-  shadow/endpoint fixes remain intact; the evidence index is in PLAN.
+- [Remaining histories](research/2026-10-25_remaining_histories.md): eight
+  independently proved accumulators now use 32-bit history; rates/formulas remain.
+  GPU max error 0.000002354, identical repeat. Eighteen held captures, eight
+  individual reversions, sixteen exact motion matches and four final checks pass.
+  One-code black costs: seven vivid/one muted held pixels and one motion pixel.
+  One-frame scene-cut RGBA16F is retained with measured bounded error.
+- Earlier slow-key, scene-chroma, metadata, covariance, median, inverse-luma,
+  Retinex, zone-confidence and shadow corrections remain; see PLAN's evidence.
+- Six per-hue histories have no ordinary image consumer; leave them untouched.
 
-## Next work
+## Current work order
 
-Audit remaining history precision/initialization and live per-band consumers,
-then numerical/bypass contracts, zone gradients, hue/gamut continuity, denser
-temporal coverage and broader games. Do not repeat completed probes, capture
-conversion, stage attribution or the fixed-pair shadow-history audit.
+User-requested PLAN 1 then 2 are complete for the current audit.
+[Signal contracts](research/2026-10-25_signal_contracts.md) repairs raw histogram
+count loss, unstable zone moments and numerical SDR-face contraction. GPU helper
+and two-profile 768-patch complete bypass pass; held repeats are identical.
+Zone correction retains quantified one-code shadow costs. No profile retuning.
+Next: PLAN 3 spatial/color attribution; broader motion/game coverage follows.
+Do not repeat completed probes or fixed-pair audits; preserve prior corrections.
 
 ## Validation and limits
 

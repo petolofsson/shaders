@@ -68,7 +68,7 @@ sampler2D CreativeZoneLevelsSamp
     MagFilter = LINEAR;
 };
 
-texture2D ZoneHistoryTex { Width = 4; Height = 4; Format = RGBA16F; MipLevels = 1; };
+texture2D ZoneHistoryTex { Width = 4; Height = 4; Format = RGBA32F; MipLevels = 1; };
 sampler2D ZoneHistorySamp
 {
     Texture   = ZoneHistoryTex;
@@ -149,48 +149,46 @@ float4 BuildZoneLevelsPS(float4 pos : SV_Position,
 {
     int zone_x = int(pos.x);
     int zone_y = int(pos.y);
-    int zone   = zone_y * 4 + zone_x;
-
+    int zone = zone_y * 4 + zone_x;
     float cumulative = 0.0;
     float p25 = 0.25, median = 0.5, p75 = 0.75;
     float lock25 = 0.0, lock50 = 0.0, lock75 = 0.0;
-    float sum_x = 0.0, sum_x2 = 0.0;  // R116: histogram moments for intra-zone variance
-
+    float running_mean = 0.0, variance_sum = 0.0;
     [loop] for (int b = 0; b < ZONE_HIST_BINS; b++)
     {
-        float bc   = (float(b) + 0.5) / float(ZONE_HIST_BINS);
-        bc *= bc;  // decode the bin centre for linear-light variance moments
-        float frac = tex2Dlod(CreativeZoneHistSamp,
+        float bc = (float(b) + 0.5) / float(ZONE_HIST_BINS);
+        bc *= bc;
+        float encoded_count = tex2Dlod(CreativeZoneHistSamp,
             float4((float(b) + 0.5) / float(ZONE_HIST_BINS), (float(zone) + 0.5) / 16.0, 0, 0)).r;
-        float prev = cumulative;
-        cumulative += frac;
-        sum_x      += bc * frac;
-        sum_x2     += bc * bc * frac;
-
-        // Interpolate in the square-root coordinate, then return linear luma.
-        float inv  = (frac > 0.0) ? 1.0 / frac : 0.0;
-        float t25  = saturate((0.25 - prev) * inv);
-        float t50  = saturate((0.50 - prev) * inv);
-        float t75  = saturate((0.75 - prev) * inv);
+        // Recover the fixed 10x10 population before CDF and moment math.
+        float bin_count = floor(encoded_count * 100.0 + 0.5);
+        float previous_count = cumulative;
+        cumulative += bin_count;
+        float delta = bc - running_mean;
+        running_mean += delta * (bin_count / max(cumulative, 1.0));
+        variance_sum += bin_count * delta * (bc - running_mean);
+        float inv_count = 1.0 / max(bin_count, 1.0);
+        float t25 = saturate((25.0 - previous_count) * inv_count);
+        float t50 = saturate((50.0 - previous_count) * inv_count);
+        float t75 = saturate((75.0 - previous_count) * inv_count);
         float bv25 = (float(b) + t25) / float(ZONE_HIST_BINS);
         float bv50 = (float(b) + t50) / float(ZONE_HIST_BINS);
         float bv75 = (float(b) + t75) / float(ZONE_HIST_BINS);
         bv25 *= bv25;
         bv50 *= bv50;
         bv75 *= bv75;
-        float at25 = step(0.25, cumulative) * (1.0 - lock25);
-        float at50 = step(0.50, cumulative) * (1.0 - lock50);
-        float at75 = step(0.75, cumulative) * (1.0 - lock75);
-        p25    = lerp(p25,    bv25, at25);
+        float at25 = step(25.0, cumulative) * (1.0 - lock25);
+        float at50 = step(50.0, cumulative) * (1.0 - lock50);
+        float at75 = step(75.0, cumulative) * (1.0 - lock75);
+        p25 = lerp(p25, bv25, at25);
         median = lerp(median, bv50, at50);
-        p75    = lerp(p75,    bv75, at75);
+        p75 = lerp(p75, bv75, at75);
         lock25 = saturate(lock25 + at25);
         lock50 = saturate(lock50 + at50);
         lock75 = saturate(lock75 + at75);
     }
-
-    // E[X²] - E[X]² = per-pixel luma variance within this zone
-    float intra_std = sqrt(max(sum_x2 - sum_x * sum_x, 0.0));
+    // Weighted population variance avoids subtracting two nearly equal moments.
+    float intra_std = sqrt(max(variance_sum / max(cumulative, 1.0), 0.0));
     return float4(median, p25, p75, intra_std);
 }
 
