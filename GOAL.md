@@ -11,6 +11,15 @@ The intended response is that the game looks considerably better without the
 viewer immediately recognizing an effect. Switching the processing off should
 feel like losing depth and richness; switching it on should remain unobtrusive.
 
+## Current work mandate
+
+On 2026-10-25 the user prioritized technical correctness and reliable intended
+behavior. Personal palette/print preference is not a prerequisite for progress.
+Preserve profiles while auditing units, statistics, precision, bounds, controls
+and spatial/temporal stability. The direction below remains the long-term goal;
+it does not require taste tuning during this technical pass. Current work and
+evidence are maintained in [PLAN.md](PLAN.md).
+
 ## What richness means here
 
 - **Color:** retain meaningful differences within colored materials across
@@ -48,9 +57,9 @@ Internal calibration and representative visual review remain necessary even
 when the eventual user experience has no manual configuration.
 
 GZW and Arc are current assessment inputs, not the definition of the product.
-Existing per-game profiles are retained during assessment. This goal discussion
-changes documentation and priorities; it does not itself change tuning, merge
-profiles, switch active configs or move controls out of `creative_values.fx`.
+Existing per-game profiles are retained during assessment. The product direction
+does not authorize merging profiles, switching active configs or moving controls
+out of `creative_values.fx`; current implementation priorities live in PLAN.
 
 ## How to judge progress
 
@@ -64,8 +73,8 @@ profiles, switch active configs or move controls out of `creative_values.fx`.
    observed benefits and costs. Larger delta-E, more saturation, higher entropy,
    fewer black pixels or more occupied color bins are not fidelity scores.
 5. Prefer changes that improve the agreed appearance across varied inputs.
-   Record regressions and scene-specific tradeoffs. Live user review decides
-   aesthetic success; measurements constrain and substantiate it.
+   Record regressions and scene-specific tradeoffs. Overall aesthetic
+   acceptance remains distinct from demonstrated technical correctness.
 
 ## Effectiveness target: 75+
 

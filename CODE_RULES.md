@@ -26,3 +26,8 @@ Compact checklist for HLSL/vkBasalt shader edits.
     or `static const float3`, no variable named `out`, no `tex2Dlod` on
     BackBuffer, no cross-technique mip assumptions, and preserve BackBuffer with
     passthrough when an effect otherwise only writes explicit render targets.
+11. **Texture and state contracts.** Derive metadata addresses from actual integer
+    resource dimensions. Choose authoritative history precision from the intended
+    update size; do not feed a precise accumulator through a lower-precision
+    publication. Separate initialization sentinels from legitimate steady state.
+    Demonstrate changes with explicit GPU readback, not source inspection alone.

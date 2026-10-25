@@ -1,130 +1,97 @@
-# Tools
+# Validation Tools
 
-All tools live in `tools/`; many are also exposed as shell/fish functions.
-Run Python tools with `--help`. Assess changes against [GOAL.md](GOAL.md) and
-follow [PLAN.md](PLAN.md): fuller color distinctions and nuanced shadow depth,
-with unobtrusive behavior across games. Delta magnitude is not a quality score.
-Runtime tests stay private and headless. The visible tools below are documented
-for explicit interactive use; do not launch them as unattended validation.
+Use [PLAN.md](PLAN.md) for priorities and [AGENTS.md](AGENTS.md) for rules.
+All runtime validation remains private and headless: no desktop fallback,
+focus changes or physical display changes. Commands use repository entry points
+rather than assuming local shell aliases.
 
-## Capture / Tuning
+## Diagnostic tests
 
-```text
-auto_capture --game arc_raiders --interval 20 --max-frames 24
-screenshot arc_raiders
-tune --game arc_raiders --delay 5
+```bash
+python3 -B -m unittest discover -s tests -p 'test_diagnostics.py'
 ```
 
-Reference PNGs are pre-pipeline screenshots in
-`gamespecific/<game>/analysis/reference/`. `tune` opens them through
-`mpv + vkBasalt` and restarts on `creative_values.fx` edits.
+Twenty tests currently pass. They check tooling/error handling; GPU shader
+contracts need runtime evidence. There is no golden-image suite.
 
-## Analysis
+## Matched captures and effect attribution
 
-```text
-compare_frame gamespecific/<game>/analysis/reference/frame.png --game <game>
-compare_frame --all --game <game> --delay 5
-compare_frame --all-effects --game <game> --max-frames 12 --delay 5
-compare_frame --all-effects --game <game> --only FILM_CURVE EXPOSURE
-compare_frame gamespecific/gzw/analysis/reference/frame.png --game gzw --config gamespecific/gzw/gzw_stronger_trial.conf
-compare_frame gamespecific/gzw/analysis/reference/autof_20260515_133932.png --all-effects --game gzw --config gamespecific/gzw/gzw_stronger_trial.conf --only CORRECTIVE_GATE TONAL_GATE CHROMA_GATE LOOK_GATE --settle 20 --keep
-compare_frame gamespecific/gzw/analysis/reference/autof_20260515_133058.png --transition gamespecific/gzw/analysis/reference/autof_20260515_133932.png --game gzw --config gamespecific/gzw/gzw_stronger_trial.conf
-compare_frame gamespecific/gzw/analysis/reference/autof_20260515_133932.png --perf-probe --game gzw --config gamespecific/gzw/gzw_stronger_trial.conf
-stage_isolate --game <game> --delay 5
-analyze_delta before.exr after.exr
-analyze_delta --colorchecker captures/session.exr
-python3 tools/noise_floor.py before.exr after.exr --json-out noise.json
+```bash
+python3 -B tools/compare_frame.py gamespecific/gzw/analysis/reference/autof_20260515_133932.png --game gzw --config gamespecific/gzw/gzw_stronger_trial.conf --delay 5 --settle 20 --keep
+python3 -B tools/compare_frame.py gamespecific/gzw/analysis/reference/autof_20260515_133058.png --all-effects --game gzw --config gamespecific/gzw/gzw_stronger_trial.conf --only FILM_CURVE RETINEX BLACKS_WHITES --delay 5 --settle 20 --keep
+python3 -B tools/compare_frame.py gamespecific/gzw/analysis/reference/autof_20260515_133932.png --all-effects --game gzw --config gamespecific/gzw/gzw_stronger_trial.conf --only CORRECTIVE_GATE TONAL_GATE CHROMA_GATE LOOK_GATE --delay 5 --settle 20 --keep
 ```
 
-`compare_frame` now defaults to a private Gamescope headless GPU display.
-It creates no desktop window, changes no focus or monitor mode, and captures
-post-vkBasalt output with `gamescopectl`. You can use other applications while
-it runs. It requires Gamescope/gamescopectl and refuses to fall back to desktop
-capture. Use `--capture-backend desktop` explicitly for the old visible path.
-`--baseline` disables vkBasalt for a single-reference transfer check. The
-20-second settling protocol remains; background execution does not accelerate
-time-based shader histories. Babylon now also defaults to a private display;
-its [runner documentation](tools/babylon_scene/README.md) covers exact source
-identities, cached lossless motion and repeat/coverage validation. `tune`,
-`capture` and `stage_isolate` retain visible-desktop workflows.
+For Arc use `--game arc_raiders`, an Arc reference, and
+`--config gamespecific/arc_raiders/arc_raiders_pipeline_trial.conf`.
+Use combined trials for adaptive behavior: default active configs retain the
+known unavailable cross-effect resources.
 
-`compare_frame --all-effects` captures the full pipeline, zeroes each effect's
-active knobs, measures full-minus-effect delta, and restores `creative_values.fx`.
-Both sides use stage gates at 100. An optional positional PNG selects one reference.
-It converts each source PNG into a byte-exact lossless FFV1 RGB clip (requires
-FFmpeg), restarts mpv per image, waits `--delay` for compilation and `--settle`
-for continuous playback (default 5 seconds), and records source/reference
-SHA-256 hashes. It rejects paused/stalled playback and pauses only at the
-settled capture point before the private-display screenshot. This is a fixed startup
-protocol, not a guarantee of steady state. Use `--settle 20` for small effects.
-Older still-image `--settle` results did not have continuous rendered frames;
-do not use them as evidence of temporal convergence. `--keep` retains paired
-PNG captures under `full_analysis/.../captures_<timestamp>/`.
-An unchanged FULL repeat measures capture/history variation before effect ablations;
-small effect deltas near that baseline are inconclusive.
+The private backend requires Gamescope/gamescopectl and captures after vkBasalt.
+Other dependencies include mpv, FFmpeg, ImageMagick and script Python libraries.
+A failed private display must stop the run. Legacy visible tools (`tune`,
+`capture`, `stage_isolate`) are not the unattended validation path. Use `--help`
+for CLI options; do not select the desktop backend.
 
-mpv is launched without user configuration, with an explicit sRGB/BT.709 target.
-Diagnostics serialize capture/profile access, use a private IPC socket, and print
-`/tmp/shader-runtime-*/` log paths. An absent activity marker or failed IPC command
-fails the comparison. Use a reference with the same dimensions as the display.
-`analyze_delta` masks the intentional top-left 2×2 marker and reports endpoint
-occupancy. DeltaE measures change, not improvement in fidelity.
+`--all-effects` creates byte-exact lossless 30 fps RGB clips, starts fresh mpv
+processes for images/configurations, enforces equal gates, captures an unchanged
+FULL repeat, ablates active knobs and restores the tuning profile. Access is
+serialized. Preserve source/reference/config/profile hashes and inspect logs
+and dropped/delayed counters.
 
-`capture` writes RGB EXRs only. HighwayTex is offscreen: `--dump` and `--no-frame`
-fail explicitly instead of decoding scene pixels as telemetry. Deliberate
-readback requires an instrumented technique that renders diagnostic values;
-see [history attribution](research/2026-10-24_shadow_history_readback.md).
+Use `--delay 5 --settle 20` for small effects; the default settle is only five
+seconds. Warmup is a fixed protocol, not proof of convergence, especially for
+a 20-second-half-life history. Older paused-image claims are not convergence
+evidence. Deltas near unchanged-repeat variation are inconclusive.
 
-Current effect list:
+`--baseline` disables vkBasalt for a single-reference transfer check. Capture
+dimensions must match the source/private display. The intentional 2x2 red
+activity marker is required and masked in strict image tests.
 
-```text
-INVERSE_STRENGTH INVERSE_LUMA EXPOSURE BLACKS_WHITES FILM_CURVE
-3WAY_CC MID_TEMPERATURE LUMA_CONTRAST CONTRAST RETINEX ZONE_CONTRAST
-SHADOWS SHADOW_LIFT HUE_ROTATION VIBRANCE SATURATION PRINT_STOCK
-PRINTER_LIGHTS CORRECTIVE_GATE TONAL_GATE CHROMA_GATE LOOK_GATE
+## Motion and cuts
+
+```bash
+python3 -B tools/compare_frame.py gamespecific/gzw/analysis/reference/autof_20260515_133058.png --transition gamespecific/gzw/analysis/reference/autof_20260515_133932.png --game gzw --config gamespecific/gzw/gzw_stronger_trial.conf --delay 5
 ```
 
-`stage_isolate` measures cumulative gates:
+`--transition` plays first/second/first for 20/8/20 seconds at 30 fps, capturing
+targets from fresh processes. Do not repeat the completed fixed-pair audit
+without a new demonstrated need. Other cuts and dense motion remain open.
 
-```text
-CORRECTIVE -> +TONAL -> +CHROMA -> +LOOK
+The [Babylon runner](tools/babylon_scene/README.md) provides private source export,
+lossless replay and exact source matching. Cache:
+`captures/babylon_scene_runs/20261024_160908/motion-source/`. Verify its manifest,
+clip hashes, 20-second pre-roll and 15-pose/sec protocol before reuse. Duplicate
+30 fps playback and sparse matches do not establish dense continuity.
+
+## GPU readback and measurements
+
+Ordinary screenshot pixels cannot reveal offscreen highway/history data.
+`capture --dump` and `--no-frame` are unsupported. Explicit diagnostic techniques
+may render values, binary fields or histories for readback. Preserve source
+equivalence, encoding/precision assumptions and masks; diagnostic strips must
+not contaminate image metrics. See [slow-key](research/2026-10-25_slow_key_precision.md)
+and [metadata](research/2026-10-25_highway_resolution.md) probes.
+
+```bash
+python3 -B tools/analyze_delta.py before.exr after.exr
+python3 -B tools/noise_floor.py before.exr after.exr --json-out noise.json
 ```
 
-`stage_isolate` uses the game's default config and paused PNG playback. For the
-combined GZW trial and temporal stage checks, use `compare_frame --all-effects`
-with the four `*_GATE` labels instead. Input black/white mapping and FilmCurve
-sit outside those gates in `ColorTransformPS`.
+Use noise-floor checks when dither/quantization changes warrant them. DeltaE
+measures change, not quality. Positive DeltaL is brighter; positive DeltaC is
+more chromatic. Hue is angular and needs source-material context. Report
+clipping, separation and repeat uncertainty together. GPU profiling remains
+deferred; do not run throughput/performance probes.
 
-`--transition` plays first/second/first references for 20/8/20 seconds at 30 fps,
-capturing each target from a fresh playback paused only for the output screenshot.
-It saves PNGs, same-source temporal deltas and mpv drop counters. GPU cost profiling is deprioritized; do not run it without a new request. The
-existing `--perf-probe` stress-plays a 120 fps FFV1 clip with MangoHud; add `--perf-baseline` to disable
-vkBasalt for a paired baseline. These mpv data do not measure in-game GPU time.
+## Logs and retained artifacts
 
-## Validation
+Every runtime process prints a unique `/tmp/shader-runtime-*/` log directory.
+`--keep` retains paired images under game analysis outputs. Standard JSON paths
+include `compare_agg.json` and `full_analysis/latest.json` beneath
+`gamespecific/<game>/`. Read each result's profile/config/source before comparisons.
 
-There is no golden-image regression suite. Use matched captures, stage isolation,
-effect attribution, and `tools/noise_floor.py` for validation.
-Tool regression checks: `python3 -B -m unittest discover -s tests -p 'test_diagnostics.py'`.
-
-## Outputs
-
-```text
-gamespecific/<game>/compare_agg.json
-gamespecific/<game>/full_analysis/latest.json
-gamespecific/<game>/analysis/YYYY-MM-DD/
-gamespecific/<game>/captures/
-```
-
-## Delta Scale
-
-| DeltaE_oklab | Meaning |
-|--------------|---------|
-| `< 1` | usually imperceptible |
-| `1-3` | subtle |
-| `3-6` | clearly visible |
-| `> 6` | large error/change |
-
-`DeltaL* > 0` is brighter. `DeltaC* > 0` is more saturated. `Deltah* > 0`
-means positive angular rotation in the Oklab a/b plane; the destination hue
-depends on the starting hue.
+Reports in `research/` are versioned. Local captures, diagnostic scripts/configs,
+motion media and vendor cache under `captures/` are ignored and not pushed.
+Do not force-add them or restore synthetic golden fixtures. GPU/localhost access
+requires the appropriate sandbox escalation, even for a private display.

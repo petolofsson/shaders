@@ -1,87 +1,68 @@
-Continue in `/home/pol/code/shaders`. Read `AGENTS.md`, `GOAL.md`, `HANDOFF.md`,
-`PLAN.md`, `research/2026-10-25_review_pack.md`, and
-`research/2026-10-25_effect_ratings.md` first. Before shader changes also read
-`research/2026-10-25_inverse_luma_units.md`,
-`research/2026-10-25_zone_confidence.md`, and
-`research/2026-10-25_flat_face_attribution.md`.
+Continue in `/home/pol/code/shaders`.
 
-Latest completed work
-- Retinex reconstructs its illuminant guide at native input luma from averaged
-  coefficients stored in BilateralLogTex RGBA16F (.r retains the existing base,
-  .gb stores mean a/b). Its bounded gain and global confidence remain. This
-  reduces flat-face rims while preserving the earlier coarse-edge halo fix.
-- Zone contrast uses its existing conservative 0.65 confidence floor uniformly;
-  geometry-dependent strength fading painted false rims. Held purple spread
-  falls 1.07 to 0.34 L and edge gap 0.73 to 0.00 L. Six exact moving poses retain
-  0.00-0.09 L gaps. A stronger candidate was rejected for shadow clipping.
-  Local zone fields, slope limits, shadow toe and history rates are preserved.
-- Inverse luma now applies its computed linear-light gain in RGB. Previously
-  direct Oklab scaling cubed that gain. Two explicit GPU function probes verify
-  the units mismatch. Existing partial ACES model, INVERSE_LUMA ceiling and
-  exposure order remain. Sunset ground L rises 38.82 to 41.46 and source-group
-  separation 27.46 to 30.70 L; black coverage is unchanged across six held cases.
-- Eighteen private stage captures attribute shelf warmth loss chiefly to the
-  current cool CC and sunset density to inverse/print work. Overcast GZW and
-  small Arc lamps broaden coverage. Profiles, active configs and shader headers
-  are unchanged. Shadow-color preference remains open; preserve current values.
+Read `AGENTS.md`, `CODE_RULES.md`, `GOAL.md`, `HANDOFF.md`, `PLAN.md` and `TOOLS.md`.
+This is the only startup prompt; do not create dated or alternate copies.
 
-Verification and limits
-Twenty diagnostic tests pass. Inverse-luma checks include twelve fresh
-candidate/repeats across six scenes, two matched motion replays, six active
-config before/candidate/repeat captures and four final shared-path checks.
-Successful runs report zero dropped/delayed frames. Source/profile/config hashes
-and executable candidate equivalence are retained. Reports separately preserve
-rejected candidates, initial identity-coverage failures and a corrected temporary
-probe compile failure. Do not count those failures as passing checks.
+Current mandate
+Prioritize technical correctness and reliable intended behavior. Personal
+palette/print preference is not a blocker. Preserve profiles, shader header
+comments and prior corrections. `creative_values.fx` is the only user-facing
+tuning surface. Output stays SDR in [0,1]; no auto-exposure or HDR output.
+Preserve source palette and lighting; richness is not saturation or darkness.
 
-The complete combined chain is provisionally estimated at 75/100 effectiveness,
-not accepted at the 75+ target. Current ratings distinguish technical working,
-effectiveness and importance. Print/look and CC remain about 65 effectiveness;
-inverse-grade reconstruction assumptions remain about 65. Novelty has not been
-re-scored; correctness fixes do not establish novelty or a fidelity percentage.
+Current code and evidence
+- Chroma median counts all 576 samples, not just the colored minority.
+- Percentile history initializes from nonpositive covariance, avoiding false
+  cold starts on legitimate small variance.
+- Metadata uses integer texture width, fixing cross-field blending at widths
+  such as 1366 and 1919.
+- Slow key retains RGBA32F authoritative history and reads it directly. Published
+  highways remain R16F/RGBA16F; the 20-second/67-ms half-lives and startup guard
+  are unchanged. Three GPU probes record 63 milestones each at simulated
+  30/60/144 updates/sec, maximum candidate error 0.000005171, repeat identical.
+  Eighteen fresh held captures and twenty matched motion interiors add no clipping.
+  Eighteen assessment matches span all seven windows, including both sides of cuts.
+  Two final shared-shader captures match candidates. Twenty diagnostic tests pass.
 
-The pointwise inverse-luma fix engages on both active four-effect configs, but
-their cross-effect highway/zone reads remain unavailable. Combined-trial adaptive
-ratings cannot be assigned to those active chains. Use
-`gamespecific/gzw/gzw_stronger_trial.conf` for assessment. Do not edit/switch
-`gzw.conf` without an explicit user request.
+Read before changing these paths:
+`research/2026-10-25_slow_key_precision.md`,
+`research/2026-10-25_highway_resolution.md`,
+`research/2026-10-25_percentile_initialization.md`,
+`research/2026-10-25_chroma_median_contract.md`.
+For grade changes also read the inverse-luma, zone-confidence and flat-face
+Retinex reports linked from PLAN. Do not undo those fixes or repeat completed
+capture conversion, stage attribution or fixed-pair shadow-history audits.
 
 Next work
-1. Review palette/print preference with the linked source/previous/current/repeat
-   crops. Preserve current cooler shadow tuning while preference is unresolved.
-2. Assess the remaining blue-sky tradeoff: median L improves 58.61 to 61.92 toward
-   source 67.45, but selected group separation decreases 9.61 to 6.94 L against
-   source 9.71. Overcast greens retain a roughly +10-degree hue shift under the
-   current profile. Do not assume either tradeoff is universally acceptable.
-3. Broaden game inputs and denser motion/cut coverage using the same candidate
-   logic. Current GZW/Arc profile differences are disclosed, not a unified preset.
-   Smaller coarse-zone interior gradients and general inverse-model assumptions
-   remain open. Calibrate automatic restraint only for demonstrated needs.
+1. Audit remaining history precision, initialization and live consumers,
+   including per-band chroma analysis. Prove each issue; do not widen every
+   texture or change rates because one history needed repair.
+2. Verify units, numerical stability, bypasses, endpoints and stage cooperation.
+   Attribute coarse-zone gradients, sky shade-separation loss and green hue shifts
+   technically, without preference-driven retuning.
+3. Broaden games, denser motion/cuts, variable timing and actual high-refresh
+   coverage. Simulated cadence is not physical 144 Hz acceptance.
 
-Evidence and runtime protocol
-Latest artifacts are under ignored `captures/inverse_luma_units_20261025/`,
-`captures/stage_review_20261025/`, `captures/zone_field_attribution_20261025/`,
-and `captures/flat_face_attribution_20261025/`. The retained full source cache is
-`captures/babylon_scene_runs/20261024_160908/motion-source/`. Versioned reports
-contain measurements and protocol; images/scripts/configs remain local/ignored.
-Do not repeat completed capture conversion, stage attribution or fixed-pair
-shadow-history audits. Earlier evidence:
-`research/2026-10-24_background_motion_resume.md`,
-`research/2026-10-24_shadow_history_readback.md`, and
-`research/2026-10-24_retinex_edge_halo.md`.
+Integration constraint
+Active GZW/Arc configs still use four separate effects without shared explicit
+analysis resources. Use `gamespecific/gzw/gzw_stronger_trial.conf` or
+`gamespecific/arc_raiders/arc_raiders_pipeline_trial.conf` for adaptive assessment.
+Do not edit/switch `gzw.conf` without an explicit user request. Combined-trial
+checks do not certify the broken active data path. The dated 75/100 estimate
+is provisional, not accepted achievement or a fidelity percentage.
 
-Use fresh private headless processes, exact source identities, unchanged repeats
-and 20-second settling for small effects. GPU/localhost tests need sandbox
-escalation; never fall back to a desktop window or take focus. Cache reuse must
-verify protocol. The cached motion is 15 poses/sec duplicated at 30 fps, with
-20-second initial pre-roll; sparse matches do not prove dense continuity.
-The fixed dark/sunset return tail is isolated to intentional slow key, not local
-zone lag; do not blindly speed it up. Screenshots contain no highway telemetry.
+Runtime protocol
+All tests are private and headless, with no desktop fallback, focus change or
+monitor change. GPU/localhost access needs appropriate sandbox escalation.
+Use fresh processes, exact source identities, source/profile/config hashes,
+unchanged repeats and 20-second continuous settling for small effects. Warmup
+alone does not prove convergence. Ordinary screenshots have no highway telemetry;
+use explicit diagnostic output. Mask markers, labels and diagnostic strips.
 
-Preserve working-tree changes, profiles, shader headers and prior fixes. Keep
-creative_values.fx as the only user-facing tuning surface. SDR output stays in
-[0,1], with no auto-exposure or HDR output. Preserve source palette/lighting;
-richness is not increased saturation, darkness or hue coverage. New effects,
-golden-image testing and GPU cost profiling remain deferred. Do not block on
-new recordings. Keep HANDOFF below 60 lines. Use startup-prompt-latest as the
-sole startup prompt; do not recreate dated startup copies.
+Motion cache: `captures/babylon_scene_runs/20261024_160908/motion-source/`.
+Verify its manifest/hashes and 15-pose/sec, duplicate-30-fps, 20-second-pre-roll
+protocol. It is not dense native gameplay. Latest local artifacts:
+`captures/{slow_key_precision,highway_resolution,percentile_initialization,chroma_median}_20261025/`.
+Reports are versioned; ignored scripts/media stay local. Keep HANDOFF below
+60 lines. New effects, golden-image testing and GPU profiling remain deferred.
+Do not block independent work on new recordings or personal taste decisions.

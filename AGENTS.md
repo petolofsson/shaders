@@ -13,6 +13,8 @@ Richness is not a saturation, darkness or hue-coverage target. Existing profiles
 remain intact during assessment; no auto-exposure or HDR output is introduced.
 Use [PLAN.md](PLAN.md) for current priorities, [HANDOFF.md](HANDOFF.md) for state,
 and [startup-prompt-latest](startup-prompt-latest) as the sole startup prompt.
+Current work prioritizes technical correctness and robust intended behavior;
+personal palette/print preference is not a blocker. Preserve existing profiles.
 All runtime testing must remain private and headless; no desktop fallback.
 
 ## Active Chain
@@ -106,11 +108,19 @@ Encode/decode out-of-range quantities at the slot boundary.
 - Percentile and entropy reads normalize the temporally smoothed histogram;
   its total mass can be below one during startup.
 - Scene cuts use p50 delta plus raw histogram entropy delta.
+- Median chroma includes all 576 samples; hue-centroid filtering stays restricted
+  to colored samples. Percentile covariance initializes only from nonpositive
+  state, avoiding false cold starts on legitimate small variance.
+- Metadata UVs use integer texture dimensions; non-divisible widths must not
+  blend adjacent fields.
+- `ChromaHistoryTex` is RGBA32F. Slow key reads its authoritative history directly;
+  published highways remain RGBA16F/R16F. Its 20-second/67-ms half-lives are
+  unchanged. Other history precision/consumer audits remain open.
 - Guided-filter epsilon is local-variance adaptive.
 - Zone statistics use 64 squared-edge bins decoded to linear light for near-black precision.
 - Local contrast's negative arm uses a luminance-relative smooth bound to preserve shadows.
-- Arc Raiders and GZW share shader code; current profiles still need visual
-  recalibration after the color-space and reconstruction fixes.
+- Arc Raiders and GZW share shader code; existing profiles remain assessment
+  inputs, not a unified preset. Technical audits do not require taste tuning.
 - `RETINEX_STRENGTH`, `ZONE_CONTRAST_STRENGTH`, and `SHADOW_LIFT_STRENGTH` are
   independent diagnostic gates; each zero value is a visual bypass.
 - Shadow lift uses the histogram p10 shadow floor as an adaptive black-level guard.
@@ -136,8 +146,8 @@ Encode/decode out-of-range quantities at the slot boundary.
 - Matched headless Babylon motion is validated with sparse frame identities;
   15 source poses/sec duplicated at 30 fps does not prove dense continuity.
 - Explicit diagnostic GPU readback isolates the measured dark-return tail to slow
-  key rather than local-zone lag. Its intentional adaptation rate is unchanged.
-- Diffusion and grain are removed; the 2x2 activity marker remains in `ColorTransformPS`.
+  key rather than local-zone lag. The later precision repair preserves its
+  time constants; old capture timing is historical evidence.
 - Golden-image regression testing has been removed; use matched captures and effect attribution instead.
 - The configured four-effect chain leaves grade's cross-effect highway and zone
   reads at zero in vkBasalt. `gzw_stronger_trial.conf` tests a combined technique;
@@ -157,3 +167,7 @@ not prove full temporal convergence. Private GPU/localhost tests require sandbox
 escalation. Diagnostic techniques may explicitly render offscreen history for
 readback; ordinary screenshot captures contain no such telemetry.
 Screenshot captures contain no highway telemetry; `capture --dump` is unsupported.
+
+Current next work and technical evidence are indexed in [PLAN.md](PLAN.md).
+The older combined-chain 75/100 estimate remains provisional and has not been
+re-scored after these audits. It is not acceptance of the active separate chain.

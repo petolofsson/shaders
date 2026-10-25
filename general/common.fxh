@@ -57,7 +57,7 @@ float ZoneLuma(float2 uv)
 // Read data row pixel. dr = row offset from spatial lane base (0..TEX_HWY_ROWS-1).
 float4 ReadTexHwyData(int dr, int col)
 {
-    float u = (float(col) + 0.5) * (8.0 / float(BUFFER_WIDTH));
+    float u = (float(col) + 0.5) / float(BUFFER_WIDTH / 8);
     float v = (float(TEX_HWY_SPATIAL_H + dr) + 0.5) / float(TEX_HWY_TOTAL_H);
     return tex2Dlod(TexHwySamp, float4(u, v, 0, 0));
 }

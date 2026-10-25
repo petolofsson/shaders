@@ -78,7 +78,7 @@ sampler2D ZoneHistorySamp
     MagFilter = LINEAR;
 };
 
-texture2D ChromaHistoryTex { Width = 8; Height = 4; Format = RGBA16F; MipLevels = 1; };
+texture2D ChromaHistoryTex { Width = 8; Height = 4; Format = RGBA32F; MipLevels = 1; };
 sampler2D ChromaHistory
 {
     Texture   = ChromaHistoryTex;
@@ -233,7 +233,7 @@ float4 ComputeZoneStats()
 float4 ComputeSlowKey()
 {
     float zone_log_key = ComputeZoneStats().r;
-    float prev_slow    = ReadTexHwyChroma(0, 7).r;  // ChromaHistory row 0 col 7, previous frame
+    float prev_slow    = tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
     prev_slow = lerp(zone_log_key, prev_slow, step(0.001, prev_slow));
     // R200: dual-rate EMA — slow cortical T_half=20s (K=0.0000346), fast scene-cut T_half=67ms (K=0.01034).
     // Rinner & Gegenfurtner 2000; Ji et al. 2023. Framerate-independent via FRAME_TIME.

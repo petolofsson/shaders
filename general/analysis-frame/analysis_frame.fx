@@ -348,7 +348,7 @@ float4 CDFWalkPS(float4 pos : SV_Position,
 
     // R34+R39: VFF Kalman on percentile outputs — P in .a (replaces IQR sentinel)
     float4 prev    = tex2D(PercSamp, float2(0.5, 0.5));
-    float  P       = (prev.a < 0.001) ? 1.0 : prev.a;
+    float  P       = (prev.a <= 0.0) ? 1.0 : prev.a;
     float  e_p50   = p50 - prev.g;
     float  Q_vff_p = lerp(KALMAN_Q_PERC_MIN, KALMAN_Q_PERC_MAX, smoothstep(0.0, VFF_E_SIGMA_PERC, abs(e_p50)));
     float  P_pred  = P + Q_vff_p;
@@ -449,7 +449,7 @@ float4 MeanChromaPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
             float  C    = length(lab.yz);
             float  in_b = step(0.05, C);
             int    bin  = clamp(int(C / CHROMA_C_MAX * CHROMA_BINS), 0, CHROMA_BINS - 1);
-            hist[bin]  += in_b;
+            hist[bin]  += 1.0;
             sum_a      += lab.y * in_b;
             sum_b      += lab.z * in_b;
             count      += in_b;
@@ -457,10 +457,10 @@ float4 MeanChromaPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
         }
     }
 
-    float median_C    = ComputeMedianC(hist, count);
+    float median_C    = ComputeMedianC(hist, float(DS_W * DS_H));
     float valid       = step(0.5, count);
     float inv_count   = 1.0 / max(count, 1.0);
-    float out_C       = lerp(0.10, median_C, valid);
+    float out_C       = median_C;
     float mean_a      = lerp(0.0,  sum_a * inv_count, valid);
     float mean_b      = lerp(0.0,  sum_b * inv_count, valid);
     float achrom_frac = achrom_count / float(DS_W * DS_H);
