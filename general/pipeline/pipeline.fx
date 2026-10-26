@@ -21,6 +21,12 @@
 
 technique ShaderPipeline
 {
+    pass NativeGuideSource
+    {
+        VertexShader = PostProcessVS;
+        PixelShader = NativeGuideLogPS;
+        RenderTarget = NativeGuideLogTex;
+    }
     pass AnalysisSpatial
     {
         VertexShader = PostProcessVS;

@@ -31,13 +31,19 @@ unavailable. Assessment uses the combined technique in
 `gamespecific/arc_raiders/arc_raiders_pipeline_trial.conf`. Active configs have
 not been switched; changing `gzw.conf` requires an explicit request.
 
-Recent verified fixes cover the all-pixel chroma median, percentile history
-initialization, metadata coordinates at non-divisible widths, and slow-key
-feedback precision. The latest [slow-key report](research/2026-10-25_slow_key_precision.md)
-includes analytic GPU probes, explicit real-chain readback and matched captures.
-These checks do not establish universal cross-game acceptance or dense gameplay
-continuity. The older 75/100 combined-chain estimate remains provisional and
-has not been re-scored after these technical audits.
+Completed audits cover live history precision, numerical contracts and metadata
+addressing. The latest [zone repair](research/2026-10-26_zone_scene_pivot.md)
+removes coarse pivot gradients, and the [Retinex repair](research/2026-10-26_retinex_sky.md)
+restores measured sky separation while retaining tested rim and lighting behavior.
+[Motion phase alignment](research/2026-10-26_return_cut_alignment.md) distinguishes
+GPU updates of duplicated source poses; temporal repeat claims require measured
+phase identity. Profiles remain unchanged.
+
+Next are broader hue/gamut and lighting-boundary checks, denser motion/cuts,
+variable timing and cross-game coverage. Active-chain integration remains open.
+These checks do not establish universal acceptance or dense gameplay continuity.
+The older 75/100 combined-chain estimate remains provisional and has not been
+re-scored after these technical audits. See [PLAN.md](PLAN.md) for evidence and order.
 
 ## Validation
 
@@ -45,7 +51,7 @@ has not been re-scored after these technical audits.
 python3 -B -m unittest discover -s tests -p 'test_diagnostics.py'
 ```
 
-Twenty diagnostic tests pass. They validate tooling, not complete shader
+Twenty-two diagnostic tests pass. They validate tooling, not complete shader
 correctness. Runtime work uses fresh private headless processes, matched sources,
 unchanged repeats and explicit GPU readback when needed. Never use a desktop
 fallback. Small-effect captures use 20 seconds of continuous settling; that

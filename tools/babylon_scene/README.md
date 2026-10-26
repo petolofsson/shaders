@@ -12,7 +12,8 @@ It opens no desktop window and never falls back to desktop capture. Raw source
 poses carry a complementary frame/token/checksum label. Motion export caches
 PNG poses and a lossless RGB FFV1 clip, then replays that same clip in three
 fresh private mpv processes: baseline, GZW combined trial, and unchanged trial
-repeat. Pixel comparisons require identical decoded source identities.
+repeat. Source comparisons require identical decoded source identities;
+temporal repeats additionally need aligned presentation/history-update phase.
 
 ```bash
 # Held source repeat and graded repeat; one second is only a plumbing check.
@@ -32,6 +33,10 @@ Retained images, manifests, events and logs go to ignored
 
 Frame indices describe a 60 Hz route, sampled at `--source-fps` (default 15).
 Replay duplicates those poses at 30 fps; this is not native 60 fps evidence.
+The two presentations share a pose/token label. At cuts they can have different
+scene/history state and output. Host playback time does not identify the GPU
+update captured by the compositor. See the
+[return-cut readback](../../research/2026-10-26_return_cut_alignment.md).
 
 | Route frames | Scene |
 |---|---|
@@ -51,6 +56,14 @@ Twenty seconds of pre-roll warms up the initial scene without proving full
 temporal convergence; later scenes deliberately
 retain cut history. Held tests use two fresh raw browser sources with an exact
 scene hash repeat, followed by two fresh graded replays.
+
+Ordinary summaries explicitly report `identity_scope=source_pose_and_token`.
+They count `render_phase_verified_frames` separately; ordinary screenshots
+provide no hidden phase data. Diagnostic callers with GPU-decoded integer
+`render_phase` fields (`source_update`, `cut_update`) can require strict matching
+using `matched_motion` or `summarize_motion(..., require_render_phase=True)`.
+This rejects different updates of the same pose and cannot be satisfied by
+supplying only mpv timestamps. The ordinary CLI remains a source-pose comparison.
 
 Requirements: Firefox WebGPU, Gamescope with headless backend, gamescopectl,
 vkBasalt, mpv, ffmpeg, and Python NumPy/Pillow/OpenEXR. Firefox uses a temporary

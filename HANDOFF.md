@@ -1,12 +1,11 @@
-# Handoff — 2026-10-25
+# Handoff — 2026-10-26
 
 Start with [startup-prompt-latest](startup-prompt-latest), [AGENTS.md](AGENTS.md),
 [GOAL.md](GOAL.md) and [PLAN.md](PLAN.md). Keep this handoff below 60 lines.
 
 ## Current mandate
 
-Prioritize technical correctness, reliable intended behavior and robust signals.
-Personal palette preference is not a blocker. Preserve profiles, shader headers,
+Prioritize technical correctness; palette taste is not a blocker. Preserve profiles, shader headers,
 prior fixes and SDR output; no auto-exposure or HDR output. `creative_values.fx`
 is the only user-facing tuning surface and profile source of truth.
 
@@ -36,17 +35,18 @@ the 2x2 red activity marker is intentional.
 
 ## Current work order
 
-User-requested PLAN 1 then 2 are complete for the current audit.
-[Signal contracts](research/2026-10-25_signal_contracts.md) repairs raw histogram
-count loss, unstable zone moments and numerical SDR-face contraction. GPU helper
-and two-profile 768-patch complete bypass pass; held repeats are identical.
-Zone correction retains quantified one-code shadow costs. No profile retuning.
-Next: PLAN 3 spatial/color attribution; broader motion/game coverage follows.
-Do not repeat completed probes or fixed-pair audits; preserve prior corrections.
+PLAN 1/2 audits are complete; preserve the signal/history repairs and their costs.
+[Zone follow-up](research/2026-10-26_zone_scene_pivot.md) retains its bounded curve.
+[Cut alignment](research/2026-10-26_return_cut_alignment.md) resolves the 1.588 ΔE
+outlier: it mixed GPU updates 1/2. Same-phase repeats stay within 0.000426 ΔE.
+Strict temporal matching now requires measured phase ages; 22 tooling tests pass.
+[Retinex sky repair](research/2026-10-26_retinex_sky.md) is applied; six held repeats,
+GPU probes, 14 phase-matched samples and five final checks pass. Next: PLAN 3's
+broader hue/gamut, dark-material, colored-highlight and lighting-boundary checks.
 
 ## Validation and limits
 
-Twenty diagnostic tests pass; they validate tooling, not full shader acceptance.
+Twenty-two tooling tests pass; full shader acceptance remains open.
 Use private headless fresh processes, exact identities, unchanged repeats and
 20-second continuous settling for small effects. GPU/localhost access needs
 appropriate sandbox escalation. Never use a desktop fallback or take focus.
@@ -54,6 +54,6 @@ Ordinary screenshots contain no highway telemetry; explicit output is needed.
 Motion cache: `captures/babylon_scene_runs/20261024_160908/motion-source/`.
 It is 15 poses/sec duplicated at 30 fps, not dense native gameplay.
 Reports are versioned in `research/`; `captures/` scripts/media are local and ignored.
-Physical 144 Hz, dense continuity and cross-game acceptance remain unproven.
-The dated 75/100 combined-chain estimate is provisional and has not been re-scored.
+Physical 144 Hz, dense continuity and cross-game acceptance remain unproven;
+the dated 75/100 estimate is provisional and has not been re-scored.
 New effects, golden-image testing and GPU cost profiling remain deferred.

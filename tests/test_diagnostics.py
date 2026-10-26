@@ -100,6 +100,32 @@ class MotionIdentityTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "protocol differs"):
                 motion.load_motion(Path(tmp), SimpleNamespace(settle=20, source_fps=15, stop_frame=2220))
 
+    def test_temporal_pairing_rejects_another_update_of_the_same_pose(self):
+        frames = [420, 1080, 1420, 1452, 1620, 2140, 2172]
+        runs = {label: {"captures": {
+            f"{frame}:1": {"frame": frame, "image": str(frame),
+                             "render_phase": {"source_update": 1, "cut_update": 1}}
+            for frame in frames}} for label in ("baseline", "trial", "repeat")}
+        with patch.object(motion, "compare_images", return_value={"mean_de": 0}):
+            summary = motion.summarize_motion(runs, 2220, require_render_phase=True)
+            self.assertEqual(summary["render_phase_verified_frames"], 7)
+            runs["repeat"]["captures"]["2172:1"]["render_phase"] = {
+                "source_update": 2, "cut_update": 2}
+            with self.assertRaisesRegex(RuntimeError, "after_return_cut"):
+                motion.summarize_motion(runs, 2220, require_render_phase=True)
+            coarse = motion.summarize_motion(runs, 2220)
+            self.assertEqual(coarse["matched_frames"], 7)
+            self.assertEqual(coarse["render_phase_verified_frames"], 6)
+            self.assertIsNone(coarse["pairs"][-1]["render_phase"])
+
+    def test_source_identity_and_host_time_do_not_supply_render_phase(self):
+        capture = {"frame": 0, "image": "pose", "video_time_before": 20.0,
+                   "video_time_after": 20.1}
+        runs = {label: {"captures": {"0:1": dict(capture)}}
+                for label in ("baseline", "trial", "repeat")}
+        with self.assertRaisesRegex(RuntimeError, "measured render-phase"):
+            motion.matched_motion(runs, 48, require_render_phase=True)
+
 
 class CaptureTests(unittest.TestCase):
     def test_private_cleanup_handles_a_compositor_that_already_exited(self):

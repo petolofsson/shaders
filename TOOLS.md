@@ -11,7 +11,7 @@ rather than assuming local shell aliases.
 python3 -B -m unittest discover -s tests -p 'test_diagnostics.py'
 ```
 
-Twenty tests currently pass. They check tooling/error handling; GPU shader
+Twenty-two tests currently pass. They check tooling/error handling; GPU shader
 contracts need runtime evidence. There is no golden-image suite.
 
 ## Matched captures and effect attribution
@@ -63,6 +63,16 @@ lossless replay and exact source matching. Cache:
 `captures/babylon_scene_runs/20261024_160908/motion-source/`. Verify its manifest,
 clip hashes, 20-second pre-roll and 15-pose/sec protocol before reuse. Duplicate
 30 fps playback and sparse matches do not establish dense continuity.
+
+Pose/token equality does not identify which duplicated presentation or GPU
+history update was captured at a cut. Ordinary motion summaries label their
+`identity_scope` as `source_pose_and_token`; they are not phase-aligned temporal
+repeat evidence. With explicit GPU readback, supply each capture's integer
+`render_phase = {"source_update": ..., "cut_update": ...}` and call
+`matched_motion` / `summarize_motion` with `require_render_phase=True`.
+Strict mode rejects missing or mismatched phases and still requires window
+coverage. Never infer these ages from host mpv time. The
+[return-cut audit](research/2026-10-26_return_cut_alignment.md) demonstrates why.
 
 ## GPU readback and measurements
 

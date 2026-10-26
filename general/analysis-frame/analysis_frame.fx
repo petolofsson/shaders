@@ -132,6 +132,8 @@ sampler2D EntropySamp
     MagFilter = POINT;
 };
 
+#include "../native_guide.fxh"
+
 // ─── Pass 1 — TexHwyWrite (spatial lane) ───────────────────────────────────
 // Writes pre-correction scene RGB+Luma into TexHwyTex spatial lane (rows 0..BUFFER_HEIGHT/8-1).
 // 4-tap box filter at ±1.5 px offsets — same kernel as former ComputeLowFreqPS.
@@ -548,6 +550,12 @@ float4 CDFWalkModePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
 #ifndef SHADER_PIPELINE_COMBINED
 technique FrameAnalysis
 {
+    pass NativeGuideSource
+    {
+        VertexShader = PostProcessVS;
+        PixelShader = NativeGuideLogPS;
+        RenderTarget = NativeGuideLogTex;
+    }
     pass TexHwyWriteSpatial
     {
         VertexShader = PostProcessVS;

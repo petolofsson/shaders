@@ -76,6 +76,8 @@ sampler2D BackBuffer
 };
 #endif
 
+#include "../native_guide.fxh"
+
 // Scene percentiles read from TexHwyTex via ReadTexHwyPerc() (common.fxh).
 
 // Zone medians (from corrective.fx SmoothZoneLevels)
@@ -494,15 +496,17 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     float nl_safe   = max(luma, 0.001);
     float log_R     = log2(nl_safe / illum_s0);
     float zk_safe   = max(ctx.zone_log_key, 0.001);
-    // Retinex uses a bounded log-domain correction. The old raw ratio could
-    // overreact when the blurred illuminant approached zero or diverged from
-    // the global zone key.
-    // Reconstruct the existing guided model at native input luma. Sampling its
-    // low-resolution base across material boundaries still paints bright rims.
+    // Evaluate the guided fit in its original source domain, before inverse/CC.
+    // Retain only its unresolved residual: a self-model stays exact, while
+    // coarse coefficient errors cannot paint rims into native flat materials.
     float4 guided_model = tex2D(BilateralLogSamp, uv);
-    float guided_illum_log = guided_model.g * log2(max(col_luma, 0.001)) + guided_model.b;
-    float illum_delta = clamp(log2(zk_safe) - guided_illum_log, -0.35, 0.35);
-    float illum_gain  = exp2(illum_delta);
+    float native_guide_log = tex2D(NativeGuideLogSamp, uv).r;
+    float guide_residual = guided_model.g * native_guide_log + guided_model.b - native_guide_log;
+    float guided_illum_log = native_guide_log + (1.0 - guided_model.g) * guide_residual;
+    // Normalize the signed key difference by their sum to restrain broad-field
+    // compression, preserving unity at the key and the existing stop bounds.
+    float guided_illum = exp2(guided_illum_log);
+    float illum_gain = clamp(2.0 * zk_safe / (zk_safe + guided_illum), exp2(-0.35), exp2(0.35));
     // Coarse-edge strength fading outlines otherwise uniform materials.
     // Use its existing minimum confidence budget uniformly; scene statistics
     // still set the slope and shadow-toe bounds.
@@ -514,16 +518,17 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
                             * saturate(float(RETINEX_STRENGTH));
     luma = lerp(luma, max(luma * illum_gain, 0.0), retinex_strength);
 
-    float4 zone_lvl   = tex2Dlod(ZoneHistorySamp, float4(uv, 0, 0));
-    float zone_median = zone_lvl.r;
-    float zone_iqr    = zone_lvl.b - zone_lvl.g;
+    // A scene-wide pivot avoids painting coarse-zone gradients into flat materials.
+    // Both signals retain their existing live analysis and temporal histories.
+    float zone_median = ctx.zone_log_key;
+    float zone_iqr = max(ctx.perc.b - ctx.perc.r, 0.0);
     // R33: CLAHE-inspired clip limit — bounds S-curve slope; tightens when Retinex is engaged
     float clahe_slope = 1.0 + (lerp(1.32, 1.12, ctx.ss_04_25) - 1.0)
                             * max(float(CONTRAST), 0.0);
     float iqr_scale   = min(smoothstep(0.0, 0.25, zone_iqr),
                             (clahe_slope - 1.0) / max(ctx.zone_str, 0.001));
     float delta    = luma_orig - zone_median;   // original position — DEHAZE lift does not inflate delta
-    // Signed zone contrast: expand around the local median instead of lifting
+    // Signed zone contrast: expand around the scene key instead of lifting
     // only the upper side, which flattened bright cloud texture into white.
     float zone_highlight_protect = 1.0 - smoothstep(0.55, 0.85, luma_orig);
     float below_pivot = 1.0 - smoothstep(-0.02, 0.02, delta);
@@ -532,11 +537,11 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
                    * zone_highlight_protect * shadow_arm
                    * 0.65
                    * saturate(float(ZONE_CONTRAST_STRENGTH));
-    // A subtractive shadow arm can flatten positive inputs against zero.
-    // Bound its loss relative to available luma, retaining a smooth toe and
-    // the positive arm while preserving exact black and a zero-strength bypass.
+    // Normalize shadow debt by luma plus the pivot to retain a linear black tail.
+    // Debt is bounded by the existing strength times the pivot, so relative gain
+    // stays finite. Exact black, the positive arm and a zero-strength bypass remain.
     float shadow_loss = max(-zone_adj, 0.0);
-    float new_luma = luma / (1.0 + shadow_loss / max(luma, 1e-10))
+    float new_luma = luma / (1.0 + shadow_loss / max(luma + zone_median, 1e-10))
                    + max(zone_adj, 0.0);
 
     float detail_protect  = smoothstep(-4.0, -0.5, log_R);

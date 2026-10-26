@@ -252,10 +252,32 @@ def replay_motion(label, manifest, out):
             pipeline._stop_mpv(process)
 
 
-def matched_motion(runs, route_end):
+def _matching_render_phase(runs, identity):
+    """Require explicit GPU-update ages; pose labels and mpv time are insufficient."""
+    phases = []
+    for label in ("baseline", "trial", "repeat"):
+        phase = runs[label]["captures"][identity].get("render_phase")
+        if not isinstance(phase, dict):
+            return None
+        source_update, cut_update = phase.get("source_update"), phase.get("cut_update")
+        if (type(source_update) is not int or source_update < 1 or
+                type(cut_update) is not int or cut_update < 0):
+            return None
+        phases.append((source_update, cut_update))
+    if len(set(phases)) != 1:
+        return None
+    return {"source_update": phases[0][0], "cut_update": phases[0][1]}
+
+
+def matched_motion(runs, route_end, require_render_phase=False):
+    """Intersect source poses, optionally requiring equal measured GPU phases."""
     matched = sorted(set(runs["baseline"]["captures"]) & set(runs["trial"]["captures"]) &
                      set(runs["repeat"]["captures"]), key=lambda key: tuple(map(int, key.split(":"))))
+    if require_render_phase:
+        matched = [key for key in matched if _matching_render_phase(runs, key) is not None]
     if not matched:
+        if require_render_phase:
+            raise RuntimeError("No matching measured render-phase identities across baseline/trial/repeat")
         raise RuntimeError("No matching source identities across baseline/trial/repeat; no pixel conclusions are valid")
     coverage = {name: [key for key in matched if lo <= int(key.split(":")[0]) <= hi]
                 for name, lo, hi in motion_windows(route_end)}
@@ -265,8 +287,9 @@ def matched_motion(runs, route_end):
     return matched, coverage
 
 
-def summarize_motion(runs, route_end):
-    matched, coverage = matched_motion(runs, route_end)
+def summarize_motion(runs, route_end, require_render_phase=False):
+    """Report source comparisons without implying unmeasured temporal alignment."""
+    matched, coverage = matched_motion(runs, route_end, require_render_phase=require_render_phase)
     pairs = []
     for key in matched:
         baseline = runs["baseline"]["captures"][key]
@@ -275,9 +298,13 @@ def summarize_motion(runs, route_end):
         delta = compare_images(baseline["image"], trial["image"])
         variation = compare_images(trial["image"], repeat["image"])
         pairs.append({"identity": key, "frame": trial["frame"], "source_to_trial": delta,
+                      "render_phase": _matching_render_phase(runs, key),
                       "trial_repeat": variation, "images": {
                           "baseline": baseline["image"], "trial": trial["image"], "repeat": repeat["image"]}})
     return {"coverage": coverage, "matched_frames": len(pairs), "pairs": pairs, "analysis_stride": 4,
+            "identity_scope": "source_pose_token_and_render_phase" if require_render_phase else "source_pose_and_token",
+            "render_phase_required": require_render_phase,
+            "render_phase_verified_frames": sum(pair["render_phase"] is not None for pair in pairs),
             "analysis_border_crop": 8, "mean_trial_repeat_de": float(np.mean([
                 pair["trial_repeat"]["mean_de"] for pair in pairs])),
             "unmatched_frames_excluded": {label: len(run["captures"]) - len(matched)

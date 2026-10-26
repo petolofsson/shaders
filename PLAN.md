@@ -29,14 +29,31 @@ and fix demonstrated issues individually, with evidence and unchanged repeats.
    gamut-face misclassification. GPU helper and complete-bypass probes pass;
    matched scene/motion evidence records one-code shadow costs. Existing stage
    gate semantics remain. Broader model/spatial acceptance stays under 3–5.
-3. **Spatial and color behavior — next.** Attribute remaining coarse-zone interior
-   gradients, blue-sky shade-separation loss and overcast-green hue shifts.
-   Check hue/gamut continuity, colored highlights, dark materials and illumination
-   boundaries. Address technical artifacts without preference-driven retuning.
+3. **Spatial and color behavior — active.** The [current-code attribution](research/2026-10-26_spatial_color_attribution.md)
+   isolates coarse-zone gradients to the interpolated median field and blue-sky
+   separation loss chiefly to Retinex. Overcast-green hue displacement chiefly
+   follows the profile's three-way color correction. Twenty-five private held
+   captures pass provenance checks; three full/repeat pairs are byte-identical.
+   The [bounded scene-adaptive zone curve](research/2026-10-26_zone_scene_pivot.md)
+   now removes interpolated pivot gradients without the rejected candidates'
+   shadow costs. GPU curves, six held scenes and matched motion support that
+   scoped repair; local separation/halo costs remain recorded. The
+   [Retinex sky repair](research/2026-10-26_retinex_sky.md) corrects the native-guide
+   signal domain, conditions its residual and restrains broad-field gain. Sky
+   separation recovers without restoring measured rims or flattening selected
+   lighting gaps. Six held repeats, GPU probes and 14 measured-phase motion
+   samples support this scoped completion. Profiles remain unchanged. Broaden
+   hue/gamut continuity, colored highlights, dark materials and illumination
+   boundaries without preference-driven retuning.
 4. **Temporal and resolution coverage.** Broaden dense gameplay motion, cuts,
    variable timing and physical high-refresh checks. Simulated 30/60/144 update
    rates are not physical 144 Hz validation. Metadata addressing is fixed;
-   other filter-kernel spacing still needs assessment where relevant.
+   other filter-kernel spacing still needs assessment where relevant. The
+   [return-cut alignment audit](research/2026-10-26_return_cut_alignment.md)
+   resolves pose 2160's apparent 1.588 ΔE repeat difference as mixed GPU-update
+   phases; matched phases repeat within 0.000426. Require measured phase alignment
+   for temporal repeat claims. The actual Retinex cut handoff and broader cut
+   acceptance remain distinct from that resolved measurement uncertainty.
 5. **Cross-game robustness.** Use the same candidate logic on more dark, bright,
    vivid, muted and already-balanced inputs. Disclose profile differences; do not
    optimize each test frame separately or block on new recordings.
@@ -49,6 +66,10 @@ and fix demonstrated issues individually, with evidence and unchanged repeats.
 
 | Correction | Evidence and scope |
 |---|---|
+| Retinex sky/guide domain | [Report](research/2026-10-26_retinex_sky.md): original-source R32F observation, conditioned native residual and bounded sum-normalized gain. Sky gap 7.376501→9.646211 (source 9.708699), no restored measured held rims or added clipping. Six held repeats, two GPU probes, 14 phase-matched motion samples and five shared/active-path checks. Dense continuity and existing cut handoff remain open. |
+| Return-cut phase alignment | [Report](research/2026-10-26_return_cut_alignment.md): same pose had two GPU-update phases; direct frozen outputs/state reproduce 1.588 ΔE between phases, with 0.000426 maximum same-phase repeat. Strict motion matching rejects absent/conflicting measured phases; no production shader retuning. |
+| Zone field and black tail | [Report](research/2026-10-26_zone_scene_pivot.md): scene-adaptive pivot/span, bounded relative shadow debt; actual GPU curves, held scenes and exact motion matches. Prior rims remain removed; tonal costs and first-return cut uncertainty are explicit. |
+| Spatial/color attribution | [Report](research/2026-10-26_spatial_color_attribution.md): current-code zone-field and sky/foliage ablations separate spatial model limitations from existing color correction. Shared shaders/profiles remain unchanged; repairs and broader coverage remain open. |
 | Signal/control contracts | [Report](research/2026-10-25_signal_contracts.md): native fixed-population histogram decoding, stable zone moments and SDR-face guard; signed/gamut/film/dither probes and two-profile 768-patch bypass pass. Matched scene/motion checks retain quantified shadow costs. |
 | Remaining histories | [Report](research/2026-10-25_remaining_histories.md): eight independently probed accumulators repaired, max candidate error 0.000002354; one-frame cut storage retained. Eighteen held captures, eight individual reversions, sixteen exact motion matches and four final shared/standalone checks. One-code black costs are recorded. |
 | Scene-chroma precision | [Report](research/2026-10-25_scene_chroma_precision.md): RGBA32F 1x1 authoritative history, unchanged coefficients/publications. Three GPU probes, max candidate error 0.000002159; eighteen held captures and sixteen motion matches. Four motion frames retain a small one-code black cost. |

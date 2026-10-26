@@ -131,6 +131,10 @@ Encode/decode out-of-range quantities at the slot boundary.
 - Guided-filter epsilon is local-variance adaptive.
 - Zone statistics use 64 squared-edge bins decoded to linear light for near-black precision.
 - Local contrast's negative arm uses a luminance-relative smooth bound to preserve shadows.
+- Zone contrast uses a live scene-wide mean zone median and global percentile
+  span, avoiding interpolated pivot gradients. Its shadow debt is normalized
+  by luma plus that pivot, retaining a finite-gain linear black tail. Strength,
+  slope cap, diagnostic gate and history production/rates remain unchanged.
 - Arc Raiders and GZW share shader code; existing profiles remain assessment
   inputs, not a unified preset. Technical audits do not require taste tuning.
 - `RETINEX_STRENGTH`, `ZONE_CONTRAST_STRENGTH`, and `SHADOW_LIFT_STRENGTH` are
@@ -154,11 +158,18 @@ Encode/decode out-of-range quantities at the slot boundary.
 - Retinex retains bounded gain and global confidence without coarse-edge strength
   fading, which produced halos. Zone contrast uses its existing conservative
   0.65 confidence floor uniformly; its coarse-edge fade also produced false rims.
-- Retinex reconstructs its illuminant guide at native input luma from averaged
-  coefficients stored alongside the existing base in `BilateralLogTex` RGBA16F.
-  This reduces flat-face rims; smaller coarse-zone interior gradients remain.
+- Retinex evaluates averaged `BilateralLogTex` coefficients in the original source
+  domain using `NativeGuideLogTex` R32F, captured before inverse corrections.
+  Its unresolved model residual is conditioned by `(1-a)` and its bounded gain
+  uses `2*key/(key+illuminant)`. Sky separation is restored in the measured case
+  without restoring held-face rims; selected lighting gaps remain. See PLAN.
+  Analysis/combined techniques add the source observation first; grade stays eight passes.
 - Matched headless Babylon motion is validated with sparse frame identities;
   15 source poses/sec duplicated at 30 fps does not prove dense continuity.
+  At cuts the duplicated pose/token can refer to different GPU updates. Temporal
+  repeats require measured render-phase alignment; mpv time is not GPU telemetry.
+  Ordinary source-only summaries are labeled as such; strict diagnostic matching
+  rejects missing or conflicting source-update/cut-update ages.
 - Explicit diagnostic GPU readback isolates the measured dark-return tail to slow
   key rather than local-zone lag. The later precision repair preserves its
   time constants; old capture timing is historical evidence.
