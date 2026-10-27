@@ -39,11 +39,20 @@ restores measured sky separation while retaining tested rim and lighting behavio
 GPU updates of duplicated source poses; temporal repeat claims require measured
 phase identity. Profiles remain unchanged.
 
-Next are broader hue/gamut and lighting-boundary checks, denser motion/cuts,
-variable timing and cross-game coverage. Active-chain integration remains open.
-These checks do not establish universal acceptance or dense gameplay continuity.
-The older 75/100 combined-chain estimate remains provisional and has not been
-re-scored after these technical audits. See [PLAN.md](PLAN.md) for evidence and order.
+The [blue-cusp repair](research/2026-10-27_gamut_continuity_repair.md) removes
+measured disconnected-ray projection jumps while retaining valid-color identity
+and SDR bounds. The [wall/sky attribution](research/2026-10-27_wall_sky_attribution.md)
+and [material/highlight assessment](research/2026-10-27_material_highlight_coverage.md)
+complete current two-game spatial/color coverage: twenty fresh captures supplement
+eight verified prior views; twelve full/repeat pairs are identical. Material/light
+normalization, bright-core compression, foliage hue and blue quantization costs
+remain explicit. Profiles and active configs remain unchanged.
+
+Next are denser motion/cuts, variable timing, relevant resolution checks and
+cross-game coverage. Active-chain integration remains open. These assessments
+do not establish universal acceptance or dense gameplay continuity. The older
+75/100 combined-chain estimate remains provisional and has not been re-scored.
+See [PLAN.md](PLAN.md) for evidence and order.
 
 ## Validation
 

@@ -5,6 +5,14 @@ with game-agnostic automatic restraint. Follow [the current plan](../PLAN.md)
 for assessment. The interactive collection/tuning workflow below remains
 available; unattended runtime validation must use private headless rendering.
 
+Current two-game material/highlight coverage is
+[assessed](../research/2026-10-27_material_highlight_coverage.md), following the
+[shared blue-cusp repair](../research/2026-10-27_gamut_continuity_repair.md).
+Use [TOOLS.md](../TOOLS.md) for the current runtime protocol. Next work is
+motion/cuts, variable timing and relevant resolutions; preserve measured phases
+for temporal repeat claims. Combined-trial results do not certify active-chain
+resource sharing. Existing profiles and active configs remain unchanged.
+
 ---
 
 ## Setup

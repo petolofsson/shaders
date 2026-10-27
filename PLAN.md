@@ -29,7 +29,7 @@ and fix demonstrated issues individually, with evidence and unchanged repeats.
    gamut-face misclassification. GPU helper and complete-bypass probes pass;
    matched scene/motion evidence records one-code shadow costs. Existing stage
    gate semantics remain. Broader model/spatial acceptance stays under 3–5.
-3. **Spatial and color behavior — active.** The [current-code attribution](research/2026-10-26_spatial_color_attribution.md)
+3. **Spatial and color behavior — current two-game coverage assessed.** The [current-code attribution](research/2026-10-26_spatial_color_attribution.md)
    isolates coarse-zone gradients to the interpolated median field and blue-sky
    separation loss chiefly to Retinex. Overcast-green hue displacement chiefly
    follows the profile's three-way color correction. Twenty-five private held
@@ -42,9 +42,32 @@ and fix demonstrated issues individually, with evidence and unchanged repeats.
    signal domain, conditions its residual and restrains broad-field gain. Sky
    separation recovers without restoring measured rims or flattening selected
    lighting gaps. Six held repeats, GPU probes and 14 measured-phase motion
-   samples support this scoped completion. Profiles remain unchanged. Broaden
-   hue/gamut continuity, colored highlights, dark materials and illumination
-   boundaries without preference-driven retuning.
+   samples support this scoped completion. Profiles remain unchanged. Subsequent
+   coverage broadens hue/gamut continuity, highlights, materials and boundaries
+   without preference-driven retuning. The [color-continuity assessment](research/2026-10-26_color_continuity.md)
+   adds two-profile hue/brightness ramps and two additional gameplay views.
+   It exposes a blue-cusp limitation in the radial SDR gamut search: valid
+   colors can occupy disconnected intervals along a fixed-L/hue ray, which
+   invalidates the old bisection assumption. The [blue-cusp repair](research/2026-10-27_gamut_continuity_repair.md)
+   now uses a bounded, lightness-preserving path with localized hue adjustment
+   for out-of-gamut blue. In-gamut identity, the face guard and SDR bounds remain.
+   GPU contracts, eight held repeats and fourteen measured-phase motion matches
+   support this scoped repair. Quantized blue-gradient amplification and extreme
+   out-of-gamut hue/separation costs remain documented. The [wall/sky attribution](research/2026-10-27_wall_sky_attribution.md)
+   now isolates most wall reduction to inverse luma, with secondary Retinex
+   normalization, and most sky reduction to shadow lift. FilmCurve is identity
+   in the selected regions. Explicit GPU stages match the implemented equations;
+   absolute L gaps and relative-Y contrast expose different tradeoffs. No bypass
+   is promoted and no new arithmetic defect is demonstrated. The
+   [material/highlight coverage](research/2026-10-27_material_highlight_coverage.md)
+   completes the bounded follow-up: four fresh views, twenty captures and eight
+   verified prior views assess dark materials, colored lights, daylight controls
+   and illumination boundaries. Four fresh and eight cached full/repeat pairs
+   are identical. Dark structure and highlight color remain, with midtone/light
+   normalization, core compression, foliage hue and blue quantization costs.
+   Profiles remain fixed; no production edits or effectiveness re-score follow.
+   This completes current-set coverage, not universal spatial/color acceptance.
+   Next: temporal/resolution coverage under 4.
 4. **Temporal and resolution coverage.** Broaden dense gameplay motion, cuts,
    variable timing and physical high-refresh checks. Simulated 30/60/144 update
    rates are not physical 144 Hz validation. Metadata addressing is fixed;
@@ -66,6 +89,10 @@ and fix demonstrated issues individually, with evidence and unchanged repeats.
 
 | Correction | Evidence and scope |
 |---|---|
+| Material/highlight coverage | [Report](research/2026-10-27_material_highlight_coverage.md): four fresh views × five variants, eight verified prior views, twelve identical full/repeat pairs; retained nine-color boundaries at two measured phases. Records dark structure, colored highlights, daylight restraint and remaining normalization/core/blue costs. No production edits; current two-game coverage pass complete. |
+| Wall/sky attribution | [Report](research/2026-10-27_wall_sky_attribution.md): eleven ordinary captures and two final 1,326-record GPU traces; identical repeats. Inverse-luma bypass restores wall separation but worsens sky; lift bypass restores sky's absolute gap but overshoots relative contrast. No production edits; broader model selectivity remains open. |
+| Blue-cusp projection | [Report](research/2026-10-27_gamut_continuity_repair.md): localized continuous bounded mapping, unchanged in-gamut identity/face guard; 1,410 GPU records, two-profile ramps, eight held repeats and fourteen measured-phase motion matches. Selected GZW blue step 3.031499→0.112662 ΔE. Finite quantized-gradient and out-of-gamut hue/separation costs remain; no general color acceptance claim. |
+| Color continuity assessment | [Report](research/2026-10-26_color_continuity.md): two-profile ramps and two additional gameplay views; twenty headless captures, four identical image repeats and identical numerical readback. Identifies the disconnected-blue-gamut defect repaired above. Additional yellow-wall/sky separation costs remain for attribution. |
 | Retinex sky/guide domain | [Report](research/2026-10-26_retinex_sky.md): original-source R32F observation, conditioned native residual and bounded sum-normalized gain. Sky gap 7.376501→9.646211 (source 9.708699), no restored measured held rims or added clipping. Six held repeats, two GPU probes, 14 phase-matched motion samples and five shared/active-path checks. Dense continuity and existing cut handoff remain open. |
 | Return-cut phase alignment | [Report](research/2026-10-26_return_cut_alignment.md): same pose had two GPU-update phases; direct frozen outputs/state reproduce 1.588 ΔE between phases, with 0.000426 maximum same-phase repeat. Strict motion matching rejects absent/conflicting measured phases; no production shader retuning. |
 | Zone field and black tail | [Report](research/2026-10-26_zone_scene_pivot.md): scene-adaptive pivot/span, bounded relative shadow debt; actual GPU curves, held scenes and exact motion matches. Prior rims remain removed; tonal costs and first-return cut uncertainty are explicit. |
@@ -115,3 +142,6 @@ chain at 75/100 before these technical audits. This is not accepted target
 achievement, an active-chain rating or a measured fidelity percentage. Correctness
 fixes do not automatically raise effectiveness or novelty. Broader technical
 coverage and overall acceptance remain open; taste review need not block this audit.
+Current-set spatial/color coverage is complete, with material/light normalization,
+bright-core compression, foliage hue shifts and quantized blue-gradient costs
+retained for acceptance. Completing coverage does not declare those costs solved.

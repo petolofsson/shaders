@@ -3,6 +3,31 @@
 Recent implementation changes. Measurements and rejected candidates remain in
 versioned research reports; older implementation history is in git.
 
+## 2026-10-27
+
+- Fixed the [disconnected blue-cusp projection](research/2026-10-27_gamut_continuity_repair.md)
+  in shared `common.fxh`. A bounded lightness-preserving path permits localized
+  hue adjustment for out-of-gamut blue; valid-input identity, existing face
+  tolerance and SDR bounds remain. Both inverse and grade consume the helper.
+  1,410 GPU records, two-profile ramps, eight held repeats, fourteen measured
+  motion phases and four final shared/active controls support the scoped repair.
+  The selected GZW blue step falls 3.031499→0.112662 ΔE; finite quantized-gradient
+  amplification and extreme-blue hue/separation costs remain.
+- Completed [wall/sky attribution](research/2026-10-27_wall_sky_attribution.md):
+  eleven captures and two 1,326-record GPU traces isolate inverse-luma/Retinex
+  wall normalization and broad shadow-lift sky eligibility. Equations match;
+  no global bypass, profile retuning or additional production repair is promoted.
+- Completed [material/highlight coverage](research/2026-10-27_material_highlight_coverage.md)
+  for the current two-game set. Twenty fresh captures over four new views,
+  eight verified prior views and retained two-phase uniform-boundary controls
+  document dark structure, colored highlights, daylight restraint and remaining
+  normalization/core/hue/blue costs. Twelve held full/repeat pairs are identical;
+  all twenty fresh runs report zero dropped/delayed frames. Artifact audit passes.
+- Updated current documentation and the sole `startup-prompt-latest`; next is
+  temporal/resolution coverage. All 22 diagnostic tooling tests pass. Profiles,
+  shader headers and active configs remain. Overall acceptance, additional games
+  and active-chain integration remain open; no effectiveness re-score follows.
+
 ## 2026-10-26
 
 - Fixed [Retinex sky compression](research/2026-10-26_retinex_sky.md): evaluate the

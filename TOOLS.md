@@ -94,6 +94,19 @@ more chromatic. Hue is angular and needs source-material context. Report
 clipping, separation and repeat uncertainty together. GPU profiling remains
 deferred; do not run throughput/performance probes.
 
+## Latest assessment evidence
+
+The [blue-cusp repair](research/2026-10-27_gamut_continuity_repair.md) combines
+explicit GPU contracts, two-profile charts and measured-phase motion checks.
+The [wall/sky report](research/2026-10-27_wall_sky_attribution.md) distinguishes
+image ablations from explicit cumulative-stage readback. The
+[material/highlight report](research/2026-10-27_material_highlight_coverage.md)
+adds twenty fresh captures and revalidates eight prior held views; twelve held
+full/repeat pairs are identical. These are completed evidence, not new golden
+references. Dark/core/normalization/hue/blue costs remain recorded. Next work
+covers motion/cuts, variable timing and relevant resolutions. Retained sparse
+phases do not establish dense continuity or physical high-refresh behavior.
+
 ## Logs and retained artifacts
 
 Every runtime process prints a unique `/tmp/shader-runtime-*/` log directory.

@@ -151,8 +151,43 @@ float3 OklabToRGB(float3 lab)
     );
 }
 
-// Contract chroma toward the neutral axis at fixed lightness/hue. Test both
-// gamut faces; max-channel-only projection misses negative RGB channels.
+// Restore lightness on a nonnegative RGB ray, retaining a strict SDR ceiling.
+float3 SDRRestoreLightness(float3 rgb, float target_L)
+{
+    float observed_L = RGBtoOklabLinear(rgb).x;
+    float ratio = target_L / max(observed_L, 1e-10);
+    float ceiling = 1.0 / max(max(rgb.r, max(rgb.g, rgb.b)), 1e-10);
+    return rgb * min(ratio * ratio * ratio, ceiling);
+}
+
+// The blue cusp is not star-convex in Oklab. A small hue adjustment permits a
+// continuous bounded path where exact fixed-hue contraction has separate islands.
+float3 BlueCuspSDR(float3 lab)
+{
+    float C = length(lab.yz);
+    float bounded_C = min(1.0, 0.70 * lab.x / max(C, 1e-10));
+    float3 positive = max(OklabToRGB(float3(lab.x, lab.yz * bounded_C)), 0.0);
+    float observed_L = RGBtoOklabLinear(positive).x;
+    float ratio = lab.x / max(observed_L, 1e-10);
+    positive *= ratio * ratio * ratio;
+    // At the blue upper face, restore L through green rather than a gray
+    // pedestal, which bent hue ordering. Five bounded Newton steps solve dL/dG.
+    float3 bounded = saturate(positive);
+    [unroll] for (int i = 0; i < 5; i++)
+    {
+        float3 lms = float3(dot(bounded, float3(0.4122214708, 0.5363325363, 0.0514459929)),
+                            dot(bounded, float3(0.2119034982, 0.6806995451, 0.1073969566)),
+                            dot(bounded, float3(0.0883024619, 0.2817188376, 0.6299787005)));
+        float3 roots = exp2(log2(max(lms, 1e-30)) * (1.0 / 3.0));
+        float current_L = dot(roots, float3(0.2104542553, 0.7936177850, -0.0040720468));
+        float derivative = dot(float3(0.112873464520, 0.540215265233, -0.001147172291),
+                               1.0 / max(3.0 * roots * roots, 1e-30));
+        bounded.g = saturate(bounded.g + (lab.x - current_L) / max(derivative, 1e-10));
+    }
+    return SDRRestoreLightness(bounded, lab.x);
+}
+
+// Keep radial fixed-hue projection except around the disconnected blue cusp.
 float3 OklabToSDR(float3 lab)
 {
     lab.x = saturate(lab.x);
@@ -171,7 +206,20 @@ float3 OklabToSDR(float3 lab)
         lower = lerp(lower, mid, inside);
         upper = lerp(mid, upper, inside);
     }
-    return saturate(OklabToRGB(float3(lab.x, lab.yz * lerp(lower, 1.0, valid))));
+    float3 radial = saturate(OklabToRGB(float3(lab.x, lab.yz * lower)));
+    float alignment = dot(lab.yz, float2(-0.1022716975, -0.9947565028))
+                    / max(length(lab.yz), 1e-10);
+    // Full coverage of the measured 264.05–264.21 degree, L<0.471 islands;
+    // cosine-space transitions extend smoothly to +/-6 degrees and L=0.52.
+    float cusp = smoothstep(0.9945218954, 0.9999619231, alignment)
+               * (1.0 - smoothstep(0.48, 0.52, lab.x));
+    float3 blue_lab = RGBtoOklabLinear(BlueCuspSDR(lab));
+    float3 radial_lab = RGBtoOklabLinear(radial);
+    float2 mixed_ab = lerp(radial_lab.yz, blue_lab.yz, cusp);
+    float3 mixed = max(OklabToRGB(float3(lab.x, mixed_ab)), 0.0);
+    float3 restored = SDRRestoreLightness(mixed, lab.x);
+    float3 mapped = lerp(radial, restored, sign(cusp));
+    return saturate(lerp(mapped, original, valid));
 }
 
 float OklabHueNorm(float a, float b)

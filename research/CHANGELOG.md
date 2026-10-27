@@ -5,6 +5,12 @@ Historical session excerpts extracted from HANDOFF.md. Current changes are in
 [GOAL.md](../GOAL.md) and [PLAN.md](../PLAN.md). Historical implementations below
 may have been replaced and do not define the active chain.
 
+Latest continuation: [blue-cusp repair](2026-10-27_gamut_continuity_repair.md),
+[wall/sky attribution](2026-10-27_wall_sky_attribution.md) and
+[material/highlight coverage](2026-10-27_material_highlight_coverage.md) complete
+current-set spatial/color work. Retained costs remain; temporal/resolution
+coverage is next. See the root changelog for validation and implementation scope.
+
 ---
 
 ## 2026-04-30 (session 5)

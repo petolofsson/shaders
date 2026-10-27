@@ -65,6 +65,13 @@ using `matched_motion` or `summarize_motion(..., require_render_phase=True)`.
 This rejects different updates of the same pose and cannot be satisfied by
 supplying only mpv timestamps. The ordinary CLI remains a source-pose comparison.
 
+Retained blue-cusp checks include fourteen measured-phase matches across seven
+windows; the [material/highlight assessment](../../research/2026-10-27_material_highlight_coverage.md)
+also reuses nine-color boundary controls at two phases. These sparse controls are
+complete evidence for their stated scope. The next PLAN priority is broader
+motion/cuts, variable timing and relevant resolutions; do not treat duplicated
+poses or the existing controls as dense native gameplay or physical 144 Hz proof.
+
 Requirements: Firefox WebGPU, Gamescope with headless backend, gamescopectl,
 vkBasalt, mpv, ffmpeg, and Python NumPy/Pillow/OpenEXR. Firefox uses a temporary
 profile. The pinned Babylon.js build is verified in the ignored vendor cache.

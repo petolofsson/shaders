@@ -3,12 +3,49 @@ Continue in `/home/pol/code/shaders`.
 Read `AGENTS.md`, `CODE_RULES.md`, `GOAL.md`, `HANDOFF.md`, `PLAN.md` and `TOOLS.md`.
 This is the only startup prompt; do not create dated or alternate copies.
 
-Session snapshot — 2026-10-26
-This prompt accompanies the zone/Retinex repairs, motion phase tooling and four
-evidence reports. PLAN 1/2 audits were completed in `2974257`; the spatial work
+Session snapshot — 2026-10-27
+This prompt indexes the current spatial/color repairs, completed material/highlight
+coverage and motion phase tooling. README, changelogs, rules and tool docs are
+synchronized; GOAL and CODE_RULES retain their existing contracts.
+PLAN 1/2 audits were completed in `2974257`; the spatial work
 below follows that commit. Use `git log -1` and `git status` for repository state.
 All 22 diagnostic tests and the whitespace check pass; final shared captures
-match candidates. Resume broader PLAN 3 coverage, not completed repair work.
+match candidates. Current-set PLAN 3 coverage is assessed; resume PLAN 4,
+not completed repair work.
+
+Latest continuation — material/highlight coverage complete
+Read `research/2026-10-27_material_highlight_coverage.md`. Four fresh two-game
+views add twenty private captures: full/repeat and inverse-luma/Retinex/lift
+bypasses. Four fresh and eight reverified cached full/repeat pairs are identical;
+all fresh runs have zero dropped/delayed frames. The 140-artifact audit passes.
+Dark structure, colored lights and lighting order survive in selected regions;
+midtone/light normalization, bright-core compression, foliage hue shifts and
+finite blue-gradient costs remain documented. Bright-region lift restraint is
+measured, while some sky remains eligible. Nine-color uniform boundaries at two
+retained measured phases are unchanged by the blue repair. No production/profile/
+config changes or effectiveness re-score follow. Current two-game spatial/color
+coverage is complete; universal acceptance is not. Next: PLAN 4 motion/cuts,
+variable timing and relevant resolution checks, using existing inputs first.
+
+Completed wall/sky attribution
+Read `research/2026-10-27_wall_sky_attribution.md`. Inverse luma chiefly reduces
+the selected wall gap; lift chiefly reduces the sky gap. Explicit GPU traces
+match the implemented equations. No new arithmetic defect or global bypass is
+promoted. Absolute-L and relative log-Y contrast reveal different tradeoffs.
+Do not repeat this attribution or undo completed Retinex/zone/gamut repairs.
+
+Completed blue-cusp repair
+Read `research/2026-10-27_gamut_continuity_repair.md` and its preceding
+`research/2026-10-26_color_continuity.md`. The disconnected blue-gamut search
+is repaired in shared `common.fxh`: bounded lightness-preserving projection
+permits localized hue adjustment only for out-of-gamut blue; valid identity,
+the 1e-6 face guard and strict SDR bounds remain. 1,410 direct GPU records,
+two-profile ramps, eight held repeats and fourteen measured-phase matches pass.
+The selected GZW step falls 3.031499→0.112662 ΔE. Quantized-gradient amplification
+and extreme-blue hue/separation costs remain; no overall acceptance or score
+increase follows. Profiles/configs remain unchanged. Do not repeat this repair.
+The wall/sky and material/highlight follow-ups above are complete for their
+measured scopes. Dense gameplay/cuts and cross-game acceptance remain open.
 
 Completed spatial continuation — 2026-10-26
 PLAN 3 attribution is recorded in `research/2026-10-26_spatial_color_attribution.md`.
@@ -77,21 +114,19 @@ Retinex reports linked from PLAN. Do not undo those fixes or repeat completed
 capture conversion, stage attribution or fixed-pair shadow-history audits.
 
 Next work
-1. Broaden PLAN 3 spatial/color checks: hue/gamut continuity, colored highlights,
-   dark materials and illumination boundaries. Start with available matched
-   inputs and isolated attribution; preserve profiles. Existing green displacement
-   follows three-way profile choices. Zone/Retinex repairs are complete for their
-   measured scope; do not repeat attribution, precision or phase-alignment audits.
-2. Broaden motion/cuts and variable timing. The actual Retinex one-update cut
-   handoff remains measured, not visually certified. Require measured phases for
-   repeat claims. Dense continuity and physical high-refresh coverage remain open;
-   simulated cadence is not physical 144 Hz acceptance.
-3. Broaden games and dark/bright/vivid/muted/already-balanced inputs without
+1. Broaden PLAN 4 motion/cuts, variable timing and relevant resolution checks.
+   The actual Retinex one-update cut handoff remains measured, not visually
+   certified. Require measured phases for repeat claims. Dense continuity and
+   physical high-refresh coverage remain open; simulated cadence is not physical
+   144 Hz acceptance. Use available cached inputs first; no desktop fallback.
+2. Broaden games and dark/bright/vivid/muted/already-balanced inputs without
    per-frame profile tuning. Do not block independent work on new recordings.
-4. Repair active-chain resource sharing separately, within the config constraints
+3. Repair active-chain resource sharing separately, within the config constraints
    below. Combined-trial success does not certify the active separate chain.
-5. Reassess overall effectiveness after broader validation; no automatic score
-   increase follows from technical repairs. PLAN 1/2 audits remain complete.
+4. Reassess overall effectiveness after broader validation; no automatic score
+   increase follows from technical repairs. PLAN 1/2 audits and current-set PLAN 3
+   coverage are complete. Retain all reported material/light/color costs; do not
+   repeat completed attribution, precision, gamut or phase-alignment audits.
 
 Before changing histogram/gamut math, read
 `research/2026-10-25_signal_contracts.md`. Preserve fixed sample counts, stable

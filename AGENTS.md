@@ -148,6 +148,14 @@ Encode/decode out-of-range quantities at the slot boundary.
   final gamut projection checks negative and over-one channels before `saturate()`.
   Its initial SDR-face test permits only 1e-6 matrix roundoff; gamut-search bounds
   remain strict and final output remains saturated.
+- Blue-cusp projection uses a bounded lightness-preserving path with localized
+  hue adjustment for out-of-gamut colors; valid input identity and the face guard
+  remain. Quantized-gradient and extreme-blue hue/separation costs are documented
+  in `research/2026-10-27_gamut_continuity_repair.md`.
+- Shared SDR projection repairs the disconnected blue-cusp ray with a bounded,
+  lightness-preserving path and localized hue adjustment for out-of-gamut blue.
+  Valid-color identity and the existing face tolerance remain. Quantized-gradient
+  amplification and extreme-blue hue/separation costs are documented in PLAN.
 - Inverse-luma reconstruction applies its weighted linear-light gain in RGB;
   scaling Oklab coordinates directly cubed that gain and over-darkened midtones.
 - Retinex reconstructs against pre-Retinex luma; chroma reconstructs against input C.
@@ -193,6 +201,10 @@ escalation. Diagnostic techniques may explicitly render offscreen history for
 readback; ordinary screenshot captures contain no such telemetry.
 Screenshot captures contain no highway telemetry; `capture --dump` is unsupported.
 
-Current next work and technical evidence are indexed in [PLAN.md](PLAN.md).
+Current two-game spatial/color coverage is assessed in the
+[material/highlight report](research/2026-10-27_material_highlight_coverage.md).
+Dark structure and colored light remain with documented normalization, core,
+foliage-hue and blue-gradient costs; no universal acceptance follows.
+Next is temporal/resolution coverage; evidence and order are in [PLAN.md](PLAN.md).
 The older combined-chain 75/100 estimate remains provisional and has not been
 re-scored after these audits. It is not acceptance of the active separate chain.
