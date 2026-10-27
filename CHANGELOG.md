@@ -5,6 +5,58 @@ versioned research reports; older implementation history is in git.
 
 ## 2026-10-27
 
+- Closed the [current-source lift repair and combined-chain activation](research/2026-10-27_lift_transition_repair.md).
+  Native material checks, six production held identities, source/state GPU probes
+  and independent controls pass. Existing statistics and rates remain; grade stays
+  eight passes. Both active configs now exactly match their tested combined trials
+  after the user's explicit approval, fixing resource sharing. Actual active full/
+  repeats are pixel-identical in both games. Profiles remain unchanged. The known
+  technical repair pass is closed; broader coverage is confidence work, not a new
+  mandatory repair queue. Material/color and dark quantization costs are retained.
+- Completed a [current-observation lift-consumer screen](research/2026-10-27_lift_consumer_screen.md):
+  four two-profile replays, 192 exact full controls and 960 frozen point images.
+  Filtering the complete current-observation lift product reduces night peaks
+  ~0.64–0.65→0.12–0.16 ΔE, but changes incoming images ~3.49 ΔE. Return/daylight
+  controls remain identical. No lift candidate was adopted at that stage;
+  native material, held-scene and noncut checks subsequently closed the decision
+  in the lift/activation report above.
+- Applied [direct cut-gate recovery](research/2026-10-27_gate_recovery.md) using
+  existing adaptive coefficients. Native first-return steps fall ~1.44→0.76 ΔE,
+  with larger subsequent recovery. Six motion and six held runs preserve exact
+  controls; all three held repeats are identical. Two RGBA32F adaptive records
+  retain eight grade passes. Independent packed-state and synthetic cadence/hitch
+  probes pass. Raw p25/mode settling still drives early night lift targets;
+  producers, profiles, detector, headers and existing rates remain unchanged.
+- Screened [complete lift-product and direct cut-gate transitions](research/2026-10-27_transition_screen.md)
+  in four private two-profile replays using existing adaptive coefficients.
+  Product filtering retains the early night peak and extends later settling;
+  it is rejected as a complete repair. Gate recovery reduces the return step
+  from about 1.48 to 0.78–0.79 ΔE but spreads change to subsequent updates.
+  All 192 full-output controls match exactly; daylight 1428/1432 candidates
+  remain identical to full. No production change was adopted at that stage;
+  subsequent gate and lift reports above close the follow-up checks.
+- Completed [night-settling attribution](research/2026-10-27_night_settling_attribution.md)
+  through ten private same-update replays: early lift-strength growth, later
+  specular-protection release, smaller zone settling and the ambient cut gate.
+  All 320 full-output controls match exactly; 2,560 point images and 3,274
+  artifacts verify. Profiles, production shaders, configs and rates remain.
+  Diagnostic holds/bypasses were not adopted. The subsequent transition repairs
+  above retain steady-state and daylight rejection controls.
+- Broadened [consecutive cut coverage](research/2026-10-27_temporal_cut_coverage.md)
+  with six two-profile replays and two full-route observation traces. Explicit
+  GPU phases cover 372 original-clip frozen images; tail frames and readback-tag
+  footprints are excluded. Eight runs have zero dropped/delayed frames; 1,058
+  artifacts verify. Return handoff/night settling remain above repeat variation.
+  Rejected a raw-median detector shortcut for new noncut triggers. Production
+  shaders, profiles, configs and rates remain unchanged in this continuation.
+- Fixed [filter-kernel spacing](research/2026-10-27_filter_kernel_resolution.md)
+  at truncated dimensions. Two low-frequency downscales and both guided passes
+  now derive taps from allocated integer texture sizes. Nine GPU probes across
+  four resolutions and fifteen held captures across both profiles verify the
+  correction. All five repeats and native controls are identical; odd-resolution
+  scenes change 48–144 pixels by one code, without new black/white clipping.
+  Three shared-path captures match candidates exactly; 105 artifacts pass audit.
+  Profiles, shader headers, filter formulas, pass counts and timing remain.
 - Fixed the [disconnected blue-cusp projection](research/2026-10-27_gamut_continuity_repair.md)
   in shared `common.fxh`. A bounded lightness-preserving path permits localized
   hue adjustment for out-of-gamut blue; valid-input identity, existing face
@@ -23,8 +75,11 @@ versioned research reports; older implementation history is in git.
   document dark structure, colored highlights, daylight restraint and remaining
   normalization/core/hue/blue costs. Twelve held full/repeat pairs are identical;
   all twenty fresh runs report zero dropped/delayed frames. Artifact audit passes.
-- Updated current documentation and the sole `startup-prompt-latest`; next is
-  temporal/resolution coverage. All 22 diagnostic tooling tests pass. Profiles,
+- Synchronized the root/tool/Babylon docs, evidence index, handoff and sole
+  `startup-prompt-latest`. It records the applied spacing change, completed
+  temporal/night attribution, rejected detector shortcut, newest local artifacts
+  and six-item remaining work order. Conservative lift/control and cut-gate
+  transition assessment is next. All 22 diagnostic tooling tests pass. Profiles,
   shader headers and active configs remain. Overall acceptance, additional games
   and active-chain integration remain open; no effectiveness re-score follows.
 

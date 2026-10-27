@@ -5,13 +5,14 @@ with game-agnostic automatic restraint. Follow [the current plan](../PLAN.md)
 for assessment. The interactive collection/tuning workflow below remains
 available; unattended runtime validation must use private headless rendering.
 
-Current two-game material/highlight coverage is
-[assessed](../research/2026-10-27_material_highlight_coverage.md), following the
-[shared blue-cusp repair](../research/2026-10-27_gamut_continuity_repair.md).
-Use [TOOLS.md](../TOOLS.md) for the current runtime protocol. Next work is
-motion/cuts, variable timing and relevant resolutions; preserve measured phases
-for temporal repeat claims. Combined-trial results do not certify active-chain
-resource sharing. Existing profiles and active configs remain unchanged.
+The [lift/activation closure](../research/2026-10-27_lift_transition_repair.md)
+completes the current technical repair pass. Both active game configs now load
+one combined pipeline with working shared resources; actual-config repeats are
+pixel-identical. Profiles remain unchanged. Earlier signal/history, spatial,
+gamut, filter-spacing and temporal evidence is indexed in PLAN.
+No new mandatory defect repair is queued. Broader coverage supports stronger
+claims and should not grow into an automatic chain of follow-up investigations.
+Use [TOOLS.md](../TOOLS.md) for private/headless, hash, mask and GPU-phase protocols.
 
 ---
 

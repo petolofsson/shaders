@@ -1,94 +1,54 @@
 # Pipeline Plan
 
-Work toward [GOAL.md](GOAL.md) by making each retained stage perform its intended
-role correctly and reliably. The current user priority is technical quality;
-personal palette/print preference is not a blocker. Preserve existing profiles
-and fix demonstrated issues individually, with evidence and unchanged repeats.
+Work toward [GOAL.md](GOAL.md) with technically correct, restrained SDR processing.
+Preserve the game-specific profiles, shader headers and prior corrections.
 
-## Current Priorities
+## Current status
 
-1. **History precision, initialization and consumers — audited.** Audit remaining histories
-   and per-band chroma analysis. Determine which produced values have live
-   consumers. Check valid state is never mistaken for startup and that storage
-   can accumulate the intended update. Slow-key precision and percentile
-   initialization are fixed; do not repeat them or blanket-widen textures.
-   The [consumer audit](research/2026-10-25_history_consumers.md) separates unused
-   per-hue histories from live scene-chroma state. `MeanChromaTex` precision is
-   now [GPU-verified and repaired](research/2026-10-25_scene_chroma_precision.md).
-   The [remaining-history audit](research/2026-10-25_remaining_histories.md)
-   independently proves and repairs eight remaining accumulators, checks
-   initialization and retains bounded one-frame scene-cut precision. Rates,
-   observations and publications remain. Recorded one-code endpoint costs stay
-   part of assessment; broader temporal/visual acceptance remains open.
-2. **Signal and control contracts — audited.** Verify producer/consumer units, pass order,
-   numerical stability, bounded output, endpoint preservation and clean bypasses.
-   Assess reconstruction assumptions and inverse/tonal/chroma/print interactions
-   using isolated GPU probes and matched ablations.
-   The [signal-contract audit](research/2026-10-25_signal_contracts.md) proves
-   and repairs raw histogram count loss, unstable zone moments and numerical
-   gamut-face misclassification. GPU helper and complete-bypass probes pass;
-   matched scene/motion evidence records one-code shadow costs. Existing stage
-   gate semantics remain. Broader model/spatial acceptance stays under 3–5.
-3. **Spatial and color behavior — current two-game coverage assessed.** The [current-code attribution](research/2026-10-26_spatial_color_attribution.md)
-   isolates coarse-zone gradients to the interpolated median field and blue-sky
-   separation loss chiefly to Retinex. Overcast-green hue displacement chiefly
-   follows the profile's three-way color correction. Twenty-five private held
-   captures pass provenance checks; three full/repeat pairs are byte-identical.
-   The [bounded scene-adaptive zone curve](research/2026-10-26_zone_scene_pivot.md)
-   now removes interpolated pivot gradients without the rejected candidates'
-   shadow costs. GPU curves, six held scenes and matched motion support that
-   scoped repair; local separation/halo costs remain recorded. The
-   [Retinex sky repair](research/2026-10-26_retinex_sky.md) corrects the native-guide
-   signal domain, conditions its residual and restrains broad-field gain. Sky
-   separation recovers without restoring measured rims or flattening selected
-   lighting gaps. Six held repeats, GPU probes and 14 measured-phase motion
-   samples support this scoped completion. Profiles remain unchanged. Subsequent
-   coverage broadens hue/gamut continuity, highlights, materials and boundaries
-   without preference-driven retuning. The [color-continuity assessment](research/2026-10-26_color_continuity.md)
-   adds two-profile hue/brightness ramps and two additional gameplay views.
-   It exposes a blue-cusp limitation in the radial SDR gamut search: valid
-   colors can occupy disconnected intervals along a fixed-L/hue ray, which
-   invalidates the old bisection assumption. The [blue-cusp repair](research/2026-10-27_gamut_continuity_repair.md)
-   now uses a bounded, lightness-preserving path with localized hue adjustment
-   for out-of-gamut blue. In-gamut identity, the face guard and SDR bounds remain.
-   GPU contracts, eight held repeats and fourteen measured-phase motion matches
-   support this scoped repair. Quantized blue-gradient amplification and extreme
-   out-of-gamut hue/separation costs remain documented. The [wall/sky attribution](research/2026-10-27_wall_sky_attribution.md)
-   now isolates most wall reduction to inverse luma, with secondary Retinex
-   normalization, and most sky reduction to shadow lift. FilmCurve is identity
-   in the selected regions. Explicit GPU stages match the implemented equations;
-   absolute L gaps and relative-Y contrast expose different tradeoffs. No bypass
-   is promoted and no new arithmetic defect is demonstrated. The
-   [material/highlight coverage](research/2026-10-27_material_highlight_coverage.md)
-   completes the bounded follow-up: four fresh views, twenty captures and eight
-   verified prior views assess dark materials, colored lights, daylight controls
-   and illumination boundaries. Four fresh and eight cached full/repeat pairs
-   are identical. Dark structure and highlight color remain, with midtone/light
-   normalization, core compression, foliage hue and blue quantization costs.
-   Profiles remain fixed; no production edits or effectiveness re-score follow.
-   This completes current-set coverage, not universal spatial/color acceptance.
-   Next: temporal/resolution coverage under 4.
-4. **Temporal and resolution coverage.** Broaden dense gameplay motion, cuts,
-   variable timing and physical high-refresh checks. Simulated 30/60/144 update
-   rates are not physical 144 Hz validation. Metadata addressing is fixed;
-   other filter-kernel spacing still needs assessment where relevant. The
-   [return-cut alignment audit](research/2026-10-26_return_cut_alignment.md)
-   resolves pose 2160's apparent 1.588 ΔE repeat difference as mixed GPU-update
-   phases; matched phases repeat within 0.000426. Require measured phase alignment
-   for temporal repeat claims. The actual Retinex cut handoff and broader cut
-   acceptance remain distinct from that resolved measurement uncertainty.
-5. **Cross-game robustness.** Use the same candidate logic on more dark, bright,
-   vivid, muted and already-balanced inputs. Disclose profile differences; do not
-   optimize each test frame separately or block on new recordings.
-6. **Active-chain integration.** Separate effects still cannot share required
-   analysis resources. Combined trials are the working assessment path. Do not
-   edit/switch `gzw.conf` without an explicit request. A validated combined trial
-   does not certify the active separate chain.
+The known technical repairs in this pass are complete on the assessed set:
+
+- Signal units, statistics, history precision/initialization and consumers are audited.
+- Current two-game spatial/material/color coverage and integer filter spacing are assessed.
+- Cut-gate recovery and the current-source lift transition repair are applied.
+- Both active game configs now use the verified combined pipeline. The user explicitly
+  authorized this switch; the old separate-effect sharing defect is no longer active.
+
+The [lift/activation closure report](research/2026-10-27_lift_transition_repair.md)
+records the decision, native material costs, six held cases, unchanged repeats,
+producer/state probes, actual-source verification and actual-active-config tests.
+Do not reopen that completed candidate decision or repeat its attribution/probes
+without a concrete new failure. Smaller settling and documented color/quantization
+costs are limitations for assessment, not automatically new repair tasks.
+
+## Remaining confidence work
+
+These support stronger claims about generality; they do not block using the repairs.
+No additional mandatory defect repair is currently queued.
+
+1. Broader timing/motion: whole-pipeline hitches, dense native gameplay and physical
+   high refresh. Existing simulated cadence/hitch contracts and sparse/point imagery
+   do not establish all of these. Private/headless restrictions remain.
+2. Remaining aspects/resolutions and visual scaling beyond the measured matrix.
+   Metadata addressing and integer-texel spacing are already repaired and verified.
+3. Broader game/lighting/palette coverage without per-frame profile tuning.
+4. Reassess complete-chain and retained-effect effectiveness when stronger claims
+   are needed, retaining measured material/color/quantization costs. No automatic
+   score increase follows from these correctness fixes.
+
+Do not expand this list merely because a measurement changes. Prioritize concrete
+reported failures; finish a finite adopt/reject/accept decision for any new candidate.
 
 ## Completed Evidence
 
 | Correction | Evidence and scope |
 |---|---|
+| Closed lift repair and activation | [Report](research/2026-10-27_lift_transition_repair.md): current-source complete-product lift is adopted; night point peaks ~0.64–0.65→0.12–0.16 ΔE. Native material checks, six production held identities, state/publication probes and exact independent controls pass. Both active configs are switched with explicit user authorization; their actual full/repeats are pixel-identical. Grade remains eight passes; profiles and existing rates remain. |
+| Current-observation lift screen | [Report](research/2026-10-27_lift_consumer_screen.md): four two-profile point replays, 192 exact full controls, 960 images and unchanged return/daylight candidates. Current complete-product filtering reduces night peaks ~0.64–0.65→0.12–0.16 ΔE but changes incoming images ~3.49 ΔE. No adoption at that stage; the closure report above completes the decision. |
+| Direct gate recovery | [Report](research/2026-10-27_gate_recovery.md): native first-return duplicate step about 1.44→0.76 ΔE, with larger subsequent recovery steps. Six motion and six held runs preserve exact controls; three held repeats are identical. Two-record RGBA32F adaptive storage retains eight passes; independent-state and simulated cadence/hitch GPU checks pass. Early lift-target p25/mode settling remains; no producer-rate/profile changes. |
+| Transition candidate screen | [Report](research/2026-10-27_transition_screen.md): four two-profile replays, 960 frozen images, 192 exact full-output controls and unchanged daylight 1428/1432 candidates. Complete-product filter relocation retains the early night peak and extends later settling; rejected as a complete repair. No production change at this stage; the native follow-up above applies gate recovery. |
+| Night-settling attribution | [Report](research/2026-10-27_night_settling_attribution.md): ten same-update replays, 2,560 point images and 320 pixel-identical full-output controls. Separates early lift-strength and late specular-guard changes, smaller zone settling and ambient cut-gate color response. Both profiles and unchanged repeats; 3,274 artifacts verified. No production changes or bypass adoption. |
+| Consecutive cut coverage | [Report](research/2026-10-27_temporal_cut_coverage.md): six replays, 372 original-clip frozen images, explicit source/update/cut phases, plus two 1,108-update route traces. Eight runs have zero dropped/delayed frames; 1,058 artifacts verified. Return handoff and night settling remain; raw-median detector shortcut rejected. No production changes or acceptance re-score. |
+| Filter-kernel spacing | [Report](research/2026-10-27_filter_kernel_resolution.md): integer-dimension tap spacing in four passes; nine GPU captures at four resolutions and fifteen held captures across both profiles. Five identical repeats, unchanged 2560×1440 controls; 48–144 one-code pixel changes at 1366×769, no new clipping. Temporal/cut/high-refresh coverage stays open. |
 | Material/highlight coverage | [Report](research/2026-10-27_material_highlight_coverage.md): four fresh views × five variants, eight verified prior views, twelve identical full/repeat pairs; retained nine-color boundaries at two measured phases. Records dark structure, colored highlights, daylight restraint and remaining normalization/core/blue costs. No production edits; current two-game coverage pass complete. |
 | Wall/sky attribution | [Report](research/2026-10-27_wall_sky_attribution.md): eleven ordinary captures and two final 1,326-record GPU traces; identical repeats. Inverse-luma bypass restores wall separation but worsens sky; lift bypass restores sky's absolute gap but overshoots relative contrast. No production edits; broader model selectivity remains open. |
 | Blue-cusp projection | [Report](research/2026-10-27_gamut_continuity_repair.md): localized continuous bounded mapping, unchanged in-gamut identity/face guard; 1,410 GPU records, two-profile ramps, eight held repeats and fourteen measured-phase motion matches. Selected GZW blue step 3.031499→0.112662 ΔE. Finite quantized-gradient and out-of-gamut hue/separation costs remain; no general color acceptance claim. |
@@ -139,7 +99,7 @@ The long-term target remains 75+ effectiveness for the complete chain and each
 retained effect in its intended role, as defined in [GOAL.md](GOAL.md).
 [The dated ratings](research/2026-10-25_effect_ratings.md) estimated the combined
 chain at 75/100 before these technical audits. This is not accepted target
-achievement, an active-chain rating or a measured fidelity percentage. Correctness
+achievement, a current active-chain rating or a measured fidelity percentage. Correctness
 fixes do not automatically raise effectiveness or novelty. Broader technical
 coverage and overall acceptance remain open; taste review need not block this audit.
 Current-set spatial/color coverage is complete, with material/light normalization,

@@ -68,9 +68,27 @@ supplying only mpv timestamps. The ordinary CLI remains a source-pose comparison
 Retained blue-cusp checks include fourteen measured-phase matches across seven
 windows; the [material/highlight assessment](../../research/2026-10-27_material_highlight_coverage.md)
 also reuses nine-color boundary controls at two phases. These sparse controls are
-complete evidence for their stated scope. The next PLAN priority is broader
-motion/cuts, variable timing and relevant resolutions; do not treat duplicated
-poses or the existing controls as dense native gameplay or physical 144 Hz proof.
+complete evidence for their stated scope. The subsequent
+[consecutive cut assessment](../../research/2026-10-27_temporal_cut_coverage.md)
+records 32 night and 30 return updates inside the original cached clip. Its
+original prefix ends at video frame 1709/pose 2216; cached pose 2220 appears only
+in the appended readback tail. Manifest membership alone does not prove that
+an image was presented inside the original video. Keep tail records separate.
+
+[Night attribution](../../research/2026-10-27_night_settling_attribution.md)
+evaluates image interventions against the same live histories. All 320 extracted
+full/ordinary full controls match on their valid samples. Readback tags can
+overlap atlas interiors; compare every image using the same tag mask as well as
+the border crop. Early overlapped timer channels in the route trace are marked
+invalid and unused. Native point samples and their sample counts must accompany
+image metrics; they do not certify full-resolution temporal perception.
+
+The [lift/activation closure](../../research/2026-10-27_lift_transition_repair.md)
+finishes the selected cut/night repair and activates both combined chains with
+explicit user authorization. Native images, source/state probes and actual active
+config captures are verified; their documented scope remains distinct from dense
+native gameplay and physical high refresh. No additional source recording or
+night-attribution run is a prerequisite for using these changes.
 
 Requirements: Firefox WebGPU, Gamescope with headless backend, gamescopectl,
 vkBasalt, mpv, ffmpeg, and Python NumPy/Pillow/OpenEXR. Firefox uses a temporary

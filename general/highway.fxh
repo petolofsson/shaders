@@ -42,6 +42,14 @@ sampler2D HighwaySamp
 #define HWY_P10             209    // scene p10 luma (shadow floor) [0,1]
 #define HWY_NEAR_CLIP      210    // smoothed fraction with luma > 0.90 [0,1]
 
+// Current-source observations; only the lift consumer uses these fields.
+#define HWY_LIFT_P25        212
+#define HWY_LIFT_P50        213
+#define HWY_LIFT_P90        214
+#define HWY_LIFT_MODE       215
+#define HWY_LIFT_P10        216
+#define HWY_LIFT_VALID      217
+
 // ── corrective ────────────────────────────────────────────────────────────────
 #define HWY_ZONE_KEY        203    // zone_log_key — linear mean of zone medians [0,1]
 #define HWY_ZONE_STD        204    // zone_std — mean intra-zone pixel variance [0,1]

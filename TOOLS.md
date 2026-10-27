@@ -24,8 +24,8 @@ python3 -B tools/compare_frame.py gamespecific/gzw/analysis/reference/autof_2026
 
 For Arc use `--game arc_raiders`, an Arc reference, and
 `--config gamespecific/arc_raiders/arc_raiders_pipeline_trial.conf`.
-Use combined trials for adaptive behavior: default active configs retain the
-known unavailable cross-effect resources.
+Both active configs now exactly match their verified combined trials. They use
+one pipeline effect, so adaptive resources are available to their consumers.
 
 The private backend requires Gamescope/gamescopectl and captures after vkBasalt.
 Other dependencies include mpv, FFmpeg, ImageMagick and script Python libraries.
@@ -104,10 +104,50 @@ image ablations from explicit cumulative-stage readback. The
 adds twenty fresh captures and revalidates eight prior held views; twelve held
 full/repeat pairs are identical. These are completed evidence, not new golden
 references. Dark/core/normalization/hue/blue costs remain recorded. Next work
-covers motion/cuts, variable timing and relevant resolutions. Retained sparse
+covers motion/cuts, variable timing and remaining resolutions. The
+[filter-spacing audit](research/2026-10-27_filter_kernel_resolution.md) checks
+actual production functions at four compiled dimensions and repairs their
+integer-texture tap offsets; held native controls and all five repeats are
+pixel-identical. Retained sparse
 phases do not establish dense continuity or physical high-refresh behavior.
 
+The [consecutive cut report](research/2026-10-27_temporal_cut_coverage.md) adds
+32 night and 30 return updates within the original clip, across both profiles.
+Pose 2220 is only in the appended tail. Atlas tags can sit inside a tile: use a
+common spatial mask for their footprint in every compared source/output image,
+in addition to cropping borders. Route-trace reports mark overlapped early
+timer channels invalid; their detector/source fields remain valid. The naive
+raw-median cut alternative is rejected for false triggers during daylight motion.
+
+The [night attribution](research/2026-10-27_night_settling_attribution.md) evaluates
+read-only image interventions against the same current histories and inputs.
+Its full diagnostic must reproduce the actual post-grade output; all 320 such
+controls match exactly. Native stride-16 tiles use a common mask for both the
+new and older comparison-atlas tags, leaving 12,984 samples. Control holds do
+not freeze producers or replace the ordinary graded history update.
+
 ## Logs and retained artifacts
+
+The [lift closure](research/2026-10-27_lift_transition_repair.md) adopts the
+current-source lift consumer after the earlier point screen. Both active configs
+now use the verified combined path. Native/held, source/state and actual-config
+checks are complete; do not repeat them without a concrete new failure.
+
+The [native gate-recovery follow-up](research/2026-10-27_gate_recovery.md) reads
+full-resolution frozen images across selected measured cut phases. Its longer
+readback tail preserves the original video packet prefix exactly. Mask browser
+calibration patches as well as borders and tag footprints. Raw-target diagnostics
+observe actual lift strength before smoothing. Synthetic gate cadence/hitch
+checks verify the new packed history and recurrence; they do not certify
+whole-pipeline hitch behavior or physical high-refresh presentation.
+
+The [transition screen](research/2026-10-27_transition_screen.md) maintains
+independent candidate control histories while ordinary full histories advance.
+Its 192 full/actual controls are pixel-identical; 48 measured keys per replay
+include both cuts and daylight 1428/1432. Complete-product filter relocation
+is rejected as a complete repair; that screen left gate recovery unadopted.
+The native follow-up above applies the validated gate-only repair. Preserve
+the same native sampling and common masks when comparing those candidates.
 
 Every runtime process prints a unique `/tmp/shader-runtime-*/` log directory.
 `--keep` retains paired images under game analysis outputs. Standard JSON paths

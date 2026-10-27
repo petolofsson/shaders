@@ -131,7 +131,7 @@ sampler2D NeutralIllumSamp
 // Scene-adaptive controls are persisted separately so gradual lighting changes
 // do not pump the grade. ColorTransform reads the previous frame; the final
 // history pass writes the current smoothed values.
-texture2D AdaptiveHistoryTex { Width = 1; Height = 1; Format = RGBA32F; MipLevels = 1; };
+texture2D AdaptiveHistoryTex { Width = 2; Height = 1; Format = RGBA32F; MipLevels = 1; };
 sampler2D AdaptiveHistorySamp
 {
     Texture   = AdaptiveHistoryTex;
@@ -296,8 +296,11 @@ struct SceneCtx {
     float  fc_knee_toe;
     float  film_curve_strength;
     float  shadow_lift_str;
+    float  shadow_lift_product;
+    float  lift_current_valid;
     float  shadow_floor;
     float  adaptation_gate;
+    float  ambient_gate;
     float  print_stock_strength;
     float  gamut_strength;
     float  chroma_scene_scale;
@@ -310,6 +313,14 @@ struct SceneCtx {
 };
 
 struct TonalOut { float3 lin; float new_luma; float local_var; };
+
+float SourceLiftStrengthTarget(float p25, float mode, float floor_luma, float zone_std)
+{
+    float t=saturate(((p25+mode)*0.5-0.025)/0.175);
+    float strength=lerp(1.50,0.45,t*t*t*(t*(t*6.0-15.0)+10.0))
+                 * (1.0-smoothstep(0.05,0.13,zone_std));
+    return strength * lerp(0.65,1.0,1.0-smoothstep(0.04,0.22,floor_luma));
+}
 
 SceneCtx BuildSceneCtx()
 {
@@ -325,6 +336,17 @@ SceneCtx BuildSceneCtx()
     // Scene cuts temporarily suppress adaptive look changes, allowing the new
     // scene to settle before temporal statistics drive the grade.
     ctx.adaptation_gate    = 1.0 - smoothstep(0.05, 0.75, ctx.scene_cut);
+    ctx.ambient_gate       = 1.0 - ctx.scene_cut;
+    // The second history record restrains direct cut-gate recovery using the
+    // existing elapsed-time coefficients; confident cuts still suppress at once.
+    float4 gate_prev = tex2Dlod(AdaptiveHistorySamp, float4(0.75, 0.5, 0, 0));
+    float gate_seeded = step(0.5, gate_prev.b);
+    ctx.adaptation_gate = lerp(ctx.adaptation_gate,
+        lerp(gate_prev.r, ctx.adaptation_gate,
+             AdaptiveStep(gate_prev.r, ctx.adaptation_gate, ctx.scene_cut)), gate_seeded);
+    ctx.ambient_gate = lerp(ctx.ambient_gate,
+        lerp(gate_prev.g, ctx.ambient_gate,
+             AdaptiveStep(gate_prev.g, ctx.ambient_gate, ctx.scene_cut)), gate_seeded);
     float4 zstats          = ReadTexHwyChroma(0, 6);
     ctx.zone_log_key       = zstats.r;
     ctx.zone_std           = zstats.g;
@@ -370,6 +392,20 @@ SceneCtx BuildSceneCtx()
     ctx.specular_contrast     = saturate((ReadHWY(HWY_P90) - ctx.perc.g) / 0.40);
     ctx.slow_key           = max(ReadTexHwyChroma(0, 7).r, 0.001);
     ctx.key_L              = clamp(exp2(log2(ctx.slow_key) * (1.0 / 3.0)), 0.30, 0.80);
+    ctx.lift_current_valid = step(0.5,ReadHWY(HWY_LIFT_VALID));
+    float current_lift_strength = SourceLiftStrengthTarget(ReadHWY(HWY_LIFT_P25),
+        ReadHWY(HWY_LIFT_MODE),ReadHWY(HWY_LIFT_P10),ctx.zone_std);
+    float current_specular = saturate((ReadHWY(HWY_LIFT_P90)-ReadHWY(HWY_LIFT_P50))/0.40);
+    float current_context = exp2(log2(ctx.slow_key/max(ctx.zone_log_key,0.001))*0.4);
+    float current_product = current_lift_strength * current_context
+                          * (1.0-smoothstep(0.50,0.90,current_specular)*0.35);
+    // Record b=1 validates gates; b=2 also validates the current-source product.
+    // Re-seed the product when source observations become available again.
+    float product_seeded = step(1.5,gate_prev.b);
+    ctx.shadow_lift_product = lerp(current_product,
+        lerp(gate_prev.a,current_product,AdaptiveStep(gate_prev.a,current_product,ctx.scene_cut)),
+        product_seeded);
+
     float chromatic_scene = smoothstep(0.20, 0.75, 1.0 - ReadHWY(HWY_ACHROM_FRAC));
     float vivid_scene     = smoothstep(0.04, 0.16, ctx.median_C);
     float chroma_conf     = chromatic_scene * vivid_scene;
@@ -387,7 +423,7 @@ SceneCtx BuildSceneCtx()
     float chroma_adapt     = lerp(1.25, 0.85, smoothstep(0.04, 0.18, ctx.median_C));
     ctx.chroma_str_base    = VIBRANCE * 0.40 * chroma_adapt;
 
-    float4 adaptive_prev = tex2Dlod(AdaptiveHistorySamp, float4(0.5, 0.5, 0, 0));
+    float4 adaptive_prev = tex2Dlod(AdaptiveHistorySamp, float4(0.25, 0.5, 0, 0));
     float4 adaptive_raw  = float4(ctx.film_curve_strength,
                                   ctx.shadow_lift_str,
                                   ctx.print_stock_strength,
@@ -551,6 +587,7 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     // High p90−p50 gap = sun/lamp in frame — lifting shadows flattens depth against the source.
     float specular_att   = 1.0 - smoothstep(0.50, 0.90, ctx.specular_contrast) * 0.35;
     float shadow_lift    = ctx.shadow_lift_str * detail_protect * context_lift * specular_att;
+    shadow_lift = lerp(shadow_lift,ctx.shadow_lift_product*detail_protect,ctx.lift_current_valid);
     float shadow_base_luma = luma;
     float lift_w         = shadow_base_luma * smoothstep(0.35, 0.0, shadow_base_luma);
     new_luma = max(new_luma + shadow_lift * 0.25 * lift_w * SHADOWS
@@ -568,7 +605,7 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     lab_t.y = lab_t.y * lerp(1.0, r65_scale, r65_sw);
     lab_t.z = lab_t.z * lerp(1.0, r65_scale, r65_sw);
     // R66: ambient shadow tint — inject scene-ambient hue into achromatic lifted shadows.
-    lab_t = ApplyAmbientTint(lab_t, lf_mip2_tex.rgb, r65_sw, ctx.scene_cut);
+    lab_t = ApplyAmbientTint(lab_t, lf_mip2_tex.rgb, r65_sw, 1.0 - ctx.ambient_gate);
 
     TonalOut result;
     result.lin       = OklabToRGB(lab_t);
@@ -760,7 +797,7 @@ float4 LFDownscale1PS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     // V scaled to stay inside spatial lane; half-texel offset = 0.5/TEX_HWY_TOTAL_H in V.
     float sy = uv.y * float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
     float sx = uv.x;
-    float ox = 4.0 / float(BUFFER_WIDTH);
+    float ox = 0.5 / float(BUFFER_WIDTH / 8);
     float oy = 0.5 / float(TEX_HWY_TOTAL_H);
     return (tex2D(TexHwySamp, ClampSpatialUV(float2(sx + ox, sy + oy)))
           + tex2D(TexHwySamp, ClampSpatialUV(float2(sx - ox, sy + oy)))
@@ -771,7 +808,7 @@ float4 LFDownscale1PS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
 float4 LFDownscale2PS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     // 2× box filter: 4 taps at ±half-texel in mip1 space (mip1 texel = 16/BUFFER px)
-    float2 s = float2(8.0 / BUFFER_WIDTH, 8.0 / BUFFER_HEIGHT);
+    float2 s = 0.5 / float2(BUFFER_WIDTH / 16, BUFFER_HEIGHT / 16);
     return (tex2D(LowFreqMip1Samp, uv + float2( s.x,  s.y))
           + tex2D(LowFreqMip1Samp, uv + float2(-s.x,  s.y))
           + tex2D(LowFreqMip1Samp, uv + float2( s.x, -s.y))
@@ -785,7 +822,7 @@ float4 LFDownscale2PS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
 float2 GuidedCoeffPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     // GuidedCoeffTex is BUFFER_WIDTH/8 × BUFFER_HEIGHT/8; uv∈[0,1] maps full spatial lane.
-    float px  = 8.0 / float(BUFFER_WIDTH);
+    float px  = 1.0 / float(BUFFER_WIDTH / 8);
     float py  = 1.0 / float(TEX_HWY_TOTAL_H);   // one spatial-lane texel in TexHwyTex V
     float sy  = uv.y * float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
     float sum_I = 0.0, sum_II = 0.0;
@@ -810,8 +847,8 @@ float2 GuidedCoeffPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
 // Writes base log-luma in .r and mean guide coefficients in .gb (RGBA16F).
 float4 GuidedBasePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    float px = 8.0 / BUFFER_WIDTH;
-    float py = 8.0 / BUFFER_HEIGHT;
+    float px = 1.0 / float(BUFFER_WIDTH / 8);
+    float py = 1.0 / float(BUFFER_HEIGHT / 8);
     float sum_a = 0.0, sum_b = 0.0;
     [unroll] for (int dy = -GF_R; dy <= GF_R; dy++)
     [unroll] for (int dx = -GF_R; dx <= GF_R; dx++)
@@ -873,6 +910,8 @@ float4 TexHwyWritePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
 float4 AdaptiveHistoryPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     SceneCtx ctx = BuildSceneCtx();
+    if (pos.x >= 1.0)
+        return float4(ctx.adaptation_gate, ctx.ambient_gate, 1.0+ctx.lift_current_valid, ctx.shadow_lift_product);
     return float4(ctx.film_curve_strength, ctx.shadow_lift_str,
                   ctx.print_stock_strength, ctx.gamut_strength);
 }

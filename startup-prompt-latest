@@ -1,158 +1,69 @@
 Continue in `/home/pol/code/shaders`.
 
 Read `AGENTS.md`, `CODE_RULES.md`, `GOAL.md`, `HANDOFF.md`, `PLAN.md` and `TOOLS.md`.
-This is the only startup prompt; do not create dated or alternate copies.
+This is the sole startup prompt; do not create alternate or dated copies.
+Use `git status` and `git log -1` for repository state; preserve all working changes.
 
-Session snapshot — 2026-10-27
-This prompt indexes the current spatial/color repairs, completed material/highlight
-coverage and motion phase tooling. README, changelogs, rules and tool docs are
-synchronized; GOAL and CODE_RULES retain their existing contracts.
-PLAN 1/2 audits were completed in `2974257`; the spatial work
-below follows that commit. Use `git log -1` and `git status` for repository state.
-All 22 diagnostic tests and the whitespace check pass; final shared captures
-match candidates. Current-set PLAN 3 coverage is assessed; resume PLAN 4,
-not completed repair work.
+Current snapshot — 2026-10-27
+The known technical repair pass is complete on its measured scope. Signal and
+history audits, current two-game spatial/material/color coverage, filter spacing,
+cut-gate recovery and the current-source lift repair are recorded in PLAN.
+Read `research/2026-10-27_lift_transition_repair.md` for the latest closure.
 
-Latest continuation — material/highlight coverage complete
-Read `research/2026-10-27_material_highlight_coverage.md`. Four fresh two-game
-views add twenty private captures: full/repeat and inverse-luma/Retinex/lift
-bypasses. Four fresh and eight reverified cached full/repeat pairs are identical;
-all fresh runs have zero dropped/delayed frames. The 140-artifact audit passes.
-Dark structure, colored lights and lighting order survive in selected regions;
-midtone/light normalization, bright-core compression, foliage hue shifts and
-finite blue-gradient costs remain documented. Bright-region lift restraint is
-measured, while some sky remains eligible. Nine-color uniform boundaries at two
-retained measured phases are unchanged by the blue repair. No production/profile/
-config changes or effectiveness re-score follow. Current two-game spatial/color
-coverage is complete; universal acceptance is not. Next: PLAN 4 motion/cuts,
-variable timing and relevant resolution checks, using existing inputs first.
+Both active game configs now bind the combined `general/pipeline/pipeline.fx`.
+The user explicitly authorized “Activate both combined chains.” Profiles remain
+unchanged. The prior separate-effect resource-sharing defect is no longer active.
+Both actual active-config full/repeat pairs are pixel-identical in fresh private
+headless Vulkan processes. Actual live gameplay is not claimed by these captures.
+The grade still has eight passes; no additional effect or tuning knob was added.
 
-Completed wall/sky attribution
-Read `research/2026-10-27_wall_sky_attribution.md`. Inverse luma chiefly reduces
-the selected wall gap; lift chiefly reduces the sky gap. Explicit GPU traces
-match the implemented equations. No new arithmetic defect or global bypass is
-promoted. Absolute-L and relative log-Y contrast reveal different tradeoffs.
-Do not repeat this attribution or undo completed Retinex/zone/gamut repairs.
+The lift repair uses current source p25/p50/p90/mode/p10 only for the lift
+consumer. Producer statistics/histories and their time constants remain.
+`PercHighTex` has three RGBA32F records: original p90/p10 history at 0.5/3,
+current quartet at 1.5/3, and p10/mass/validity at 2.5/3. Highways 212–217 publish
+current normalized lift observations. The second adaptive record retains gate
+recovery in RG, stores validity b=1 (gates) or 2 (gates+source product), and the
+complete lift coefficient in alpha. Explicit flags preserve valid zero states;
+source loss uses the original path and recovery seeds current observations.
 
-Completed blue-cusp repair
-Read `research/2026-10-27_gamut_continuity_repair.md` and its preceding
-`research/2026-10-26_color_continuity.md`. The disconnected blue-gamut search
-is repaired in shared `common.fxh`: bounded lightness-preserving projection
-permits localized hue adjustment only for out-of-gamut blue; valid identity,
-the 1e-6 face guard and strict SDR bounds remain. 1,410 direct GPU records,
-two-profile ramps, eight held repeats and fourteen measured-phase matches pass.
-The selected GZW step falls 3.031499→0.112662 ΔE. Quantized-gradient amplification
-and extreme-blue hue/separation costs remain; no overall acceptance or score
-increase follows. Profiles/configs remain unchanged. Do not repeat this repair.
-The wall/sky and material/highlight follow-ups above are complete for their
-measured scopes. Dense gameplay/cuts and cross-game acceptance remain open.
+Native incoming-material checks, six held cases/repeats, independent production
+controls, publication/state GPU probes and actual shared-source runs pass.
+Night point-sample peaks fall ~0.64–0.65→0.12–0.16 Delta E; the incoming treatment
+is stronger, with documented red/magenta chroma and dark quantization costs.
+Production held comparisons are pixel-identical to baseline at the measured
+states. Source projection, HDR-off SDR bounds, profiles and prior spatial repairs
+remain. No automatic effectiveness re-score or universal acceptance follows.
 
-Completed spatial continuation — 2026-10-26
-PLAN 3 attribution is recorded in `research/2026-10-26_spatial_color_attribution.md`.
-The bounded scene-adaptive zone curve is applied; see
-`research/2026-10-26_zone_scene_pivot.md`. It removes interpolated zone gradients
-and retains a finite-gain linear black tail. Two simpler candidates were rejected
-for shadow costs. Actual GPU curves, six held scenes and 25 exact motion matches
-across all seven windows support the scoped repair. Local separation and light-halo
-costs remain documented. Return identity 2160:541's apparent repeat outlier is now
-resolved by `research/2026-10-26_return_cut_alignment.md`: old images mixed GPU
-updates 1 and 2 of the same duplicated pose. Same-phase repeats differ by at most
-0.000426 ΔE; 1.588 is the deterministic cross-phase Retinex cut-gate handoff.
-Strict motion matching requires measured phase ages; 22 tooling tests pass.
-No production shader/profile changes were needed for that phase audit.
-The subsequent Retinex repair is applied; see `research/2026-10-26_retinex_sky.md`.
-Original-source native log-luma, conditioned guide residual and restrained gain
-restore sky separation without the measured held rims or lighting-gap loss.
-Six held repeats, two GPU probes, 14 measured-phase motion samples and five final
-shared/active checks pass. Profiles/active configs remain. Dense cut stability
-and acceptance of the real cut handoff remain open. Retinex local evidence is in
-`captures/retinex_sky_20261026/`; do not repeat completed attribution/repairs.
+Work direction
+The user noted that the to-do list kept growing and asked whether all the
+follow-ups were necessary. Finish finite repair decisions; do not turn every
+small residual or metric change into another mandatory investigation.
+The lift decision and active-chain activation are CLOSED. No new mandatory
+defect repair is queued. Remaining confidence work is broader timing/motion,
+aspects/resolutions, additional games and final effectiveness assessment.
+These support stronger generality claims and do not block using the fixes.
+Prioritize concrete reported failures; keep accepted costs and validation limits.
+Do not repeat completed stage/target attribution, source/precision probes,
+filter-spacing, gamut, phase-alignment or lift-candidate checks without new cause.
 
-Current mandate
-Prioritize technical correctness and reliable intended behavior. Personal
-palette/print preference is not a blocker. Preserve profiles, shader header
-comments and prior corrections. `creative_values.fx` is the only user-facing
-tuning surface. Output stays SDR in [0,1]; no auto-exposure or HDR output.
-Preserve source palette and lighting; richness is not saturation or darkness.
+Mandate and runtime
+Preserve game profiles and shader header comments. `creative_values.fx` is the
+only user tuning surface. No auto-exposure, HDR output or new effect is introduced.
+The user has authorized necessary work through the available token budget;
+confirmation need not be repeated for already-authorized actions.
+All runtime testing is private/headless, with no desktop fallback, focus or
+physical display changes. GPU/localhost needs sandbox escalation. Use fresh
+processes, source/profile/config hashes, unchanged repeats and 20-second continuous
+settling for small effects; warmup alone does not prove convergence. Ordinary
+screenshots contain no hidden highway telemetry. Use explicit output and measured
+GPU ages for temporal repeat claims; mask markers, tags and calibration patches.
+Original cache: `captures/babylon_scene_runs/20261024_160908/motion-source/`.
+It is 15 unique poses/sec duplicated at 30 fps, not dense native gameplay or
+physical 144 Hz validation. Latest local evidence: `captures/lift_validation_20261027/`.
+Reports are versioned; scripts/media under captures stay ignored. Do not force-add
+them or restore golden fixtures. GPU performance profiling remains deferred.
 
-Current code and evidence
-- Chroma median counts all 576 samples, not just the colored minority.
-- Percentile history initializes from nonpositive covariance, avoiding false
-  cold starts on legitimate small variance.
-- Metadata uses integer texture width, fixing cross-field blending at widths
-  such as 1366 and 1919.
-- Slow key retains RGBA32F authoritative history and reads it directly. Published
-  highways remain R16F/RGBA16F; the 20-second/67-ms half-lives and startup guard
-  are unchanged. Three GPU probes record 63 milestones each at simulated
-  30/60/144 updates/sec, maximum candidate error 0.000005171, repeat identical.
-  Eighteen fresh held captures and twenty matched motion interiors add no clipping.
-  Eighteen assessment matches span all seven windows, including both sides of cuts.
-  Two final shared-shader captures match candidates. Twenty diagnostic tests pass.
-- Scene-chroma history (`MeanChromaTex`) is now RGBA32F with unchanged coefficients
-  and half-float publications. Three GPU probes verify signed channels, startup,
-  cuts and variable timing; maximum candidate error 0.000002159, repeat identical.
-  Eighteen held captures add no clipping. Sixteen exact motion matches span all
-  seven windows; four frames retain a one-code black cost (1–38 pixels/frame).
-  Two final shared-path checks pass; see the scene-chroma precision report.
-- Remaining histogram, percentile, near-clip, high-percentile, mode, entropy,
-  zone and adaptive accumulators use independently GPU-verified 32-bit histories.
-  Formulas/rates/initialization, observations and publications are unchanged.
-  Max candidate error is 0.000002354; repeat identical. Bounded one-frame cut
-  storage stays RGBA16F. Eighteen held captures, eight individual reversions,
-  sixteen matched motion frames and four shared/standalone checks complete.
-  One-code costs: seven vivid and one muted held pixels; one motion pixel.
-
-Read before changing these paths:
-`research/2026-10-25_slow_key_precision.md`,
-`research/2026-10-25_scene_chroma_precision.md`,
-`research/2026-10-25_remaining_histories.md`,
-`research/2026-10-25_highway_resolution.md`,
-`research/2026-10-25_percentile_initialization.md`,
-`research/2026-10-25_chroma_median_contract.md`.
-For grade changes also read the inverse-luma, zone-confidence and flat-face
-Retinex reports linked from PLAN. Do not undo those fixes or repeat completed
-capture conversion, stage attribution or fixed-pair shadow-history audits.
-
-Next work
-1. Broaden PLAN 4 motion/cuts, variable timing and relevant resolution checks.
-   The actual Retinex one-update cut handoff remains measured, not visually
-   certified. Require measured phases for repeat claims. Dense continuity and
-   physical high-refresh coverage remain open; simulated cadence is not physical
-   144 Hz acceptance. Use available cached inputs first; no desktop fallback.
-2. Broaden games and dark/bright/vivid/muted/already-balanced inputs without
-   per-frame profile tuning. Do not block independent work on new recordings.
-3. Repair active-chain resource sharing separately, within the config constraints
-   below. Combined-trial success does not certify the active separate chain.
-4. Reassess overall effectiveness after broader validation; no automatic score
-   increase follows from technical repairs. PLAN 1/2 audits and current-set PLAN 3
-   coverage are complete. Retain all reported material/light/color costs; do not
-   repeat completed attribution, precision, gamut or phase-alignment audits.
-
-Before changing histogram/gamut math, read
-`research/2026-10-25_signal_contracts.md`. Preserve fixed sample counts, stable
-zone moments and the SDR-face roundoff tolerance. Do not repair unused per-hue
-filters or repeat completed history probes.
-
-Integration constraint
-Active GZW/Arc configs still use four separate effects without shared explicit
-analysis resources. Use `gamespecific/gzw/gzw_stronger_trial.conf` or
-`gamespecific/arc_raiders/arc_raiders_pipeline_trial.conf` for adaptive assessment.
-Do not edit/switch `gzw.conf` without an explicit user request. Combined-trial
-checks do not certify the broken active data path. The dated 75/100 estimate
-is provisional, not accepted achievement or a fidelity percentage.
-
-Runtime protocol
-All tests are private and headless, with no desktop fallback, focus change or
-monitor change. GPU/localhost access needs appropriate sandbox escalation.
-Use fresh processes, exact source identities, source/profile/config hashes,
-unchanged repeats and 20-second continuous settling for small effects. Warmup
-alone does not prove convergence. Ordinary screenshots have no highway telemetry;
-use explicit diagnostic output. Mask markers, labels and diagnostic strips.
-
-Motion cache: `captures/babylon_scene_runs/20261024_160908/motion-source/`.
-Verify its manifest/hashes and 15-pose/sec, duplicate-30-fps, 20-second-pre-roll
-protocol. It is not dense native gameplay. Latest local artifacts:
-`captures/{signal_contracts,history_completion,scene_chroma_precision,history_consumers,slow_key_precision,highway_resolution,percentile_initialization,chroma_median}_20261025/`.
-Reports are versioned; ignored scripts/media stay local. Keep HANDOFF below
-60 lines. New effects, golden-image testing and GPU profiling remain deferred.
-Do not block independent work on new recordings or personal taste decisions.
+Documentation checkpoint: all changes and validation limits are indexed in
+`CHANGELOG.md` and PLAN. Final tooling verification passes all 22 diagnostic tests
+and `git diff --check`. Use git history for the commit/push checkpoint rather than
+starting another repair pass solely to clear optional confidence work.

@@ -100,7 +100,7 @@ sampler2D MeanChromaSamp
 };
 
 // p90 luma cache (r) and p10 shadow floor (g) — EMA-smoothed
-texture2D PercHighTex { Width = 1; Height = 1; Format = RG32F; MipLevels = 1; };
+texture2D PercHighTex { Width = 3; Height = 1; Format = RGBA32F; MipLevels = 1; };
 sampler2D PercHighSamp
 {
     Texture   = PercHighTex;
@@ -214,7 +214,7 @@ float4 TexHwyWriteDataPS(float4 pos : SV_Position,
     if (dr == 0) {
         if (col == 0) return tex2Dlod(PercSamp,         float4(0.5, 0.5, 0, 0));
         if (col == 1) {
-            float2 ph = tex2Dlod(PercHighSamp,    float4(0.5, 0.5, 0, 0)).rg;
+            float2 ph = tex2Dlod(PercHighSamp, float4(0.5/3.0, 0.5, 0, 0)).rg;
             return float4(ph.r, ph.g, 0.0, 0.0);
         }
         if (col == 2) return tex2Dlod(MeanChromaSamp,   float4(0.5, 0.5, 0, 0));
@@ -233,10 +233,23 @@ float4 TexHwyWriteDataPS(float4 pos : SV_Position,
 // Runs after all analysis passes so all source textures hold current-frame data.
 // Unknown slots pass through the previous HighwayTex state (corrective adds its own).
 
+float4 CurrentLiftHighwayPS(int slot)
+{
+    float4 current=tex2Dlod(PercHighSamp,float4(1.5/3.0,0.5,0,0));
+    float4 floor_obs=tex2Dlod(PercHighSamp,float4(2.5/3.0,0.5,0,0));
+    if (slot == HWY_LIFT_P25) return float4(current.r,0,0,1);
+    if (slot == HWY_LIFT_P50) return float4(current.g,0,0,1);
+    if (slot == HWY_LIFT_P90) return float4(current.b,0,0,1);
+    if (slot == HWY_LIFT_MODE) return float4(current.a,0,0,1);
+    if (slot == HWY_LIFT_P10) return float4(floor_obs.r,0,0,1);
+    return float4(floor_obs.a,0,0,1);
+}
+
 float4 HighwayWritePS(float4 pos : SV_Position,
                       float2 uv  : TEXCOORD0) : SV_Target
 {
     int    xi   = int(pos.x);
+    if (xi >= HWY_LIFT_P25 && xi <= HWY_LIFT_VALID) return CurrentLiftHighwayPS(xi);
     float4 perc = tex2Dlod(PercSamp,       float4(0.5, 0.5, 0, 0));
     if (xi == HWY_P25) return float4(perc.r, 0, 0, 1);
     if (xi == HWY_P50) return float4(perc.g, 0, 0, 1);
@@ -251,7 +264,7 @@ float4 HighwayWritePS(float4 pos : SV_Position,
     if (xi == HWY_MEDIAN_C)
         return float4(tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).r, 0, 0, 1);
     if (xi == HWY_P90)
-        return float4(tex2Dlod(PercHighSamp,  float4(0.5, 0.5, 0, 0)).r, 0, 0, 1);
+        return float4(tex2Dlod(PercHighSamp, float4(0.5/3.0, 0.5, 0, 0)).r, 0, 0, 1);
     if (xi == HWY_CHROMA_ANGLE) {
         float2 ab = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0)).gb;
         return float4((atan2(ab.y, ab.x) + 3.14159265) / (2.0 * 3.14159265), 0, 0, 1);
@@ -265,7 +278,7 @@ float4 HighwayWritePS(float4 pos : SV_Position,
     if (xi == HWY_IQR)
         return float4(perc.b - perc.r, 0, 0, 1);
     if (xi == HWY_P10)
-        return float4(tex2Dlod(PercHighSamp,   float4(0.5, 0.5, 0, 0)).g, 0, 0, 1);
+        return float4(tex2Dlod(PercHighSamp, float4(0.5/3.0, 0.5, 0, 0)).g, 0, 0, 1);
     if (xi == HWY_NEAR_CLIP)
         return float4(tex2Dlod(NearClipSamp, float4(0.5, 0.5, 0, 0)).r, 0, 0, 1);
     return float4(ReadHWY(xi), 0, 0, 1);  // pass through corrective's slots unchanged
@@ -490,8 +503,11 @@ float4 MeanChromaPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 // Same 64-bin CDF walk as CDFWalkPS but targets the 90th percentile.
 // No Kalman — simple EMA is sufficient for a coarse highlight threshold signal.
 
+#include "../lift_observation.fxh"
+
 float4 CDFWalkHighPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
+    if (pos.x >= 1.0) return CurrentLiftObservationPS(pos,uv);
     float cumul = 0.0;
     float inv_mass = 1.0 / max(LumHistMass(), 1e-5);
     float p90 = 0.90, p10 = 0.10;
@@ -516,7 +532,7 @@ float4 CDFWalkHighPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
         lk10 = saturate(lk10 + at10);
     }
 
-    float2 prev = tex2Dlod(PercHighSamp, float4(0.5, 0.5, 0, 0)).rg;
+    float2 prev = tex2Dlod(PercHighSamp, float4(0.5/3.0, 0.5, 0, 0)).rg;
     float alpha = saturate(frametime * 0.005);
     return float4(lerp(prev.r, p90, alpha), lerp(prev.g, p10, alpha), 0.0, 1.0);
 }

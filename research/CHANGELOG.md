@@ -5,11 +5,13 @@ Historical session excerpts extracted from HANDOFF.md. Current changes are in
 [GOAL.md](../GOAL.md) and [PLAN.md](../PLAN.md). Historical implementations below
 may have been replaced and do not define the active chain.
 
-Latest continuation: [blue-cusp repair](2026-10-27_gamut_continuity_repair.md),
-[wall/sky attribution](2026-10-27_wall_sky_attribution.md) and
-[material/highlight coverage](2026-10-27_material_highlight_coverage.md) complete
-current-set spatial/color work. Retained costs remain; temporal/resolution
-coverage is next. See the root changelog for validation and implementation scope.
+Latest evidence: [current-source lift and activation](2026-10-27_lift_transition_repair.md)
+closes the candidate decision and the separate-effect configuration defect. Both
+active configs now use their verified combined paths after explicit user approval.
+Profiles and existing rates remain; native materials, six held cases, source/state
+probes and actual active-config repeats are verified. Retained color/quantization
+costs and broader confidence limits are documented. Earlier evidence is indexed in
+PLAN; no new mandatory defect repair is queued.
 
 ---
 

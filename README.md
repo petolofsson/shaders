@@ -18,41 +18,25 @@ sRGB boundaries and linear-light internal processing. In-game HDR must be off.
 
 ## Current status
 
-Current work prioritizes technical correctness, signal preservation, reliable
-history and spatial/temporal stability. Personal palette preference is not a
-blocker. Existing profiles remain assessment inputs; `creative_values.fx` is
-the sole user-facing tuning surface.
+Both GZW and Arc active configs now use the combined `ShaderPipeline` effect.
+The user explicitly authorized activation. Required analysis resources and grade
+consumers now share one effect; the earlier separate-effect sharing defect is fixed.
+Profiles stay unchanged, and grade remains eight passes. Relaunch the game to load
+these changes; in-game HDR must remain off.
 
-Active GZW and Arc configs still use four separate effects:
-`analysis_frame : inverse_grade : corrective : grade`. Required explicit render
-targets do not cross effect instances in vkBasalt, leaving dependent grade reads
-unavailable. Assessment uses the combined technique in
-`gamespecific/gzw/gzw_stronger_trial.conf` and
-`gamespecific/arc_raiders/arc_raiders_pipeline_trial.conf`. Active configs have
-not been switched; changing `gzw.conf` requires an explicit request.
+The [latest closure report](research/2026-10-27_lift_transition_repair.md) adopts
+current-source lift after native material checks, six held cases, independent GPU
+source/state tests and actual shared-source checks. Both actual active-config
+full/repeat pairs are pixel-identical. Gate recovery reduces the measured return
+handoff; current-source lift removes the two dominant night settling peaks.
+Incoming material/color and near-black quantization costs remain documented.
 
-Completed audits cover live history precision, numerical contracts and metadata
-addressing. The latest [zone repair](research/2026-10-26_zone_scene_pivot.md)
-removes coarse pivot gradients, and the [Retinex repair](research/2026-10-26_retinex_sky.md)
-restores measured sky separation while retaining tested rim and lighting behavior.
-[Motion phase alignment](research/2026-10-26_return_cut_alignment.md) distinguishes
-GPU updates of duplicated source poses; temporal repeat claims require measured
-phase identity. Profiles remain unchanged.
-
-The [blue-cusp repair](research/2026-10-27_gamut_continuity_repair.md) removes
-measured disconnected-ray projection jumps while retaining valid-color identity
-and SDR bounds. The [wall/sky attribution](research/2026-10-27_wall_sky_attribution.md)
-and [material/highlight assessment](research/2026-10-27_material_highlight_coverage.md)
-complete current two-game spatial/color coverage: twenty fresh captures supplement
-eight verified prior views; twelve full/repeat pairs are identical. Material/light
-normalization, bright-core compression, foliage hue and blue quantization costs
-remain explicit. Profiles and active configs remain unchanged.
-
-Next are denser motion/cuts, variable timing, relevant resolution checks and
-cross-game coverage. Active-chain integration remains open. These assessments
-do not establish universal acceptance or dense gameplay continuity. The older
-75/100 combined-chain estimate remains provisional and has not been re-scored.
-See [PLAN.md](PLAN.md) for evidence and order.
+Signal/history, spatial/color, gamut and integer-dimension filter-spacing repairs
+are indexed in [PLAN.md](PLAN.md). No new mandatory defect repair is queued.
+Additional timing/motion, aspect/resolution and game coverage support broader
+claims and do not block trying the fixes. Live gameplay and universal visual
+acceptance remain distinct from the private validation; the old 75/100 estimate
+has not been re-scored. `creative_values.fx` remains the sole tuning surface.
 
 ## Validation
 

@@ -23,7 +23,7 @@ Configured in `gamespecific/arc_raiders/arc_raiders.conf` and
 `gamespecific/gzw/gzw.conf`:
 
 ```text
-analysis_frame : inverse_grade : corrective : grade
+pipeline (one ShaderPipeline effect containing analysis_frame -> inverse_grade -> corrective -> grade)
 ```
 
 `grade.fx` is an 8-pass technique:
@@ -98,6 +98,7 @@ Encode/decode out-of-range quantities at the slot boundary.
 200 p90, 201 mean chroma angle, 202 achromatic fraction
 203 zone key, 204 zone std, 205 slow key
 206 luma mode, 207 entropy, 208 IQR, 209 p10, 210 near-clip fraction
+212 current lift p25, 213 p50, 214 p90, 215 mode, 216 p10, 217 source-valid flag
 ```
 
 ## Current State
@@ -129,6 +130,8 @@ Encode/decode out-of-range quantities at the slot boundary.
   Their formulas, rates and initialization are unchanged. Raw observations and
   publications remain half-float; bounded one-frame scene-cut storage stays RGBA16F.
 - Guided-filter epsilon is local-variance adaptive.
+- Low-frequency downscale and guided-filter taps use allocated integer texture
+  dimensions, including widths/heights not divisible by eight or sixteen.
 - Zone statistics use 64 squared-edge bins decoded to linear light for near-black precision.
 - Local contrast's negative arm uses a luminance-relative smooth bound to preserve shadows.
 - Zone contrast uses a live scene-wide mean zone median and global percentile
@@ -181,10 +184,30 @@ Encode/decode out-of-range quantities at the slot boundary.
 - Explicit diagnostic GPU readback isolates the measured dark-return tail to slow
   key rather than local-zone lag. The later precision repair preserves its
   time constants; old capture timing is historical evidence.
+- Consecutive cut diagnostics cover 32 night and 30 return updates in the cached
+  original clip. Pose 2220 appears only in the appended tail; exclude it from
+  motion claims. Atlas tags can overlap a tile interior: mask their footprint
+  consistently across all compared images, beyond the ordinary border crop.
+- Current cut traces retain the real return handoff and night settling. A raw
+  median cut-detector shortcut removes a delayed pulse but creates stronger
+  noncut triggers at poses 1428/1432; it is rejected, not applied.
+- Same-update night attribution isolates early lift-strength growth and later
+  specular-protection release, plus smaller zone and ambient cut-gate responses.
+  Frozen control holds/bypasses are diagnostics, not adopted repairs. Preserve
+  prior rates and steady-state intent when assessing transition changes.
 - Golden-image regression testing has been removed; use matched captures and effect attribution instead.
-- The configured four-effect chain leaves grade's cross-effect highway and zone
-  reads at zero in vkBasalt. `gzw_stronger_trial.conf` tests a combined technique;
-  the active GZW config has not been switched.
+- Both active configs now use the combined pipeline, following the user's
+  explicit “Activate both combined chains” instruction. The earlier separate-
+  effect resource-sharing defect is no longer active. Actual active-config
+  full/repeat captures are pixel-identical for both profiles.
+- `PercHighTex` has three RGBA32F records: original p90/p10 history at 0.5/3,
+  current p25/p50/p90/mode at 1.5/3 and p10/mass/validity at 2.5/3. Its original
+  history recurrence is unchanged. Highways 212–217 publish current lift inputs.
+- The complete current-source lift coefficient uses existing adaptive rates.
+  In the second adaptive record, RG remain cut-gate recovery, B=1 means gates
+  initialized, B=2 also validates the source product, and A stores that product.
+  Valid zero products remain initialized; source loss/recovery uses explicit flags.
+  The original lift path/history remains the fallback for unavailable analysis.
 
 ## Validation
 
@@ -203,8 +226,13 @@ Screenshot captures contain no highway telemetry; `capture --dump` is unsupporte
 
 Current two-game spatial/color coverage is assessed in the
 [material/highlight report](research/2026-10-27_material_highlight_coverage.md).
-Dark structure and colored light remain with documented normalization, core,
-foliage-hue and blue-gradient costs; no universal acceptance follows.
-Next is temporal/resolution coverage; evidence and order are in [PLAN.md](PLAN.md).
-The older combined-chain 75/100 estimate remains provisional and has not been
-re-scored after these audits. It is not acceptance of the active separate chain.
+The [lift/activation closure](research/2026-10-27_lift_transition_repair.md) completes
+the current-source lift decision and active-chain configuration repair. Native
+material/edge checks, six production held identities, independent source/state
+probes and actual-source/active-config checks pass. Incoming red/magenta chroma,
+near-black variation and smaller settling costs remain documented.
+No new mandatory defect repair is queued. Broader timing/motion, aspect/resolution,
+game coverage and ratings support stronger claims rather than blocking use.
+Do not turn every small residual into another investigation; see PLAN.
+The older 75/100 estimate remains provisional and is not a current effectiveness
+rating or universal acceptance of the activated chain.
