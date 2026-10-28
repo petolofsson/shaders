@@ -289,6 +289,7 @@ float AdaptiveStep(float previous, float current, float scene_cut)
 struct SceneCtx {
     float4 perc;
     float  zone_log_key, zone_std, zone_str;
+    float inverse_luma_budget;
     float  ss_08_25, ss_04_25;
     float  scene_cut;
     float  slow_key;
@@ -331,6 +332,16 @@ SceneCtx BuildSceneCtx()
     ctx.illum_warm    = IllumWarm(illum_rgb);
     ctx.median_C           = clamp(ReadHWY(HWY_MEDIAN_C), 0.0, 0.30);
     ctx.perc               = ReadTexHwyPerc();
+    // Restrain inverse reconstruction over an already-wide source span.
+    // Current observations avoid a false broad-span pulse while histories settle.
+    // Relative span reaches 0.6 at two stops and 15/17 at four; retain at least half strength.
+    float current_p25 = ReadHWY(HWY_LIFT_P25);
+    float current_p75 = ReadHWY(HWY_TONAL_P75);
+    float relative_span = max(current_p75 - current_p25, 0.0)
+                        / max(current_p75 + current_p25, 0.001);
+    float source_valid = step(0.5, ReadHWY(HWY_LIFT_VALID));
+    ctx.inverse_luma_budget = lerp(1.0,
+        lerp(1.0, 0.5, smoothstep(0.6, 15.0 / 17.0, relative_span)), source_valid);
     ctx.scene_cut          = ReadHWY(HWY_SCENE_CUT);
     ctx.shadow_floor       = ReadHWY(HWY_P10);
     // Scene cuts temporarily suppress adaptive look changes, allowing the new
@@ -464,7 +475,7 @@ float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex
         float  delta = min(L_sc / max(col_luma, 1e-5) - 1.0, 0.0);
         float  t     = (col_luma - 0.05) / 0.18;
         float  bell  = exp(-0.5 * t * t);
-        float inverse_luma_ratio = max(1.0 + delta * float(INVERSE_LUMA) * bell, 0.0);
+        float inverse_luma_ratio = max(1.0 + delta * float(INVERSE_LUMA) * bell * ctx.inverse_luma_budget, 0.0);
         lin_e *= inverse_luma_ratio;
     }
     lin_e *= E;
@@ -542,7 +553,13 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     // Normalize the signed key difference by their sum to restrain broad-field
     // compression, preserving unity at the key and the existing stop bounds.
     float guided_illum = exp2(guided_illum_log);
-    float illum_gain = clamp(2.0 * zk_safe / (zk_safe + guided_illum), exp2(-0.35), exp2(0.35));
+    float spatial_gain = clamp(2.0 * zk_safe / (zk_safe + guided_illum), exp2(-0.35), exp2(0.35));
+    // Preserve the original spatial correction relative to its native response.
+    // The gentler native log slope retains material differences near the key.
+    float native_illum = exp2(native_guide_log);
+    float native_gain = clamp(2.0 * zk_safe / (zk_safe + native_illum), exp2(-0.35), exp2(0.35));
+    float material_gain = exp2(clamp((log2(zk_safe) - native_guide_log) * 0.35, -0.35, 0.35));
+    float illum_gain = clamp(material_gain * (spatial_gain / native_gain), exp2(-0.35), exp2(0.35));
     // Coarse-edge strength fading outlines otherwise uniform materials.
     // Use its existing minimum confidence budget uniformly; scene statistics
     // still set the slope and shadow-toe bounds.

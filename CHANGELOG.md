@@ -3,8 +3,33 @@
 Recent implementation changes. Measurements and rejected candidates remain in
 versioned research reports; older implementation history is in git.
 
+## 1.0 — 2026-10-28
+
+- Stable checkpoint of the combined SDR pipeline, including the adopted
+  inverse-luma restraint, Retinex material preservation and current user-tuned
+  Arc Raiders/GZW profiles. Validation scope and accepted costs remain as
+  documented in the reports below; this version adds no new effectiveness claim.
+- Shadow depth and material separation are the next requested assessment;
+  no shadow experiment is included in this release.
+
 ## 2026-10-27
 
+- Adopted [Retinex material preservation](research/2026-10-27_retinex_material_preservation.md):
+  a gentler native luminance response retains the original guided/native spatial
+  gain ratio and ±0.35-stop limits. Selected paint/paving separation improves;
+  native boundary protection remains. Seven real cases, two-profile boundaries,
+  repeats, independent GPU contracts, same-update cut controls, bypass and actual
+  active configs pass. Shadow/cloud/sky and small daylight timing costs remain.
+  Profiles/configs, history rates, resources and eight passes are preserved.
+  Direct-curve candidates are rejected and this finite decision is closed.
+- Adopted [current-source inverse-luma restraint](research/2026-10-27_tonal_selectivity.md)
+  as the first bounded tonal-cooperation enhancement. Broad trimmed source spans
+  reduce inverse strength to half its manual ceiling; Retinex/lift remain.
+  Six held cases/repeats, new p75 GPU probes, two-profile cut controls and actual
+  active-config comparisons pass. Interior separation gains are modest; cloud/
+  warm-floor costs remain. New p75 uses spare cache B and slot 218, with no added
+  history, pass, rate or tuning control. Profiles/configs and headers are preserved.
+  Lift taper and joint/history-driven restraint candidates are rejected and closed.
 - Closed the [current-source lift repair and combined-chain activation](research/2026-10-27_lift_transition_repair.md).
   Native material checks, six production held identities, source/state GPU probes
   and independent controls pass. Existing statistics and rates remain; grade stays

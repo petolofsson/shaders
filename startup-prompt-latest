@@ -5,10 +5,38 @@ This is the sole startup prompt; do not create alternate or dated copies.
 Use `git status` and `git log -1` for repository state; preserve all working changes.
 
 Current snapshot — 2026-10-27
+Latest bounded enhancement: preserve material differences during Retinex lighting
+normalization. Read `research/2026-10-27_retinex_material_preservation.md`.
+Grade now combines a 0.35 log-slope native response with the original guided/native
+gain ratio, retaining the old relative spatial correction and ±0.35-stop limits.
+Selected wall/paving separation improves; direct curve substitution's purple edge
+is removed by the adopted ratio. Seven real inputs and a two-profile boundary
+source have identical final candidate repeats and no added clipping. Independent
+GPU contracts, 96 same-update full controls, zero-strength bypass and four actual-
+active-config captures pass; actual captures match the isolated candidate exactly.
+Retain cloud/shadow/sky costs and Arc's small daylight duplicate-step increase.
+Profiles/configs, textures, history rates and eight grade passes remain. Arc now
+has user-set BLACKS=0.005 and FILM_CURVE=0.6; preserve these and all other edits.
+The direct/refined Retinex screen is CLOSED; no automatic re-score or new mandatory
+repair is queued. Do not repeat the completed candidate/contract checks without
+a concrete new cause.
+
+The preceding inverse-luma selectivity enhancement is adopted on a bounded scope.
+Read `research/2026-10-27_tonal_selectivity.md`: current-source p25/p75 spans of
+two to four stops restrain inverse luma to half its manual ceiling. That gate and
+lift are preserved by the later Retinex work above. Six prior held cases/repeats
+add no clipping; selected
+interior gaps improve, with modest cloud/warm-floor costs retained. New-field
+GPU contracts, two-profile measured cut controls and four actual-active-config
+captures pass; those captures match the isolated candidate exactly. Preserve
+the pre-existing user edits to Arc's creative profile. The lift taper, joint
+restraint and history-driven gate are rejected; their screen is closed.
+No new mandatory repair or automatic effectiveness re-score follows.
+
 The known technical repair pass is complete on its measured scope. Signal and
 history audits, current two-game spatial/material/color coverage, filter spacing,
 cut-gate recovery and the current-source lift repair are recorded in PLAN.
-Read `research/2026-10-27_lift_transition_repair.md` for the latest closure.
+Read `research/2026-10-27_lift_transition_repair.md` for that technical closure.
 
 Both active game configs now bind the combined `general/pipeline/pipeline.fx`.
 The user explicitly authorized “Activate both combined chains.” Profiles remain
@@ -20,8 +48,10 @@ The grade still has eight passes; no additional effect or tuning knob was added.
 The lift repair uses current source p25/p50/p90/mode/p10 only for the lift
 consumer. Producer statistics/histories and their time constants remain.
 `PercHighTex` has three RGBA32F records: original p90/p10 history at 0.5/3,
-current quartet at 1.5/3, and p10/mass/validity at 2.5/3. Highways 212–217 publish
-current normalized lift observations. The second adaptive record retains gate
+current quartet at 1.5/3, and p10/mass/current p75/validity at 2.5/3. Highways
+212–217 publish current normalized lift observations; 218 publishes current p75
+for inverse restraint, which also reads p25/validity from 212/217. The original
+observation fields, histories and rates remain. The second adaptive record retains gate
 recovery in RG, stores validity b=1 (gates) or 2 (gates+source product), and the
 complete lift coefficient in alpha. Explicit flags preserve valid zero states;
 source loss uses the original path and recovery seeds current observations.
@@ -59,7 +89,8 @@ screenshots contain no hidden highway telemetry. Use explicit output and measure
 GPU ages for temporal repeat claims; mask markers, tags and calibration patches.
 Original cache: `captures/babylon_scene_runs/20261024_160908/motion-source/`.
 It is 15 unique poses/sec duplicated at 30 fps, not dense native gameplay or
-physical 144 Hz validation. Latest local evidence: `captures/lift_validation_20261027/`.
+physical 144 Hz validation. Latest local evidence: `captures/retinex_material_20261027/`;
+the lift closure remains under `captures/lift_validation_20261027/`.
 Reports are versioned; scripts/media under captures stay ignored. Do not force-add
 them or restore golden fixtures. GPU performance profiling remains deferred.
 

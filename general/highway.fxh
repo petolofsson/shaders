@@ -49,6 +49,7 @@ sampler2D HighwaySamp
 #define HWY_LIFT_MODE       215
 #define HWY_LIFT_P10        216
 #define HWY_LIFT_VALID      217
+#define HWY_TONAL_P75       218    // current source p75; tonal restraint also reads lift p25/valid
 
 // ── corrective ────────────────────────────────────────────────────────────────
 #define HWY_ZONE_KEY        203    // zone_log_key — linear mean of zone medians [0,1]

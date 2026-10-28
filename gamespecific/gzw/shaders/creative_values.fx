@@ -2,14 +2,14 @@
 // Keep user-facing tuning here; shader constants and analysis parameters stay in general/.
 
 // INPUT
-#define INVERSE_STRENGTH  0.75
-#define INVERSE_LUMA      0.6
+#define INVERSE_STRENGTH  0.60
+#define INVERSE_LUMA      0.30
 
 // CORRECTIVE
 #define BLACKS            0.0
 #define WHITES            0.995
 #define EXPOSURE          0.00
-#define FILM_CURVE        0.75
+#define FILM_CURVE        0.60
 
 // PRIMARY COLOR CORRECTION
 #define SHADOW_TEMP       -0.15
@@ -20,18 +20,18 @@
 #define HIGHLIGHT_TINT    0.00
 
 // TONAL
-#define CONTRAST              1.5
+#define CONTRAST              1.0
 #define SHADOWS               1.0
 #define RETINEX_STRENGTH      1.0
 #define ZONE_CONTRAST_STRENGTH 1.0
 #define SHADOW_LIFT_STRENGTH   0.75
 
 // CHROMA
-#define SATURATION           0.25
+#define SATURATION           0.0
 
 // LOOK
 #define PRINT_STOCK           1.0
-#define PRINTER_R             0.0
+#define PRINTER_R             0.00
 #define PRINTER_G             0.00
 #define PRINTER_B             0.00
 

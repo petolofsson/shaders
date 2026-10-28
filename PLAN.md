@@ -5,6 +5,23 @@ Preserve the game-specific profiles, shader headers and prior corrections.
 
 ## Current status
 
+The requested [Retinex material-preservation enhancement](research/2026-10-27_retinex_material_preservation.md)
+is adopted on its measured scope. A gentler native response retains the original
+relative spatial correction and gain limits. Selected paint/paving separation
+improves; held-face protection remains, with documented shadow/cloud/sky and small
+daylight timing costs. Seven real inputs, a two-profile boundary source, independent
+GPU contracts, measured cut controls, bypass and actual-config checks pass.
+Profiles/configs, prior work, history rates and eight grade passes remain.
+The direct/refined candidate decision is closed; no new mandatory repair follows.
+
+The preceding inverse-luma cooperation enhancement is closed on its measured scope:
+[current-source inverse-luma restraint](research/2026-10-27_tonal_selectivity.md)
+is adopted after rejecting the lift taper and joint inverse/Retinex restraint.
+Six held baseline/candidate repeats, new-field GPU contracts, two-profile cut
+controls and actual active-config checks pass. Benefits are modest, with retained
+cloud/warm-floor separation costs; this is a first enhancement, not complete
+model selectivity or a new effectiveness rating. Profiles and configs remain.
+
 The known technical repairs in this pass are complete on the assessed set:
 
 - Signal units, statistics, history precision/initialization and consumers are audited.
@@ -42,6 +59,8 @@ reported failures; finish a finite adopt/reject/accept decision for any new cand
 
 | Correction | Evidence and scope |
 |---|---|
+| Retinex material preservation | [Decision](research/2026-10-27_retinex_material_preservation.md): native log-gain slope 0.35 plus the original guided/native gain ratio preserves bounded spatial correction. Wall relative gap 0.865→0.879 stops, sunlit paving 1.402→1.448; shadow/cloud/sky costs remain. Seven real cases and two-profile native boundaries/repeats pass; new purple edge from direct substitution is removed. Independent GPU probes, 96 exact same-update full controls, exact zero-strength bypass and both actual-config full/repeats pass. Profiles, rates, formats, textures and pass counts remain. |
+| Source-aware inverse restraint | [Decision](research/2026-10-27_tonal_selectivity.md): current trimmed p25/p75 span restrains inverse luma to half its ceiling across two to four stops, retaining existing Retinex/lift. Interior cool-upper relative gap 2.290→2.330 stops; dedicated cloud 0.893→0.880. Six final held cases add no clipping; all twelve baseline/candidate repeat pairs are identical. New p75 uses spare cache B and highway 218, with no history/pass/rate change. Two-profile measured cut controls preserve baseline, and both actual configs match the candidate exactly. |
 | Closed lift repair and activation | [Report](research/2026-10-27_lift_transition_repair.md): current-source complete-product lift is adopted; night point peaks ~0.64–0.65→0.12–0.16 ΔE. Native material checks, six production held identities, state/publication probes and exact independent controls pass. Both active configs are switched with explicit user authorization; their actual full/repeats are pixel-identical. Grade remains eight passes; profiles and existing rates remain. |
 | Current-observation lift screen | [Report](research/2026-10-27_lift_consumer_screen.md): four two-profile point replays, 192 exact full controls, 960 images and unchanged return/daylight candidates. Current complete-product filtering reduces night peaks ~0.64–0.65→0.12–0.16 ΔE but changes incoming images ~3.49 ΔE. No adoption at that stage; the closure report above completes the decision. |
 | Direct gate recovery | [Report](research/2026-10-27_gate_recovery.md): native first-return duplicate step about 1.44→0.76 ΔE, with larger subsequent recovery steps. Six motion and six held runs preserve exact controls; three held repeats are identical. Two-record RGBA32F adaptive storage retains eight passes; independent-state and simulated cadence/hitch GPU checks pass. Early lift-target p25/mode settling remains; no producer-rate/profile changes. |

@@ -96,6 +96,24 @@ deferred; do not run throughput/performance probes.
 
 ## Latest assessment evidence
 
+The [Retinex material-preservation decision](research/2026-10-27_retinex_material_preservation.md)
+adopts a gentler native response with the original relative spatial correction.
+Seven real cases plus a shared native boundary source under both profiles retain
+identical candidate repeats and add no clipping. Separate gain/composition GPU
+probes, 96 exact same-update full controls, a zero-strength bypass and actual
+active-config full/repeats pass. Small shadow/cloud/sky and daylight timing costs
+remain; sparse motion does not certify dense continuity. Local artifacts and
+rejected direct curves remain in `captures/retinex_material_20261027/`.
+
+The [tonal-selectivity decision](research/2026-10-27_tonal_selectivity.md) adopts
+current-source inverse restraint after rejecting lift taper and joint restraint.
+Six final held sources have pixel-identical baseline and candidate repeats; new
+p75/publication/fallback GPU probes pass. Two-profile measured cut comparisons
+show nonintervention in those windows, not moving engaged-restraint acceptance.
+Both actual configs' full/repeats match the isolated candidate exactly. Current
+p75 uses cache record-three B and highway 218; all original histories/rates remain.
+Local artifacts and rejected variants stay under `captures/tonal_selectivity_20261027/`.
+
 The [blue-cusp repair](research/2026-10-27_gamut_continuity_repair.md) combines
 explicit GPU contracts, two-profile charts and measured-phase motion checks.
 The [wall/sky report](research/2026-10-27_wall_sky_attribution.md) distinguishes

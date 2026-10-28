@@ -242,6 +242,7 @@ float4 CurrentLiftHighwayPS(int slot)
     if (slot == HWY_LIFT_P90) return float4(current.b,0,0,1);
     if (slot == HWY_LIFT_MODE) return float4(current.a,0,0,1);
     if (slot == HWY_LIFT_P10) return float4(floor_obs.r,0,0,1);
+    if (slot == HWY_TONAL_P75) return float4(floor_obs.b,0,0,1);
     return float4(floor_obs.a,0,0,1);
 }
 
@@ -249,7 +250,7 @@ float4 HighwayWritePS(float4 pos : SV_Position,
                       float2 uv  : TEXCOORD0) : SV_Target
 {
     int    xi   = int(pos.x);
-    if (xi >= HWY_LIFT_P25 && xi <= HWY_LIFT_VALID) return CurrentLiftHighwayPS(xi);
+    if (xi >= HWY_LIFT_P25 && xi <= HWY_TONAL_P75) return CurrentLiftHighwayPS(xi);
     float4 perc = tex2Dlod(PercSamp,       float4(0.5, 0.5, 0, 0));
     if (xi == HWY_P25) return float4(perc.r, 0, 0, 1);
     if (xi == HWY_P50) return float4(perc.g, 0, 0, 1);

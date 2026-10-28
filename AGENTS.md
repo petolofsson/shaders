@@ -99,6 +99,7 @@ Encode/decode out-of-range quantities at the slot boundary.
 203 zone key, 204 zone std, 205 slow key
 206 luma mode, 207 entropy, 208 IQR, 209 p10, 210 near-clip fraction
 212 current lift p25, 213 p50, 214 p90, 215 mode, 216 p10, 217 source-valid flag
+218 current source p75 for inverse-luma restraint (also uses slots 212/217)
 ```
 
 ## Current State
@@ -171,9 +172,12 @@ Encode/decode out-of-range quantities at the slot boundary.
   0.65 confidence floor uniformly; its coarse-edge fade also produced false rims.
 - Retinex evaluates averaged `BilateralLogTex` coefficients in the original source
   domain using `NativeGuideLogTex` R32F, captured before inverse corrections.
-  Its unresolved model residual is conditioned by `(1-a)` and its bounded gain
-  uses `2*key/(key+illuminant)`. Sky separation is restored in the measured case
-  without restoring held-face rims; selected lighting gaps remain. See PLAN.
+  Its unresolved model residual is conditioned by `(1-a)`. Its gain now combines
+  a bounded 0.35 log-slope native response with the original guided/native gain
+  ratio (`2*key/(key+illuminant)` for each reference), retaining ±0.35-stop bounds.
+  The [material-preservation decision](research/2026-10-27_retinex_material_preservation.md)
+  records improved selected wall/paving separation, preserved held-face protection
+  and retained shadow/cloud/sky costs. The direct-curve candidates are rejected.
   Analysis/combined techniques add the source observation first; grade stays eight passes.
 - Matched headless Babylon motion is validated with sparse frame identities;
   15 source poses/sec duplicated at 30 fps does not prove dense continuity.
@@ -201,13 +205,22 @@ Encode/decode out-of-range quantities at the slot boundary.
   effect resource-sharing defect is no longer active. Actual active-config
   full/repeat captures are pixel-identical for both profiles.
 - `PercHighTex` has three RGBA32F records: original p90/p10 history at 0.5/3,
-  current p25/p50/p90/mode at 1.5/3 and p10/mass/validity at 2.5/3. Its original
+  current p25/p50/p90/mode at 1.5/3 and p10/mass/current p75/validity at 2.5/3. Its original
   history recurrence is unchanged. Highways 212–217 publish current lift inputs.
 - The complete current-source lift coefficient uses existing adaptive rates.
   In the second adaptive record, RG remain cut-gate recovery, B=1 means gates
   initialized, B=2 also validates the source product, and A stores that product.
   Valid zero products remain initialized; source loss/recovery uses explicit flags.
   The original lift path/history remains the fallback for unavailable analysis.
+- Inverse luma now backs off to half its manual ceiling over a current-source
+  trimmed p25/p75 span of two to four stops. Its gate and lift are unchanged by
+  the later Retinex material-preservation enhancement.
+  Current p75 occupies the spare B channel of `PercHighTex` record three and
+  publishes in slot 218; existing observation/history fields and rates remain.
+  The [tonal-selectivity decision](research/2026-10-27_tonal_selectivity.md)
+  closes the lift/joint/inverse-only screen. Six held final comparisons/repeats,
+  current-source GPU probes, measured cut controls and actual-config checks pass.
+  Modest gains and cloud/warm-floor costs remain; no effectiveness re-score.
 
 ## Validation
 
