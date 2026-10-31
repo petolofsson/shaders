@@ -222,7 +222,7 @@ float3 ApplyMaskingCoupler(float3 lin, float print_stock)
     return lerp(lin, warmed, saturate(print_stock));
 }
 
-float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print_stock)
+float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print_stock, float film_loss_fraction)
 {
     float3 ps = lin;
     // 2383 S-curve — two-piece, no gates:
@@ -231,12 +231,24 @@ float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print
     // Reinhard shoulder: rolls off highlights above 0.60.
     ps = pow(max(ps, 0.0), 1.15);
     float3 d = max(0.0, ps - 0.60);
-    ps = ps - d + d / (1.0 + d * 1.5);
+    float3 shoulder_ps = ps - d + d / (1.0 + d * 0.75);
+    float print_loss_fraction = max(Luma(ps - shoulder_ps), 0.0) / max(Luma(ps), 1e-10);
+    float shared_relief = film_loss_fraction / max(film_loss_fraction + print_loss_fraction, 1e-10);
+    ps = lerp(shoulder_ps, ps, shared_relief);
     // Midtone desaturation: ~15% chroma loss (2383 dye-layer bleach).
     float luma_ps = Luma(ps);
     float desat_w = 0.15 * smoothstep(0.0, fc_knee_toe, luma_ps)
                           * (1.0 - smoothstep(fc_knee, 1.0, luma_ps));
     ps = lerp(ps, luma_ps.xxx, desat_w);
+    // Retain the print density while preserving channel ratios outside deep shadows.
+    // The ratio path already restrains chroma; do not desaturate it a second time.
+    float input_y = Luma(lin);
+    float3 ratio_print = lin * (Luma(ps) / max(input_y, 1e-10));
+    float3 print_lab = RGBtoOklabLinear(lin);
+    float relative_chroma = length(print_lab.yz) / max(print_lab.x, 0.001);
+    float palette_weight = lerp(0.0, 1.0, smoothstep(0.03, 0.12, relative_chroma));
+    palette_weight = lerp(palette_weight, 1.0, smoothstep(0.10, 0.25, input_y));
+    ps = lerp(ps, ratio_print, smoothstep(0.01, 0.10, input_y) * palette_weight);
     return lerp(lin, saturate(ps), saturate(print_stock));
 }
 
@@ -476,6 +488,19 @@ float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex
         float  t     = (col_luma - 0.05) / 0.18;
         float  bell  = exp(-0.5 * t * t);
         float inverse_luma_ratio = max(1.0 + delta * float(INVERSE_LUMA) * bell * ctx.inverse_luma_budget, 0.0);
+        // A shared shadow gain preserves relative shades through reconstruction.
+        float shadow_anchor = clamp(ctx.zone_log_key * (float(WHITES) - float(BLACKS))
+                                    + float(BLACKS), 0.06, 0.12);
+        float anchor_disc = ((Dd*Dd - 4.0*Cc*Ee)*shadow_anchor + 4.0*Aa*Ee - 2.0*Bb*Dd)*shadow_anchor + Bb*Bb;
+        float anchor_sc = 0.5*(Dd*shadow_anchor - Bb + sqrt(max(anchor_disc,0.0)))
+                        / max(Aa - Cc*shadow_anchor,1e-4);
+        float anchor_t = (shadow_anchor - 0.05) / 0.18;
+        float anchor_ratio = max(1.0 + min(anchor_sc / shadow_anchor - 1.0,0.0)
+                            * float(INVERSE_LUMA) * exp(-0.5*anchor_t*anchor_t)
+                            * ctx.inverse_luma_budget,0.0);
+        float shadow_preserve = smoothstep(0.001,0.005,col_luma)
+                              * (1.0 - smoothstep(0.08,0.20,col_luma));
+        inverse_luma_ratio = lerp(inverse_luma_ratio,min(inverse_luma_ratio,anchor_ratio),shadow_preserve);
         lin_e *= inverse_luma_ratio;
     }
     lin_e *= E;
@@ -751,12 +776,12 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
 
 // ─── Look Modification Transform — post-grade print emulation ──────────────
 
-float3 ApplyLook(float3 lin, SceneCtx ctx)
+float3 ApplyLook(float3 lin, SceneCtx ctx, float film_loss_fraction)
 {
     float3 out_lin = lin;
     // ── R51: print stock + R110: masking coupler + R130: dye matrix ──
     // Fires after all tonal and chroma work — LMT position per ACES convention.
-    out_lin = ApplyPrintStock(out_lin, ctx.fc_knee_toe, ctx.fc_knee, ctx.print_stock_strength);
+    out_lin = ApplyPrintStock(out_lin, ctx.fc_knee_toe, ctx.fc_knee, ctx.print_stock_strength, film_loss_fraction);
     out_lin = ApplyMaskingCoupler(out_lin, ctx.print_stock_strength);
     out_lin = ApplyDyeMatrix(out_lin, ctx.print_stock_strength);
     // R192: printer lights — per-channel contact-printer exposure after all emulsion work.
@@ -786,14 +811,16 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
     // Apply the film shoulder after spatial tonal work so cloud texture is not
     // compressed before Retinex and zone shaping have processed the signal.
+    float film_input_y = max(Luma(tonal.lin), 1e-10);
     float3 fc_out = FilmCurveApply(tonal.lin, ctx.fc_knee);
     tonal.lin = lerp(tonal.lin, fc_out, ctx.film_curve_strength);
     tonal.new_luma = lerp(tonal.new_luma, Luma(tonal.lin), ctx.film_curve_strength);
 
+    float film_loss_fraction = saturate(1.0 - Luma(tonal.lin) / film_input_y);
     float3 result  = lerp(tonal.lin, ApplyChroma(tonal.lin, tonal.new_luma, tonal.local_var, lf_mip2_tex, ctx), CHROMA_STRENGTH * 0.01);
     // Bound the blended signal even when the chroma stage is bypassed.
     result = OklabToSDR(RGBtoOklabLinear(result));
-    result = lerp(result, ApplyLook(result, ctx), LOOK_STRENGTH * 0.01);
+    result = lerp(result, ApplyLook(result, ctx, film_loss_fraction), LOOK_STRENGTH * 0.01);
 
     // dither: break 8-bit BackBuffer quantization — converts banding to imperceptible noise
     // R89: IGN blue-noise dither (Jimenez 2016) — pushes quantization error to high freq

@@ -7,6 +7,13 @@ Judge results against [GOAL.md](../../GOAL.md): fuller color distinctions,
 nuanced shadow depth and convincing light with unobtrusive processing. Use
 [PLAN.md](../../PLAN.md) for the next assessment; capture tooling is validated.
 
+The latest [weak-material](../../research/2026-10-31_weak_material_colors.md)
+and [highlight-cooperation](../../research/2026-10-31_highlight_cooperation.md)
+reports reuse the verified cached source with explicit measured GPU-age diagnostics.
+Those frozen update-matched results are distinct from this CLI's ordinary
+source-pose summaries. Shader/profile epochs and retained temporal costs remain
+explicit; see [TOOLS.md](../../TOOLS.md) for current baseline identities.
+
 The default backend renders Firefox on a private headless Gamescope display.
 It opens no desktop window and never falls back to desktop capture. Raw source
 poses carry a complementary frame/token/checksum label. Motion export caches

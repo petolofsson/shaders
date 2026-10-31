@@ -5,14 +5,20 @@ with game-agnostic automatic restraint. Follow [the current plan](../PLAN.md)
 for assessment. The interactive collection/tuning workflow below remains
 available; unattended runtime validation must use private headless rendering.
 
-The [lift/activation closure](../research/2026-10-27_lift_transition_repair.md)
-completes the current technical repair pass. Both active game configs now load
-one combined pipeline with working shared resources; actual-config repeats are
-pixel-identical. Profiles remain unchanged. Earlier signal/history, spatial,
-gamut, filter-spacing and temporal evidence is indexed in PLAN.
-No new mandatory defect repair is queued. Broader coverage supports stronger
-claims and should not grow into an automatic chain of follow-up investigations.
-Use [TOOLS.md](../TOOLS.md) for private/headless, hash, mask and GPU-phase protocols.
+Both active game configs use the combined pipeline. The latest
+[weak-material decision](../research/2026-10-31_weak_material_colors.md) and
+[highlight-cooperation decision](../research/2026-10-31_highlight_cooperation.md)
+record current implementation validation, exact held/actual-config matches and
+retained costs. Earlier signal/history, spatial, gamut, filter-spacing and
+activation evidence is indexed in [PLAN.md](../PLAN.md). Profiles are preserved
+during assessment; authorized CC and external profile edits have explicit epochs.
+Current GZW inverse luma is 0.60. Use the latest verification artifact hashes
+rather than assuming older captures match current shaders/settings.
+
+Use [TOOLS.md](../TOOLS.md) for private/headless, hash, mask and measured GPU-age
+protocols, and the [0–100 board](../research/2026-10-31_75_goal_report.md) for scoped
+ratings. No new mandatory repair is queued. The interactive tools below remain
+available for user-driven work; agent runtime testing stays private/headless.
 
 ---
 

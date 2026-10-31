@@ -12,7 +12,7 @@
 #define FILM_CURVE        0.6
 
 // PRIMARY COLOR CORRECTION
-#define SHADOW_TEMP       -0.15
+#define SHADOW_TEMP       -0.075
 #define SHADOW_TINT       0.0
 #define MID_TEMP          0.05
 #define MID_TINT          0.00

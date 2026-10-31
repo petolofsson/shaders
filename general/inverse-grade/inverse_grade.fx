@@ -85,7 +85,25 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     // c1 scales linearly with INVERSE_STRENGTH — no saturate() on the strength path.
     // Near-neutral C expands most; C near HueCeil asymptotes to ceiling, never clips.
     // toe_inv(x, ceil, c1, k2) = (x² + k1·x) / (k3·(x+k2))
-    float  ceil_C  = max(HueCeil(hue), C + 0.001);
+    // Leave already-rich input unchanged rather than infer missing chroma.
+    float  ceil_C  = max(0.85 * HueCeil(hue), C);
+    // Budget added chroma against this pixel's SDR headroom at fixed lightness.
+    // Start at the valid source color, avoiding a search through the blue cusp.
+    float gamut_lo = C;
+    float gamut_hi = ceil_C;
+    [unroll] for (int i = 0; i < 14; i++)
+    {
+        float trial_C = (gamut_lo + gamut_hi) * 0.5;
+        float3 trial_rgb = OklabToRGB(float3(lab.x, dir * trial_C));
+        float inside = step(0.0, min(trial_rgb.r, min(trial_rgb.g, trial_rgb.b)))
+                     * step(max(trial_rgb.r, max(trial_rgb.g, trial_rgb.b)), 1.0);
+        gamut_lo = lerp(gamut_lo, trial_C, inside);
+        gamut_hi = lerp(trial_C, gamut_hi, inside);
+    }
+    float3 ceiling_rgb = OklabToRGB(float3(lab.x, dir * ceil_C));
+    float ceiling_valid = step(0.0, min(ceiling_rgb.r, min(ceiling_rgb.g, ceiling_rgb.b)))
+                        * step(max(ceiling_rgb.r, max(ceiling_rgb.g, ceiling_rgb.b)), 1.0);
+    ceil_C = max(C, lerp(gamut_lo, ceil_C, ceiling_valid));
     // IS drives expansion magnitude. slope_frac adapts ±30%: vivid scenes get 70% of IS,
     // achromatic scenes get 100%. Range [0.7, 1.0] — slope is a scene modifier, not the gate.
     float  slope_frac = lerp(0.7, 1.0, saturate((slope_eff - 1.0) / 0.8));

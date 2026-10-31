@@ -18,25 +18,40 @@ sRGB boundaries and linear-light internal processing. In-game HDR must be off.
 
 ## Current status
 
-Both GZW and Arc active configs now use the combined `ShaderPipeline` effect.
-The user explicitly authorized activation. Required analysis resources and grade
-consumers now share one effect; the earlier separate-effect sharing defect is fixed.
-Profiles stay unchanged, and grade remains eight passes. Relaunch the game to load
-these changes; in-game HDR must remain off.
+Both GZW and Arc active configs use the combined `ShaderPipeline` effect, sharing
+analysis resources within one technique. Grade remains eight passes. Relaunch
+the game to load shader changes; in-game HDR must remain off.
 
-The [latest closure report](research/2026-10-27_lift_transition_repair.md) adopts
-current-source lift after native material checks, six held cases, independent GPU
-source/state tests and actual shared-source checks. Both actual active-config
-full/repeat pairs are pixel-identical. Gate recovery reduces the measured return
-handoff; current-source lift removes the two dominant night settling peaks.
-Incoming material/color and near-black quantization costs remain documented.
+The latest [weak-material preservation](research/2026-10-31_weak_material_colors.md)
+recovers selected blue-wall/cool-window color separation by about 3.85%/2.96%,
+with guarded brightness eligibility preserving the earlier sky palette and
+[highlight-cooperation](research/2026-10-31_highlight_cooperation.md) benefit of
+about 9% more selected white-core separation. Guarded shadow reconstruction,
+pixel-gamut-aware inverse chroma and gentler shadow CC are also retained.
+The [combined tonal-gain limits](research/2026-10-31_tonal_cooperation.md) were
+rejected for small mixed benefits and shelf/wood costs.
 
-Signal/history, spatial/color, gamut and integer-dimension filter-spacing repairs
-are indexed in [PLAN.md](PLAN.md). No new mandatory defect repair is queued.
-Additional timing/motion, aspect/resolution and game coverage support broader
-claims and do not block trying the fixes. Live gameplay and universal visual
-acceptance remain distinct from the private validation; the old 75/100 estimate
-has not been re-scored. `creative_values.fx` remains the sole tuning surface.
+The latest implementation has seven exact held-image repeat pairs, independent
+CPU/GPU contracts, 192 exact measured transition extraction controls and four
+actual-config outputs matching the isolated candidate exactly. These are private
+headless observations; dense native gameplay and universal acceptance remain
+outside the measured scope. Material/hue, quantization and small transition costs
+are documented, including the earlier highlight task's persistent one-pixel GZW
+FilmCurve-zero residual.
+
+The [0–100 board](research/2026-10-31_75_goal_report.md) retains provisional scores:
+chain/grade 75 carried forward, other assessed blocks 75–90. The later focused
+improvements have not received a fresh whole-chain effectiveness rating. Scores
+are overlapping judgments with uncertainty, not a measured average or fidelity
+percentage. No mandatory repair or further parameter screen is queued.
+
+`creative_values.fx` remains the only tuning surface. Current profiles preserve
+the authorized shadow CC changes and external GZW choices: inverse luma 0.60,
+shadow temperature -0.075 and tint -0.015. Earlier 0.30 inverse-luma rating evidence
+retains its original scope. Both profiles remain distinct. Stable `v1.0` at
+`1724bb6` remains the earlier rollback checkpoint; use `git log -1` for the latest
+publication. Historical reports describe their original experiment checkpoint,
+including contemporaneous commit/push status.
 
 ## Validation
 

@@ -96,6 +96,108 @@ deferred; do not run throughput/performance probes.
 
 ## Latest assessment evidence
 
+Only the first checkpoint below defines current production baseline hashes.
+Earlier sections retain their original code/profile epochs and must be checked
+against the current shader/profile identities before any reuse. Capture links
+refer to local ignored artifacts, not files published in the repository.
+
+The latest [weak-material color decision](research/2026-10-31_weak_material_colors.md)
+adds 41 ordinary captures, two GPU readbacks, four measured cut replays and four
+actual-config outputs. Seven final held pairs and look-zero pairs are exact;
+192 same-update extraction controls are exact. Actual outputs match candidates
+exactly. Standard and dedicated low-saturation charts cover both profiles. CPU
+helper sweeps and independent GPU reference checks pass. Unrestricted/half
+candidates remain labelled separately; the brightness guard preserves the prior
+cloud palette and core gain. Material/hue/quantization and small transition costs
+are documented. Current hashes: `captures/weak_color_20261031/verification.json`.
+No further mandatory test screen or score increase follows.
+
+The [highlight-cooperation decision](research/2026-10-31_highlight_cooperation.md)
+adds 28 ordinary captures (including two targeted zero repeats), two numeric
+readbacks, four measured history replays and four actual-config outputs. Six
+held pairs are exact; 192 same-update candidate/actual controls are exact. Actual
+configs match candidates exactly. Arc zero pairs/GZW look-zero are exact; GZW
+FilmCurve-zero retains one persistent one-code pixel with exact within-control
+repeats. No bit-exact identity is claimed for that cross-pair. All processes have
+zero drops/delays. Source/current profile epochs and scalar/hue-ramp/temporal
+limits are documented. Use `captures/highlight_cooperation_20261031/verification.json`
+for that checkpoint's grade/profile hashes; use the latest weak-material hashes
+for current production. Earlier helpers have different internal signatures.
+No new score or mandatory follow-up is queued.
+
+The preceding [print/inverse preservation decision](research/2026-10-31_print_inverse_color_preservation.md)
+adds 46 ordinary captures, six numeric readbacks, four independent measured
+history replays and four actual-config captures. Seven final held pairs and two
+zero pairs are exact; 384 full/actual controls include 192 new and 192 verified
+prior controls. Actual-config full/repeats match selected candidates exactly.
+Both focused estimates are borderline 75; this is not a fresh chain rating.
+Temporal repeats retain up to two codes, and material/palette/quantization costs
+remain documented. The 10-step scalar failure, rejected blanket gamut margin,
+print candidates and initial strict numeric oracle are preserved. Use
+`captures/color_preservation_20261031/verification.json` for that checkpoint's
+shader/profile hashes. Earlier inverse/print outputs are historical baselines, not current
+outputs. All 22 tooling tests and whitespace checks pass. No new queue follows.
+
+The [inverse-chroma decision](research/2026-10-31_inverse_chroma.md) adopts a
+rich-color reconstruction budget after rejecting blanket half strength. Passing
+validation includes 43 ordinary images, two 9,216-record numeric readbacks,
+twelve independent history replays with 576 exact full/actual controls and four
+actual-config outputs matching current candidates exactly. Source/profile epochs
+are explicit: the original GZW-day repeat varies one code; current refreshed GZW
+pairs and the other original pairs are exact. An external GZW tint -0.015 is
+preserved; affected GZW evidence is refreshed, while the muted case remains
+prior-tint evidence. The initial overly tight numeric identity check and explicit
+no-expansion follow-up are retained separately; no shared-gamut repair is inferred.
+Use `verification.json` and `refresh_report.json` in `captures/inverse_chroma_20261031/`
+for that historical baseline scope; current reuse must also match the newest
+verification above, including inverse, grade and profile hashes.
+Small palette, quantization and Arc daylight-step costs remain. The finite task
+is closed without a universal 75+ or dense-motion acceptance claim.
+
+The [three-way CC decision](research/2026-10-31_three_way_cc.md) adopts authorized
+half-strength shadow tuning in both creative profiles, with no shader changes.
+Twenty-five fresh ordinary captures, seven exact selected held pairs, four
+measured-phase cut replays and both actual-config full/repeats support it.
+All 192 full/actual controls are exact on the common masked support; half temporal
+repeats vary by at most one code (maximum mean ΔE 0.001289 GZW / 0.005196 Arc).
+One-code near-black, blue-pair/palette and first-night-step costs remain. The
+audit verifies CC-only profile scope and unchanged shaders/configs. Artifacts:
+`captures/three_way_cc_20261030/`. Use its verification/profile hashes and half/
+repeat images only for verified historical reuse: later shaders and profiles
+require the latest baseline above.
+The finite tuning decision is closed; no dense/native/new-game claim follows.
+
+The [print/look decision](research/2026-10-30_print_look_preservation.md) adopts
+only secondary shoulder restraint after rejecting the shadow-toe candidate.
+Fourteen tone/color attribution captures, nineteen completed candidate captures,
+seven exact final held repeat pairs, a 7,680-record GPU transfer probe, four
+measured cut replays and both actual-config full/repeats support the decision.
+All 192 extracted full/actual controls are exact on the common masked support;
+phase-matched temporal repeats retain up to one code of variation. Selected dark
+materials/halo are unchanged; blue quantization and daylight-step costs remain.
+Artifacts: `captures/print_look_20261030/`. Profiles/configs are preserved and
+the finite screen is closed; no dense continuity or new-game claim follows.
+
+The [October 29 effect ratings](research/2026-10-29_effect_ratings.md) reassess the
+existing code/profiles without tuning. Forty-two fresh ordinary captures and
+three procedural dither diagnostics supplement five verified current-code scene
+full/repeat pairs; two new scenes add fresh repeats. All seven scene pairs and
+the dither pair are identical. Below-target inverse/CC/print quality estimates
+remain explicit. The local `captures/effect_reassessment_20261029/` review has
+source/full/bypass images, material metrics and an interactive comparison. These
+are scoped visual judgments, not universal acceptance or a restored golden suite.
+
+The [shadow-stage attribution/preservation decision](research/2026-10-29_shadow_stage_preservation.md)
+uses five paired GPU stage readbacks and two guarded numeric observations to
+separate reconstruction loss, manual black-offset costs and later print treatment.
+The guarded common-gain candidate is applied on its measured scope, retaining
+vehicle/wood/metal and quantized-gradient costs. Six real screenshots, original
+and active dark boundary fixtures, repeats, exact zero-strength bypass, 96
+same-update ordinary controls and both actual-config full/repeats pass. Clip
+frames are source-exact; rendered input is independently observed rather than
+assumed identical to file RGB. Artifacts: `captures/shadow_attribution_20261029/`.
+No dense continuity, new game/resolution, performance result or re-score follows.
+
 The [Retinex material-preservation decision](research/2026-10-27_retinex_material_preservation.md)
 adopts a gentler native response with the original relative spatial correction.
 Seven real cases plus a shared native boundary source under both profiles retain

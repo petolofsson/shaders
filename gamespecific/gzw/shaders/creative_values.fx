@@ -3,7 +3,7 @@
 
 // INPUT
 #define INVERSE_STRENGTH  0.60
-#define INVERSE_LUMA      0.30
+#define INVERSE_LUMA      0.60
 
 // CORRECTIVE
 #define BLACKS            0.0
@@ -12,8 +12,8 @@
 #define FILM_CURVE        0.60
 
 // PRIMARY COLOR CORRECTION
-#define SHADOW_TEMP       -0.15
-#define SHADOW_TINT       -0.05
+#define SHADOW_TEMP       -0.075
+#define SHADOW_TINT       -0.015
 #define MID_TEMP          0.00
 #define MID_TINT          0.00
 #define HIGHLIGHT_TEMP    0.10

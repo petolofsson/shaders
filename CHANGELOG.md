@@ -3,6 +3,106 @@
 Recent implementation changes. Measurements and rejected candidates remain in
 versioned research reports; older implementation history is in git.
 
+## Post-v1.0 material and highlight preservation — 2026-10-31
+
+- Adopted [brightness-guarded weak-material color preservation](research/2026-10-31_weak_material_colors.md).
+  Weak lower-tone colors retain more original print response while bright colors
+  retain the ratio path. Blue-wall/cool-window gaps improve ~3.85%/2.96%; prior
+  highlight and bright-palette gains remain. Small warm-floor, foliage/hue and
+  quantization costs remain. Seven exact held pairs, numeric contracts, look-zero
+  controls, four chart/profile fixtures, 192 exact motion controls and four actual
+  config matches pass. Only print weighting changes; profiles/configs/headers,
+  inverse/histories/rates/passes remain. No re-score or new mandatory queue.
+
+- Adopted [FilmCurve/print highlight cooperation](research/2026-10-31_highlight_cooperation.md).
+  FilmCurve loss relieves overlapping secondary print compression while retaining
+  the existing toe. Selected core separation improves ~9%, with unchanged selected
+  halo/red lamp/dark materials. Six exact held pairs, numeric contracts, boundary
+  charts, 192 exact motion controls and four actual-config exact matches pass.
+  GZW FilmCurve-zero retains one persistent one-code pixel; other zero pairs are
+  exact. Small quantization and bright-detail costs remain. Profiles/configs/headers,
+  histories/rates/resources/passes remain. No re-score or new mandatory queue.
+
+- Completed the [combined tonal-correction screen](research/2026-10-31_tonal_cooperation.md).
+  Both net log-gain limits are rejected for small mixed gains and shelf/wood costs.
+  Sixteen new private held captures, verified Arc baseline reuse and five exact
+  baseline pairs preserve production. External GZW inverse luma 0.60 is retained
+  with fresh GZW baselines. No shader adoption, re-score or new repair queue.
+
+- Adopted [print/inverse color preservation](research/2026-10-31_print_inverse_color_preservation.md).
+  Print preserves its luminance curve and deep-shadow response while retaining
+  more of the incoming color ratios above shadows. Inverse limits added chroma
+  to per-pixel SDR headroom with a 14-step search. Selected sky hue, warm-floor
+  and red-lamp variation improve; cool-material, warm-hue, synthetic-primary,
+  quantization and small transition costs remain. Both focused estimates rise
+  70→75, borderline; no automatic chain re-score. Seven exact held pairs, numeric
+  contracts, zero bypasses, 384 exact motion controls (half newly captured) and
+  four actual-config outputs matching candidates exactly pass. Profiles/configs,
+  headers, prior work, histories/rates and passes remain. Sixty new headless GPU
+  processes complete with zero drops/delays. No further mandatory screen follows.
+
+- Adopted [inverse-chroma rich-color restraint](research/2026-10-31_inverse_chroma.md):
+  reconstruction uses 85% of the existing hue ceiling while preserving incoming
+  C above that budget. Selected red-light color variation improves about 15.7%;
+  blanket half expansion is rejected. Blue/warm-material and small Arc daylight
+  transition costs remain. GPU/scalar/zero-bypass contracts, labelled held repeats,
+  twelve independent history replays with 576 exact extraction controls and both
+  actual-config full/repeats pass. Actual outputs match the candidates exactly.
+  The original GZW-day pair varies one code; refreshed GZW pairs are exact. An
+  external GZW tint edit to -0.015 is preserved and its affected evidence refreshed.
+  Only inverse body code changes; headers/configs/profiles/grade/histories/passes
+  are otherwise preserved. Inverse stays estimated 70; no chain re-score or new
+  mandatory repair queue. All three bounded improvement decisions are closed.
+
+- Completed [three-way CC tuning](research/2026-10-31_three_way_cc.md) with the
+  user's explicit permission. Both profiles use shadow temperature -0.075;
+  GZW shadow tint is -0.025. Midtone/highlight CC and all unrelated tuning remain.
+  Selected shelf warmth/variation and foliage palette improve while cool neutral
+  shadows and light cores remain. Quarter strength is rejected for this default.
+  Seven exact selected held pairs, 192 exact same-update full controls and both
+  actual-config full/repeats pass; actual output matches the isolated candidate.
+  Palette, one-code black/blue-pair and small first-night-step costs remain.
+  Only three profile literals change; shaders/configs/headers/histories/passes are
+  unchanged. Focused CC estimate rises 70→75, borderline; no chain re-score.
+
+- Adopted a [gentler secondary print shoulder](research/2026-10-30_print_look_preservation.md)
+  after isolated tone/color attribution. White-core visible separation improves
+  4.621→5.334, with unchanged selected halo/dark materials. The shadow-toe
+  candidate is rejected. Seven exact held repeat pairs, independent GPU transfer
+  readback, 192 exact same-update controls and both actual active-config full/
+  repeats pass; actual outputs match the isolated candidate exactly. Small blue/
+  quantization/daylight-step costs remain. One literal in grade changes; profiles,
+  headers, histories/rates and eight passes remain. Print/look stays estimated 70.
+
+- Completed the [user-requested effect reassessment](research/2026-10-29_effect_ratings.md)
+  on current code/profiles with 42 fresh ordinary and three dither diagnostic
+  captures. Chain/grade remain borderline 75/100; inverse chroma reconstruction,
+  current three-way CC application and print/look are estimated 70, with other
+  previously rated blocks 75–90 in their assessed roles. Neutral optional knobs
+  remain unrated. Scores are uncertain appearance judgments, not fidelity or
+  universal acceptance. The assessment changes no shaders, profiles or configs
+  and starts no score-driven repair queue.
+
+- Adopted [guarded shadow reconstruction preservation](research/2026-10-29_shadow_stage_preservation.md).
+  GPU stage readback identifies inverse-luma compression in selected shadow
+  paving, while distinguishing Arc's manual black offset and later print costs.
+  A common darkening reference preserves relative shades in eligible shadows;
+  near-black and no-relaxation guards retain the original tail and avoid the
+  rejected first candidate's extra black pixels/warm-floor loss. Paving visible
+  separation grows about 6.3%; Arc vehicle visible separation loses about 3.0%
+  with deeper shades. That and smaller wood/metal/quantization costs remain.
+  Both profiles, numeric GPU/CPU contracts, active dark boundaries, exact bypass,
+  measured cut controls and actual active-config full/repeats pass. Only grade
+  shader code changes; profiles/configs, histories, rates and eight passes remain.
+  This is a bounded enhancement, not universal shadow acceptance or a new rating.
+
+- Completed a [shadow-richness lift-distribution screen](research/2026-10-28_shadow_richness_screen.md).
+  Thirty fresh two-profile captures, ten identical repeat pairs and 236 artifact
+  checks compare stable 1.0, increased lift and two redistribution curves.
+  Selected wood/vehicle/metal separation improves modestly, with shelf/paving/
+  floor costs. Both prototypes are rejected as general defaults; production
+  shaders, profiles and configs remain at stable 1.0. No new defect or score claim.
+
 ## 1.0 — 2026-10-28
 
 - Stable checkpoint of the combined SDR pipeline, including the adopted

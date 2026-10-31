@@ -1,5 +1,15 @@
 # Provisional effect ratings — 2026-10-25
 
+For the latest recorded scores and subsequent implementation outcomes, use the
+[current 0–100 board](2026-10-31_75_goal_report.md). This dated report retains its
+original profile/code epoch and measurements; later focused judgments supersede
+only the entries identified in the current board.
+
+Historical checkpoint. The user-requested
+[October 29 reassessment](2026-10-29_effect_ratings.md) supersedes this table for
+current code/profiles and records the current combined active-chain scope.
+The scores and configuration limitations below describe their original date.
+
 Updated after the retained-capture baseline, native Retinex reconstruction,
 conservative zone-confidence correction and inverse-luma gain-units fix.
 Supersedes the assessment section of [the earlier stage audit](2026-10-24_stage_verification.md#provisional-effect-assessment).
