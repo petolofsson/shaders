@@ -96,10 +96,47 @@ deferred; do not run throughput/performance probes.
 
 ## Latest assessment evidence
 
-Only the first checkpoint below defines current production baseline hashes.
-Earlier sections retain their original code/profile epochs and must be checked
-against the current shader/profile identities before any reuse. Capture links
-refer to local ignored artifacts, not files published in the repository.
+The [shared tonal-base decision](research/2026-11-02_tonal_architecture.md) is
+adopted and active in both combined configs. Retinex, zone shaping and lift use
+a common brightness base estimated from the existing full-resolution native
+guide, with smooth source-range rejection and continuous overlapping-window
+weights. Original corrected-pixel detail is carried through their combined gain.
+The original relative Retinex spatial correction and prescribed chroma treatment
+remain. No profile/config/header, inverse, history/rate/resource or pass change
+is introduced; grade stays eight passes.
+
+Selected local shade response improves about 2.2% bedroom cloth, 4.3% plaster,
+3.8% floor and 3.3% interior cool window. Seven selected held pairs and current
+baseline pairs are exact, with the original vivid baseline failure explicitly
+retained. Two numerical GPU readbacks, two exact tonal-zero pairs, both chart
+profiles, 192 exact measured candidate/ordinary controls and four actual-config
+outputs matching the candidate exactly pass. Flat-face median edge L/C gaps
+are zero in all 18 records. Road/paving contrast expansion, small vehicle/metal/
+shelf/cloud/halo, quantization and transition costs remain. Temporal repeats
+reach one code. The subsequent requested ratings review estimates chain/grade
+at 78 and the joint tonal model at 80; individual effect scores remain retained.
+Dense/high-refresh and performance claims remain limited.
+The 70 fresh private GPU processes have zero drops/delays; the audit checks
+307 files / 652 images. All 22 tooling tests and whitespace checks pass.
+
+Current source/profile/config and old/new grade hashes are in
+`captures/tonal_base_20261102/verification.json`; review is local
+`captures/tonal_base_20261102/review.html`. The original vivid baseline pair
+varies in 78 pixels by up to 16 codes. An incorrectly named refresh ran a
+rejected prototype and is excluded; a separately captured preserved-original
+reference pair is exact. Normalized baseline shader bodies are now checked
+independently of labels. Both failures remain recorded. No universal repair is
+inferred. No further mandatory screen is queued. The user authorized committing
+and pushing this completed work with the ratings update; use HEAD/upstream
+tracking for publication state.
+
+The user-set BLACKS=0.0025 values are preserved. The older Arc trial supports
+its Arc scope; November 2 captures supply current-profile actual-config output
+identities for both games. Do not reuse old weak-color or Arc-trial output as
+current-grade output. For baseline reuse, compare actual normalized shader bodies
+and complete source/profile/config/include/producer identities. Labels alone
+are insufficient. Frozen experimental scripts retain their original baselines;
+do not blindly rerun them against current production.
 
 The latest [weak-material color decision](research/2026-10-31_weak_material_colors.md)
 adds 41 ordinary captures, two GPU readbacks, four measured cut replays and four
@@ -122,7 +159,8 @@ repeats. No bit-exact identity is claimed for that cross-pair. All processes hav
 zero drops/delays. Source/current profile epochs and scalar/hue-ramp/temporal
 limits are documented. Use `captures/highlight_cooperation_20261031/verification.json`
 for that checkpoint's grade/profile hashes; use the latest weak-material hashes
-for current production. Earlier helpers have different internal signatures.
+for that shared-shader checkpoint, subject to the profile epochs above. Earlier
+helpers have different internal signatures.
 No new score or mandatory follow-up is queued.
 
 The preceding [print/inverse preservation decision](research/2026-10-31_print_inverse_color_preservation.md)

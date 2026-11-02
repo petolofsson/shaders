@@ -2,60 +2,101 @@ Continue in `/home/pol/code/shaders`.
 
 Read `AGENTS.md`, `CODE_RULES.md`, `GOAL.md`, `PLAN.md`, `HANDOFF.md` and `TOOLS.md`.
 This is the sole startup prompt; do not create alternate or dated copies.
-Check `git status`, `git log -1` and the upstream tracking state before work.
-Preserve existing user changes. Stable v1.0 remains at `1724bb6`.
+Check git status, git log -1 and upstream tracking. Preserve existing user changes.
+Stable v1.0 remains `1724bb6`; the preceding publication is `4e2fbf4`.
+The user authorized committing and pushing the completed shared shader, prior
+November 1 work, documentation and updated ratings. Use current HEAD/upstream
+tracking for publication state. Future publication requires session authorization.
+No runtime process remains active.
 
-Latest user request: update all docs, git commit and push the completed work.
-This snapshot accompanies that publication on master; use git history/tracking
-for its exact commit and push status rather than historical report wording.
-No experiment or runtime process remains active.
+Latest direction
+The user asked to resume shared-code improvements, then redirected work from
+small capture screens to model design and authorized the highest-return approach
+for the visual goal. Preserve profiles. Develop a concrete coherent solution
+from existing shortcomings; use testing to challenge it. No further profile or
+configuration search is authorized by this direction.
 
-Current state
-All finite requested improvement decisions are complete. Guarded inverse-luma
-shadow preservation, inverse-chroma hue/gamut restraint, gentler shadow CC,
-print palette preservation, FilmCurve/print highlight cooperation and guarded
-weak-material color preservation are adopted. Combined tonal-gain limits and
-earlier lift/toe candidates were rejected. Read the reports indexed in HANDOFF.
-The latest weak-color change improves selected blue-wall/cool-window color gaps
-about 3.85%/2.96% while retaining the preceding ~9% white-core separation gain.
-Material/hue, quantization and small transition costs remain explicitly accepted
-on the measured scope; no universal material or game acceptance is claimed.
+Current implementation
+Read `research/2026-11-02_tonal_architecture.md`. The guarded shared tonal base
+is adopted in `general/grade/grade.fx` and active through both actual configs.
+A 25-tap full-resolution source-guide estimate, smooth source-range rejection
+and continuous overlapping-window proximity weights supply a common brightness
+base for Retinex, zone shaping and lift. Original corrected-pixel detail passes
+through their combined gain. The original relative Retinex spatial correction,
+prescribed Oklab/Hunt/ambient treatment, FilmCurve/print, inverse and gamut remain.
 
-Both actual configs use the combined pipeline. Grade remains eight passes.
-Profiles remain distinct: GZW inverse chroma/luma 0.60/0.60, shadow temperature
--0.075 and tint -0.015, blacks 0, FilmCurve 0.60. Preserve the external GZW edits.
-Arc inverse strengths 0.5/0.5, blacks 0.005, FilmCurve 0.6, shadow temperature
--0.075/tint 0 and midtone temperature 0.05 remain. Do not retune unrelated values.
-Creative profiles are the only user tuning surface. No shader header comments
-or active GZW config edits without the corresponding explicit user request.
+Selected local shade response improves ~2.2% bedroom cloth, 4.3% plaster, 3.8%
+floor and 3.3% interior cool window. Road/paving contrast expansion and small
+vehicle/metal/shelf/cloud/halo, gradient and transition costs remain documented.
+The subsequent user-requested ratings review is
+`research/2026-11-02_effect_ratings.md`: chain/grade 78/100 (previously 75),
+new joint tonal-model estimate 80, individual effects retained at 75–90.
+This is a qualitative synthesis, not a new all-effect bypass campaign or an
+average of child rows. Appearance uncertainty is roughly 5–10 points; a
+confident whole-chain 80 is not established. No mandatory screen follows.
 
-Validation and scores
-Latest artifacts: `captures/weak_color_20261031/verification.json` / `audit.json`.
-Seven exact baseline/selected held pairs, independent CPU/GPU contracts, exact
-look-zero pairs, four chart/profile cases, 192 exact measured motion controls
-and four actual-config exact matches pass. All 51 fresh GPU processes have zero
-drops/delays. The final audit checks 252 isolated files and 664 images.
-All 22 diagnostic tooling tests and whitespace checks pass.
-The earlier highlight task retains a persistent single one-code GZW FilmCurve-
-zero pixel, with exact within-control repeats. Do not claim it was repaired.
-The current score board is `research/2026-10-31_75_goal_report.md`: chain/grade
-75 carried forward, assessed blocks 75–90 with uncertainty. Later focused gains
-are not fresh whole-chain/per-effect re-ratings. Earlier GZW 0.30/tint -0.025
-observations remain labelled historical evidence, not current baselines.
+Scope and current identities
+Only the shared grade body/helper changes. Shader headers, profiles/configs,
+analysis/inverse, histories/rates/resources and eight grade passes remain.
+Both configs still use the combined pipeline. No HDR output, auto-exposure,
+new effect/control, temporal grain, golden suite or GPU profiling is introduced.
+The helper adds source texture reads; performance at actual game rates is
+unassessed. Profiling stays deferred.
 
-Next work and rules
-No new mandatory repair or parameter screen is queued. Further work needs a
-concrete shortcoming; do not turn each small residual into another investigation.
-Broader games, dense native motion, timing, resolutions/aspects and whole-chain
-acceptance remain optional confidence work. GPU profiling stays deferred.
-All runtime testing is private/headless: no desktop fallback, focus or physical
-display changes. GPU/localhost needs sandbox escalation. Use verified hashes,
-fresh processes, marker/tag masks and 20-second continuous static settling;
-warmup alone does not prove convergence. Ordinary screenshots have no hidden
-history telemetry. Require measured source/cut update ages for temporal claims.
-Cached Babylon motion is 15 unique poses/sec doubled to 30; it is sparse evidence.
+Both profiles retain BLACKS=0.0025. GZW retains inverse chroma/luma 0.60/0.60,
+shadow temperature -0.075, tint -0.015 and FilmCurve 0.60. Arc retains inverse
+strengths 0.5/0.5, shadow temperature -0.075, tint 0, midtone temperature 0.05
+and FilmCurve 0.6. Preserve external/user choices. Creative profiles remain the
+only tuning surface. No shader-header or active GZW-config edits without explicit
+corresponding authorization.
 
-Reports are versioned; captures, diagnostic scripts/configs, review media and
-runtime logs remain ignored. Do not force-add them or blindly rerun historical
-scripts against changed signatures/profiles. Keep rejected candidates labelled.
-Do not commit/push future work automatically without session authorization.
+Use `captures/tonal_base_20261102/verification.json` for current initial/final
+source/profile/config/grade identities and `actual_report.json` for activation.
+Seven selected held pairs/current baseline pairs are exact. Two 256-point GPU
+readbacks agree with independent source-window references within 0.000002373
+stops; two tonal-zero pairs are exact. Both chart profiles add no black/code-255
+samples, with small quantization costs and no chart-repeat claim. All 18 selected
+flat-face median edge L/C gaps are zero. Four measured independent history replays
+pass 192 exact candidate/ordinary controls. All four actual-config full/repeat
+outputs match the candidate exactly. Temporal repeats reach one code, with small
+costs retained. All 22 tooling tests and whitespace checks pass.
+
+The audit checks 307 files / 652 images. Seventy fresh completed private GPU
+processes and ten reused baseline processes have zero drops/delays. An original
+vivid baseline pair varies in 78 pixels by up to 16 codes. A refresh label
+accidentally selected the rejected coarse prototype; it is retained and excluded
+from baseline claims. A separate explicitly preserved-original reference pair is
+exact. Read `vivid_baseline_variation.json`; no universal stability repair is
+inferred. Baseline normalized shader bodies are checked independently of labels.
+
+The earlier exact-Y solver is not adopted. CPU measurements identify a chroma-
+dependent approximation difference, but two held solver cases are tiny/mixed.
+No numerical GPU or temporal/adoption validation of that solver is claimed.
+Earlier coarse/median/unrestricted tonal-base representations are rejected.
+Do not attribute their larger gains or narrow-feature/boundary costs to the
+selected guarded implementation. The November 1 classifier/core/composition/
+chroma-limit screens remain rejected and closed; no parameter sweep follows.
+
+Historical checkpoints
+The prior weak-color, highlight, print/inverse and shadow-preservation decisions
+remain adopted in their unchanged code. Their reports/images retain their
+original profile/code epochs. The November 1 Arc BLACKS trial supports its Arc
+scope; previously pending post-edit actual-config checks were completed before
+and after the November 2 shared-code change. Old GZW BLACKS=0 or pre-base images
+are not current outputs. Source/profile/config/include/producer and actual
+normalized shader identities must all match before reuse.
+
+All runtime tests remain private/headless, with no desktop fallback/focus or
+physical display changes. GPU/localhost requires escalation. Use fresh processes,
+verified identities, marker/tag masks and 20-second continuous static settling;
+warmup alone does not establish convergence. Ordinary screenshots contain no
+hidden state telemetry. Temporal claims require measured source/cut update ages.
+The cached source is 15 unique poses/sec doubled to 30; this is sparse evidence.
+Appended pose 2220 is excluded. Dense motion, further games/resolutions/aspects,
+physical high-refresh behavior and fresh whole-chain ratings remain optional
+confidence work, not mandatory defect queues.
+
+Reports are versioned; captures, scripts/configs, logs and review media remain
+ignored. Do not force-add them. Historical diagnostic generators assume frozen
+snapshots and must not be blindly rerun against changed source or profiles.
+Local review: `captures/tonal_base_20261102/review.html`.

@@ -104,6 +104,34 @@ Encode/decode out-of-range quantities at the slot boundary.
 
 ## Current State
 
+- On 2026-11-02 the [shared tonal base](research/2026-11-02_tonal_architecture.md)
+  is adopted. A guarded native-source estimate supplies one brightness base for
+  Retinex/zone/lift, with original corrected-pixel detail carried through the
+  combined gain. Local cloth/plaster/floor response improves about 2.2%/4.3%/3.8%.
+  Source-range rejection protects narrow bright features; relative Retinex spatial
+  correction remains. Seven selected held pairs/current baseline pairs, two GPU
+  readbacks, exact tonal-zero pairs, 192 exact measured controls and four exact
+  actual-config matches pass. All 18 flat-face median edge L/C gaps are zero.
+  Road/material/gradient/small transition costs and an original vivid baseline
+  repeat failure remain documented. A mislabeled refresh is excluded and an
+  explicit preserved-original reference pair is exact. Profiles/configs/headers,
+  inverse, histories/rates/resources and eight passes remain. The subsequent
+  requested ratings review estimates chain/grade at 78 and joint tonal behavior
+  at 80; individual scores remain retained. No mandatory follow-up is queued.
+  Current hashes:
+  `captures/tonal_base_20261102/verification.json`. GPU profiling stays deferred.
+
+- On 2026-11-01 the user explicitly set `BLACKS=0.0025` in both creative profiles
+  (Arc 0.005→0.0025, GZW 0→0.0025), then requested wrapping up. Only those values
+  changed; shared shaders/configs remain. The [Arc trial](research/2026-11-01_arc_black_trial.md)
+  supports the Arc setting, not GZW appearance. Post-edit actual-config captures
+  were deferred then completed on November 2. The historical profile-edit record is: `captures/arc_black_20261101/activation_state.json`.
+  Older baseline hashes below retain their original profile epochs. Further
+  improvements must target underlying shared shader code, not profile/config
+  searches. The exact-Y reconstruction trial was CPU-screened and stopped after
+  tiny mixed held changes; it is not adopted or a confirmed defect. The shared
+  tonal-base model above is the current implementation.
+
 - The [weak-material color enhancement](research/2026-10-31_weak_material_colors.md)
   is adopted. Lower-tone print ratio weight fades by input C/L over 0.03–0.12;
   protection fades out over linear Y=0.10–0.25 to retain bright palette/highlights.
@@ -112,7 +140,7 @@ Encode/decode out-of-range quantities at the slot boundary.
   contracts, exact look-zero pairs, four chart/profile cases, 192 exact motion
   controls and four actual-config exact matches pass. Profiles/configs/headers,
   inverse, history rates/resources/passes remain; GZW inverse luma 0.60 is preserved.
-  Current baseline hashes: `captures/weak_color_20261031/verification.json`.
+  Shared-shader/pre-November-1-profile hashes: `captures/weak_color_20261031/verification.json`.
   No new effectiveness score or mandatory parameter screen follows.
 - The [highlight-cooperation enhancement](research/2026-10-31_highlight_cooperation.md)
   is adopted. FilmCurve loss is passed to print to relieve secondary-shoulder
@@ -330,6 +358,11 @@ escalation. Diagnostic techniques may explicitly render offscreen history for
 readback; ordinary screenshot captures contain no such telemetry.
 Screenshot captures contain no highway telemetry; `capture --dump` is unsupported.
 
+Baseline labels do not establish shader identity. Compare the actual normalized
+shader body with the intended snapshot before interpreting a capture, alongside
+source/profile/config/include/producer identities. Preserve failed repeats and
+incorrectly generated variants separately rather than silently reclassifying them.
+
 Current two-game spatial/color coverage is assessed in the
 [material/highlight report](research/2026-10-27_material_highlight_coverage.md).
 The [lift/activation closure](research/2026-10-27_lift_transition_repair.md) completes
@@ -340,6 +373,7 @@ near-black variation and smaller settling costs remain documented.
 No new mandatory defect repair is queued. Broader timing/motion, aspect/resolution,
 game coverage and ratings support stronger claims rather than blocking use.
 Do not turn every small residual into another investigation; see PLAN.
-The current [0–100 board](research/2026-10-31_75_goal_report.md) records provisional
-effectiveness estimates with explicit carried-forward rows and profile epochs.
+The current [0–100 board](research/2026-11-02_effect_ratings.md) records provisional
+chain/grade 78 and joint tonal-model 80 estimates, with retained individual rows
+and explicit profile epochs.
 Older technical-working scores are not current effectiveness or universal acceptance.

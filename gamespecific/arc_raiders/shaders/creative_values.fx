@@ -6,7 +6,7 @@
 #define INVERSE_LUMA      0.5
 
 // CORRECTIVE
-#define BLACKS            0.005
+#define BLACKS            0.0025
 #define WHITES            0.995
 #define EXPOSURE          0.00
 #define FILM_CURVE        0.6

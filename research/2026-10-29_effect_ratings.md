@@ -1,7 +1,7 @@
 # Current effect effectiveness reassessment — 2026-10-29
 
 For the latest recorded scores and subsequent implementation outcomes, use the
-[current 0–100 board](2026-10-31_75_goal_report.md). This dated report retains its
+[current 0–100 board](2026-11-02_effect_ratings.md). This dated report retains its
 original profile/code epoch and measurements; later focused judgments supersede
 only the entries identified in the current board.
 

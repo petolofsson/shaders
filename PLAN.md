@@ -2,14 +2,110 @@
 
 Work toward [GOAL.md](GOAL.md) with technically correct, restrained SDR processing.
 Preserve current game-specific settings, shader headers and prior corrections;
-the authorized CC profile update is recorded below.
+the authorized profile changes are recorded below.
 
 ## Current status
 
-The documentation and completed implementation are being published together at
-the user's request. Use `git log -1` and upstream tracking for the exact checkpoint.
-Current baseline reuse starts from the weak-material verification below; older
-entries retain their original experiment/profile epochs.
+The [shared tonal-base decision](research/2026-11-02_tonal_architecture.md) is
+adopted and active in both combined configs. Retinex, zone shaping and lift use
+a common brightness base estimated from the existing full-resolution native
+guide, with smooth source-range rejection and continuous overlapping-window
+weights. Original corrected-pixel detail is carried through their combined gain.
+The original relative Retinex spatial correction and prescribed chroma treatment
+remain. No profile/config/header, inverse, history/rate/resource or pass change
+is introduced; grade stays eight passes.
+
+Selected local shade response improves about 2.2% bedroom cloth, 4.3% plaster,
+3.8% floor and 3.3% interior cool window. Seven selected held pairs and current
+baseline pairs are exact, with the original vivid baseline failure explicitly
+retained. Two numerical GPU readbacks, two exact tonal-zero pairs, both chart
+profiles, 192 exact measured candidate/ordinary controls and four actual-config
+outputs matching the candidate exactly pass. Flat-face median edge L/C gaps
+are zero in all 18 records. Road/paving contrast expansion, small vehicle/metal/
+shelf/cloud/halo, quantization and transition costs remain. Temporal repeats
+reach one code. The subsequent requested ratings review estimates chain/grade
+at 78 and the joint tonal model at 80; individual effect scores remain retained.
+Dense/high-refresh and performance claims remain limited.
+The 70 fresh private GPU processes have zero drops/delays; the audit checks
+307 files / 652 images. All 22 tooling tests and whitespace checks pass.
+
+Current source/profile/config and old/new grade hashes are in
+`captures/tonal_base_20261102/verification.json`; review is local
+`captures/tonal_base_20261102/review.html`. The original vivid baseline pair
+varies in 78 pixels by up to 16 codes. An incorrectly named refresh ran a
+rejected prototype and is excluded; a separately captured preserved-original
+reference pair is exact. Normalized baseline shader bodies are now checked
+independently of labels. Both failures remain recorded. No universal repair is
+inferred. No further mandatory screen is queued. The user authorized committing
+and pushing this completed work with the ratings update; use HEAD/upstream
+tracking for publication state.
+
+## Resume direction
+
+The user selected architectural improvements with the highest expected return
+for the visual goal. Preserve both profiles, including BLACKS=0.0025, GZW inverse
+luma 0.60 and tint -0.015. Develop a concrete model from existing shortcomings,
+then use captures to challenge it. Avoid another global-strength/profile search.
+The preceding exact-Y reconstruction trial is not adopted; its two held cases
+have tiny mixed changes. No numerical GPU or adoption claim follows for that
+solver. Its earlier source-inspection question is closed on this finite scope.
+
+Both previously pending post-profile-edit actual-config checks are complete.
+Future baselines must match the latest shared shader and current profiles; the
+old Arc trial and weak-color images retain their original code/profile epochs.
+No new mandatory repair, parameter screen, rating or performance task is queued.
+
+## Preceding screens
+
+The [native Retinex soft-core screen](research/2026-11-01_retinex_core.md)
+rejects the preceding candidate. Softening native normalization near the key while
+retaining the spatial correction improves lit-paving visible separation about
+4.5% and cool-window neighboring response about 4.6%, but loses shaded-paving/
+wall visible separation about 4.8%/2.7% and worsens several interior/bedroom
+local responses. Fixed-context CPU checks document displaced compression near
+the old saturation transition. Four private GPU processes have zero drops/
+delays; eight verified baseline pairs, the 80-file/20-image audit and 22 tooling
+tests pass. No candidate-repeat, numeric GPU or temporal/adoption claim follows.
+Production/profiles/configs, histories/rates/passes and scores remain. No core
+width/strength/directional sweep or mandatory repair is queued. Docs are uncommitted.
+
+The [zone/lift composition screen](research/2026-11-01_zone_lift_cooperation.md)
+rejects applying lift gain to zone-shaped luminance. Three exact candidate/
+repeat pairs show small paving/cool/cloth benefits but worse visible and local
+neighboring-shade separation in both selected floor regions. Six private GPU
+processes have zero drops/delays. Independent fixed-context CPU algebra, eight
+verified baseline pairs, the 88-file/22-image audit and 22 tooling tests pass.
+Production/profiles/configs, histories/rates/passes and scores remain unchanged.
+No half-strength sweep or mandatory repair follows. New docs are uncommitted.
+
+The [tonal material attribution/screen](research/2026-11-01_tonal_material_selectivity.md)
+is complete after the user's selection of shadow/midtone material separation.
+Arc's configured black offset accounts for much of the selected near-black
+metal loss; it is preserved. Current interior and fresh bedroom/menu bypasses
+also isolate midtone neighboring-shade compression from Retinex/lift. Two
+guided-base and two original-source lift classifiers are rejected: negligible
+guided gains and worse source-classifier local response/material separation.
+Twenty-three private GPU processes have zero drops/delays; eight baseline pairs
+are exact. The audit checks 148 files, 37 images and sixty new source-exact clip
+frames. All 22 tooling tests pass. Production/profiles/configs, histories/rates,
+passes and scores remain unchanged. No further classifier sweep or mandatory
+repair follows. New reports/docs remain uncommitted and unpushed.
+
+The [grade chroma headroom screen](research/2026-11-01_grade_chroma_budget.md)
+closes the preceding candidate search with four rejected variants.
+Limiting memory-color additions, with or without fixed midtone expansion, gives
+no useful held material/hue gain across vivid, interior and emitter cases.
+Twelve fresh private GPU captures have zero drops/delays; seven reused baseline
+pairs are exact. Identity/scope audit and 22 tooling tests pass. Production,
+profiles/configs, histories/rates and scores remain unchanged. This early
+rejection does not claim candidate motion/numeric/boundary/adoption validation.
+No further sweep of this headroom limiter is queued; no commit/push is made.
+
+The preceding implementation/documentation publication is commit `4e2fbf4`.
+Use `git log -1` and upstream tracking for its current publication state.
+Shared-shader identity starts from the weak-material verification below; its
+images and older entries retain their original profile epochs. Refresh required
+current-profile outputs for future code comparisons after the authorized edits.
 
 The [weak-material color enhancement](research/2026-10-31_weak_material_colors.md)
 is adopted and validated. Print ratio weight now accounts for weak input Oklab
@@ -72,7 +168,7 @@ repeats reach two codes; held repeats are exact. Profiles (including GZW tint
 remain. Only print/inverse body code changes. No commit/push or further mandatory
 screen is queued. Artifacts: `captures/color_preservation_20261031/`; that checkpoint
 requires its original `verification.json` and both shader hashes; use the newest
-verification above for current production.
+verification above for that shared-shader checkpoint, with the profile caveat above.
 Earlier 70 judgments below are historical and superseded only for these blocks.
 
 The preceding [inverse-chroma decision](research/2026-10-31_inverse_chroma.md) is closed and
@@ -251,25 +347,21 @@ complete; do not repeat it or blindly accelerate slow key.
 
 ## Acceptance Status
 
-The [consolidated 75/100 report](research/2026-10-31_75_goal_report.md) collects the
-latest recorded estimates and their scope; it is not a fresh all-effect re-score.
+The [current 0–100 board](research/2026-11-02_effect_ratings.md) estimates the
+complete chain and grade at **78/100**, up from 75 in the requested November 2
+synthesis. The joint Retinex/zone/lift model has a new scoped estimate of 80.
+Other individual rows remain 75–90 on their assessed roles. The older
+[October 31 board](research/2026-10-31_75_goal_report.md) is historical.
 
-The long-term target remains 75+ effectiveness for the complete chain and each
-retained effect in its intended role, as defined in [GOAL.md](GOAL.md).
-[The October 29 reassessment](research/2026-10-29_effect_ratings.md) estimated the
-combined chain at borderline 75/100, with three blocks at 70 and others at 75–90.
-The [focused CC decision](research/2026-10-31_three_way_cc.md) estimates CC as
-applied at borderline 75. The latest [print/inverse preservation decision](research/2026-10-31_print_inverse_color_preservation.md)
-now estimates both remaining blocks at borderline 75. All currently rated blocks
-therefore reach 75+ on their assessed scope; chain/grade are carried forward,
-not freshly re-scored. The earlier hue-only inverse decision stayed 70 at its
-checkpoint. Both the earlier queue and latest user-requested follow-up are closed.
-These judgments are not measured fidelity percentages or
-universal acceptance; neutral optional controls have no new standalone score.
-The [October 25 table](research/2026-10-25_effect_ratings.md) remains historical.
-Correctness fixes do not automatically raise effectiveness or novelty. Broader
-technical coverage and overall acceptance remain open; taste review need not
-block technical work.
-Current-set spatial/color coverage is complete, with material/light normalization,
-bright-core compression, foliage hue shifts and quantized blue-gradient costs
-retained for acceptance. Completing coverage does not declare those costs solved.
+The increase reflects improved combined material shading with retained palette
+and light treatment. It is not an average of component rows or a conversion of
+separation percentages into points. Appearance uncertainty is roughly 5–10
+points. Road/paving expansion, smaller material/gradient/transition costs,
+unprofiled game-rate cost and limited game/motion coverage prevent a confident
+whole-chain 80. The 75+ goal and its definition in GOAL remain unchanged.
+
+The requested ratings update is complete and publication is authorized. No new
+mandatory repair, profile search, parameter screen or profiling task follows.
+Broader game/lighting, dense motion, timing and resolution/aspect coverage remain
+optional confidence work. Earlier technical-working scores and dated profile
+observations retain their historical scope.

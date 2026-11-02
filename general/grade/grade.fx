@@ -530,10 +530,52 @@ float HueBandWeightW(float hue, float center)
     return t * t * (3.0 - 2.0 * t);
 }
 
+float TonalIlluminationLog(float2 uv, float native_log)
+{
+    float2 stride = 8.0 / float2(BUFFER_WIDTH,BUFFER_HEIGHT);
+    float4 side_sum = 0.0;
+    float4 side_weight = 0.0;
+    float full_sum = 0.0;
+    float full_weight = 0.0;
+    [unroll] for (int dy = -2; dy <= 2; dy++)
+    [unroll] for (int dx = -2; dx <= 2; dx++)
+    {
+        float sample_log = tex2D(NativeGuideLogSamp,uv + float2(dx,dy) * stride).r;
+        float sample_weight = 1.0 - smoothstep(0.5,1.0,abs(sample_log-native_log));
+        full_sum += sample_log * sample_weight;
+        full_weight += sample_weight;
+        float4 quadrant = float4(step(float(dx),0.0) * step(float(dy),0.0),
+                                  step(0.0,float(dx)) * step(float(dy),0.0),
+                                  step(float(dx),0.0) * step(0.0,float(dy)),
+                                  step(0.0,float(dx)) * step(0.0,float(dy)));
+        side_sum += quadrant * sample_log * sample_weight;
+        side_weight += quadrant * sample_weight;
+    }
+    float full_delta = full_sum / max(full_weight,1.0) - native_log;
+    float4 side_delta = side_sum / max(side_weight,1.0) - native_log;
+    float scale = max(max(abs(full_delta), max(max(abs(side_delta.x),abs(side_delta.y)),
+                       max(abs(side_delta.z),abs(side_delta.w)))),1e-5);
+    float center_d = full_delta / scale;
+    float4 side_d = side_delta / scale;
+    float center_d2 = center_d * center_d;
+    float4 side_d2 = side_d * side_d;
+    // An exact matching window anchors the estimate. Product-form proximity
+    // weights blend tied windows continuously without dividing by their distances.
+    float center_w = side_d2.x * side_d2.y * side_d2.z * side_d2.w;
+    float4 side_w = center_d2 * float4(side_d2.y * side_d2.z * side_d2.w,
+                                      side_d2.x * side_d2.z * side_d2.w,
+                                      side_d2.x * side_d2.y * side_d2.w,
+                                      side_d2.x * side_d2.y * side_d2.z);
+    float weight_sum = center_w + dot(side_w,float4(1.0,1.0,1.0,1.0));
+    float base_residual = scale * (center_w * center_d + dot(side_w,side_d))
+                               / max(weight_sum,1e-20);
+    return native_log + base_residual;
+}
+
 TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
 {
     float luma        = Luma(lin);
-    float luma_orig   = luma;   // zone S-curve classifies from original scene position
+    float luma_orig   = luma;   // remapped to the shared tonal base below
     // R190 guided-filter detail signal, used only by hue-selective luma contrast.
     {
         float log_base   = tex2D(BilateralLogSamp, uv).r;  // log2-luma base layer (1/8-res)
@@ -560,6 +602,13 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
         luma             = Luma(lin);
     }
     float reconstruction_luma = luma;
+    // Shape the common brightness base, then carry the original pixel detail
+    // through the combined tonal gain instead of repeatedly classifying it.
+    float native_log = tex2D(NativeGuideLogSamp, uv).r;
+    float illumination_log = TonalIlluminationLog(uv, native_log);
+    float tonal_base_luma = luma * exp2(illumination_log - native_log);
+    luma = tonal_base_luma;
+    luma_orig = tonal_base_luma;
     // R29: Multi-Scale Retinex — spatial illuminant normalisation fires before zone S-curve
     // so the S-curve shapes the spatially-equalised signal, not the raw uneven one.
     float illum_s0  = max(tex2D(LowFreqMip1Samp, uv).a, 0.001);
@@ -583,7 +632,7 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     // The gentler native log slope retains material differences near the key.
     float native_illum = exp2(native_guide_log);
     float native_gain = clamp(2.0 * zk_safe / (zk_safe + native_illum), exp2(-0.35), exp2(0.35));
-    float material_gain = exp2(clamp((log2(zk_safe) - native_guide_log) * 0.35, -0.35, 0.35));
+    float material_gain = exp2(clamp((log2(zk_safe) - illumination_log) * 0.35, -0.35, 0.35));
     float illum_gain = clamp(material_gain * (spatial_gain / native_gain), exp2(-0.35), exp2(0.35));
     // Coarse-edge strength fading outlines otherwise uniform materials.
     // Use its existing minimum confidence budget uniformly; scene statistics
@@ -636,8 +685,8 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
                         * saturate(float(SHADOW_LIFT_STRENGTH)), 0.0);
     // R62 Finding 3: chroma-stable tonal — apply luma ratio in Oklab L to prevent zone S-curve from shifting chroma
     float3 lab_t  = RGBtoOklabLinear(lin);
-    float r_tonal = max(1.0 + (new_luma - reconstruction_luma)
-                              / max(reconstruction_luma, 1e-10), 0.0);
+    float r_tonal = max(1.0 + (new_luma - tonal_base_luma)
+                              / max(tonal_base_luma, 1e-10), 0.0);
     float log_r   = log2(max(r_tonal, 1e-10));
     float cbrt_r  = exp2(log_r * (1.0 / 3.0));
     lab_t.x = max(lab_t.x * cbrt_r, 0.0);
@@ -651,7 +700,7 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
 
     TonalOut result;
     result.lin       = OklabToRGB(lab_t);
-    result.new_luma  = new_luma;
+    result.new_luma  = reconstruction_luma * r_tonal;
     result.local_var = local_var;
     return result;
 }

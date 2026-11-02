@@ -78,7 +78,7 @@ out of `creative_values.fx`; current implementation priorities live in PLAN.
 
 ## Effectiveness target: 75+
 
-The [current 0–100 board](research/2026-10-31_75_goal_report.md) records the latest
+The [current 0–100 board](research/2026-11-02_effect_ratings.md) records the latest
 scoped estimates and their evidence. Focused material/highlight gains do not
 implicitly re-rate the complete chain. The next discussed improvement aim is a
 more consistently useful whole-chain 80; the acceptance criteria below remain.
