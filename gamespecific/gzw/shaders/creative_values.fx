@@ -9,12 +9,12 @@
 #define BLACKS            0.0025
 #define WHITES            0.995
 #define EXPOSURE          0.00
-#define FILM_CURVE        0.60
+#define FILM_CURVE        0.70
 
 // PRIMARY COLOR CORRECTION
-#define SHADOW_TEMP       -0.075
-#define SHADOW_TINT       -0.015
-#define MID_TEMP          0.00
+#define SHADOW_TEMP       -0.05
+#define SHADOW_TINT       -0.010
+#define MID_TEMP          0.05
 #define MID_TINT          0.00
 #define HIGHLIGHT_TEMP    0.10
 #define HIGHLIGHT_TINT    0.00

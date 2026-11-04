@@ -104,6 +104,31 @@ Encode/decode out-of-range quantities at the slot boundary.
 
 ## Current State
 
+- On 2026-11-04 the user prioritized clear, naked-eye improvements. Assess
+  native-size source/full images for a recurring visible loss before developing
+  a candidate. The [slow-key probe](research/2026-11-04_slow_key_sentinel.md),
+  [hue ablation](research/2026-11-04_hue_direction_screen.md) and
+  [print screen](research/2026-11-04_print_chroma_screen.md) produced no adopted
+  change or established clear visual improvement. Preserve their limitations.
+- Current external GZW profile values are FILM_CURVE=0.70, SHADOW_TEMP=-0.05,
+  SHADOW_TINT=-0.010 and MID_TEMP=0.05. Preserve these newer choices; earlier
+  references below to different values describe historical evidence epochs.
+
+
+- On 2026-11-03 the user-authorized [shared-component CC enhancement](research/2026-11-03_neutral_component_cc_adoption.md)
+  is adopted. Three body lines scale existing three-way a/b offsets by the common
+  linear-RGB fraction min(RGB)/Y. Gray response is GPU-identical; primary faces
+  match zero CC. Selected foliage/shelf/cool-material relationships improve,
+  retaining blue/warm-material, neutral-tint, quantization and temporal costs.
+  Five candidate/baseline pairs each, GPU/CPU contracts, exact zero pairs, both
+  gradient charts, 192 measured motion controls and four actual-config exact
+  candidate matches pass. Profiles/configs/headers, producers, histories/rates,
+  resources and passes remain; grade stays eight passes. Current hashes:
+  `captures/neutral_cc_20261103/adoption_verification.json`. Older tonal-base
+  outputs are pre-CC. Chain/grade 78 and CC 75 remain provisional carried
+  estimates; no fresh full re-score or mandatory sweep follows.
+
+
 - On 2026-11-02 the [shared tonal base](research/2026-11-02_tonal_architecture.md)
   is adopted. A guarded native-source estimate supplies one brightness base for
   Retinex/zone/lift, with original corrected-pixel detail carried through the
@@ -186,7 +211,7 @@ Encode/decode out-of-range quantities at the slot boundary.
   headers, configs, histories/rates and passes remained. That checkpoint retained
   inverse/print estimates of 70; the latest follow-up above supersedes those two
   ratings and shaders. Its muted GZW case was prior-tint evidence; the latest
-  follow-up refreshes it. Use the latest verification hashes for current reuse. Do not revert the external -0.015 choice to the earlier CC value.
+  follow-up refreshes it. Use the latest verification hashes for current reuse. The later November 4 profile choices above supersede that earlier tint.
 - The [three-way CC decision](research/2026-10-31_three_way_cc.md) is closed.
   With the user's explicit authorization, both profiles adopted `SHADOW_TEMP=-0.075`
   and GZW adopted `SHADOW_TINT=-0.025` at that checkpoint; its later external tint

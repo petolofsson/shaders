@@ -14,6 +14,12 @@ judgment; the integer does not imply three-point measurement precision. Parent
 and child rows overlap and must not be averaged. Foundation rows are assessed
 in their signal/measurement roles; creative rows in their appearance roles.
 
+The November 3 [shared-component CC adoption](2026-11-03_neutral_component_cc_adoption.md)
+adds selective restraint to the shared correction. The estimates below are
+carried forward: chain/grade 78, CC 75. Its focused validation is not a fresh
+all-effectiveness re-score; new blue/warm-material and neutral-tint costs remain
+in that decision.
+
 ## Current board
 
 | Block | Previous /100 | Current /100 | Evidence and limits |

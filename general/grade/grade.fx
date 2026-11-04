@@ -267,6 +267,9 @@ float3 Apply3WayCC(float3 lin,
     float  hl_w  = ZoneHighlightW(L, key_L);
     float  mid_w = ZoneMidW(L, key_L);
     float black_gate = smoothstep(0.0, 0.15, L);
+    float common_rgb = max(min(lin.r, min(lin.g, lin.b)), 0.0);
+    float neutral_share = saturate(common_rgb / max(Luma(lin), 1e-10));
+    black_gate *= neutral_share;
     lab.y += (shadow_tint * sh_w + mid_tint * mid_w + hl_tint * hl_w) * 0.06 * black_gate;
     lab.z += (shadow_temp * sh_w + mid_temp * mid_w + hl_temp * hl_w) * 0.06 * black_gate;
     return OklabToRGB(lab);

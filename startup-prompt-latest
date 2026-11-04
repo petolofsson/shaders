@@ -9,6 +9,65 @@ November 1 work, documentation and updated ratings. Use current HEAD/upstream
 tracking for publication state. Future publication requires session authorization.
 No runtime process remains active.
 
+Latest direction and findings — 2026-11-04
+The user wants clear, naked-eye improvements. Next assess current source/full
+output at native size across representative dark, daylight, vivid and highlight
+scenes, identify a recurring visible loss, and then design and challenge one
+coherent shared-code candidate. Do not prioritize small numerical improvements,
+profile searches or speculative fixes. No mandatory follow-up is queued.
+
+The [pipeline audit](research/2026-11-04_pipeline_leads.md) identified three
+investigation leads. The [slow-key probe](research/2026-11-04_slow_key_sentinel.md)
+confirms a valid near-black state is mistaken for uninitialized on GPU; real
+visibility is not established, and the isolated flag is not adopted. The
+[hue-direction ablation](research/2026-11-04_hue_direction_screen.md) measures
+small vivid blue changes, but does not establish centroid confidence or a visual
+improvement; the independently hashed vivid confirmation is exact on repeat.
+The [print chroma screen](research/2026-11-04_print_chroma_screen.md) rejects an
+isolated candidate with modest target gains and mixed material costs. No shared
+shader change or new rating resulted from these November 4 screens. Retain their
+capture-provenance and validation limitations; the latter two are not repair queues.
+
+Current external GZW profile choices are FILM_CURVE=0.70, SHADOW_TEMP=-0.05,
+SHADOW_TINT=-0.010 and MID_TEMP=0.05; preserve them. November 3 and earlier
+GZW screenshots/hashes use the older profile and cannot be reused as current
+without identity checks. Existing Arc settings remain. Current HEAD/upstream and
+status determine publication state; do not infer it from historical checkpoints.
+
+Latest adoption — 2026-11-03
+The user explicitly authorized implementation. Read
+`research/2026-11-03_neutral_component_cc_adoption.md`: shared-component CC is
+adopted in the shared grade and verified through both unchanged active configs.
+Three lines scale existing opponent offsets by min(linear RGB)/Y. Exact helper
+gray-axis response is retained; saturated primary faces match zero correction.
+Selected foliage hue shift +2.962°→−0.131°, weak-shelf color separation +15.1%,
+Arc cool-upper/dark-metal +4.4%/+4.1%. Blue-sky/field −6.5%/−2.1%, red-lamp −2.5%,
+warm-floor −1.6%, small quantization/transition and GZW dark neutral-tint costs
+remain. Profiles/configs/headers, source producers, histories/rates/resources
+and passes are preserved; grade stays eight passes. Five candidate/baseline
+pairs are exact each; numeric GPU/CPU, exact CC-zero, gradient, 192 measured
+motion controls and four actual-config exact candidate matches pass. No dense
+motion/performance/universal-palette claim. Chain/grade 78 and CC 75 are retained
+provisional estimates, not a fresh re-score. Current hashes/artifacts/review:
+`captures/neutral_cc_20261103/adoption_verification.json`, `artifact_manifest.json`,
+`review.html`. At that checkpoint the shared code and docs were uncommitted. Use current git
+status and upstream for publication state. No active runtime; finite adoption complete.
+
+Previous closed experiment — 2026-11-03
+The user authorized the inverse residual experiment. Read
+`research/2026-11-03_inverse_transport_decision.md`: rejected for adoption.
+Same-update GPU precision improves substantially; full-frame/native appearance
+in both current profiles and an explicit-eight-bit vivid handoff does not
+justify the added RGBA16F surface. Five held pairs are exact, with zero reported
+drops/delays. Initial quantizer/PNG-transfer assumptions and an isolated include
+compile failure remain documented. No motion/zero/chart/activation/performance
+acceptance is claimed. At rejection, production/profile/config hashes remained
+unchanged at `738a6f6`; the subsequent CC adoption above supersedes that grade
+identity. The 78/100 chain/grade estimates remain. Transport selection/decision
+and handoff notes were uncommitted at that checkpoint. No mandatory follow-up or
+parameter sweep; do not reopen transport merely for precision statistics.
+Local artifacts: `captures/transport_candidate_20261103/`, including review.html.
+
 Latest direction
 The user asked to resume shared-code improvements, then redirected work from
 small capture screens to model design and authorized the highest-return approach
@@ -44,14 +103,16 @@ The helper adds source texture reads; performance at actual game rates is
 unassessed. Profiling stays deferred.
 
 Both profiles retain BLACKS=0.0025. GZW retains inverse chroma/luma 0.60/0.60,
-shadow temperature -0.075, tint -0.015 and FilmCurve 0.60. Arc retains inverse
+shadow temperature -0.05, tint -0.010, midtone temperature 0.05 and FilmCurve 0.70. Arc retains inverse
 strengths 0.5/0.5, shadow temperature -0.075, tint 0, midtone temperature 0.05
 and FilmCurve 0.6. Preserve external/user choices. Creative profiles remain the
 only tuning surface. No shader-header or active GZW-config edits without explicit
 corresponding authorization.
 
-Use `captures/tonal_base_20261102/verification.json` for current initial/final
-source/profile/config/grade identities and `actual_report.json` for activation.
+Use `captures/neutral_cc_20261103/adoption_verification.json` for the adoption-epoch
+source/profile/config/grade identities (the GZW profile has since changed) and its `actual_report.json` for activation.
+The following tonal-base validation retains its pre-CC implementation epoch;
+its older grade hashes/images are not current full-chain outputs.
 Seven selected held pairs/current baseline pairs are exact. Two 256-point GPU
 readbacks agree with independent source-window references within 0.000002373
 stops; two tonal-zero pairs are exact. Both chart profiles add no black/code-255

@@ -4,6 +4,22 @@ Work toward [GOAL.md](GOAL.md) with technically correct, restrained SDR processi
 Preserve current game-specific settings, shader headers and prior corrections;
 the authorized profile changes are recorded below.
 
+## Current direction — 2026-11-04
+
+The user wants clear, naked-eye improvements. Compare current full output and
+source at native size across dark, daylight, vivid and highlight scenes; identify
+a recurring visible loss before designing a shared-code candidate. Avoid small
+numerical screens and preserve profiles. The [audit](research/2026-11-04_pipeline_leads.md),
+[slow-key probe](research/2026-11-04_slow_key_sentinel.md), [hue ablation](research/2026-11-04_hue_direction_screen.md)
+and [print screen](research/2026-11-04_print_chroma_screen.md) document the
+latest work. None produced an adopted change or demonstrated a clear visible
+improvement; their limitations and older profile epochs remain explicit.
+
+The current external GZW profile has FILM_CURVE=0.70, SHADOW_TEMP=-0.05,
+SHADOW_TINT=-0.010 and MID_TEMP=0.05. Preserve these choices. The November 3
+GZW evidence predates them; match all identities before reusing baselines.
+Use git status and upstream tracking for publication state.
+
 ## Current status
 
 The [shared tonal-base decision](research/2026-11-02_tonal_architecture.md) is
@@ -39,6 +55,34 @@ independently of labels. Both failures remain recorded. No universal repair is
 inferred. No further mandatory screen is queued. The user authorized committing
 and pushing this completed work with the ratings update; use HEAD/upstream
 tracking for publication state.
+
+## Adopted selective three-way correction — 2026-11-03
+
+The user-authorized [shared-RGB CC implementation](research/2026-11-03_neutral_component_cc_adoption.md)
+is active through both unchanged configs. Three added body lines retain gray-axis
+correction while reducing colored-material hue steering. Selected foliage/shelf/
+cool-material relationships improve, with documented blue/warm-material,
+quantization and temporal costs. Profiles, headers, histories/rates/resources
+and pass counts remain. Five exact candidate pairs, GPU contracts, zero/gradient
+checks, 192 exact measured motion controls and four actual-config exact matches
+complete the finite adoption. Chain/grade remain 78; no fresh full re-score or
+mandatory sweep. Use `captures/neutral_cc_20261103/adoption_verification.json`
+for current production/profile/config identities; older tonal-base outputs are
+pre-CC evidence.
+
+## Latest code decision — 2026-11-03
+
+The user-authorized [inverse transport experiment](research/2026-11-03_inverse_transport_decision.md)
+is closed and rejected for adoption. Floating residuals preserve inverse
+sub-code changes, but the selected appearance benefit does not justify another
+full-resolution surface. Two same-update GPU probes, both profile comparisons
+and a vivid explicit-eight-bit handoff support this bounded decision. Five
+held pairs are exact; no full adoption validation is claimed. Retained initial
+measurement assumptions and isolated compile failure are documented.
+That rejection changed no production shader, profile or config; the subsequent
+CC adoption above has its own current identity. Chain/grade stay 78.
+No mandatory sweep or further precision campaign follows. Seek a material
+appearance/model opportunity before returning to transport-only optimization.
 
 ## Resume direction
 

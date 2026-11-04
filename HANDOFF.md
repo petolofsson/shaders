@@ -1,4 +1,4 @@
-# Handoff — 2026-11-02
+# Handoff — 2026-11-03
 
 Read [startup-prompt-latest](startup-prompt-latest), [AGENTS.md](AGENTS.md),
 [CODE_RULES.md](CODE_RULES.md), [GOAL.md](GOAL.md), [PLAN.md](PLAN.md) and
@@ -11,6 +11,74 @@ The preceding publication remains `4e2fbf4`; use git log/status/tracking for
 current state. Stable `v1.0` remains `1724bb6`. The user explicitly authorized committing and pushing the completed shader,
 prior November 1 work, documentation and updated ratings. Use current HEAD and
 upstream tracking for publication state. No runtime process remains active.
+
+## Current direction — 2026-11-04
+
+The user wants clear, naked-eye improvements. Compare current full output and
+source at native size across dark, daylight, vivid and highlight scenes; identify
+a recurring visible loss before designing a shared-code candidate. Avoid small
+numerical screens and preserve profiles. The [audit](research/2026-11-04_pipeline_leads.md),
+[slow-key probe](research/2026-11-04_slow_key_sentinel.md), [hue ablation](research/2026-11-04_hue_direction_screen.md)
+and [print screen](research/2026-11-04_print_chroma_screen.md) document the
+latest work. None produced an adopted change or demonstrated a clear visible
+improvement; their limitations and older profile epochs remain explicit.
+
+The current external GZW profile has FILM_CURVE=0.70, SHADOW_TEMP=-0.05,
+SHADOW_TINT=-0.010 and MID_TEMP=0.05. Preserve these choices. The November 3
+GZW evidence predates them; match all identities before reusing baselines.
+Use git status and upstream tracking for publication state.
+
+## Latest adoption — shared-component color correction
+
+The user explicitly authorized implementation. The
+[shared-RGB CC decision](research/2026-11-03_neutral_component_cc_adoption.md)
+is adopted in the shared grade and verified through both unchanged active
+configs. Three added lines scale existing a/b offsets by min(linear RGB)/Y.
+Gray-axis response is GPU-identical to the original; saturated primary faces
+match zero correction. Profiles, headers, producers, histories/rates/resources
+and passes remain; grade stays eight passes.
+
+Selected foliage hue shift +2.962°→−0.131°, weak shelf color separation +15.1%,
+Arc cool-upper/dark-metal separation +4.4%/+4.1%; white-core shape remains.
+Blue-sky/field separation −6.5%/−2.1%, red-lamp −2.5%, warm-floor −1.6% and small
+cloud/paving/quantization/transition costs remain. GZW dark source-neutral
+shadows lose some cool tint but remain cool; exact helper-gray identity does not
+mean source-neutral final images are identical. No universal palette claim.
+
+Five candidate and five baseline pairs are exact. Direct GPU/CPU contracts,
+two exact all-CC-zero pairs, both gradient charts, 192 exact measured same-update
+motion controls over four independent replays and four actual-config exact
+candidate matches pass. Sparse 15-pose/sec source, temporal repeats and small
+step costs remain documented. All 22 tooling tests and whitespace checks pass.
+
+Current identities: `captures/neutral_cc_20261103/adoption_verification.json`;
+full artifact hashes: `artifact_manifest.json`; local review: `review.html` in
+that directory. Older tonal-base outputs retain the pre-CC epoch. Chain/grade
+stay 78; CC 75 is a retained provisional estimate, not a new effectiveness
+re-score. At that historical checkpoint production shader/document changes were uncommitted;
+use current git status and upstream for publication state. No runtime process remains active. This finite
+adoption is complete; no mandatory sweep follows.
+
+## Previous closed experiment — inverse transport
+
+The user authorized the [precision-handoff experiment](research/2026-11-03_inverse_transport_decision.md).
+**Rejected for adoption:** FP16 source-relative residual transport substantially
+reduces numerical handoff error, but selected native/full-frame comparisons show
+no useful visible return for the extra 28.125 MiB surface at 1440p. Two same-update
+GPU probes and ten ordinary captures cover both current profiles plus a vivid
+explicit-eight-bit handoff. Five held pairs are exact; completed captures have
+zero drops/delays. Initial quantizer/transfer assumptions and an isolated include
+compile failure remain documented. No motion/zero/chart/activation/performance
+acceptance is claimed or needed to reject it.
+
+At that rejection checkpoint production remained `738a6f6`, synced to
+origin/master, and shader/profile/config hashes were unchanged. Chain/grade
+remained 78. The subsequent CC adoption above supersedes its grade identity.
+The transport selection/decision notes were uncommitted at that checkpoint;
+use current git status and upstream for publication state. Local artifacts and review:
+`captures/transport_candidate_20261103/`. No runtime remains active, mandatory
+follow-up, score increase or parameter sweep. Do not reopen this representation
+solely for better precision statistics.
 
 ## Current adoption
 
