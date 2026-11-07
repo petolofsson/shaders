@@ -22,6 +22,11 @@ in that decision.
 
 ## Current board
 
+The November 6 [experimental shadow estimates](2026-11-06_shadow_experiment_ratings.md)
+are a separate scope: unfinished brightness recovery ~45 and isolated subtle
+color ~70–75. They do not replace or average into the production board below.
+Neither new addition is adopted; no fresh whole-chain re-score is implied.
+
 | Block | Previous /100 | Current /100 | Evidence and limits |
 |---|---:|---:|---|
 | **Complete combined chain** | 75 | **78** | Updated synthesis: better material shading with preserved light cores and a coherent palette. Road/paving expansion, source-model assumptions and limited generality keep it short of a confident 80. |

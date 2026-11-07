@@ -1,0 +1,37 @@
+# Shadow gradients at multiple scales — 2026-11-05
+
+**Finding: in these selections, reduced relative shadow variation spans the measured scales; it is not isolated to a particular mid-scale band.** The deliberately configured black offset accounts for a large part of the difference in an isolated bypass comparison, but the bypass darkens the materials and is not an approved profile change or a proven visual improvement. These results do not yet justify implementing a local-Laplacian effect.
+
+## Inputs and controls
+
+The user's requested first research step measures GZW dark shelf/blue wall and Arc interior dark metal/cool upper/cool window. Both games use their current profiles and actual combined pipeline. Full/repeat images are the current-profile November 4 full-chain captures; source/profile/config/production shader hashes in their reports match the current files. New source-only images were captured through the same private headless mpv path with vkBasalt disabled, five seconds compile wait and 20 seconds continuous playback. Each source-only pair and each full pair is pixel-identical. New source-only and isolated black-offset-only bypass pairs comprise eight private GPU processes, each reporting zero drops/delays. Pixel-identical static repeats and warmup do not prove temporal stability or complete convergence.
+
+Source-only capture differs from the source PNG in at most one 8-bit code (79,685 GZW / 96,467 Arc pixels, across the entire image), so analysis uses the source-only playback capture. The source-only output remains an 8-bit screenshot of a 10-bit UNORM playback path, not direct readback of the exact shader input. Source and output captures are separate processes and contain no same-update GPU telemetry. The raw-PNG sensitivity rerun gives nearly the same listed ratios but does not remove all transfer/quantization uncertainty. Diagnostic-gate values in the full captures match both current profiles at 100.
+
+## What was measured
+
+In fixed source-selected material rectangles from the prior audit, select source Oklab L 12–50, retain the earlier shelf/metal masks, and reject pixels whose sigma-2-smoothed maximum adjacent source log-Y step is >=0.15 stops. In the shelf this leaves only 2,747 of 92,000 rectangle pixels; the selection is therefore narrow and not representative of every shelf pixel. The masks reduce obvious edges but do not ensure that Gaussian support at wider scales excludes nearby edges. UI, textures, denoising, dither and image compression can remain. Selection and sample thresholds are not a noise model.
+
+For horizontal and vertical pairs at separations 1, 2, 4, 8, 16 and 32 native pixels, retain source differences of 0.03–0.5 stops and Oklab ab pair distance below 2. The response is mean signed output log-Y gap divided by mean absolute source log-Y gap. A response of 1 means matched *relative* log separation for that selection; neither 1 nor a larger value is a fidelity or preference score. Pairs overlap and are not independent samples. Full metadata and all scales are in ignored `captures/shadow_multiscale_20261105/metrics.json` and `pair_scales.png`.
+
+| Selection | Eligible pixels | Full response 1 px | 4 px | 16 px | 32 px | BLACKS=0 diagnostic, 4 px |
+|---|---:|---:|---:|---:|---:|---:|
+| GZW shelf | 2,747 | 0.616 | 0.618 | 0.609 | 0.602 | 1.104 |
+| Arc dark metal | 33,356 | 0.673 | 0.666 | 0.654 | 0.651 | 1.080 |
+| GZW blue wall | 65,445 | 0.898 | 0.898 | 0.891 | 0.887 | 0.967 |
+| Arc cool upper | 33,252 | 0.915 | 0.902 | 0.881 | 0.868 | 0.957 |
+| Arc cool window | 9,622 | 0.910 | 0.902 | 0.904 | 0.903 | 0.979 |
+
+The shelf 4-pixel result covers 1,433 qualifying overlapping directional pairs; metal 31,885. This is a source-relative contrast observation, not a direct visibility threshold. The shelf and metal remain below unity across tested offsets. The cool materials show smaller relative reductions. Similar numbers across pair separations do not prove that all spatial frequency content is treated equally.
+
+An independent scale summary applies separable Gaussian blurs at sigma 0.5, 1, 2, 4, 8 and 16 pixels to log linear Y, then regresses output bands (adjacent blurred-level differences) on source bands. Overlapping bands are not disjoint frequency bins and their blur support can cross material edges. For 2–4 sigma, using source band magnitude >=0.02 stops, slopes are 0.578 shelf, 0.733 metal, 0.945 blue wall, 0.928 cool upper, 0.942 cool window. At 8–16 sigma they are 0.718, 0.826, 0.893, 0.926, 0.910 respectively. The 0.05-stop selection gives similar order in these particular screenshots but changes sample populations; full counts and sensitivity are saved. These are not a faithful local-Laplacian reconstruction or a proof of recoverable original contrast.
+
+## Black-offset attribution and limitations
+
+The BLACKS-only diagnostic sets `BLACKS=0` in isolated copied profiles and leaves WHITES at 0.995; both active profiles remain `BLACKS=0.0025`. Both diagnostic full/repeat pairs are pixel-identical and the production hash set is unchanged. The diagnostic's shelf 4-pixel pair response rises from 0.618 to 1.104 and metal from 0.666 to 1.080, including all downstream interactions. It darkens the selected shelf median L 15.735→12.364 and metal 17.589→14.958; their visible quartile gaps rise 2.661→4.387 and 8.973→11.121. These descriptive differences do not settle whether the darker look is desirable. Because this is a full-chain counterfactual, it is not a direct GPU readback of the isolated affine stage or an additive contribution budget. Earlier stage readbacks similarly identified a large black-offset contribution, at older profile/code epochs. The user's current black settings must be preserved; no profile adjustment is proposed.
+
+Fine-scale comparisons are especially sensitive to 8-bit values and dither. As a stress test—not a realistic sensor-noise estimate—independent random -1/0/+1-code changes were applied to the captured source while holding output fixed and recalculating masks. The altered source selection left only four shelf pixels and shifted some fine-scale slopes substantially. This shows the current mask and fine-scale response are not robust to arbitrary one-code source perturbation; it is not an uncertainty interval or evidence of actual temporal noise. Saved perturbation and raw-source sensitivity artifacts must not be mistaken for real captures.
+
+## Interpretation and next decision
+
+There is evidence that the selected dark shelf and metal relative variation is compressed across several scales and that the existing black offset interacts strongly with this behavior. There is no demonstrated unique mid-scale loss, robust noise characterization, verified source/output pre-quantization correspondence or evidence that local Laplacian reconstruction produces a visible net benefit. A global or spatially adaptive contrast enhancement could exaggerate noise or reintroduce deeper blacks; do not infer that the black-only bypass should be adopted. The next research step, if pursued, is a faithful independent local-Laplacian reference compared against the existing result under edge, near-black, quantization/noise and motion controls; it is not an authorization to add an effect or change a profile. No shader, profile, config or score changed. Scripts, charts, masks, diagnostics and hashes are local ignored artifacts in `captures/shadow_multiscale_20261105/`.

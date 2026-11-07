@@ -1,0 +1,30 @@
+# Compact shadow-tone candidate: isolated GPU screen
+
+**Promising but not ready to adopt.** A compact, monotone output-luminance curve fitted to the prior same-update float observations increased selected shelf and metal brightness separation in actual isolated GPU captures. Five candidate/full-repeat pairs are pixel-identical and bright-control regions mostly retain their measured shape. The change is still subtle at native size, brightens selected metal, reduces some cool-window/foliage/vivid separation, and carries synthetic near-black quantization and noise costs. It does not provide the requested separate subtle shadow-color improvement. No production shader, profile, configuration, history, pass or rating changed.
+
+## Model and scope
+
+The [fixed CPU fit](2026-11-06_float_tone_fit.md) was further constrained to identity for output Y≤0.00175 and Y≥0.02, with a ±0.25-stop adjustment and piecewise log slopes 0.5–1.5. It was fitted to four 16×16 float patches from two scenes, using post-inverse input/output relative gradients as the objective. The threshold 0.00175 protects the two previously observed source-black fixture outputs **in that fixture**, not an unknown black response in every scene. Hard zero correction outside the range protects brighter *output pixels* in ideal arithmetic, but source brightness, color and output brightness are not interchangeable. The CPU fit's projected-gradient residual is 4.62e-14 or less at its stated constraints; coefficients and exact input data are in `captures/shadow_compact_cooperative_20261106/report.json`.
+
+The isolated shader copy applies the fixed piecewise log curve after the look and before dither, using saturate-based arithmetic and a common RGB gain. The generated candidate body is exactly the current production grade plus that insertion. Both real creative profiles and combined trial configs were copied unchanged; the active configs and production code were not edited. The independently verified insertion, current production hashes, candidate/config/source/clip/image hashes and exact static repeats are in `captures/shadow_compact_gpu_20261106/verification.json` and `report.json`.
+
+## Still comparisons
+
+Each candidate uses a fresh private headless process and 20-second continuous settling. Five current-profile scenes—GZW dark, Arc interior, GZW day, GZW-profile Arc vivid and Arc emitter—have two candidate captures each. All five candidate/repeat pairs are exact with the intentional marker masked; all ten processes report zero drops and delays. Existing baseline identity and repeat records remain tied to their original epochs. GZW vivid uses the independently verified current-profile baseline; GZW daylight retains the previously documented inverse-snapshot provenance limitation. The Arc emitter baseline matches the post-CC adoption artifact. Exact still repeats do not establish temporal convergence or gameplay motion.
+
+| Source-selected region | Median L current → candidate | Four-pixel signed log-Y gap current → candidate | Source-relative reversals current → candidate |
+| --- | ---: | ---: | ---: |
+| GZW shelf | 15.735 → 15.946 | 0.11596 → 0.16478 | 6.49% → 3.76% |
+| Arc dark metal | 17.589 → 18.309 | 0.13701 → 0.15622 | 5.75% → 3.64% |
+| GZW blue wall | 39.619 → 39.619 | 0.07589 → 0.07538 | 2.63% → 2.63% |
+| Arc cool window | 37.092 → 37.092 | 0.14997 → 0.14819 | 1.98% → 1.90% |
+
+Pairs overlap and are selected from 8-bit source screenshots; numbers describe the chosen materials, not perception or universal correctness. Shelf source-selected quartile L gap increases 2.661→3.738 and metal 8.973→9.687; cool-window gap decreases 31.972→31.308. The GZW day foliage neighboring gap decreases 0.16929→0.16726; vivid blue-field gap decreases 0.16093→0.15829. The red-lamp, white-core and halo selected gaps are unchanged at displayed precision. Different masks explain differences from the earlier output-only CPU proxy. Native crops and full analysis are in `captures/shadow_compact_gpu_20261106/analysis.json` and neighboring PNGs. The current/candidate difference is visible only subtly in the inspected target crops; no blind or user review has been made.
+
+Whole-frame maximum differences are 4, 4, 4, 5 and 4 codes in the scene order above. The numbers of pixels differing by more than two codes are 119,509, 313,255, 227, 111,233 and 419,953, respectively; they include all content outside the marker and do not measure visibility. No new all-channel-black pixels or code-255 channels appear in these captures. This is not an exact-black, near-black continuity or gamut contract.
+
+## Existing risks and next work
+
+The isolated CPU scalar neutral 0–64-code ramp retains 62 distinct 8-bit codes, with three equal adjacent steps and no reversal; on a deliberately synthetic code-14 ±1-code noise field its continuous encoded standard deviation increases 0.817→1.167 codes. This is not a game-noise or temporal test, but the model can both compress near-black steps and amplify noise. The curve has sharp derivative changes at fit knots; the screenshots alone do not validate continuity under quantization or movement. The 0.00175 anchor is an output-luminance threshold inferred from one black fixture, not an automatic context-aware preservation guarantee. The curve changes brightness only and does not establish subtle red/blue-black color nuance.
+
+Before considering adoption, assess actual native appearance against source and current output, plus real warm/red-black and muted material. If the visual benefit is worthwhile, build independent compiled GPU contracts for the fitted curve, exact source-black through both profiles and diverse contexts, saturated faces, neutral/color ramps and headroom; run measured same-update motion/cut and near-black flicker/noise checks, then actual-config activation checks. Preserve the 8-bit ramp and noise costs and daylight baseline limitation. No color candidate is implicitly adopted and no fresh rating is justified. This is a suitable research checkpoint, not a request to change the user's settings.

@@ -7,6 +7,11 @@ Judge results against [GOAL.md](../../GOAL.md): fuller color distinctions,
 nuanced shadow depth and convincing light with unobtrusive processing. Use
 [PLAN.md](../../PLAN.md) for the next assessment; capture tooling is validated.
 
+For the new temporal-brightness investigation, follow the
+[controlled-course protocol](../../research/2026-11-06_temporal_course_protocol.md).
+It specifies a separate experimental extension and distinct 30-pose/sec source;
+the older cache and its evidence remain unchanged.
+
 The latest [weak-material](../../research/2026-10-31_weak_material_colors.md)
 and [highlight-cooperation](../../research/2026-10-31_highlight_cooperation.md)
 reports reuse the verified cached source with explicit measured GPU-age diagnostics.

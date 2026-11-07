@@ -1,33 +1,42 @@
-# Code Rules
+# Shader implementation rules
 
-Compact checklist for HLSL/vkBasalt shader edits.
+Read [AGENTS.md](AGENTS.md) for repository constraints and the relevant
+[pipeline contracts](docs/pipeline.md) before changing a stage.
 
-1. **Simple control flow.** No dynamic branching on pixel properties. Use
-   `lerp`, `smoothstep`, `step`, `saturate`, and arithmetic masks. Recursion is forbidden.
-2. **Fixed loops.** Loop bounds must be compile-time constants with explicit
-   `[loop]` or `[unroll]`.
-3. **Static resources.** Declare textures, samplers, and render targets in the
-   effect header. No runtime allocation or hidden resource construction.
-4. **Short helpers.** Keep helpers and pixel shaders under one screen where
-   possible. `ColorTransformPS` is the only large orchestration exception.
-5. **Respect signal domains.** Bound UVs and encoded highway values where produced.
-   Preserve signed RGB and positive overrange in internal grade math; apply gamut
-   projection and the SDR ceiling at processing/output boundaries, as in `AGENTS.md`.
-6. **Small scope.** Declare variables at first use and do not reuse a name for a
-   different meaning.
-7. **Use outputs.** Every non-void helper result must be consumed. No throwaway
-   calls except explicitly documented diagnostics.
-8. **Preprocessor restraint.** Use `#define` for constants and complete
-   expression macros only. No token pasting, variadic macros, recursive macros,
-   or algorithmic `#ifdef` forks.
-9. **One lookup level.** Do not nest sampler calls inside other sampler arguments.
-   Do not hide sampler accesses inside macros, except documented highway reads.
-10. **Known gotchas before commit.** Check `AGENTS.md`: no `static const float[]`
-    or `static const float3`, no variable named `out`, no `tex2Dlod` on
-    BackBuffer, no cross-technique mip assumptions, and preserve BackBuffer with
-    passthrough when an effect otherwise only writes explicit render targets.
-11. **Texture and state contracts.** Derive metadata addresses from actual integer
-    resource dimensions. Choose authoritative history precision from the intended
-    update size; do not feed a precise accumulator through a lower-precision
-    publication. Separate initialization sentinels from legitimate steady state.
-    Demonstrate changes with explicit GPU readback, not source inspection alone.
+## HLSL structure
+
+- No dynamic branches on pixel properties or recursion. Use `lerp`, `smoothstep`,
+  `step`, `saturate` and arithmetic masks.
+- Loops need compile-time bounds and explicit `[loop]` or `[unroll]`.
+- Declare textures, samplers and targets statically; no hidden allocation.
+- Keep helpers and pixel shaders short; `ColorTransformPS` is the orchestration
+  exception. Declare variables at first use and do not repurpose names.
+- Consume every helper result; document any diagnostic exception.
+- Limit `#define` to constants and complete expressions. No token pasting,
+  variadic/recursive macros or algorithmic `#ifdef` forks.
+- Do not nest sampler calls or hide them in macros, except documented highway reads.
+
+## Domains and state
+
+Bound UVs and highway encodings where produced. Preserve signed RGB and positive
+overrange internally; project gamut and apply the SDR ceiling at output boundaries.
+Apply linear-light reconstruction gains in RGB, not directly to Oklab coordinates.
+
+Use actual allocated integer texture dimensions for taps and metadata. Keep
+precise authoritative histories out of lower-precision feedback paths. Separate
+initialization sentinels from legitimate zero/small state. Prove state/precision
+changes with explicit GPU readback; do not compensate for storage defects by
+changing rates.
+
+## vkBasalt / SPIR-V pitfalls
+
+- No `static const float[]` or `static const float3`: output can compile incorrectly.
+- No variable named `out`; it is reserved.
+- Use `tex2D(BackBuffer, uv)`; `tex2Dlod(BackBuffer, ...)` returns zero.
+- Separate `.fx` effects cannot share explicit render targets, even mip0.
+  Build/read dependent surfaces within one effect technique.
+- Inter-effect BackBuffer is UNORM; overrange clips between effects.
+- Keep BackBuffer `SRGBTexture` and `SRGBWriteEnable` false with explicit sRGB math.
+  The 10-bit UNORM validation swapchain has no corresponding sRGB view; common
+  8-bit game output is a distinct quantization context.
+- Effects that render only to explicit targets must end with BackBuffer passthrough.

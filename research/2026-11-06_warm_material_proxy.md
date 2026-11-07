@@ -1,0 +1,14 @@
+# Warm-material proxy check
+
+The [ordered brightness and output-color proxy](2026-11-06_ordered_shadow_design.md) was developed using shelf and metal examples. This follow-up searches the same two source screenshots for additional warm, dark-ish blocks and checks two selected regions. It adds material coverage but not new independent scenes, same-update GPU data, or proof of true red-black behavior. The proxy makes these warm selections slightly brighter and reduces their selected neighboring brightness and color-group gaps; the native differences are subtle. It does not establish a broader visual gain.
+
+The search tiles the source screenshots in 64×64 blocks, using every fourth pixel, and ranks blocks with at least 60% source Oklab L 12–35 and a,b >0.4 (Oklab ×100). Contact sheets and exact block coordinates are in `captures/shadow_warm_search_20261106/`. Visual inspection suggested GZW dark brown shelving at `(0,128)–(192,384)` and Arc brown textured material at `(2304,256)–(2496,448)` as two exploratory rectangles. These choices are based on the same source images already used in design; neither is an independent game scene. Their selected median source L values are 27.61 and 30.80, so they are **not** evidence about the requested deepest red-black shades. The Arc material identity is uncertain.
+
+Use the previous captured current output and diagnostic grade-input screenshot. Apply the new output-color and ordered-brightness proxy in float and encode to 8-bit, with all limitations from the preceding report. Within each rectangle select source L 12–35 and a,b >0.4. Define color-group distance by source b quartiles and use the existing four-pixel source-selected neighbor measurement. Pairs overlap; the color groups can differ in lightness. The displayed quantities are descriptive, not quality scores.
+
+| Warm selection | Median L current → proxy | Color-group distance current → proxy | Four-pixel log-Y gap current → proxy | Source-relative reversals current → proxy |
+| --- | ---: | ---: | ---: | ---: |
+| GZW brown shelf | 27.781 → 28.187 | 2.325 → 2.240 | 0.17177 → 0.16899 | 2.10% → 2.16% |
+| Arc brown texture | 30.474 → 30.867 | 1.642 → 1.600 | 0.16318 → 0.16036 | 1.70% → 1.71% |
+
+The current output group distances exceed the source's in these selections; that does not imply they are too high or that the proxy is preferable. The independently quantized source, grade-input and output images, source-based masks and dither affect the small differences. Full values, input hashes, native source/current/proxy comparisons and code are in the capture directory. These tests do not establish neutrality, same-update luminance preservation, exact black, noise, motion or safe gamut. Continue to require genuinely dark warm/red-black and held scenes before judging a combined design. No production shader, profile, configuration or rating changed.

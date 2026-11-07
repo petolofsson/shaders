@@ -1,163 +1,28 @@
-Continue in `/home/pol/code/shaders`.
+Continue in `/home/pol/code/shaders`. This is the sole startup prompt.
 
-Read `AGENTS.md`, `CODE_RULES.md`, `GOAL.md`, `PLAN.md`, `HANDOFF.md` and `TOOLS.md`.
-This is the sole startup prompt; do not create alternate or dated copies.
-Check git status, git log -1 and upstream tracking. Preserve existing user changes.
-Stable v1.0 remains `1724bb6`; the preceding publication is `4e2fbf4`.
-The user authorized committing and pushing the completed shared shader, prior
-November 1 work, documentation and updated ratings. Use current HEAD/upstream
-tracking for publication state. Future publication requires session authorization.
-No runtime process remains active.
+Read:
+1. AGENTS.md and GOAL.md for rules and visual direction.
+2. PLAN.md and HANDOFF.md for the current task, identities and next work.
+3. CODE_RULES.md before shader edits; TOOLS.md before validation.
+4. docs/pipeline.md for the relevant stage/resource contracts.
 
-Latest direction and findings — 2026-11-04
-The user wants clear, naked-eye improvements. Next assess current source/full
-output at native size across representative dark, daylight, vivid and highlight
-scenes, identify a recurring visible loss, and then design and challenge one
-coherent shared-code candidate. Do not prioritize small numerical improvements,
-profile searches or speculative fixes. No mandatory follow-up is queued.
+For shadow research, follow the session index and latest decision links in
+HANDOFF. It preserves the rejected models, artifact locations and scope limits.
+Do not treat archived checkpoint instructions as active tasks.
 
-The [pipeline audit](research/2026-11-04_pipeline_leads.md) identified three
-investigation leads. The [slow-key probe](research/2026-11-04_slow_key_sentinel.md)
-confirms a valid near-black state is mistaken for uninitialized on GPU; real
-visibility is not established, and the isolated flag is not adopted. The
-[hue-direction ablation](research/2026-11-04_hue_direction_screen.md) measures
-small vivid blue changes, but does not establish centroid confidence or a visual
-improvement; the independently hashed vivid confirmation is exact on repeat.
-The [print chroma screen](research/2026-11-04_print_chroma_screen.md) rejects an
-isolated candidate with modest target gains and mixed material costs. No shared
-shader change or new rating resulted from these November 4 screens. Retain their
-capture-provenance and validation limitations; the latter two are not repair queues.
+The requested root-document cleanup is complete. Shadow brightness (~45/100)
+remains the main gap. The user selected 100% of the experimental dark-color
+correction for visual testing. The current GZW still build pairs it with a compact
+spatial brightness curve; this is not motion-aware recovery. The isolated motion
+prototype compiles current/previous coarse guides and a fixed-work translation
+estimate, but has no readback, moving-scene validation or brightness connection.
+Continue toward a finished motion-aware prototype. The requested visual profile
+is shadow lift 0.25 and BLACKS 0, using the isolated config linked in HANDOFF; its
+color offset is decoupled from BLACKS. Preserve production. Runtime remains
+private and headless.
 
-Current external GZW profile choices are FILM_CURVE=0.70, SHADOW_TEMP=-0.05,
-SHADOW_TINT=-0.010 and MID_TEMP=0.05; preserve them. November 3 and earlier
-GZW screenshots/hashes use the older profile and cannot be reused as current
-without identity checks. Existing Arc settings remain. Current HEAD/upstream and
-status determine publication state; do not infer it from historical checkpoints.
-
-Latest adoption — 2026-11-03
-The user explicitly authorized implementation. Read
-`research/2026-11-03_neutral_component_cc_adoption.md`: shared-component CC is
-adopted in the shared grade and verified through both unchanged active configs.
-Three lines scale existing opponent offsets by min(linear RGB)/Y. Exact helper
-gray-axis response is retained; saturated primary faces match zero correction.
-Selected foliage hue shift +2.962°→−0.131°, weak-shelf color separation +15.1%,
-Arc cool-upper/dark-metal +4.4%/+4.1%. Blue-sky/field −6.5%/−2.1%, red-lamp −2.5%,
-warm-floor −1.6%, small quantization/transition and GZW dark neutral-tint costs
-remain. Profiles/configs/headers, source producers, histories/rates/resources
-and passes are preserved; grade stays eight passes. Five candidate/baseline
-pairs are exact each; numeric GPU/CPU, exact CC-zero, gradient, 192 measured
-motion controls and four actual-config exact candidate matches pass. No dense
-motion/performance/universal-palette claim. Chain/grade 78 and CC 75 are retained
-provisional estimates, not a fresh re-score. Current hashes/artifacts/review:
-`captures/neutral_cc_20261103/adoption_verification.json`, `artifact_manifest.json`,
-`review.html`. At that checkpoint the shared code and docs were uncommitted. Use current git
-status and upstream for publication state. No active runtime; finite adoption complete.
-
-Previous closed experiment — 2026-11-03
-The user authorized the inverse residual experiment. Read
-`research/2026-11-03_inverse_transport_decision.md`: rejected for adoption.
-Same-update GPU precision improves substantially; full-frame/native appearance
-in both current profiles and an explicit-eight-bit vivid handoff does not
-justify the added RGBA16F surface. Five held pairs are exact, with zero reported
-drops/delays. Initial quantizer/PNG-transfer assumptions and an isolated include
-compile failure remain documented. No motion/zero/chart/activation/performance
-acceptance is claimed. At rejection, production/profile/config hashes remained
-unchanged at `738a6f6`; the subsequent CC adoption above supersedes that grade
-identity. The 78/100 chain/grade estimates remain. Transport selection/decision
-and handoff notes were uncommitted at that checkpoint. No mandatory follow-up or
-parameter sweep; do not reopen transport merely for precision statistics.
-Local artifacts: `captures/transport_candidate_20261103/`, including review.html.
-
-Latest direction
-The user asked to resume shared-code improvements, then redirected work from
-small capture screens to model design and authorized the highest-return approach
-for the visual goal. Preserve profiles. Develop a concrete coherent solution
-from existing shortcomings; use testing to challenge it. No further profile or
-configuration search is authorized by this direction.
-
-Current implementation
-Read `research/2026-11-02_tonal_architecture.md`. The guarded shared tonal base
-is adopted in `general/grade/grade.fx` and active through both actual configs.
-A 25-tap full-resolution source-guide estimate, smooth source-range rejection
-and continuous overlapping-window proximity weights supply a common brightness
-base for Retinex, zone shaping and lift. Original corrected-pixel detail passes
-through their combined gain. The original relative Retinex spatial correction,
-prescribed Oklab/Hunt/ambient treatment, FilmCurve/print, inverse and gamut remain.
-
-Selected local shade response improves ~2.2% bedroom cloth, 4.3% plaster, 3.8%
-floor and 3.3% interior cool window. Road/paving contrast expansion and small
-vehicle/metal/shelf/cloud/halo, gradient and transition costs remain documented.
-The subsequent user-requested ratings review is
-`research/2026-11-02_effect_ratings.md`: chain/grade 78/100 (previously 75),
-new joint tonal-model estimate 80, individual effects retained at 75–90.
-This is a qualitative synthesis, not a new all-effect bypass campaign or an
-average of child rows. Appearance uncertainty is roughly 5–10 points; a
-confident whole-chain 80 is not established. No mandatory screen follows.
-
-Scope and current identities
-Only the shared grade body/helper changes. Shader headers, profiles/configs,
-analysis/inverse, histories/rates/resources and eight grade passes remain.
-Both configs still use the combined pipeline. No HDR output, auto-exposure,
-new effect/control, temporal grain, golden suite or GPU profiling is introduced.
-The helper adds source texture reads; performance at actual game rates is
-unassessed. Profiling stays deferred.
-
-Both profiles retain BLACKS=0.0025. GZW retains inverse chroma/luma 0.60/0.60,
-shadow temperature -0.05, tint -0.010, midtone temperature 0.05 and FilmCurve 0.70. Arc retains inverse
-strengths 0.5/0.5, shadow temperature -0.075, tint 0, midtone temperature 0.05
-and FilmCurve 0.6. Preserve external/user choices. Creative profiles remain the
-only tuning surface. No shader-header or active GZW-config edits without explicit
-corresponding authorization.
-
-Use `captures/neutral_cc_20261103/adoption_verification.json` for the adoption-epoch
-source/profile/config/grade identities (the GZW profile has since changed) and its `actual_report.json` for activation.
-The following tonal-base validation retains its pre-CC implementation epoch;
-its older grade hashes/images are not current full-chain outputs.
-Seven selected held pairs/current baseline pairs are exact. Two 256-point GPU
-readbacks agree with independent source-window references within 0.000002373
-stops; two tonal-zero pairs are exact. Both chart profiles add no black/code-255
-samples, with small quantization costs and no chart-repeat claim. All 18 selected
-flat-face median edge L/C gaps are zero. Four measured independent history replays
-pass 192 exact candidate/ordinary controls. All four actual-config full/repeat
-outputs match the candidate exactly. Temporal repeats reach one code, with small
-costs retained. All 22 tooling tests and whitespace checks pass.
-
-The audit checks 307 files / 652 images. Seventy fresh completed private GPU
-processes and ten reused baseline processes have zero drops/delays. An original
-vivid baseline pair varies in 78 pixels by up to 16 codes. A refresh label
-accidentally selected the rejected coarse prototype; it is retained and excluded
-from baseline claims. A separate explicitly preserved-original reference pair is
-exact. Read `vivid_baseline_variation.json`; no universal stability repair is
-inferred. Baseline normalized shader bodies are checked independently of labels.
-
-The earlier exact-Y solver is not adopted. CPU measurements identify a chroma-
-dependent approximation difference, but two held solver cases are tiny/mixed.
-No numerical GPU or temporal/adoption validation of that solver is claimed.
-Earlier coarse/median/unrestricted tonal-base representations are rejected.
-Do not attribute their larger gains or narrow-feature/boundary costs to the
-selected guarded implementation. The November 1 classifier/core/composition/
-chroma-limit screens remain rejected and closed; no parameter sweep follows.
-
-Historical checkpoints
-The prior weak-color, highlight, print/inverse and shadow-preservation decisions
-remain adopted in their unchanged code. Their reports/images retain their
-original profile/code epochs. The November 1 Arc BLACKS trial supports its Arc
-scope; previously pending post-edit actual-config checks were completed before
-and after the November 2 shared-code change. Old GZW BLACKS=0 or pre-base images
-are not current outputs. Source/profile/config/include/producer and actual
-normalized shader identities must all match before reuse.
-
-All runtime tests remain private/headless, with no desktop fallback/focus or
-physical display changes. GPU/localhost requires escalation. Use fresh processes,
-verified identities, marker/tag masks and 20-second continuous static settling;
-warmup alone does not establish convergence. Ordinary screenshots contain no
-hidden state telemetry. Temporal claims require measured source/cut update ages.
-The cached source is 15 unique poses/sec doubled to 30; this is sparse evidence.
-Appended pose 2220 is excluded. Dense motion, further games/resolutions/aspects,
-physical high-refresh behavior and fresh whole-chain ratings remain optional
-confidence work, not mandatory defect queues.
-
-Reports are versioned; captures, scripts/configs, logs and review media remain
-ignored. Do not force-add them. Historical diagnostic generators assume frozen
-snapshots and must not be blindly rerun against changed source or profiles.
-Local review: `captures/tonal_base_20261102/review.html`.
+Keep each root file within its documented purpose. Put detailed experiments and
+history in research/; update current state instead of stacking resume addenda.
+Read the 2026-11-07 motion/color checkpoint linked from HANDOFF before resuming.
+Do not call the motion prototype gameplay-ready until warping, history rejection
+and brightness reconstruction are connected and tested.
