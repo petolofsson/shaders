@@ -171,7 +171,6 @@ float4 LumHistGatherPS(float4 pos : SV_Position,
     int   b         = int(pos.x);
     float bucket_lo = float(b)     / float(HIST_BINS);
     float bucket_hi = float(b + 1) / float(HIST_BINS);
-    float scale_y   = float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
 
     float count = 0.0;
     [loop]
@@ -180,9 +179,8 @@ float4 LumHistGatherPS(float4 pos : SV_Position,
         [loop]
         for (int x = 0; x < DS_W; x++)
         {
-            float2 s_uv = float2((x + 0.5) / float(DS_W),
-                                 (y + 0.5) / float(DS_H) * scale_y);
-            float  luma = min(tex2Dlod(TexHwySamp, float4(s_uv, 0, 0)).a, 1.0 - 1e-6);
+            float2 s_uv = float2((x + 0.5) / float(DS_W), (y + 0.5) / float(DS_H));
+            float  luma = min(ReadSpatialLane(s_uv).a, 1.0 - 1e-6);
             count += (luma >= bucket_lo && luma < bucket_hi) ? 1.0 : 0.0;
         }
     }
@@ -407,13 +405,11 @@ float4 SceneCutPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 float4 NearClipPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float count = 0.0;
-    float scale_y = float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
     [loop] for (int y = 0; y < DS_H; y++)
     [loop] for (int x = 0; x < DS_W; x++)
     {
-        float2 s_uv = float2((x + 0.5) / float(DS_W),
-                             (y + 0.5) / float(DS_H) * scale_y);
-        float luma = tex2Dlod(TexHwySamp, float4(s_uv, 0, 0)).a;
+        float2 s_uv = float2((x + 0.5) / float(DS_W), (y + 0.5) / float(DS_H));
+        float luma = ReadSpatialLane(s_uv).a;
         count += step(NEAR_CLIP_LUMA, luma);
     }
     float raw = count / float(DS_W * DS_H);
@@ -460,16 +456,14 @@ float4 MeanChromaPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 
     float sum_a = 0.0, sum_b = 0.0;
     float count = 0.0, achrom_count = 0.0;
-    float scale_y = float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
     [loop]
     for (int y = 0; y < DS_H; y++)
     {
         [loop]
         for (int x = 0; x < DS_W; x++)
         {
-            float2 s_uv = float2((x + 0.5) / float(DS_W),
-                                 (y + 0.5) / float(DS_H) * scale_y);
-            float3 lab  = RGBtoOklab(tex2Dlod(TexHwySamp, float4(s_uv, 0, 0)).rgb);
+            float2 s_uv = float2((x + 0.5) / float(DS_W), (y + 0.5) / float(DS_H));
+            float3 lab  = RGBtoOklab(ReadSpatialLane(s_uv).rgb);
             float  C    = length(lab.yz);
             float  in_b = step(0.05, C);
             int    bin  = clamp(int(C / CHROMA_C_MAX * CHROMA_BINS), 0, CHROMA_BINS - 1);

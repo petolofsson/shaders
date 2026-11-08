@@ -2,58 +2,78 @@
 
 Work toward [GOAL.md](GOAL.md), preserving profiles and production. Current
 identities and estimates are in [HANDOFF.md](HANDOFF.md); implementation history
-is in [CHANGELOG.md](CHANGELOG.md).
+is in [CHANGELOG.md](CHANGELOG.md). The previous full text is preserved in the
+[2026-11-08 root ledger](research/2026-11-08_root_document_history.md).
 
-## Priority: two-part shadow richness
+## Done (2026-11-08)
 
-The user wants both brightness-gradient recovery and subtle dark material color
-near at least 75/100. Brightness is the main design gap. Color-only approval is
-not a prerequisite for continuing brightness research.
+- **Adopted:** [shadow surround tint](research/2026-11-08_shadow_tint_candidate.md)
+  at 1.0. The character-halo limitation was accepted; depth is not usable (anti-cheat).
+- **Queued follow-ups, no candidate:**
+  - [Cue-map scoring](research/2026-11-08_cue_map_oracle.md): the tint weight is
+    at chance in daylight (AUC .51).
+  - [Yellow/orange re-test](research/2026-11-08_hk_chroma_retest.md): production
+    adds ≤6% warm chroma and ~.3 L* of H-K brightening, so there is no gap.
 
-The [controlled JavaScript course](research/2026-11-06_temporal_course_results.md)
-is built and supports the temporal mechanism under changing noise. A
-[bounded affine producer](research/2026-11-06_shadow_bounded_motion.md) now replaces
-feature matching in a CPU reference. Whole-frame estimation retains selected
-material gains; persistent grain, invalid correspondence and support modulation
-remain. GPU cost/equivalence and worthwhile full-grade benefit are unproven.
-Target operation is 80–110 fps; source-clock tests are distinct from real GPU
-cadence/performance validation. Require visible full-grade benefit before a shader
-candidate. Real footage is later generality work, not the next-test prerequisite.
+## Closed — do not reopen without new evidence
 
-The 2026-11-07 isolated GZW build compiles coarse guide/history and a fixed-work
-translation estimator, but has no readback, moving-scene validation or brightness
-recovery connection. Continue from the checkpoint linked in HANDOFF; the tested
-compact spatial curve is not motion-aware recovery.
+- **Brightness recovery.** The [brightness oracle](research/2026-11-08_brightness_oracle.md)
+  shows the benefit needs single-frame light/material separation.
+  - Production's tonal base attributes light like a global curve.
+  - The [Retinex screen](research/2026-11-08_retinex_light_screen.md) found no
+    classical rule that closes the gap.
+  - Lift is unchanged.
+- **Shadow detection.** In the [oracle scene](research/2026-11-08_shadow_oracle_scene.md),
+  even a perfect gate mainly amplifies the illumination cast; only unavailable
+  material color enriches material. Earlier attempts all failed to give a runtime
+  classifier or albedo:
+  - [narrow-gate miss](research/2026-11-07_shadow_identity_color.md);
+  - [surface relations](research/2026-11-07_shadow_surface_relation_screen.md);
+  - [context prototype](research/2026-11-07_shadow_context_review.md) (no visible difference);
+  - [online detectors](research/2026-11-07_online_shadow_detection.md).
 
-1. Establish a distinct, supported material/shading representation. No next
-   algorithm is selected. Start from native visual evidence of the recurring loss.
-2. Explain the range budget: where added separation comes from, how black and
-   lighting relationships survive, and what variation pays the cost.
-3. Challenge absolute and relative separation, density, correlated noise, useful
-   texture, thin features and boundary leakage together. Require worthwhile native
-   benefit and a plausible runtime data path before another GPU campaign.
-4. If a candidate survives, compare current/color/brightness/combined outputs
-   with matched identities, then run appropriate contracts and measured motion.
-   Finish a finite adopt/reject decision; research alone does not authorize adoption.
+  Do not equate brightness with shadow, or copy a lit neighbor's color as albedo.
 
-Read the [investigation index](research/2026-11-06_shadow_session_index.md),
-[regional budget](research/2026-11-06_shadow_region_budget.md),
-[adaptive range](research/2026-11-06_shadow_adaptive_range.md) and
-[RGB shading rejection](research/2026-11-06_shadow_rgb_shading.md) and
-[connected-structure rejection](research/2026-11-06_shadow_connected_structure.md) before choosing
-a model. These retain failures and limits, not implementation proposals.
+## Tonal-progression assessment (open, not mandatory)
 
-Do not repeat rejected curve/filter/gain sweeps, widen spectral filters again,
-loosen noise gates until materials engage, or build segmentation merely to port
-weak references. Numerical correctness, darker means and quiet noise patches
-are insufficient. No universal acceptable-noise percentage was established.
+Fine gradient preservation supports the goal but is not the whole goal. Existing
+scores predate the goal clarification. Motion is an unproven possible means and
+not a required build; see HANDOFF for the parked motion evidence. The compact
+spatial curve failed on held timber and is a comparison only.
+
+1. Review matched native source/full comparisons across lit, partial and deeply
+   occluded areas, warm/cool/neutral materials and representative lighting.
+2. Attribute any consequential loss with relevant bypasses and unchanged repeats.
+   Assess transitions and scene relationships, not only texture, black anchor,
+   noise or color. Darker or more separated is not a target.
+3. Develop a distinct model only if the visual evidence warrants it. Explain where
+   the tonal range comes from, its costs and a runtime data path.
+4. Compare surviving contributions on matched inputs, then run contracts and
+   measured motion. Research does not authorize adoption.
+
+Before choosing a model, read the retained failures:
+- [session index](research/2026-11-06_shadow_session_index.md);
+- [regional budget](research/2026-11-06_shadow_region_budget.md);
+- [adaptive range](research/2026-11-06_shadow_adaptive_range.md);
+- [RGB shading](research/2026-11-06_shadow_rgb_shading.md);
+- [connected structure](research/2026-11-06_shadow_connected_structure.md).
+
+Do not do any of the following:
+- repeat rejected curve, filter or gain sweeps;
+- widen spectral filters;
+- loosen noise gates until materials engage;
+- build segmentation to port weak references.
+
+There is no universal acceptable-noise percentage.
 
 ## Optional confidence work
 
-Broader game/lighting coverage, dense gameplay, physical high refresh, whole-chain
-hitches, and remaining resolutions/aspects would support stronger claims. They
-are not a mandatory repair queue. Reopen completed technical decisions only for
-a concrete new failure. GPU profiling remains deferred.
+These would support stronger claims but are not a repair queue:
+- broader game and lighting coverage;
+- dense gameplay;
+- physical high refresh;
+- whole-chain hitches;
+- remaining resolutions and aspects.
 
-The requested root-document cleanup is complete. Shadow research is next.
-No shader/profile/config adoption, automatic re-score, commit or push is pending.
+Reopen decisions only for a concrete new failure. GPU profiling stays deferred,
+and no adoption is pending.

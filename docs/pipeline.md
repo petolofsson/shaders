@@ -13,10 +13,11 @@ Configured in `gamespecific/arc_raiders/arc_raiders.conf` and
 pipeline (one ShaderPipeline effect containing analysis_frame -> inverse_grade -> corrective -> grade)
 ```
 
-`grade.fx` is an 8-pass technique:
+`grade.fx` is a 13-pass technique:
 
 ```text
 LFDownscale1 -> LFDownscale2 -> NeutralIllum -> GuidedCoeff -> GuidedBase
+-> TintGatherA -> TintGatherB -> TintEnvA -> TintEnvB -> TintRegion
 -> ColorTransform -> AdaptiveHistory -> TexHwyWrite
 ```
 
@@ -41,8 +42,8 @@ Diffusion has been removed from `grade.fx`.
 1. `inverse_grade`: source reconstruction plus Oklab chroma expansion, bounded
    by `HueCeil()`; FilmCurve is not inverted here.
 2. `corrective`: zone/chroma/slow-key analysis; preserves BackBuffer.
-3. `grade` corrective: `INVERSE_LUMA` on source signal, then `EXPOSURE`, DIR
-   couplers, and 3-way CC.
+3. `grade` shadow surround tint on BLACKS/WHITES-mapped input, then corrective:
+   `INVERSE_LUMA` on source signal, then `EXPOSURE`, DIR couplers, and 3-way CC.
 4. `grade` tonal: guided-filter detail, Retinex/zone shaping, signed adaptive
    contrast, shadow lift, Hunt coupling, ambient tint, highlights, then the
    luminance-preserving FilmCurve shoulder.
@@ -81,8 +82,10 @@ Encode/decode out-of-range quantities at the slot boundary.
   storage. Publications/raw observations remain half-float; bounded one-frame
   scene-cut storage remains RGBA16F. Preserve formulas, rates and initialization.
 - Slow key reads authoritative chroma history directly; its 20-second/67-ms
-  half-lives remain. Mean chroma uses direct feedback. Six per-hue history records
-  have no ordinary image consumer; zone/slow-key records remain live.
+  half-lives remain. Mean chroma uses direct feedback. ChromaHistory columns 0–5
+  (former per-hue Kalman) stay allocated and are written as zero; zone/slow-key
+  records remain live. Spatial-lane reads use `ReadSpatialLane`/`SpatialLaneUV`
+  (common.fxh), which clamp to lane texel centers.
 - `PercHighTex` has three RGBA32F records: p90/p10 history at 0.5/3;
   current p25/p50/p90/mode at 1.5/3; p10/mass/p75/validity at 2.5/3.
   Highways 212–218 publish current observations; original recurrence remains.
@@ -114,11 +117,34 @@ Encode/decode out-of-range quantities at the slot boundary.
 - The current-source complete lift product uses existing adaptive rates. In adaptive
   record two, RG are gate recovery, B=1 validates gates, B=2 also validates the
   source product, and A stores that product. Zero products remain initialized;
-  explicit flags handle source loss/recovery. Original lift history is fallback.
+  explicit flags handle source loss/recovery. The R60 context factor bounds
+  log2(slow key/zone key) to ±log2 3 (×0.64–1.55 at weight .4). Without a valid
+  source observation lift is zero; the original fallback lift was removed and
+  adaptive record one's G channel is written as zero.
 - FilmCurve adapts to tail separation, highlight presence and entropy; the manual
   value remains its ceiling. Local max-channel protection supplements near-clip
   history. Film/shadow/print/gamut hysteresis uses elapsed time and does not force
   maximum strength at cuts; analysis Kalman filters remain separate.
+
+## Shadow surround tint
+
+- **Fields.** All fields come from the 1/8 spatial lane (linear source).
+  - Surface weight: Oklab L .02–.10 in, .80–.95 out.
+  - 1/16 gather: 2×2 lane texels, (a·ws, b·ws, L·ws, ws) and (luma·ws, luma·emitter).
+  - Normalized Gaussian blur: σ 3.46 texels; the emitter field uses σ 4.90.
+  - 1/8 region: lane (luma, a, b, L), σ 1. All are bilinear-read per pixel.
+- **Shadow weight.** log2(surface-only wide luma ÷ regional luma), mapped over
+  0–1.5 stops; then not-bright region (.10–.35), not-near-black pixel
+  (.0003–.002), and a lit-spot fade 1–2 stops above the region.
+- **Step.** One Oklch+ step (L^.73; C^.87/(C^.87+.34^.87); arXiv 2606.05255) of
+  `SHADOW_SURROUND_TINT`·.0442·weight·hue confidence, toward the surroundings'
+  hue. It is evaluated on the regional colour and added per pixel as an Oklab a,b
+  offset; saturation is capped at max(original, .45·L).
+- **Darkening.** A Fairchild–Pirrotta lightness-preserving RGB gain from the
+  regional colour (clamped .5–1), faded out where nearby emitter light dominates.
+  Evaluating on the regional colour keeps pixel chroma noise at production level.
+- **Known limit.** Dark background behind bright foreground objects can be tinted
+  (halo); no depth is used.
 
 ## Color, print and output
 

@@ -47,11 +47,16 @@ float2 ClampSpatialUV(float2 uv)
     return clamp(uv, lo, hi);
 }
 
-// Read spatial lane luma at full-screen UV uv∈[0,1].
-float ZoneLuma(float2 uv)
+// Map full-screen UV uv∈[0,1] into the spatial lane, clamped to its texel centers.
+float2 SpatialLaneUV(float2 uv)
 {
-    float sy = uv.y * float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
-    return tex2Dlod(TexHwySamp, float4(ClampSpatialUV(float2(uv.x, sy)), 0, 0)).a;
+    return ClampSpatialUV(float2(uv.x, uv.y * float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H)));
+}
+
+// Read the spatial lane (RGB + luma) at full-screen UV uv∈[0,1].
+float4 ReadSpatialLane(float2 uv)
+{
+    return tex2Dlod(TexHwySamp, float4(SpatialLaneUV(uv), 0, 0));
 }
 
 // Read data row pixel. dr = row offset from spatial lane base (0..TEX_HWY_ROWS-1).

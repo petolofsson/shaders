@@ -6,23 +6,16 @@ Read:
 3. CODE_RULES.md before shader edits; TOOLS.md before validation.
 4. docs/pipeline.md for the relevant stage/resource contracts.
 
-For shadow research, follow the session index and latest decision links in
-HANDOFF. It preserves the rejected models, artifact locations and scope limits.
-Do not treat archived checkpoint instructions as active tasks.
+The goal is a fuller progression from light through midtones into deep, readable
+shadows, with subtly richer material color under the available lighting. The
+shadow surround tint was adopted on 2026-11-08. Shadow detection and brightness
+recovery are closed, and the earlier shadow-color candidates are superseded (see
+HANDOFF). Motion is an unproven possible means, parked without a validated
+estimate or brightness connection. For shadow research, follow the session index
+and decision links in HANDOFF; they preserve rejected models, artifact locations
+and scope limits.
 
-The requested root-document cleanup is complete. Shadow brightness (~45/100)
-remains the main gap. The user selected 100% of the experimental dark-color
-correction for visual testing. The current GZW still build pairs it with a compact
-spatial brightness curve; this is not motion-aware recovery. The isolated motion
-prototype compiles current/previous coarse guides and a fixed-work translation
-estimate, but has no readback, moving-scene validation or brightness connection.
-Continue toward a finished motion-aware prototype. The requested visual profile
-is shadow lift 0.25 and BLACKS 0, using the isolated config linked in HANDOFF; its
-color offset is decoupled from BLACKS. Preserve production. Runtime remains
-private and headless.
-
-Keep each root file within its documented purpose. Put detailed experiments and
-history in research/; update current state instead of stacking resume addenda.
-Read the 2026-11-07 motion/color checkpoint linked from HANDOFF before resuming.
-Do not call the motion prototype gameplay-ready until warping, history rejection
-and brightness reconstruction are connected and tested.
+Preserve production. Runtime remains private and headless. Keep each root file
+within its documented purpose. Put detailed experiments and history in research/,
+and update current state instead of stacking resume addenda. Archived checkpoint
+instructions are not active tasks and do not override PLAN.

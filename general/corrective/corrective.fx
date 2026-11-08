@@ -21,11 +21,7 @@
 #include "creative_values.fx"
 #endif
 
-#define KALMAN_Q_MIN     0.0001   // process noise: steady-state (scene stable)
-#define KALMAN_Q_MAX     0.10     // process noise: scene cut (K rises to ~0.91)
 #define VFF_E_SIGMA      0.08     // innovation scale for luma — triggers ramp at 0.08 luma units
-#define VFF_E_SIGMA_CHROMA 0.04   // innovation scale for chroma — Oklab a/b magnitudes are smaller
-#define KALMAN_R         0.01     // measurement noise
 #define KALMAN_K_INF     0.095    // steady-state gain for secondary channels (EMA)
 
 uniform float FRAME_TIMER < source = "timer"; >;        // ms since app start
@@ -90,25 +86,9 @@ sampler2D ChromaHistory
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-// ─── Halton(2,3) sequence — procedural, avoids static const array SPIR-V issue ──
-
-float Halton2(uint i)
-{
-    float r = 0.0, f = 0.5;
-    [unroll] for (int b = 0; b < 8; b++) { r += f * float(i & 1u); i >>= 1u; f *= 0.5; }
-    return r;
-}
-
-float Halton3(uint i)
-{
-    float r = 0.0, f = 1.0 / 3.0;
-    [unroll] for (int b = 0; b < 6; b++) { r += f * float(i % 3u); i /= 3u; f /= 3.0; }
-    return r;
-}
-
 // ─── Pass 1 — per-zone 32-bin luma histogram ───────────────────────────────
 // Reads from TexHwyTex spatial lane (1/8-res, written by analysis_frame).
-// suv.y scaled by TEX_HWY_SPATIAL_H/TEX_HWY_TOTAL_H to stay inside spatial lane rows.
+// ReadSpatialLane (common.fxh) maps full-screen UV into the clamped spatial lane.
 
 float4 ComputeZoneHistogramPS(float4 pos : SV_Position,
                               float2 uv  : TEXCOORD0) : SV_Target
@@ -126,15 +106,14 @@ float4 ComputeZoneHistogramPS(float4 pos : SV_Position,
     float bucket_hi = float(b + 1) / float(ZONE_HIST_BINS);
     bucket_lo *= bucket_lo;
     bucket_hi *= bucket_hi;
-    float scale_y   = float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
 
     float count = 0.0;
     [loop] for (int sy = 0; sy < 10; sy++)
     [loop] for (int sx = 0; sx < 10; sx++)
     {
         float2 suv  = float2(u_lo + (sx + 0.5) / 10.0 * 0.25,
-                            (v_lo + (sy + 0.5) / 10.0 * 0.25) * scale_y);
-        float  luma = min(tex2Dlod(TexHwySamp, float4(suv, 0, 0)).a, 1.0 - 1e-6);
+                             v_lo + (sy + 0.5) / 10.0 * 0.25);
+        float  luma = min(ReadSpatialLane(suv).a, 1.0 - 1e-6);
         count += (luma >= bucket_lo && luma < bucket_hi) ? 1.0 : 0.0;
     }
 
@@ -241,62 +220,6 @@ float4 ComputeSlowKey()
     return float4(lerp(prev_slow, zone_log_key, lerp(alpha_slow, alpha_fast, scene_cut)), 0, 0, 0);
 }
 
-float4 UpdateChromaKalman(int band_idx)
-{
-    uint  base_idx = (uint(FRAME_TIMER / 41.667) * 8u) % 256u;
-    float sum_w    = 0.0;
-    float sum_wc   = 0.0;
-    float sum_wc2  = 0.0;
-    [unroll] for (int i = 0; i < 8; i++)
-    {
-        uint   idx  = (base_idx + uint(i)) % 256u;
-        float2 s_uv = float2(Halton2(idx), Halton3(idx));
-        // Chroma history is measured from the original-scene highway, not the
-        // inverse-graded BackBuffer, so inverse reconstruction cannot feed back
-        // into its own adaptive statistics.
-        float scale_y = float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
-        float3 lab  = RGBtoOklab(tex2Dlod(TexHwySamp,
-                                           float4(s_uv.x, s_uv.y * scale_y, 0, 0)).rgb);
-        float  C    = length(lab.yz);
-        float  h    = OklabHueNorm(lab.y, lab.z);
-        float  w    = HueBandWeight(h, GetBandCenter(band_idx)) * smoothstep(0.03, 0.08, C);
-        float  C_c  = min(C, 0.20);  // clamp outliers (neon, fire) from biasing the pivot
-        sum_w   += w;
-        sum_wc  += w * C_c;
-        sum_wc2 += w * C_c * C_c;
-    }
-    float mean   = sum_wc  / max(sum_w, 0.001);
-    float var    = max(sum_wc2 / max(sum_w, 0.001) - mean * mean, 0.0);
-    float stddev = sqrt(var);
-    // R171: observation confidence — how much of sum_w came from real hue matches.
-    // Absent bands (sum_w≈0) get obs_confidence≈0: Q collapses to Q_MIN, K→0, EMA→0.
-    // State freezes; P still inflates via Q_MIN so re-entry adapts immediately.
-    float obs_confidence = saturate(sum_w * 0.5);
-
-    float4 prev    = ReadTexHwyChroma(0, band_idx);  // ChromaHistory row 0, previous frame
-    // R39: VFF Kalman — chroma mean (.r), P in .a, cold-start when uninitialized
-    float P_prev   = (prev.a < 0.001) ? 1.0 : prev.a;
-    float e_chroma = mean - prev.r;
-    // R88: Sage-Husa Q — driven by posterior P, not instantaneous innovation spike
-    // R171: gate by obs_confidence — no Q inflation when band absent
-    float Q_vff_c  = lerp(KALMAN_Q_MIN,
-                          lerp(KALMAN_Q_MIN, KALMAN_Q_MAX,
-                               smoothstep(KALMAN_R * 0.5, KALMAN_R * 5.0, P_prev)),
-                          obs_confidence);
-    float P_pred   = P_prev + Q_vff_c;
-    float K        = P_pred / (P_pred + KALMAN_R);
-    // R53: scene-cut override — spike K toward 1.0 on hard cuts
-    float scene_cut = ReadHWY(HWY_SCENE_CUT);
-    K = lerp(K, 1.0, scene_cut) * obs_confidence;
-    float  h_c     = lerp(1.0 - 0.5 * smoothstep(0.0, VFF_E_SIGMA_CHROMA * 4.0, abs(e_chroma)),
-                          1.0, scene_cut);
-    float new_mean = prev.r + K * e_chroma * h_c;
-    float P_new    = saturate((1.0 - K) * P_pred);
-    // EMA: std and wsum — gate by obs_confidence so absent bands don't decay
-    float k_ema    = lerp(KALMAN_K_INF, 1.0, scene_cut) * obs_confidence;
-    return float4(new_mean, lerp(prev.g, stddev, k_ema), lerp(prev.b, sum_w, k_ema), P_new);
-}
-
 float4 UpdateHistoryPS(float4 pos : SV_Position,
                        float2 uv  : TEXCOORD0) : SV_Target
 {
@@ -304,7 +227,9 @@ float4 UpdateHistoryPS(float4 pos : SV_Position,
     if (pos.y >= 1.0) return float4(0, 0, 0, 0);
     if (band_idx == 6) return ComputeZoneStats();
     if (band_idx == 7) return ComputeSlowKey();
-    return UpdateChromaKalman(band_idx);
+    // Columns 0..5 formerly held per-hue chroma Kalman state with no consumer;
+    // they stay allocated and zero so the ChromaHistory layout is unchanged.
+    return float4(0, 0, 0, 0);
 }
 
 

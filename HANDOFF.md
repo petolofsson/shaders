@@ -1,23 +1,51 @@
-# Current state — 2026-11-07
+# Current state — 2026-11-08
 
-The requested root-document cleanup is complete; it changed documentation only.
-The root guides now separate rules, goals, priorities, state and procedures;
-technical contracts live in [docs/pipeline.md](docs/pipeline.md), and removed
-historical detail is preserved in the [root ledger](research/2026-11-06_root_document_history.md).
-Shadow research resumed earlier today;
-no runtime is intentionally left active and no adoption question is pending.
+Goal: richer light→midtone→deep-shadow progression, readable partial shadows,
+subtle material color, cohesive look ([GOAL.md](GOAL.md)). Priorities are in
+[PLAN.md](PLAN.md). The full Nov 7–8 narrative is preserved in the
+[2026-11-08 root ledger](research/2026-11-08_root_document_history.md); older
+removed detail is in the [2026-11-06 root ledger](research/2026-11-06_root_document_history.md).
+No runtime is active and no adoption question is pending.
+
+## Latest work (2026-11-08)
+
+- **Adopted:** [shadow surround tint](research/2026-11-08_shadow_tint_candidate.md),
+  `SHADOW_SURROUND_TINT` 1.0 in both profiles. The look was accepted from the CPU
+  [mockups](research/2026-11-08_shadow_tint_mockups.md) (v9). It uses an Oklch+
+  equal-perceived step toward the surroundings' hue, plus H-K darkening that fades
+  near emitters, with surface-only context. Validation: 28 matched stills, both
+  noise fixtures and the scene cut, after the lit-spot and noise-amplification
+  defects were fixed. Production at 1.0 matches the validated candidate within one code.
+  **Accepted limitation:** a tinted halo on dark background behind bright foreground
+  objects (Arc 210448 character). Depth was rejected (anti-cheat flag).
+- **Follow-ups, no candidate:** [cue-map oracle scoring](research/2026-11-08_cue_map_oracle.md)
+  (daylight AUC .51, no light/material signal) and the
+  [yellow/orange re-test](research/2026-11-08_hk_chroma_retest.md) (≤6% warm chroma, no gap).
+- **Review fixes:** [full-shader review](research/2026-11-08_ultrareview_fixes.md)
+  findings applied.
+- **Closed by the user:**
+  - shadow detection, after the [oracle scene](research/2026-11-08_shadow_oracle_scene.md);
+  - brightness recovery, after the [brightness oracle](research/2026-11-08_brightness_oracle.md)
+    and [Retinex screen](research/2026-11-08_retinex_light_screen.md).
+- **Superseded:** the darker-range 110% [shadow color candidate](research/2026-11-08_shadow_color_candidate.md).
+  The user rejected its feel ("saturation of darker colours") in favour of the tint.
+  The Nov 7 shadow-color variants (100/110/200%, darker-range, zero-black, context)
+  were never adopted. They are listed in the
+  [report inventory](research/2026-11-06_shadow_report_inventory.md) and the ledger.
 
 ## Production
 
-Both active configs use one combined `ShaderPipeline`; grade remains eight
-passes. Latest adopted code: [shared tonal base](research/2026-11-02_tonal_architecture.md)
-and [shared-component CC](research/2026-11-03_neutral_component_cc_adoption.md).
+Both active configs use one combined `ShaderPipeline`. Grade has thirteen passes:
+eight, plus five shadow-surround-tint passes. Latest adopted code:
+- [shadow surround tint](research/2026-11-08_shadow_tint_candidate.md)
+- [shared tonal base](research/2026-11-02_tonal_architecture.md)
+- [shared-component CC](research/2026-11-03_neutral_component_cc_adoption.md)
 
-- HEAD at checkpoint: `b4c52e4d178fb535872dd6b93ec9df3697a5246d`.
-  Local upstream matched then; no remote fetch was claimed. Check git for current state.
-- Root grade SHA-256: `efea23e8c8e061a77619c8c42f89f1d73c35523623ea90a1f3ee4028e8f40c56`.
-- The latest controlled-course audit verifies all 17 production identities
-  unchanged. Shader/profile/config/header/history/resource/pass state is preserved.
+- Grade SHA-256 `111afeee85c0f29b11b2d8ec682efe232533d4155e7fd1508556177f870a17ea`.
+- Pipeline `bec87beced4ea7ace88191f72c912173a9c9ef828b3acfe9185843d927ad15b2`.
+- Both `creative_values.fx` gained `SHADOW_SURROUND_TINT 1.0`; configs are unchanged.
+- The older 17-identity set and the earlier grade hashes (`efea23e8…`, `36f44c14…`)
+  no longer apply. Check git for the current HEAD.
 
 | Profile | BLACKS / WHITES | Inverse chroma / luma | FilmCurve | Shadow temp / tint | Mid temp |
 | --- | --- | --- | --- | --- | --- |
@@ -31,69 +59,34 @@ older evidence epochs; do not reuse old outputs by grade identity alone.
 
 | Contribution | Provisional effectiveness | Decision |
 | --- | ---: | --- |
-| New brightness recovery | ~45/100 | Main gap; no viable implementation proposal |
-| New subtle-color helper | ~70–75/100 | User selected 100% for isolated visual testing; not adopted |
-| Production chain / grade | 78/100 | Carried estimate with original scope |
-| Production joint tonal model | 80/100 | Carried estimate with original scope |
+| Brightness recovery | ~45/100 | Closed 2026-11-08: no single-frame light/material separation |
+| Shadow color helper | ~70–75/100 | Superseded by the surround tint; not adopted |
+| Production chain / grade | 78/100 | Carried estimate, original scope; predates the tint |
+| Production joint tonal model | 80/100 | Carried estimate, original scope |
 
-The [controlled course](research/2026-11-06_temporal_course_results.md) is built
-under `tools/temporal_course/`, with verified clean/ID sources and RGB8 noise
-controls. Temporal benefit survives changing noise; fixed grain and unreliable
-history remain. The user targets 80–110 fps. Timestamped source clocks and CPU
-references do not establish real GPU cadence or a viable runtime motion path.
-Full 30/100-fps-clock references and 80/110/variable-cadence smoke tests are complete;
-all runs are closed. The subsequent
-[bounded-motion screen](research/2026-11-06_shadow_bounded_motion.md) supplies a
-fixed-grid, six-update affine CPU producer, tested from whole-frame observations.
-Selected steady motion reaches .556-code source error; support-gated selected
-material gaps improve about 8.8%/7.7%. Two dense 320-state references retain the
-less favorable intervals. Persistent grain, invalid correspondence and support
-modulation remain; no GPU producer or full-grade benefit is established.
-The [boundary-check ablation](research/2026-11-06_shadow_boundary_check.md)
-reduces unsupported history in selected occlusion and lighting windows while
-also rejecting useful support; cut handling and persistent grain remain open.
-Its dense 320-state follow-up confirms the tradeoff: occlusion unsupported
-history 6.39%→1.09%, camera support .869→.796, persistent-grain error still
-about 1.085× baseline. Visible temporal stability and GPU costs remain untested.
-No shader candidate or rating increase follows; failures remain.
+Motion and temporal work is parked, with no shader candidate. The
+[controlled course](research/2026-11-06_temporal_course_results.md) (`tools/temporal_course/`)
+supports the temporal benefit under changing noise. Fixed grain and unreliable
+history remain, and the user targets 80–110 fps. Further results:
+- The [bounded-motion screen](research/2026-11-06_shadow_bounded_motion.md) shows
+  8.8%/7.7% support-gated material-gap gains at .556-code source error.
+- The [boundary check](research/2026-11-06_shadow_boundary_check.md) cuts
+  occlusion unsupported history 6.39%→1.09% but reduces camera support .869→.796.
 
-## Visual candidates and motion build
-
-The user selected 100% of the experimental shadow-color correction after
-reviewing the 75% and 100% GZW captures. The current requested visual test uses
-shadow lift 0.25 and BLACKS 0.0:
-[`gzw_lift_025_black_000.conf`](../captures/shadow_visual_pipeline_20261106/gzw_lift_025_black_000/gzw_lift_025_black_000.conf).
-Its isolated copied profile keeps the color correction active with a separate
-`EXPERIMENTAL_COLOR_OFFSET=0.0025`; this is not a production control. The combined
-still candidate includes the compact spatial brightness curve, not motion-aware
-recovery. Captures and comparisons are in
-[the November 7 checkpoint](research/2026-11-07_motion_brightness_prototype.md).
-
-The isolated GPU motion build compiles current/previous coarse luminance guides
-and a fixed-work global translation estimate. An initial matrix-indexing SPIR-V
-assertion was fixed with row-vector Schur math. The estimate has no GPU readback
-or moving-course validation and is not wired to warped image history or
-brightness. Continue toward a finished visual prototype in
-`captures/shadow_visual_pipeline_20261106/gzw_motion_100/`. Next: read back
-estimates on matched course motion, then add warped full-resolution history,
-local correspondence rejection and detail-preserving brightness recovery.
+There is no GPU producer, readback or visible benefit. The isolated GPU motion
+build (`captures/shadow_visual_pipeline_20261106/gzw_motion_100/`, see the
+[checkpoint](research/2026-11-07_motion_brightness_prototype.md)) compiles a
+translation estimate that is unwired and unvalidated. Resume it only for a
+demonstrated need.
 
 ## Resume evidence
 
-- [Session index](research/2026-11-06_shadow_session_index.md): experiment map,
-  reusable inputs, failures and continuation contract.
-- [Report inventory](research/2026-11-06_shadow_report_inventory.md): November 4–7
-  investigation reports, including the latest representation tests.
+- [Session index](research/2026-11-06_shadow_session_index.md) and
+  [report inventory](research/2026-11-06_shadow_report_inventory.md).
 - [Half-color validation](research/2026-11-06_shadow_color_half_validation.md) and
-  [neutral alignment](research/2026-11-06_shadow_neutral_alignment.md): frozen
-  unadopted option and corrected source-color attribution. Review/patch/verification:
-  `captures/shadow_color_half_review_20261106/`. `actual_after_adoption.py` is unrun.
-- [Production ratings](research/2026-11-02_effect_ratings.md): retained individual
-  rows, uncertainty and profile epochs.
-- [Motion/color prototype checkpoint](research/2026-11-07_motion_brightness_prototype.md):
-  current GPU build status, compiler fix, candidate visual selection and next
-  motion-history/recovery steps.
+  [neutral alignment](research/2026-11-06_shadow_neutral_alignment.md). Their files
+  are in `captures/shadow_color_half_review_20261106/`; `actual_after_adoption.py`
+  is unrun.
+- [Production ratings](research/2026-11-02_effect_ratings.md).
 
-Research documents remain uncommitted; captures/scripts/media remain local and
-ignored. No publication is authorized. Historical checkpoint instructions are
-superseded by [PLAN.md](PLAN.md) and the current user request.
+Captures, scripts and media remain local and ignored.

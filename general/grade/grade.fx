@@ -18,23 +18,59 @@
 // Optional game-specific color-design controls default to neutral when omitted from a profile.
 #ifndef LUMA_CONTRAST_RED
 #define LUMA_CONTRAST_RED 0.0
+#endif
+#ifndef LUMA_CONTRAST_YELLOW
 #define LUMA_CONTRAST_YELLOW 0.0
+#endif
+#ifndef LUMA_CONTRAST_GREEN
 #define LUMA_CONTRAST_GREEN 0.0
+#endif
+#ifndef LUMA_CONTRAST_CYAN
 #define LUMA_CONTRAST_CYAN 0.0
+#endif
+#ifndef LUMA_CONTRAST_BLUE
 #define LUMA_CONTRAST_BLUE 0.0
+#endif
+#ifndef LUMA_CONTRAST_MAG
 #define LUMA_CONTRAST_MAG 0.0
+#endif
+#ifndef HUE_RED
 #define HUE_RED 0.0
+#endif
+#ifndef HUE_YELLOW
 #define HUE_YELLOW 0.0
+#endif
+#ifndef HUE_GREEN
 #define HUE_GREEN 0.0
+#endif
+#ifndef HUE_CYAN
 #define HUE_CYAN 0.0
+#endif
+#ifndef HUE_BLUE
 #define HUE_BLUE 0.0
+#endif
+#ifndef HUE_MAG
 #define HUE_MAG 0.0
+#endif
+#ifndef VIBRANCE
 #define VIBRANCE 0.0
+#endif
+#ifndef SAT_RED
 #define SAT_RED 0.0
+#endif
+#ifndef SAT_YELLOW
 #define SAT_YELLOW 0.0
+#endif
+#ifndef SAT_GREEN
 #define SAT_GREEN 0.0
+#endif
+#ifndef SAT_CYAN
 #define SAT_CYAN 0.0
+#endif
+#ifndef SAT_BLUE
 #define SAT_BLUE 0.0
+#endif
+#ifndef SAT_MAG
 #define SAT_MAG 0.0
 #endif
 
@@ -167,6 +203,25 @@ sampler2D BilateralLogSamp
     MinFilter = LINEAR;
     MagFilter = LINEAR;
 };
+
+// Shadow surround tint: surroundings' surface colour and shadow context from
+// the 1/8 spatial lane. Gather: 2×2 lane texels → 1/16. Env: normalized Gaussian
+// at 1/16. Region: lane luma, Gaussian σ 1 texel at 1/8.
+#ifndef SHADOW_SURROUND_TINT
+#define SHADOW_SURROUND_TINT 1.0
+#endif
+#define TINT_W16 (BUFFER_WIDTH / 16)
+#define TINT_H16 (BUFFER_HEIGHT / 16)
+texture2D TintGatherATex { Width = TINT_W16; Height = TINT_H16; Format = RGBA16F; MipLevels = 1; };
+sampler2D TintGatherASamp { Texture = TintGatherATex; AddressU = CLAMP; AddressV = CLAMP; MinFilter = POINT; MagFilter = POINT; };
+texture2D TintGatherBTex { Width = TINT_W16; Height = TINT_H16; Format = RG16F; MipLevels = 1; };
+sampler2D TintGatherBSamp { Texture = TintGatherBTex; AddressU = CLAMP; AddressV = CLAMP; MinFilter = POINT; MagFilter = POINT; };
+texture2D TintEnvATex { Width = TINT_W16; Height = TINT_H16; Format = RGBA16F; MipLevels = 1; };
+sampler2D TintEnvASamp { Texture = TintEnvATex; AddressU = CLAMP; AddressV = CLAMP; MinFilter = LINEAR; MagFilter = LINEAR; };
+texture2D TintEnvBTex { Width = TINT_W16; Height = TINT_H16; Format = RG16F; MipLevels = 1; };
+sampler2D TintEnvBSamp { Texture = TintEnvBTex; AddressU = CLAMP; AddressV = CLAMP; MinFilter = LINEAR; MagFilter = LINEAR; };
+texture2D TintRegionTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 1; };
+sampler2D TintRegionSamp { Texture = TintRegionTex; AddressU = CLAMP; AddressV = CLAMP; MinFilter = LINEAR; MagFilter = LINEAR; };
 
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -311,10 +366,8 @@ struct SceneCtx {
     float  fc_knee;
     float  fc_knee_toe;
     float  film_curve_strength;
-    float  shadow_lift_str;
     float  shadow_lift_product;
     float  lift_current_valid;
-    float  shadow_floor;
     float  adaptation_gate;
     float  ambient_gate;
     float  print_stock_strength;
@@ -322,7 +375,6 @@ struct SceneCtx {
     float  chroma_scene_scale;
     float  chroma_str_base;
     float  scene_mode;
-    float  specular_contrast;
     float  illum_warm;   // CAT16 L/M − S/M + 0.5; D65≈0.39, warm>0.39, cool<0.39
     float  median_C;     // scene median Oklab C (highway HWY_MEDIAN_C) [0, 0.30]
     float  key_L;        // cbrt(slow_key), clamped [0.30,0.80] — Oklab L pivot for zone gates
@@ -358,7 +410,6 @@ SceneCtx BuildSceneCtx()
     ctx.inverse_luma_budget = lerp(1.0,
         lerp(1.0, 0.5, smoothstep(0.6, 15.0 / 17.0, relative_span)), source_valid);
     ctx.scene_cut          = ReadHWY(HWY_SCENE_CUT);
-    ctx.shadow_floor       = ReadHWY(HWY_P10);
     // Scene cuts temporarily suppress adaptive look changes, allowing the new
     // scene to settle before temporal statistics drive the grade.
     ctx.adaptation_gate    = 1.0 - smoothstep(0.05, 0.75, ctx.scene_cut);
@@ -406,23 +457,16 @@ SceneCtx BuildSceneCtx()
     float film_auto = lerp(0.65, 1.0, highlight_tail * highlight_presence);
     film_auto *= lerp(0.80, 1.0, entropy_gate);
     ctx.film_curve_strength = saturate(float(FILM_CURVE)) * film_auto;
-    float _sls_t              = saturate(((ctx.perc.r + ctx.scene_mode) * 0.5 - 0.025) / 0.175);
-    float _std_suppress       = smoothstep(0.05, 0.13, ctx.zone_std);
-    ctx.shadow_lift_str       = lerp(1.50, 0.45, _sls_t*_sls_t*_sls_t*(_sls_t*(_sls_t*6.0-15.0)+10.0))
-                              * (1.0 - _std_suppress);
-    // p10 gate: lift shadows when the floor is genuinely dark; avoid milky blacks
-    // when the scene already contains substantial low-end signal.
-    float shadow_floor_gate = 1.0 - smoothstep(0.04, 0.22, ctx.shadow_floor);
-    ctx.shadow_lift_str *= lerp(0.65, 1.0, shadow_floor_gate);
-    // R162: specular contrast — p90−p50 gap measures isolated bright sources vs scene median.
-    ctx.specular_contrast     = saturate((ReadHWY(HWY_P90) - ctx.perc.g) / 0.40);
     ctx.slow_key           = max(ReadTexHwyChroma(0, 7).r, 0.001);
     ctx.key_L              = clamp(exp2(log2(ctx.slow_key) * (1.0 / 3.0)), 0.30, 0.80);
     ctx.lift_current_valid = step(0.5,ReadHWY(HWY_LIFT_VALID));
     float current_lift_strength = SourceLiftStrengthTarget(ReadHWY(HWY_LIFT_P25),
         ReadHWY(HWY_LIFT_MODE),ReadHWY(HWY_LIFT_P10),ctx.zone_std);
     float current_specular = saturate((ReadHWY(HWY_LIFT_P90)-ReadHWY(HWY_LIFT_P50))/0.40);
-    float current_context = exp2(log2(ctx.slow_key/max(ctx.zone_log_key,0.001))*0.4);
+    // R60 context: bound the slow/current key ratio to log2(3) (the R60 tunnel case,
+    // x1.55 at weight .4) so gradual transitions cannot multiply lift unboundedly.
+    float current_context = exp2(clamp(log2(ctx.slow_key/max(ctx.zone_log_key,0.001)),
+                                       -1.585, 1.585)*0.4);
     float current_product = current_lift_strength * current_context
                           * (1.0-smoothstep(0.50,0.90,current_specular)*0.35);
     // Record b=1 validates gates; b=2 also validates the current-source product.
@@ -451,7 +495,7 @@ SceneCtx BuildSceneCtx()
 
     float4 adaptive_prev = tex2Dlod(AdaptiveHistorySamp, float4(0.25, 0.5, 0, 0));
     float4 adaptive_raw  = float4(ctx.film_curve_strength,
-                                  ctx.shadow_lift_str,
+                                  0.0,   // channel formerly held the unreachable fallback lift
                                   ctx.print_stock_strength,
                                   ctx.gamut_strength);
     float  seeded        = step(0.001, adaptive_prev.r + adaptive_prev.g
@@ -466,7 +510,6 @@ SceneCtx BuildSceneCtx()
         lerp(adaptive_prev.a, adaptive_raw.a,
              AdaptiveStep(adaptive_prev.a, adaptive_raw.a, ctx.scene_cut)));
     ctx.film_curve_strength = lerp(adaptive_raw.r, adaptive_next.r, seeded);
-    ctx.shadow_lift_str     = lerp(adaptive_raw.g, adaptive_next.g, seeded);
     ctx.print_stock_strength = lerp(adaptive_raw.b, adaptive_next.b, seeded);
     ctx.gamut_strength       = lerp(adaptive_raw.a, adaptive_next.a, seeded);
     return ctx;
@@ -675,13 +718,9 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
                    + max(zone_adj, 0.0);
 
     float detail_protect  = smoothstep(-4.0, -0.5, log_R);
-    // R60: temporal context — slow ambient key boosts lift during dark transitions, suppresses on re-entry
-    float context_lift   = exp2(log2(ctx.slow_key / zk_safe) * 0.4);
-    // R162: suppress shadow lift when isolated bright sources dominate (high specular contrast).
-    // High p90−p50 gap = sun/lamp in frame — lifting shadows flattens depth against the source.
-    float specular_att   = 1.0 - smoothstep(0.50, 0.90, ctx.specular_contrast) * 0.35;
-    float shadow_lift    = ctx.shadow_lift_str * detail_protect * context_lift * specular_att;
-    shadow_lift = lerp(shadow_lift,ctx.shadow_lift_product*detail_protect,ctx.lift_current_valid);
+    // Current-source lift product (R60 context, R162 specular restraint) from BuildSceneCtx.
+    // Without a valid source observation no lift is applied.
+    float shadow_lift    = ctx.shadow_lift_product * detail_protect * ctx.lift_current_valid;
     float shadow_base_luma = luma;
     float lift_w         = shadow_base_luma * smoothstep(0.35, 0.0, shadow_base_luma);
     new_luma = max(new_luma + shadow_lift * 0.25 * lift_w * SHADOWS
@@ -842,6 +881,101 @@ float3 ApplyLook(float3 lin, SceneCtx ctx, float film_loss_fraction)
     return saturate(out_lin);
 }
 
+// ─── Shadow surround tint ───────────────────────────────────────────────────
+// Shadows take a slight tint of the surroundings' surface hue. One equal-perceived
+// step in Oklch+ (L'=L^.73, C'=C^.87/(C^.87+.34^.87), Euclidean; arXiv 2606.05255)
+// along that hue, Oklab L kept; then luminance lowered so Fairchild–Pirrotta (1991)
+// perceived lightness stays at the original (darker shade, never brighter). The
+// darkening fades out where nearby emitter light dominates; pixels well above
+// their region (lit spots) are excluded.
+
+float TintSurfaceW(float L)
+{
+    return smoothstep(0.02, 0.10, L) * (1.0 - smoothstep(0.80, 0.95, L));
+}
+
+// Full-screen UV of lane texel (2·i + d) for 1/16 output texel i.
+float2 TintLaneUV(float2 pos, float2 d)
+{
+    return (floor(pos) * 2.0 + d + 0.5) / float2(BUFFER_WIDTH / 8, TEX_HWY_SPATIAL_H);
+}
+
+float3 TintToLab(float3 rgb)
+{
+    float3 xyz = float3(dot(rgb, float3(0.4124564, 0.3575761, 0.1804375)),
+                        dot(rgb, float3(0.2126729, 0.7151522, 0.0721750)),
+                        dot(rgb, float3(0.0193339, 0.1191920, 0.9503041))) / float3(0.95047, 1.0, 1.08883);
+    float3 cube = exp2(log2(max(xyz, 1e-12)) * (1.0 / 3.0));
+    float3 f = lerp(xyz * 7.787037 + 4.0 / 29.0, cube, step(0.008856452, xyz));
+    return float3(116.0 * f.y - 16.0, 500.0 * (f.x - f.y), 200.0 * (f.y - f.z));
+}
+
+// Fairchild–Pirrotta chromatic lightness term g(h)·C* (L** = L* + (2.5 − .025 L*)·k).
+float TintHKTerm(float3 lab)
+{
+    float h = atan2(lab.z, lab.y);
+    return (0.116 * abs(sin(0.5 * (h - 1.5707963))) + 0.085) * length(lab.yz);
+}
+
+// One Oklch+ step of `step` from ab, back to Oklab ab.
+float2 TintPlusStep(float2 ab, float2 step_ab)
+{
+    float  C     = length(ab);
+    float  Cn    = exp2(log2(max(C, 1e-9)) * 0.87);
+    float2 abp   = ab / max(C, 1e-9) * (Cn / (Cn + 0.391189)) + step_ab;  // 0.34^0.87
+    float  abp_n = length(abp);
+    float  Cp    = min(abp_n, 0.95);
+    return abp / max(abp_n, 1e-9) * (0.34 * exp2(log2(max(Cp / (1.0 - Cp), 1e-12)) * (1.0 / 0.87)));
+}
+
+float TintLstarToY(float Ls)
+{
+    float f = (Ls + 16.0) / 116.0;
+    return lerp(Ls / 903.2963, f * f * f, step(8.0, Ls));
+}
+
+// Luminance ratio keeping Fairchild–Pirrotta lightness when lab's ab becomes new_ab.
+float TintHKGain(float3 lab, float2 new_ab)
+{
+    float3 ref_lab = TintToLab(OklabToRGB(lab));
+    float3 t_lab   = TintToLab(OklabToRGB(float3(lab.x, new_ab)));
+    float  k0 = TintHKTerm(ref_lab);
+    float  k1 = TintHKTerm(t_lab);
+    float  target_hk = ref_lab.x + (2.5 - 0.025 * ref_lab.x) * k0;
+    float  L_hk = max(min((target_hk - 2.5 * k1) / (1.0 - 0.025 * k1), ref_lab.x), 0.0);
+    return clamp((TintLstarToY(L_hk) + 1e-6) / (TintLstarToY(t_lab.x) + 1e-6), 0.5, 1.0);
+}
+
+// The step and darkening are evaluated on the smooth regional colour and applied
+// per pixel as an Oklab a,b offset and an RGB gain, so pixel noise is not stretched.
+float3 ApplyShadowTint(float3 lin, float2 uv)
+{
+    float4 env    = tex2D(TintEnvASamp, uv);
+    float2 env_b  = tex2D(TintEnvBSamp, uv).rg;
+    float4 reg    = tex2D(TintRegionSamp, uv);
+    float  region = max(reg.x, 1e-5);
+    float3 reg_lab = float3(reg.w, reg.yz);
+    float  wsum   = max(env.w, 1e-4);
+    float2 sat    = (env.xy / wsum) / max(env.z / wsum, 0.05);
+    float  sat_n  = length(sat);
+    float2 dir    = sat / max(sat_n, 1e-6);
+    float  conf   = tanh(sat_n / 0.04);
+    float  rel_dark = log2(max(env_b.x / wsum, 1e-5) / region);
+    float  shade_w  = smoothstep(0.0, 1.5, rel_dark) * (1.0 - smoothstep(0.10, 0.35, region))
+                    * smoothstep(0.0003, 0.002, Luma(lin))
+                    * (1.0 - smoothstep(1.0, 2.0, log2(max(Luma(lin), 1e-5) / region)));   // lit spots are not shade
+    float  near_light = smoothstep(0.01, 0.10, env_b.y / region);
+
+    float2 new_reg_ab = TintPlusStep(reg_lab.yz, (SHADOW_SURROUND_TINT * 0.0442 * shade_w * conf) * dir);
+    float  gain       = lerp(TintHKGain(reg_lab, new_reg_ab), 1.0, near_light);
+
+    float3 lab    = RGBtoOklabLinear(lin);
+    float  C      = length(lab.yz);
+    float2 new_ab = lab.yz + (new_reg_ab - reg_lab.yz);
+    new_ab *= min(1.0, max(C, 0.45 * max(lab.x, 0.0)) / max(length(new_ab), 1e-6));
+    return OklabToRGB(float3(lab.x, new_ab)) * gain;
+}
+
 // ─── ColorTransform pixel shader ───────────────────────────────────────────
 
 float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
@@ -852,6 +986,7 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float4 lf_mip2_tex = tex2D(LowFreqMip2Samp, uv);
 
     float3 lin      = col.rgb * (float(WHITES) - float(BLACKS)) + float(BLACKS);
+    lin = ApplyShadowTint(lin, uv);
     float  col_luma = Luma(lin);
     lin = lerp(lin, ApplyCorrective(lin, col_luma, uv, lf_mip2_tex, ctx), CORRECTIVE_STRENGTH * 0.01);
 
@@ -911,6 +1046,86 @@ float4 LFDownscale2PS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
           + tex2D(LowFreqMip1Samp, uv + float2(-s.x, -s.y))) * 0.25;
 }
 
+// ─── Shadow surround tint fields ────────────────────────────────────────────
+
+float4 TintGatherAPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    float4 acc = 0.0;
+    [unroll] for (int dy = 0; dy < 2; dy++)
+    [unroll] for (int dx = 0; dx < 2; dx++)
+    {
+        float3 lab = RGBtoOklab(ReadSpatialLane(TintLaneUV(pos.xy, float2(dx, dy))).rgb);
+        float  ws  = TintSurfaceW(lab.x);
+        acc += float4(lab.yz * ws, lab.x * ws, ws);
+    }
+    return acc * 0.25;
+}
+
+float2 TintGatherBPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    float2 acc = 0.0;
+    [unroll] for (int dy = 0; dy < 2; dy++)
+    [unroll] for (int dx = 0; dx < 2; dx++)
+    {
+        float3 rgb = ReadSpatialLane(TintLaneUV(pos.xy, float2(dx, dy))).rgb;
+        float  L   = RGBtoOklab(rgb).x;
+        acc += Luma(rgb) * float2(TintSurfaceW(L), smoothstep(0.80, 0.95, L));
+    }
+    return acc * 0.25;
+}
+
+// Normalized Gaussian σ 3.46 texels (r 6) at 1/16: surroundings' colour/weight.
+float4 TintEnvAPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    float2 px  = 1.0 / float2(TINT_W16, TINT_H16);
+    float4 acc = 0.0;
+    float  wt  = 0.0;
+    [loop] for (int dy = -6; dy <= 6; dy++)
+    [loop] for (int dx = -6; dx <= 6; dx++)
+    {
+        float g = exp(-0.0417657 * float(dx * dx + dy * dy));            // 1/(2·3.46²)
+        acc += g * tex2Dlod(TintGatherASamp, float4(uv + float2(dx, dy) * px, 0, 0));
+        wt  += g;
+    }
+    return acc / wt;
+}
+
+// R: surface luma, σ 3.46 (r 6); G: emitter luma, σ 4.90 (r 9).
+float2 TintEnvBPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    float2 px  = 1.0 / float2(TINT_W16, TINT_H16);
+    float2 acc = 0.0;
+    float2 wt  = 0.0;
+    [loop] for (int dy = -9; dy <= 9; dy++)
+    [loop] for (int dx = -9; dx <= 9; dx++)
+    {
+        float  r2   = float(dx * dx + dy * dy);
+        float  in_a = step(abs(float(dx)), 6.0) * step(abs(float(dy)), 6.0);
+        float2 g    = float2(exp(-0.0417657 * r2) * in_a, exp(-0.0208247 * r2));   // 1/(2·4.9²)
+        acc += g * tex2Dlod(TintGatherBSamp, float4(uv + float2(dx, dy) * px, 0, 0)).rg;
+        wt  += g;
+    }
+    return acc / wt;
+}
+
+// Regional luma and Oklab colour (luma, a, b, L): spatial lane, Gaussian σ 1 texel (r 2) at 1/8.
+float4 TintRegionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    float2 lane = float2(BUFFER_WIDTH / 8, TEX_HWY_SPATIAL_H);
+    float4 acc = 0.0;
+    float  wt  = 0.0;
+    [unroll] for (int dy = -2; dy <= 2; dy++)
+    [unroll] for (int dx = -2; dx <= 2; dx++)
+    {
+        float  g    = exp(-0.5 * float(dx * dx + dy * dy));
+        float4 tap  = ReadSpatialLane((floor(pos.xy) + float2(dx, dy) + 0.5) / lane);
+        float3 lab  = RGBtoOklab(tap.rgb);
+        acc += g * float4(tap.a, lab.yz, lab.x);
+        wt  += g;
+    }
+    return acc / wt;
+}
+
 // ─── R189 bilateral log-luma passes ──────────────────────────────────────────
 // R190 guided filter — Pass 1: compute local linear model coefficients (a_k, b_k).
 // Self-guided in log2-luma space. Adaptive ε (Hu 2023): a_k = var/((1+ε)·var + η).
@@ -955,7 +1170,7 @@ float4 GuidedBasePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     }
     float mean_a = sum_a / GF_N;
     float mean_b = sum_b / GF_N;
-    float I_c    = log2(max(Luma(tex2D(TexHwySamp, float2(uv.x, uv.y * float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H))).rgb), 1e-3));
+    float I_c    = log2(max(Luma(ReadSpatialLane(uv).rgb), 1e-3));
     return float4(mean_a * I_c + mean_b, mean_a, mean_b, 0.0);
 }
 
@@ -969,12 +1184,11 @@ float4 NeutralIllumPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     float3 grey_acc    = 0.0;
     float  total_w     = 0.0;
 
-    float scale_y = float(TEX_HWY_SPATIAL_H) / float(TEX_HWY_TOTAL_H);
     [unroll] for (int iy = 0; iy < 9; iy++)
     [unroll] for (int ix = 0; ix < 16; ix++)
     {
-        float2 suv = float2((ix + 0.5) / 16.0, (iy + 0.5) / 9.0 * scale_y);
-        float3 rgb = tex2Dlod(TexHwySamp, float4(suv, 0, 0)).rgb;
+        float2 suv = float2((ix + 0.5) / 16.0, (iy + 0.5) / 9.0);
+        float3 rgb = ReadSpatialLane(suv).rgb;
         float3 lab = RGBtoOklab(rgb);
         float  C   = length(lab.yz);
         float  w   = 1.0 - smoothstep(0.04, 0.10, C);
@@ -1008,7 +1222,7 @@ float4 AdaptiveHistoryPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_T
     SceneCtx ctx = BuildSceneCtx();
     if (pos.x >= 1.0)
         return float4(ctx.adaptation_gate, ctx.ambient_gate, 1.0+ctx.lift_current_valid, ctx.shadow_lift_product);
-    return float4(ctx.film_curve_strength, ctx.shadow_lift_str,
+    return float4(ctx.film_curve_strength, 0.0,
                   ctx.print_stock_strength, ctx.gamut_strength);
 }
 
@@ -1047,6 +1261,11 @@ technique OlofssonianColorGrade
         PixelShader  = GuidedBasePS;
         RenderTarget = BilateralLogTex;
     }
+    pass TintGatherA { VertexShader = PostProcessVS; PixelShader = TintGatherAPS; RenderTarget = TintGatherATex; }
+    pass TintGatherB { VertexShader = PostProcessVS; PixelShader = TintGatherBPS; RenderTarget = TintGatherBTex; }
+    pass TintEnvA    { VertexShader = PostProcessVS; PixelShader = TintEnvAPS;    RenderTarget = TintEnvATex; }
+    pass TintEnvB    { VertexShader = PostProcessVS; PixelShader = TintEnvBPS;    RenderTarget = TintEnvBTex; }
+    pass TintRegion  { VertexShader = PostProcessVS; PixelShader = TintRegionPS;  RenderTarget = TintRegionTex; }
     pass ColorTransform
     {
         VertexShader = PostProcessVS;

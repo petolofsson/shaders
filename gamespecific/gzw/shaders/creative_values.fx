@@ -25,6 +25,7 @@
 #define RETINEX_STRENGTH      1.0
 #define ZONE_CONTRAST_STRENGTH 1.0
 #define SHADOW_LIFT_STRENGTH   0.75
+#define SHADOW_SURROUND_TINT   1.0   // shadows take a slight tint of surrounding surface colour (0 = off)
 
 // CHROMA
 #define SATURATION           0.0

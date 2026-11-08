@@ -13,8 +13,15 @@ depth and richness. Preserve palette, lighting and deliberately restrained scene
 
 - **Color:** meaningful shades within materials, including subtle dark colors;
   bright colors retain character and neutrals remain credible.
-- **Shadows:** a convincing black anchor with internal shape, color and texture.
-  Avoid both crushed detail and a gray pedestal.
+- **Shadow tonal depth:** a fuller, smooth progression from lit areas through
+  midtones into darkness, preserving subtle shading and surface detail. Deep
+  occlusion may approach black while partially shadowed areas remain readable.
+  Avoid crushed blacks, muddy midtones and indiscriminate scene darkening. This
+  concerns tonal gradation, not softening shadow edges.
+- **Shadow color:** preserve and subtly enrich material color in shadow, with
+  restrained, harmonious differences between lit and shadowed areas that reflect
+  the available surface color and lighting. Avoid a uniform gray, black or blue
+  tint, neon saturation and artificially bright shadows.
 - **Light:** convincing relationships between shadows, midtones and highlights;
   bright areas retain shape and feel luminous.
 - **Restraint:** avoid halos, exaggerated texture, conspicuous casts, pumping
@@ -22,6 +29,8 @@ depth and richness. Preserve palette, lighting and deliberately restrained scene
 
 Output remains SDR in `[0,1]`; there is no HDR output or auto-exposure.
 Information already clipped out of the source cannot be recovered.
+The image alone does not reliably identify physical materials or separate their
+color from illumination; judge any approximation by its visible result.
 
 ## Game-agnostic behavior
 

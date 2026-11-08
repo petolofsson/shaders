@@ -71,6 +71,23 @@ channels are invalid. Diagnostic holds/bypasses do not freeze ordinary histories
 Consult the [cut coverage](research/2026-10-27_temporal_cut_coverage.md) and
 [night attribution](research/2026-10-27_night_settling_attribution.md) before reuse.
 
+## Offline shadow-mask review
+
+The local BDRAR tester uses CPU inference on still images; it does not access a
+display, GPU or network. With the isolated environment and inspected model in
+the current workspace, run into a **new** output directory:
+
+```bash
+captures/shadow_detector_env_20261107/bin/python -B tools/shadow_detector.py --vendor captures/shadow_detector_bdrar_20261107/vendor --weights captures/shadow_detector_bdrar_20261107/model.pth --output captures/shadow_detector_bdrar_20261107/new_review
+```
+
+Optional positional image paths replace the five defaults. The output contains
+the input, raw floating-point probability, an 8-bit visualization, a red overlay,
+a .5 threshold preview, hashes and a local HTML review. Do not interpret .5 as
+a calibrated threshold, masks as material color, or still-image inference as
+gameplay performance. Model provenance, local compatibility changes and observed
+limitations are recorded in [the offline detector report](research/2026-11-07_offline_shadow_detector.md).
+
 ## Readback, measurements and artifacts
 
 Screenshots contain no offscreen highway/history telemetry. Use an explicit

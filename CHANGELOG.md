@@ -5,6 +5,25 @@ tradeoffs; their profile values describe their own evidence epochs. Current
 profiles and scores are in [HANDOFF.md](HANDOFF.md). The former detailed ledger
 is preserved in [research](research/2026-11-06_root_document_history.md).
 
+## 2026-11-08 — Shadow surround tint
+
+Adopted the [shadow surround tint](research/2026-11-08_shadow_tint_candidate.md):
+shaded areas take a slight tint of the surrounding surface colour. It uses one
+equal-perceived Oklch+ step and a Helmholtz–Kohlrausch darkening, computed on
+the regional colour so pixel noise is not amplified. The darkening fades out near
+emitters and on lit spots. Five low-resolution grade passes were added. The new
+`SHADOW_SURROUND_TINT` control is set to 1.0 in both profiles. Known limitation:
+dark background behind bright foreground objects can receive a tinted halo
+(colour-only; depth is unavailable).
+
+## 2026-11-08 — Review fixes
+
+Applied all six findings of the [full-shader review](research/2026-11-08_ultrareview_fixes.md):
+bounded the R60 shadow-lift context ratio, removed the unreachable fallback lift and
+unused per-hue chroma Kalman, gave each optional color control its own default,
+shared one clamped spatial-lane read, and retired the standalone inverse-grade debug
+overlay that could not read the combined pipeline's highway.
+
 ## 2026-11-06 — Documentation
 
 Shortened root guides, separated rules/priorities/state, moved technical contracts
