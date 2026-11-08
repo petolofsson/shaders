@@ -14,9 +14,9 @@
 // PRIMARY COLOR CORRECTION
 #define SHADOW_TEMP       -0.05
 #define SHADOW_TINT       -0.010
-#define MID_TEMP          0.05
+#define MID_TEMP          0.175
 #define MID_TINT          0.00
-#define HIGHLIGHT_TEMP    0.10
+#define HIGHLIGHT_TEMP    0.35
 #define HIGHLIGHT_TINT    0.00
 
 // TONAL
@@ -31,7 +31,7 @@
 #define SATURATION           0.0
 
 // LOOK
-#define PRINT_STOCK           1.0
+#define PRINT_STOCK           0.5
 #define PRINTER_R             0.00
 #define PRINTER_G             0.00
 #define PRINTER_B             0.00

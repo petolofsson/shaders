@@ -18,6 +18,10 @@ No runtime is active and no adoption question is pending.
   defects were fixed. Production at 1.0 matches the validated candidate within one code.
   **Accepted limitation:** a tinted halo on dark background behind bright foreground
   objects (Arc 210448 character). Depth was rejected (anti-cheat flag).
+- **Profile change:** `PRINT_STOCK` 1.0→0.5 in both profiles, chosen by the user
+  from the [print-strength comparison](research/2026-11-08_cool_chroma_print_strength.md).
+  Warmth was then raised 3.5× (GZW mid/highlight temp .175/.35, Arc .175/.175)
+  after the old values proved below visibility.
 - **Follow-ups, no candidate:** [cue-map oracle scoring](research/2026-11-08_cue_map_oracle.md)
   (daylight AUC .51, no light/material signal) and the
   [yellow/orange re-test](research/2026-11-08_hk_chroma_retest.md) (≤6% warm chroma, no gap).
@@ -43,14 +47,15 @@ eight, plus five shadow-surround-tint passes. Latest adopted code:
 
 - Grade SHA-256 `111afeee85c0f29b11b2d8ec682efe232533d4155e7fd1508556177f870a17ea`.
 - Pipeline `bec87beced4ea7ace88191f72c912173a9c9ef828b3acfe9185843d927ad15b2`.
-- Both `creative_values.fx` gained `SHADOW_SURROUND_TINT 1.0`; configs are unchanged.
+- Both `creative_values.fx` gained `SHADOW_SURROUND_TINT 1.0` and now set
+  `PRINT_STOCK 0.5`; configs are unchanged.
 - The older 17-identity set and the earlier grade hashes (`efea23e8…`, `36f44c14…`)
   no longer apply. Check git for the current HEAD.
 
-| Profile | BLACKS / WHITES | Inverse chroma / luma | FilmCurve | Shadow temp / tint | Mid temp |
-| --- | --- | --- | --- | --- | --- |
-| GZW | .0025 / .995 | .60 / .60 | .70 | −.05 / −.010 | .05 |
-| Arc | .0025 / .995 | .5 / .5 | .6 | −.075 / 0 | .05 |
+| Profile | BLACKS / WHITES | Inverse chroma / luma | FilmCurve | Shadow temp / tint | Mid / highlight temp | Print |
+| --- | --- | --- | --- | --- | --- | --- |
+| GZW | .0025 / .995 | .60 / .60 | .70 | −.05 / −.010 | .175 / .35 | .5 |
+| Arc | .0025 / .995 | .5 / .5 | .6 | −.075 / 0 | .175 / .175 | .5 |
 
 `INVERSE_STRENGTH` controls chroma reconstruction. These profile values supersede
 older evidence epochs; do not reuse old outputs by grade identity alone.

@@ -5,6 +5,15 @@ tradeoffs; their profile values describe their own evidence epochs. Current
 profiles and scores are in [HANDOFF.md](HANDOFF.md). The former detailed ledger
 is preserved in [research](research/2026-11-06_root_document_history.md).
 
+## 2026-11-08–09 — Print stock 0.5, warmth 3.5×
+
+The user set `PRINT_STOCK` to 0.5 in both profiles after a
+[print-strength comparison](research/2026-11-08_cool_chroma_print_strength.md).
+Print was the main cause of cool-hue chroma loss and the overall darkening;
+0.5 roughly halves both. The user then raised mid/highlight warmth 3.5×. The old
+values were below visibility. GZW is now .175/.35 and Arc .175/.175. Profile
+changes only.
+
 ## 2026-11-08 — Shadow surround tint
 
 Adopted the [shadow surround tint](research/2026-11-08_shadow_tint_candidate.md):
