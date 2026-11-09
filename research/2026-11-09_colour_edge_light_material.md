@@ -218,3 +218,106 @@ light edges. By 8 colours, though, the power lines (dark wire on sky) and some
 foliage edges also read as light. A plausible compromise is 3–5 colours, but it
 is not established: there is no truth on real frames, and the synthetic set is
 two scenes.
+
+## Step 2: extended scene set and production's own lift
+
+The user asked for this before any shader work. Code: `tools/oracle_scenes.py`
+adds five scenes with coloured one-bounce fill (blockers radiate their own
+albedo):
+- colourful noon, with an orange box touching a blue box, both in shade and in
+  sun;
+- golden hour (low warm sun);
+- overcast;
+- green canopy shade;
+- a warm-lamp interior with an orange sofa touching a blue locker.
+
+`tools/colour_edge_eval.py` writes `captures/colour_edge_eval_20261109/report.json`.
+Every method runs at 1/8 resolution with Poisson, on all 7 scenes, scored under
+two curves:
+- the idealised oracle curve;
+- **production's shadow lift**, log2(1 + P·.1875·smoothstep(.35, 0, base))
+  (`grade.fx:727–731`), with P = 1 because the GPU scene statistics are not
+  replicated.
+
+The error is |curve(estimate) − curve(true light)|, region-balanced. The new
+scenes have few dark materials, so the dark-material regions are thin there.
+
+| Mean of 7 scenes | production | inv | sky | shade1 | col3 | col4 | col5 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Oracle curve | .293 | .217 | .242 | .214 | .178 | .171 | **.162** |
+| Wins vs production (oracle) | – | 7 | 5 | 6 | 7 | 7 | 7 |
+| Production lift | **.039** | .061 | .072 | .063 | .047 | .046 | .045 |
+| Wins vs production (lift) | – | 1 | 1 | 0 | 2 | 2 | 1 |
+
+**Anchor check** (`anchor.py`): offsetting the estimates to match pixel log
+luminance at p50, p75 or p90 leaves col4 at .046 under the production lift.
+Production stays best.
+
+**Interpretation.** The colour-edge estimates are much closer to the true light
+(oracle curve −45%, winning all 7 scenes, including warm and coloured bounce).
+Production's lift is gentle and broad (at most about +.25 stop at P = 1,
+smoothstep over base 0–.35), though. Through it, every estimate is within
+.03–.08 stop of the true-light lift, below visibility, and production's own base
+is marginally closest. **A better light estimate would not visibly change
+today's lift.** It pays off only with a stronger, more light-selective tonal
+treatment (such as lifting shaded areas and leaving lit dark materials alone).
+That would be a look change and needs the user's decision.
+
+Recommendation: do not build the shader for the current lift. Keep col4 (sky +
+frame shade + 2 k-means directions, Poisson at 1/8–1/16) as the light estimator
+for any future light-selective treatment.
+
+## Mock-ups: stronger light-selective lift
+
+The user decided the estimator should not be parked if it gives a significant
+improvement. A stronger treatment was therefore mocked up: the lift-only part of
+the oracle curve, up to +.6 stop in the partial-shadow band, with no deepen.
+It is driven by production's estimate, by col4, and on synthetic scenes by the
+true light. Review: `captures/colour_edge_eval_20261109/review/review.html`
+(script `make_review.py`, 7 synthetic scenes and 3 game frames).
+
+Error against the true-light version, in stops, region-balanced:
+
+| Scene | Production estimate | col4 |
+| --- | ---: | ---: |
+| daylight | .238 | .153 |
+| interior | .209 | .172 |
+| colourful noon | .104 | .042 |
+| golden hour | .236 | .281 |
+| overcast | .284 | .193 |
+| canopy shade | .216 | .124 |
+| lamp interior | .181 | .163 |
+| **mean** | **.210** | **.161** (−23%) |
+
+col4 wins in 6 of 7 scenes and loses in golden hour, where most of the frame is
+low-sun shade. Visually, in synthetic daylight, the shaded boxes are lifted
+closer to the true-light result. On game frames the difference is visible but
+subtle, and there is no truth.
+
+## Edge-aware upsampling
+
+The user found the colour-edge light map blurry and asked whether 16-bit would
+help. Bit depth is not the cause: the pipeline's intermediates are already 16F
+and 32F, and quantization bands rather than blurs. The blur comes from the 1/8
+solve being upsampled bilinearly. `colour_edge_eval.up_jbu` replaces that with
+joint bilateral upsampling ([Kopf et al.
+2007](https://johanneskopf.de/publications/jbu/)):
+- a 4×4 grid of low-res samples per full-res pixel;
+- weights from spatial distance (σ 1 low-res texel), log2 luminance (σ .35)
+  and log chromaticity (σ .08), comparing the full-res pixel with the downsampled
+  source.
+
+Stronger-lift error against true light (mean of 7): col4 bilinear .161,
+edge-aware .157, production .209. It wins in 5 of 7 scenes against bilinear.
+Golden hour is unchanged at .282.
+
+Visually, the light map follows object and shadow edges at full resolution
+(review regenerated). Shader cost: one full-resolution pass with 16 taps of the
+1/8 light plus the 1/8 guide. The existing highway spatial lane already holds the
+low-res colour.
+
+## Continued: shader candidate
+
+The shader candidate, its failures on game frames and the v3 material-veto
+estimate the user accepted are in the
+[light lift candidate report](2026-11-09_light_lift_candidate.md).

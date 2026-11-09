@@ -1,11 +1,35 @@
-# Current state — 2026-11-08
+# Current state — 2026-11-09
 
 Goal: richer light→midtone→deep-shadow progression, readable partial shadows,
 subtle material color, cohesive look ([GOAL.md](GOAL.md)). Priorities are in
 [PLAN.md](PLAN.md). The full Nov 7–8 narrative is preserved in the
 [2026-11-08 root ledger](research/2026-11-08_root_document_history.md); older
 removed detail is in the [2026-11-06 root ledger](research/2026-11-06_root_document_history.md).
-No runtime is active and no adoption question is pending.
+No runtime is active. **Pending user choice:** the light-lift candidate's strength
+(see Active candidate). Nothing is adopted from it.
+
+## Active candidate (2026-11-09)
+
+**Light lift v3, material veto:** [report](research/2026-11-09_light_lift_candidate.md),
+in `captures/light_lift_20261109/` (ignored; production untouched).
+- **Estimate.** Light = log luminance plus a local correction that removes only
+  confident paint steps (colour change not explained by any light colour). A
+  4-level pyramid keeps the correction's reach short.
+- **Lift.** Follows frame-relative zones with smooth ramps: shadow full, mid up
+  to 30%, light none.
+- **Verdict so far.** The user called the zones "perfectly balanced". Synthetic
+  error is .150 vs production .211 (luma-only control .208).
+- **Cost.** 11 passes at 1/8 plus a 16-tap joint bilateral upsample in
+  `ColorTransform`.
+- **Next.** The user chooses strength by looking at review v5 (stills 2/3/4):
+  - A (new lift only) at `SHADOW_LIGHT_LIFT` .5 is darker than production in
+    three shadows;
+  - B (both lifts) gives +.14–.33 stop in dark areas;
+  - recommended: A at about 1.0.
+
+  Then validate broader stills and repeats before any adoption request.
+- **Do not** retry camera-motion separation, flat-fielding, keep-only-light colour
+  edges or a frame-level UI gate; the report says why.
 
 ## Latest work (2026-11-08)
 
@@ -33,18 +57,14 @@ No runtime is active and no adoption question is pending.
   The chroma stage, not warmth, adds most warm chroma (13–18%). Option pending:
   hue-weighted saturation trimming orange/amber/yellow.
 - **Light/material research (2026-11-09), reopened by the user:** the
-  [colour-edge report](research/2026-11-09_colour_edge_light_material.md).
-  Edges are classified by illuminant-invariant chromaticity plus frame shade
-  colours (3–4 colours), and light is rebuilt by Poisson at 1/16 resolution.
-  This cuts oracle balanced error about .315→.20 on the two synthetic scenes.
-  There is no shader yet. Next: a richer synthetic set, and scoring through
-  production's own lift.
+  [colour-edge report](research/2026-11-09_colour_edge_light_material.md), continued
+  as the active candidate above.
 - **Follow-ups, no candidate:** [cue-map oracle scoring](research/2026-11-08_cue_map_oracle.md)
   (daylight AUC .51, no light/material signal) and the
   [yellow/orange re-test](research/2026-11-08_hk_chroma_retest.md) (≤6% warm chroma, no gap).
 - **Review fixes:** [full-shader review](research/2026-11-08_ultrareview_fixes.md)
   findings applied.
-- **Closed by the user:**
+- **Closed by the user on 2026-11-08, reopened 2026-11-09 as the active candidate:**
   - shadow detection, after the [oracle scene](research/2026-11-08_shadow_oracle_scene.md);
   - brightness recovery, after the [brightness oracle](research/2026-11-08_brightness_oracle.md)
     and [Retinex screen](research/2026-11-08_retinex_light_screen.md).

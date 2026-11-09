@@ -15,7 +15,19 @@ is in [CHANGELOG.md](CHANGELOG.md). The previous full text is preserved in the
   - [Yellow/orange re-test](research/2026-11-08_hk_chroma_retest.md): production
     adds ≤6% warm chroma and ~.3 L* of H-K brightening, so there is no gap.
 
+## Active (2026-11-09) — light lift candidate
+
+Reopened by the user. The [light lift report](research/2026-11-09_light_lift_candidate.md)
+covers the v3 material-veto estimate and the zone-following lift. Its zones are
+accepted; strength (A vs B, `SHADOW_LIGHT_LIFT`) is the user's open choice. Then:
+1. Run broader matched stills (both games, more lighting) with repeats.
+2. Check menu/UI frames and motion stability (cuts, pans) before any adoption request.
+3. Keep production's lift until the user adopts a replacement.
+
 ## Closed — do not reopen without new evidence
+
+(Brightness recovery and shadow detection below were reopened by the user as the
+active candidate above. The listed failures still stand.)
 
 - **Brightness recovery.** The [brightness oracle](research/2026-11-08_brightness_oracle.md)
   shows the benefit needs single-frame light/material separation.
