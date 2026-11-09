@@ -9,14 +9,14 @@
 #define BLACKS            0.0025
 #define WHITES            0.995
 #define EXPOSURE          0.00
-#define FILM_CURVE        0.6
+#define FILM_CURVE        0.6   // broken for now: no visible effect, print shoulder compensates (research/2026-11-09_effect_visibility.md)
 
 // PRIMARY COLOR CORRECTION
-#define SHADOW_TEMP       -0.075
+#define SHADOW_TEMP       -0.225
 #define SHADOW_TINT       0.0
-#define MID_TEMP          0.175
+#define MID_TEMP          0.0875
 #define MID_TINT          0.00
-#define HIGHLIGHT_TEMP    0.175
+#define HIGHLIGHT_TEMP    0.0875
 #define HIGHLIGHT_TINT    0.00
 
 // TONAL
@@ -26,6 +26,9 @@
 #define ZONE_CONTRAST_STRENGTH 1.0
 #define SHADOW_LIFT_STRENGTH   0.75
 #define SHADOW_SURROUND_TINT   1.0   // shadows take a slight tint of surrounding surface colour (0 = off)
+
+// CHROMA
+#define SATURATION           0.075
 
 // LOOK
 #define PRINT_STOCK           0.5

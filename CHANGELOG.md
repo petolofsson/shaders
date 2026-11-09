@@ -5,6 +5,31 @@ tradeoffs; their profile values describe their own evidence epochs. Current
 profiles and scores are in [HANDOFF.md](HANDOFF.md). The former detailed ledger
 is preserved in [research](research/2026-11-06_root_document_history.md).
 
+## 2026-11-09 — Cheaper shadow surround tint
+
+[Optimized the tint](research/2026-11-09_tint_optimization.md) with no intended
+change to output:
+- Merged the two gather passes into one two-target pass.
+- Made both environment blurs separable, with 32F intermediates (exact for the
+  square Gaussian kernels).
+- Replaced `atan2`/`sin` in the H-K hue term with an exact identity.
+
+Tint passes went from 5 to 4 and blur fetches from 530 to 64 per 1/16 texel.
+
+## 2026-11-09 — Warmth 1.75×
+
+User screenshots (shader on vs off) showed red chroma +20–35% and orange/yellow
++13–26%, mainly from warmth. The user eased mid/highlight warmth from 3.5× to
+1.75×: GZW .0875/.175, Arc .0875/.0875. Profile change only.
+
+## 2026-11-09 — Saturation .075, shadow CC ×3
+
+After the [effect-visibility check](research/2026-11-09_effect_visibility.md),
+the user set `SATURATION` .15 and shadow temp/tint ×4, then eased both to
+`SATURATION` .075 and ×3 (GZW −.15/−.030, Arc −.225) in both profiles.
+`FILM_CURVE` is marked inert: print's shoulder compensates for it. Profile
+changes only.
+
 ## 2026-11-08–09 — Print stock 0.5, warmth 3.5×
 
 The user set `PRINT_STOCK` to 0.5 in both profiles after a

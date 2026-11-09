@@ -220,6 +220,10 @@ texture2D TintEnvATex { Width = TINT_W16; Height = TINT_H16; Format = RGBA16F; M
 sampler2D TintEnvASamp { Texture = TintEnvATex; AddressU = CLAMP; AddressV = CLAMP; MinFilter = LINEAR; MagFilter = LINEAR; };
 texture2D TintEnvBTex { Width = TINT_W16; Height = TINT_H16; Format = RG16F; MipLevels = 1; };
 sampler2D TintEnvBSamp { Texture = TintEnvBTex; AddressU = CLAMP; AddressV = CLAMP; MinFilter = LINEAR; MagFilter = LINEAR; };
+texture2D TintEnvAHTex { Width = TINT_W16; Height = TINT_H16; Format = RGBA32F; MipLevels = 1; };
+sampler2D TintEnvAHSamp { Texture = TintEnvAHTex; AddressU = CLAMP; AddressV = CLAMP; MinFilter = POINT; MagFilter = POINT; };
+texture2D TintEnvBHTex { Width = TINT_W16; Height = TINT_H16; Format = RG32F; MipLevels = 1; };
+sampler2D TintEnvBHSamp { Texture = TintEnvBHTex; AddressU = CLAMP; AddressV = CLAMP; MinFilter = POINT; MagFilter = POINT; };
 texture2D TintRegionTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = RGBA16F; MipLevels = 1; };
 sampler2D TintRegionSamp { Texture = TintRegionTex; AddressU = CLAMP; AddressV = CLAMP; MinFilter = LINEAR; MagFilter = LINEAR; };
 
@@ -913,8 +917,9 @@ float3 TintToLab(float3 rgb)
 // Fairchild–Pirrotta chromatic lightness term g(h)·C* (L** = L* + (2.5 − .025 L*)·k).
 float TintHKTerm(float3 lab)
 {
-    float h = atan2(lab.z, lab.y);
-    return (0.116 * abs(sin(0.5 * (h - 1.5707963))) + 0.085) * length(lab.yz);
+    float C = length(lab.yz);
+    float s = sqrt(saturate(0.5 - 0.5 * lab.z / max(C, 1e-12)));   // |sin((h − 90°)/2)|, exact
+    return (0.116 * s + 0.085) * C;
 }
 
 // One Oklch+ step of `step` from ab, back to Oklab ab.
@@ -1048,64 +1053,60 @@ float4 LFDownscale2PS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
 
 // ─── Shadow surround tint fields ────────────────────────────────────────────
 
-float4 TintGatherAPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+// One gather writes both fields: (a·ws, b·ws, L·ws, ws) and (luma·ws, luma·emitter).
+void TintGatherPS(float4 pos : SV_Position, float2 uv : TEXCOORD0,
+                  out float4 gather_a : SV_Target0, out float2 gather_b : SV_Target1)
 {
-    float4 acc = 0.0;
-    [unroll] for (int dy = 0; dy < 2; dy++)
-    [unroll] for (int dx = 0; dx < 2; dx++)
-    {
-        float3 lab = RGBtoOklab(ReadSpatialLane(TintLaneUV(pos.xy, float2(dx, dy))).rgb);
-        float  ws  = TintSurfaceW(lab.x);
-        acc += float4(lab.yz * ws, lab.x * ws, ws);
-    }
-    return acc * 0.25;
-}
-
-float2 TintGatherBPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
-{
-    float2 acc = 0.0;
+    float4 acc_a = 0.0;
+    float2 acc_b = 0.0;
     [unroll] for (int dy = 0; dy < 2; dy++)
     [unroll] for (int dx = 0; dx < 2; dx++)
     {
         float3 rgb = ReadSpatialLane(TintLaneUV(pos.xy, float2(dx, dy))).rgb;
-        float  L   = RGBtoOklab(rgb).x;
-        acc += Luma(rgb) * float2(TintSurfaceW(L), smoothstep(0.80, 0.95, L));
+        float3 lab = RGBtoOklab(rgb);
+        float  ws  = TintSurfaceW(lab.x);
+        acc_a += float4(lab.yz * ws, lab.x * ws, ws);
+        acc_b += Luma(rgb) * float2(ws, smoothstep(0.80, 0.95, lab.x));
     }
-    return acc * 0.25;
+    gather_a = acc_a * 0.25;
+    gather_b = acc_b * 0.25;
 }
 
-// Normalized Gaussian σ 3.46 texels (r 6) at 1/16: surroundings' colour/weight.
-float4 TintEnvAPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+// Environment fields, separable (exact: square Gaussian kernels factor per axis):
+// A: normalized Gaussian σ 3.46 texels (r 6) at 1/16, surroundings' colour/weight.
+// B: R surface luma σ 3.46 (r 6); G emitter luma σ 4.90 (r 9).
+void TintEnvBlur(sampler2D sa, sampler2D sb, float2 uv, float2 axis, out float4 out_a, out float2 out_b)
 {
-    float2 px  = 1.0 / float2(TINT_W16, TINT_H16);
-    float4 acc = 0.0;
-    float  wt  = 0.0;
-    [loop] for (int dy = -6; dy <= 6; dy++)
-    [loop] for (int dx = -6; dx <= 6; dx++)
+    float2 px  = axis / float2(TINT_W16, TINT_H16);
+    float4 acc_a = 0.0;
+    float2 acc_b = 0.0;
+    float  wt_a  = 0.0;
+    float2 wt_b  = 0.0;
+    [unroll] for (int d = -9; d <= 9; d++)
     {
-        float g = exp(-0.0417657 * float(dx * dx + dy * dy));            // 1/(2·3.46²)
-        acc += g * tex2Dlod(TintGatherASamp, float4(uv + float2(dx, dy) * px, 0, 0));
-        wt  += g;
+        float  r2   = float(d * d);
+        float  ga   = exp(-0.0417657 * r2) * step(abs(float(d)), 6.0);    // 1/(2·3.46²), r 6
+        float  gg   = exp(-0.0208247 * r2);                                // 1/(2·4.9²),  r 9
+        float4 off  = float4(uv + float(d) * px, 0, 0);
+        acc_a += ga * tex2Dlod(sa, off);
+        acc_b += float2(ga, gg) * tex2Dlod(sb, off).rg;
+        wt_a  += ga;
+        wt_b  += float2(ga, gg);
     }
-    return acc / wt;
+    out_a = acc_a / wt_a;
+    out_b = acc_b / wt_b;
 }
 
-// R: surface luma, σ 3.46 (r 6); G: emitter luma, σ 4.90 (r 9).
-float2 TintEnvBPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+void TintEnvHPS(float4 pos : SV_Position, float2 uv : TEXCOORD0,
+                out float4 env_a : SV_Target0, out float2 env_b : SV_Target1)
 {
-    float2 px  = 1.0 / float2(TINT_W16, TINT_H16);
-    float2 acc = 0.0;
-    float2 wt  = 0.0;
-    [loop] for (int dy = -9; dy <= 9; dy++)
-    [loop] for (int dx = -9; dx <= 9; dx++)
-    {
-        float  r2   = float(dx * dx + dy * dy);
-        float  in_a = step(abs(float(dx)), 6.0) * step(abs(float(dy)), 6.0);
-        float2 g    = float2(exp(-0.0417657 * r2) * in_a, exp(-0.0208247 * r2));   // 1/(2·4.9²)
-        acc += g * tex2Dlod(TintGatherBSamp, float4(uv + float2(dx, dy) * px, 0, 0)).rg;
-        wt  += g;
-    }
-    return acc / wt;
+    TintEnvBlur(TintGatherASamp, TintGatherBSamp, uv, float2(1, 0), env_a, env_b);
+}
+
+void TintEnvVPS(float4 pos : SV_Position, float2 uv : TEXCOORD0,
+                out float4 env_a : SV_Target0, out float2 env_b : SV_Target1)
+{
+    TintEnvBlur(TintEnvAHSamp, TintEnvBHSamp, uv, float2(0, 1), env_a, env_b);
 }
 
 // Regional luma and Oklab colour (luma, a, b, L): spatial lane, Gaussian σ 1 texel (r 2) at 1/8.
@@ -1261,10 +1262,9 @@ technique OlofssonianColorGrade
         PixelShader  = GuidedBasePS;
         RenderTarget = BilateralLogTex;
     }
-    pass TintGatherA { VertexShader = PostProcessVS; PixelShader = TintGatherAPS; RenderTarget = TintGatherATex; }
-    pass TintGatherB { VertexShader = PostProcessVS; PixelShader = TintGatherBPS; RenderTarget = TintGatherBTex; }
-    pass TintEnvA    { VertexShader = PostProcessVS; PixelShader = TintEnvAPS;    RenderTarget = TintEnvATex; }
-    pass TintEnvB    { VertexShader = PostProcessVS; PixelShader = TintEnvBPS;    RenderTarget = TintEnvBTex; }
+    pass TintGather  { VertexShader = PostProcessVS; PixelShader = TintGatherPS; RenderTarget0 = TintGatherATex; RenderTarget1 = TintGatherBTex; }
+    pass TintEnvH    { VertexShader = PostProcessVS; PixelShader = TintEnvHPS;   RenderTarget0 = TintEnvAHTex;   RenderTarget1 = TintEnvBHTex; }
+    pass TintEnvV    { VertexShader = PostProcessVS; PixelShader = TintEnvVPS;   RenderTarget0 = TintEnvATex;    RenderTarget1 = TintEnvBTex; }
     pass TintRegion  { VertexShader = PostProcessVS; PixelShader = TintRegionPS;  RenderTarget = TintRegionTex; }
     pass ColorTransform
     {

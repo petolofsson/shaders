@@ -20,8 +20,25 @@ No runtime is active and no adoption question is pending.
   objects (Arc 210448 character). Depth was rejected (anti-cheat flag).
 - **Profile change:** `PRINT_STOCK` 1.0→0.5 in both profiles, chosen by the user
   from the [print-strength comparison](research/2026-11-08_cool_chroma_print_strength.md).
-  Warmth was then raised 3.5× (GZW mid/highlight temp .175/.35, Arc .175/.175)
-  after the old values proved below visibility.
+  Warmth was then raised 3.5× after the old values proved below visibility, and
+  eased to 1.75× on 2026-11-09 after user screenshots showed too much red/yellow
+  (GZW mid/highlight temp .0875/.175, Arc .0875/.0875).
+- **Effect visibility (2026-11-09):** the [knob-off and sweep report](research/2026-11-09_effect_visibility.md)
+  finds `FILM_CURVE` inert, because print's shoulder compensates for it; it is
+  commented "broken for now" in both profiles. The user then set `SATURATION` .15
+  and shadow CC ×4, then eased both to `SATURATION` .075 and shadow CC ×3
+  (GZW −.15/−.030, Arc −.225). Inverse chroma and
+  contrast/Retinex/zone stay conditional by design.
+- **Warm-hue research (2026-11-09):** [perception and attribution](research/2026-11-09_warm_hue_research.md).
+  The chroma stage, not warmth, adds most warm chroma (13–18%). Option pending:
+  hue-weighted saturation trimming orange/amber/yellow.
+- **Light/material research (2026-11-09), reopened by the user:** the
+  [colour-edge report](research/2026-11-09_colour_edge_light_material.md).
+  Edges are classified by illuminant-invariant chromaticity plus frame shade
+  colours (3–4 colours), and light is rebuilt by Poisson at 1/16 resolution.
+  This cuts oracle balanced error about .315→.20 on the two synthetic scenes.
+  There is no shader yet. Next: a richer synthetic set, and scoring through
+  production's own lift.
 - **Follow-ups, no candidate:** [cue-map oracle scoring](research/2026-11-08_cue_map_oracle.md)
   (daylight AUC .51, no light/material signal) and the
   [yellow/orange re-test](research/2026-11-08_hk_chroma_retest.md) (≤6% warm chroma, no gap).
@@ -39,23 +56,25 @@ No runtime is active and no adoption question is pending.
 
 ## Production
 
-Both active configs use one combined `ShaderPipeline`. Grade has thirteen passes:
-eight, plus five shadow-surround-tint passes. Latest adopted code:
+Both active configs use one combined `ShaderPipeline`. Grade has twelve passes:
+eight, plus four shadow-surround-tint passes. Latest adopted code:
+- [cheaper shadow tint](research/2026-11-09_tint_optimization.md): same output,
+  4 passes instead of 5 and 64 blur fetches instead of 530 (2026-11-09)
 - [shadow surround tint](research/2026-11-08_shadow_tint_candidate.md)
 - [shared tonal base](research/2026-11-02_tonal_architecture.md)
 - [shared-component CC](research/2026-11-03_neutral_component_cc_adoption.md)
 
-- Grade SHA-256 `111afeee85c0f29b11b2d8ec682efe232533d4155e7fd1508556177f870a17ea`.
-- Pipeline `bec87beced4ea7ace88191f72c912173a9c9ef828b3acfe9185843d927ad15b2`.
+- Grade SHA-256 `6a5b7b24025ae86c0e1ec069a743a2cd1a794a9e3051323d9a1ad5d0714cff4e`.
+- Pipeline `a20641fec412ca3e156f5a359abe242d57717d748155abd3f76e1af3b3b68474`.
 - Both `creative_values.fx` gained `SHADOW_SURROUND_TINT 1.0` and now set
   `PRINT_STOCK 0.5`; configs are unchanged.
-- The older 17-identity set and the earlier grade hashes (`efea23e8…`, `36f44c14…`)
+- The older 17-identity set and the earlier grade hashes (`efea23e8…`, `36f44c14…`, `111afeee…`)
   no longer apply. Check git for the current HEAD.
 
-| Profile | BLACKS / WHITES | Inverse chroma / luma | FilmCurve | Shadow temp / tint | Mid / highlight temp | Print |
-| --- | --- | --- | --- | --- | --- | --- |
-| GZW | .0025 / .995 | .60 / .60 | .70 | −.05 / −.010 | .175 / .35 | .5 |
-| Arc | .0025 / .995 | .5 / .5 | .6 | −.075 / 0 | .175 / .175 | .5 |
+| Profile | BLACKS / WHITES | Inverse chroma / luma | FilmCurve | Shadow temp / tint | Mid / highlight temp | Saturation | Print |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| GZW | .0025 / .995 | .60 / .60 | .70 (inert) | −.15 / −.030 | .0875 / .175 | .075 | .5 |
+| Arc | .0025 / .995 | .5 / .5 | .6 (inert) | −.225 / 0 | .0875 / .0875 | .075 | .5 |
 
 `INVERSE_STRENGTH` controls chroma reconstruction. These profile values supersede
 older evidence epochs; do not reuse old outputs by grade identity alone.

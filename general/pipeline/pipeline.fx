@@ -171,10 +171,9 @@ technique ShaderPipeline
         PixelShader = GuidedBasePS;
         RenderTarget = BilateralLogTex;
     }
-    pass GradeTintGatherA { VertexShader = PostProcessVS; PixelShader = TintGatherAPS; RenderTarget = TintGatherATex; }
-    pass GradeTintGatherB { VertexShader = PostProcessVS; PixelShader = TintGatherBPS; RenderTarget = TintGatherBTex; }
-    pass GradeTintEnvA    { VertexShader = PostProcessVS; PixelShader = TintEnvAPS;    RenderTarget = TintEnvATex; }
-    pass GradeTintEnvB    { VertexShader = PostProcessVS; PixelShader = TintEnvBPS;    RenderTarget = TintEnvBTex; }
+    pass GradeTintGather  { VertexShader = PostProcessVS; PixelShader = TintGatherPS; RenderTarget0 = TintGatherATex; RenderTarget1 = TintGatherBTex; }
+    pass GradeTintEnvH    { VertexShader = PostProcessVS; PixelShader = TintEnvHPS;   RenderTarget0 = TintEnvAHTex;   RenderTarget1 = TintEnvBHTex; }
+    pass GradeTintEnvV    { VertexShader = PostProcessVS; PixelShader = TintEnvVPS;   RenderTarget0 = TintEnvATex;    RenderTarget1 = TintEnvBTex; }
     pass GradeTintRegion  { VertexShader = PostProcessVS; PixelShader = TintRegionPS;  RenderTarget = TintRegionTex; }
     pass GradeColorTransform
     {

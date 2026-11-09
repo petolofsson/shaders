@@ -13,11 +13,11 @@ Configured in `gamespecific/arc_raiders/arc_raiders.conf` and
 pipeline (one ShaderPipeline effect containing analysis_frame -> inverse_grade -> corrective -> grade)
 ```
 
-`grade.fx` is a 13-pass technique:
+`grade.fx` is a 12-pass technique:
 
 ```text
 LFDownscale1 -> LFDownscale2 -> NeutralIllum -> GuidedCoeff -> GuidedBase
--> TintGatherA -> TintGatherB -> TintEnvA -> TintEnvB -> TintRegion
+-> TintGather -> TintEnvH -> TintEnvV -> TintRegion
 -> ColorTransform -> AdaptiveHistory -> TexHwyWrite
 ```
 
@@ -130,8 +130,11 @@ Encode/decode out-of-range quantities at the slot boundary.
 
 - **Fields.** All fields come from the 1/8 spatial lane (linear source).
   - Surface weight: Oklab L .02–.10 in, .80–.95 out.
-  - 1/16 gather: 2×2 lane texels, (a·ws, b·ws, L·ws, ws) and (luma·ws, luma·emitter).
-  - Normalized Gaussian blur: σ 3.46 texels; the emitter field uses σ 4.90.
+  - 1/16 gather: 2×2 lane texels, (a·ws, b·ws, L·ws, ws) and (luma·ws, luma·emitter),
+    written by one pass to two render targets.
+  - Normalized Gaussian blur: σ 3.46 texels (r 6); the emitter field uses σ 4.90 (r 9).
+    It is separable: horizontal then vertical, with 32F intermediates, exact for these
+    square kernels with clamped borders.
   - 1/8 region: lane (luma, a, b, L), σ 1. All are bilinear-read per pixel.
 - **Shadow weight.** log2(surface-only wide luma ÷ regional luma), mapped over
   0–1.5 stops; then not-bright region (.10–.35), not-near-black pixel
