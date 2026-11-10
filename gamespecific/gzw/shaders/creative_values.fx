@@ -14,6 +14,7 @@
 // PRIMARY COLOR CORRECTION
 #define SHADOW_TEMP       -0.15
 #define SHADOW_TINT       -0.030
+#define SHADOW_CC_STRENGTH 2.5   // multiplies SHADOW_TEMP/TINT; shadow colour placed by the light map
 #define MID_TEMP          0.0875
 #define MID_TINT          0.00
 #define HIGHLIGHT_TEMP    0.175

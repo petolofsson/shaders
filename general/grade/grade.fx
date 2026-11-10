@@ -87,6 +87,9 @@
 #ifndef SHADOW_LIFT_STRENGTH
 #define SHADOW_LIFT_STRENGTH 1.0
 #endif
+#ifndef SHADOW_CC_STRENGTH
+#define SHADOW_CC_STRENGTH 1.0
+#endif
 
 #ifndef SHADER_PIPELINE_COMBINED
 uniform float FRAME_TIMER < source = "timer"; >;        // ms since app start
@@ -113,6 +116,7 @@ sampler2D BackBuffer
 #endif
 
 #include "../native_guide.fxh"
+#include "light_map.fxh"
 
 // Scene percentiles read from TexHwyTex via ReadTexHwyPerc() (common.fxh).
 
@@ -311,20 +315,36 @@ float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print
     return lerp(lin, saturate(ps), saturate(print_stock));
 }
 
+// 3-way CC zone weights (shadow, mid, highlight) from the light map (light_map.fxh), not pixel
+// brightness, so dark materials in light keep mid/highlight colour. Shadow = relative shade (stops
+// below the frame's lit level, ss(1.25, 2.75)) soft-OR low absolute light (1 - ss(-9, -5) log2), so
+// dim frames keep some shadow colour. Highlight stays brightness-based inside the lit share; mid takes
+// the rest. ll.x = stops below lit, ll.y = absolute log2 light.
+// research/2026-11-09_cc_light_map_placement.md (variant G).
+float3 CCZoneW(float L, float key_L, float2 ll)
+{
+    float sh_rel = smoothstep(1.25, 2.75, ll.x);
+    float sh_abs = 1.0 - smoothstep(-9.0, -5.0, ll.y);
+    float sh_w   = 1.0 - (1.0 - sh_rel) * (1.0 - sh_abs);
+    float hl_w   = ZoneHighlightW(L, key_L) * (1.0 - sh_w);
+    return float3(sh_w, max(0.0, 1.0 - sh_w - hl_w), hl_w);
+}
+
 float3 Apply3WayCC(float3 lin,
                    float shadow_temp, float shadow_tint,
                    float mid_temp,    float mid_tint,
                    float hl_temp,     float hl_tint,
-                   float key_L)
+                   float key_L, float2 ll)
 {
     // Oklab a/b shift: temp → b-axis (warm=positive, cool=negative),
     // tint → a-axis (magenta=positive, green=negative). Orthogonal by construction.
-    // Zones adapt to scene key via ZoneShadowW/ZoneHighlightW (common.fxh).
+    // Zones from the light map (CCZoneW); highlight adapts to scene key (common.fxh).
     float3 lab   = RGBtoOklabLinear(lin);
     float  L     = lab.x;
-    float  sh_w  = ZoneShadowW(L, key_L);
-    float  hl_w  = ZoneHighlightW(L, key_L);
-    float  mid_w = ZoneMidW(L, key_L);
+    float3 zw    = CCZoneW(L, key_L, ll);
+    float  sh_w  = zw.x;
+    float  hl_w  = zw.z;
+    float  mid_w = zw.y;
     float black_gate = smoothstep(0.0, 0.15, L);
     float common_rgb = max(min(lin.r, min(lin.g, lin.b)), 0.0);
     float neutral_share = saturate(common_rgb / max(Luma(lin), 1e-10));
@@ -519,7 +539,7 @@ SceneCtx BuildSceneCtx()
     return ctx;
 }
 
-float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
+float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, SceneCtx ctx, float2 ll)
 {
     float  E     = exp2(EXPOSURE);
     float3 lin_e = max(lin, 0.0);
@@ -564,10 +584,10 @@ float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex
     }
     // ── R19: 3-way CC — primary grade before print emulation ──────────────────
     lin_e = Apply3WayCC(lin_e,
-                          SHADOW_TEMP, SHADOW_TINT,
+                          SHADOW_TEMP * float(SHADOW_CC_STRENGTH), SHADOW_TINT * float(SHADOW_CC_STRENGTH),
                           MID_TEMP, MID_TINT,
                           HIGHLIGHT_TEMP, HIGHLIGHT_TINT,
-                          ctx.key_L);
+                          ctx.key_L, ll);
     return lin_e;
 }
 
@@ -993,7 +1013,8 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float3 lin      = col.rgb * (float(WHITES) - float(BLACKS)) + float(BLACKS);
     lin = ApplyShadowTint(lin, uv);
     float  col_luma = Luma(lin);
-    lin = lerp(lin, ApplyCorrective(lin, col_luma, uv, lf_mip2_tex, ctx), CORRECTIVE_STRENGTH * 0.01);
+    float  ll_light = LLLightLog(uv);
+    lin = lerp(lin, ApplyCorrective(lin, col_luma, uv, lf_mip2_tex, ctx, float2(LLBelowLit(ll_light), ll_light)), CORRECTIVE_STRENGTH * 0.01);
 
     TonalOut tonal      = ApplyTonal(lin, col_luma, uv, lf_mip2_tex, ctx);
     float    tonal_gate = TONAL_STRENGTH * 0.01;

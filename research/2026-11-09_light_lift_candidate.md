@@ -47,7 +47,7 @@ before and after every run. Debug views are candidate-only defines.
      does not match the lane.
    - **Lift.** Applied to linear colour after the BLACKS/WHITES mapping, with a
      hue-preserving SDR ceiling. It uses d = stops below the lit level:
-     `0.6 · SHADOW_LIGHT_LIFT · (0.3·ss(.75, 2, d) + 0.7·ss(1.75, 2.75, d)) · (1 − ss(5.5, 7.5, d)) · ss(log2 .001, log2 .004, light)`.
+     `0.6 · SHADE_LIFT · (0.3·ss(.75, 2, d) + 0.7·ss(1.75, 2.75, d)) · (1 − ss(5.5, 7.5, d)) · ss(log2 .001, log2 .004, light)`.
 
 Debug views:
 - `LL_DEBUG_VIEW 1` writes log2 light over 1e-4..1 as codes.
@@ -60,7 +60,7 @@ Debug views:
 | v1 | col4 colour edges: keep a step only if a light colour explains it; 7-level pyramid | absolute band .004–.3, +0.6 stop | A brightened whole frames by about the same as shadows (+.03–.43 all, +.01–.52 dark): the band hit midtones |
 | v2 | same | relative to lit level, +0.6 | still broad (+.16–.37 all). The user's 0–100 light map exposed three failures (below) |
 | v3a | material veto, 4-level pyramid | relative, +0.6 | user's three failures fixed; zones accepted; A still +.08–.39 all |
-| v3b | same | zone-following, `SHADOW_LIGHT_LIFT` .5 | lit areas untouched (table below) |
+| v3b | same | zone-following, `SHADE_LIFT` .5 | lit areas untouched (table below) |
 
 The three v2 failures the user found:
 1. **Shelf interior (GZW 133058) read as lit.** Warm bounce makes the shade
@@ -105,7 +105,7 @@ supported and was not built.
 
 ## v3b matched captures
 
-A = new lift only (`SHADOW_LIFT_STRENGTH` 0); B = both lifts; `SHADOW_LIGHT_LIFT`
+A = new lift only (`SHADOW_LIFT_STRENGTH` 0); B = both lifts; `SHADE_LIFT`
 .5. Stops vs production; "dark" = production luminance < .05; the red marker is
 masked.
 
@@ -120,7 +120,7 @@ masked.
 
 - **A is darker than production in three shadows**, because it removes the old
   lift and gives less at .5.
-- **Recommendation pending the user's look:** A at `SHADOW_LIGHT_LIFT` about 1.0,
+- **Recommendation pending the user's look:** A at `SHADE_LIFT` about 1.0,
   a single zone-driven lift.
 - **Repeat noise.** 133932 was 20 codes in v3a and 4 in v3b, so treat that
   still's numbers loosely.

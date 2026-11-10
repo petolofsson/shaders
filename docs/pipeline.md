@@ -13,11 +13,12 @@ Configured in `gamespecific/arc_raiders/arc_raiders.conf` and
 pipeline (one ShaderPipeline effect containing analysis_frame -> inverse_grade -> corrective -> grade)
 ```
 
-`grade.fx` is a 12-pass technique:
+`grade.fx` is a 23-pass technique (the light-map passes follow TintRegion):
 
 ```text
 LFDownscale1 -> LFDownscale2 -> NeutralIllum -> GuidedCoeff -> GuidedBase
 -> TintGather -> TintEnvH -> TintEnvV -> TintRegion
+-> LLDirections -> LLDivergence -> LLDown1..4 -> LLUp3..0 -> LLAnchor
 -> ColorTransform -> AdaptiveHistory -> TexHwyWrite
 ```
 
@@ -32,6 +33,7 @@ Diffusion has been removed from `grade.fx`.
 | `general/inverse-grade/inverse_grade.fx` | Pre-corrective inverse tone/chroma reconstruction |
 | `general/corrective/corrective.fx` | Zone/chroma history, slow key, passthrough |
 | `general/grade/grade.fx` | Corrective, tonal, chroma, look, adaptive automation |
+| `general/grade/light_map.fxh` | Per-pixel light estimate (material veto) for 3-way CC zones |
 | `general/highway.fxh` | Scalar highway slots and `ReadHWY()` |
 | `general/hue_bands.fxh` | Hue weights, rolloff, chroma ceilings |
 | `tools/compare_frame.py` | Runtime before/after and effect attribution |
@@ -43,7 +45,8 @@ Diffusion has been removed from `grade.fx`.
    by `HueCeil()`; FilmCurve is not inverted here.
 2. `corrective`: zone/chroma/slow-key analysis; preserves BackBuffer.
 3. `grade` shadow surround tint on BLACKS/WHITES-mapped input, then corrective:
-   `INVERSE_LUMA` on source signal, then `EXPOSURE`, DIR couplers, and 3-way CC.
+   `INVERSE_LUMA` on source signal, then `EXPOSURE`, DIR couplers, and 3-way CC
+   (zones from the light map; see below).
 4. `grade` tonal: guided-filter detail, Retinex/zone shaping, signed adaptive
    contrast, shadow lift, Hunt coupling, ambient tint, highlights, then the
    luminance-preserving FilmCurve shoulder.
@@ -125,6 +128,26 @@ Encode/decode out-of-range quantities at the slot boundary.
   value remains its ceiling. Local max-channel protection supplements near-clip
   history. Film/shadow/print/gamut hysteresis uses elapsed time and does not force
   maximum strength at cuts; analysis Kalman filters remain separate.
+
+## Light map and 3-way CC zones
+
+Adopted 2026-11-09 ([report](../research/2026-11-09_cc_light_map_placement.md)).
+- **Input.** The shared 1/8 spatial lane (`AnalysisSpatial`): full 8×8 mean of the native
+  frame, 16 bilinear taps. The former 4-tap box (16 of 64 px) aliased thin detail with camera
+  phase, both in the map and in other lane consumers
+  ([review](../research/2026-11-10_light_map_review.md)).
+- **Estimate at 1/8.** Light = log luminance plus a local correction that removes
+  confident paint steps (log-chroma change not explained by the frame's shade
+  directions; smooth ramp .30–.40 on both), integrated by a 4-level convolution pyramid (`LLB0Tex`). `LLAnchorTex`:
+  r = offset to the frame's mean log luminance, g = frame lit level (p90 of light).
+- **Per pixel.** `LLLightLog` = native log luma (`NativeGuideLogTex`, floor log2 .002)
+  + bilinear correction + offset. Detail below the 1/8 grid follows the pixel, so it is
+  stable under camera motion; the material veto acts at map scale.
+- **Zones (`CCZoneW`).** d = stops below lit. Shadow = ss(1.25, 2.75, d) soft-OR
+  (1 − ss(−9, −5, log2 light)); highlight = brightness/key highlight × (1 − shadow);
+  mid = rest. Gate, shift scale and per-zone temp/tint are unchanged.
+- **Knob.** `SHADOW_CC_STRENGTH` (profile, default 1.0) multiplies `SHADOW_TEMP`/`TINT`
+  inside 3-way CC only.
 
 ## Shadow surround tint
 

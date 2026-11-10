@@ -175,6 +175,17 @@ technique ShaderPipeline
     pass GradeTintEnvH    { VertexShader = PostProcessVS; PixelShader = TintEnvHPS;   RenderTarget0 = TintEnvAHTex;   RenderTarget1 = TintEnvBHTex; }
     pass GradeTintEnvV    { VertexShader = PostProcessVS; PixelShader = TintEnvVPS;   RenderTarget0 = TintEnvATex;    RenderTarget1 = TintEnvBTex; }
     pass GradeTintRegion  { VertexShader = PostProcessVS; PixelShader = TintRegionPS;  RenderTarget = TintRegionTex; }
+    pass GradeLLDirections { VertexShader = PostProcessVS; PixelShader = LLDirectionsPS; RenderTarget0 = LLDirATex; RenderTarget1 = LLDirBTex; }
+    pass GradeLLDivergence { VertexShader = PostProcessVS; PixelShader = LLDivergencePS; RenderTarget = LLA0Tex; }
+    pass GradeLLDown1 { VertexShader = PostProcessVS; PixelShader = LLDown1PS; RenderTarget = LLA1Tex; }
+    pass GradeLLDown2 { VertexShader = PostProcessVS; PixelShader = LLDown2PS; RenderTarget = LLA2Tex; }
+    pass GradeLLDown3 { VertexShader = PostProcessVS; PixelShader = LLDown3PS; RenderTarget = LLA3Tex; }
+    pass GradeLLDown4 { VertexShader = PostProcessVS; PixelShader = LLDown4PS; RenderTarget = LLA4Tex; }
+    pass GradeLLUp3 { VertexShader = PostProcessVS; PixelShader = LLUp3PS; RenderTarget = LLB3Tex; }
+    pass GradeLLUp2 { VertexShader = PostProcessVS; PixelShader = LLUp2PS; RenderTarget = LLB2Tex; }
+    pass GradeLLUp1 { VertexShader = PostProcessVS; PixelShader = LLUp1PS; RenderTarget = LLB1Tex; }
+    pass GradeLLUp0 { VertexShader = PostProcessVS; PixelShader = LLUp0PS; RenderTarget = LLB0Tex; }
+    pass GradeLLAnchor { VertexShader = PostProcessVS; PixelShader = LLAnchorPS; RenderTarget = LLAnchorTex; }
     pass GradeColorTransform
     {
         VertexShader = PostProcessVS;

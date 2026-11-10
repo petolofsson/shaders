@@ -7,24 +7,18 @@ Read:
 4. docs/pipeline.md for the relevant stage/resource contracts.
 
 The goal is a fuller progression from light through midtones into deep, readable
-shadows, with subtly richer material color under the available lighting. The
-shadow surround tint was adopted on 2026-11-08.
+shadows, with subtly richer material color under the available lighting.
 
-Active work: the light lift candidate (HANDOFF "Active candidate"; report
-research/2026-11-09_light_lift_candidate.md). The user reopened light/shadow
-separation and wants it improved, not parked. The v3 material-veto estimate's
-shadow/mid/light zones were accepted as "perfectly balanced". The open decision is
-lift strength: A (new lift only) vs B (both lifts), with `SHADOW_LIGHT_LIFT`
-around 1.0 for A recommended. Ask the user for their verdict on review v5 before
-changing it. The candidate lives in ignored `captures/light_lift_20261109/`;
-production is untouched. The report lists ruled-out routes (camera motion,
-flat-fielding, keep-only-light colour edges, frame-level UI gate). Do not
-re-propose them without new evidence.
+Current state (2026-11-10): 3-way CC shadow/mid/highlight colour is placed by the light
+map (`general/grade/light_map.fxh`). The shared 1/8 spatial lane is a full 8×8 mean.
+`SHADOW_CC_STRENGTH` is 2.5 in both profiles. Next: the user's live-play check, then the
+shade-lift side branch (rebase its test copy onto the production map; shapes A vs C).
+See PLAN for closed routes; do not re-propose them without new evidence.
 
-Reviews of shadow/light work show per-frame "0–100" light maps (p1 black, p99
-white, even in stops) plus shadow/mid/light zone overlays, hard and soft.
+Reviews of shadow/light work show per-frame "0–100" light maps (p1 black, p99 white,
+even in stops) plus shadow/mid/light zone overlays. Give the user review images at native
+resolution on the local drive.
 
-Preserve production. Runtime remains private and headless. Keep each root file
-within its documented purpose. Put detailed experiments and history in research/,
-and update current state instead of stacking resume addenda. Archived checkpoint
-instructions are not active tasks and do not override PLAN.
+Preserve production. Runtime remains private and headless. Keep each root file within
+its documented purpose. Put detailed experiments and history in research/, and update
+current state instead of stacking resume addenda.

@@ -37,7 +37,15 @@ the profile. Verify restoration and preserve all identities and logs.
 Use `--delay 5 --settle 20` for small effects; default settling is only five
 seconds. Continuous warmup is a protocol, not proof of convergence. Changes near
 repeat variation are inconclusive. Dimensions must match source/private display;
-mask the activity marker and any diagnostic footprint consistently.
+mask the activity marker and any diagnostic footprint consistently. Also mask the
+last row: headless captures can carry a corrupt bottom row (2026-11-09: 2048 px, row 1439).
+Single captures occasionally land a whole-frame offset of a few codes (2026-11-09/10:
+2.4 codes on all bright pixels of Arc 211202); repeat before attributing it to code.
+
+**Pan check (no motion source needed):** feed the same still shifted 0–7 px (all phases
+of the 1/8 lane), shift each capture back and compare with shift 0; changes are what a
+slow pan shows as shimmer. Scripts: `captures/light_lift_20261109/analyze_pan*.py`,
+refs in `pan_refs/`. It is a static 8-phase simulation, not dense motion.
 
 Before interpreting results, match source, normalized shader body, profile,
 config, includes and producers. Historical labels alone are insufficient. Keep

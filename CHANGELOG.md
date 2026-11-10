@@ -5,6 +5,32 @@ tradeoffs; their profile values describe their own evidence epochs. Current
 profiles and scores are in [HANDOFF.md](HANDOFF.md). The former detailed ledger
 is preserved in [research](research/2026-11-06_root_document_history.md).
 
+## 2026-11-10 — Full-area spatial lane; light map cleanup
+
+From the [light map review](research/2026-11-10_light_map_review.md), with the user's approval:
+- The shared 1/8 spatial lane is now a full 8×8 mean (16 taps) instead of a 4-tap box that
+  covered 16 of 64 px. GZW pan shimmer went from .042% to .000% of pixels; game stills
+  changed on ≤ .03% of pixels, and Arc menus show soft changes around UI panels (≤ 1.4%).
+  The light map reads this lane, so its own lane pass is gone (one pass fewer).
+- The light map's paint step is now a smooth ramp (.30–.40) instead of a hard .35 step.
+  It has no measurable effect.
+- Removed an unused 256-sample sum from `LLAnchorPS`; output unchanged.
+
+## 2026-11-09 — 3-way CC zones from the light map
+
+3-way CC shadow colour is now placed by an estimated light map instead of pixel
+brightness, so dark materials in light are not cooled. Dim frames keep some shadow
+colour through a low-absolute-light term. Highlight colour stays brightness-based
+inside the lit share ([report](research/2026-11-09_cc_light_map_placement.md),
+variant G; the user approved the look).
+- New `light_map.fxh`: a 1/8 material-veto light estimate. It has its own full-area
+  input lane, and per-pixel light is native luma plus a bilinear correction. Pan
+  shimmer on Arc 211202 went from .37% (bilateral upsample) to .03% of pixels.
+- 12 new passes (1 lane + 11 map, all at 1/8 or 1×1) and one map read per pixel in
+  `ColorTransform`.
+- New profile knob `SHADOW_CC_STRENGTH`: 2.5 in both profiles, at the user's request
+  (Arc is visibly cooler on 2–19% of pixels; GZW stays below one just-noticeable step).
+
 ## 2026-11-09 — Cheaper shadow surround tint
 
 [Optimized the tint](research/2026-11-09_tint_optimization.md) with no intended

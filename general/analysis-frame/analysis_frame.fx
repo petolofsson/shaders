@@ -136,7 +136,9 @@ sampler2D EntropySamp
 
 // ─── Pass 1 — TexHwyWrite (spatial lane) ───────────────────────────────────
 // Writes pre-correction scene RGB+Luma into TexHwyTex spatial lane (rows 0..BUFFER_HEIGHT/8-1).
-// 4-tap box filter at ±1.5 px offsets — same kernel as former ComputeLowFreqPS.
+// Full 8×8 area mean: 16 bilinear taps at ±1, ±3 px (each averages a pixel pair). The former
+// 4-tap ±1.5 px box covered 16 of 64 px and aliased thin detail with camera phase
+// (research/2026-11-10_light_map_review.md).
 // Data rows pass through from TexHwyTex previous state (grade's NeutralIllum survives).
 
 float4 TexHwyWriteSpatialPS(float4 pos : SV_Position,
@@ -145,18 +147,17 @@ float4 TexHwyWriteSpatialPS(float4 pos : SV_Position,
     int row = int(pos.y);
     if (row >= TEX_HWY_SPATIAL_H)
         return tex2Dlod(TexHwySamp, float4(uv, 0, 0));  // data rows: pass-through
-    // Spatial lane: 4-tap box downsample from BackBuffer.
+    // Spatial lane: full 8×8 box downsample from BackBuffer.
     // uv.y maps [0, SPATIAL_H/TOTAL_H) when row < SPATIAL_H — rescale to full [0,1] for BB.
     float bb_y = uv.y * float(TEX_HWY_TOTAL_H) / float(TEX_HWY_SPATIAL_H);
     float2 bb_uv = float2(uv.x, bb_y);
     float2 px = float2(1.0 / BUFFER_WIDTH, 1.0 / BUFFER_HEIGHT);
     float3 rgb = 0.0;
     // Decode explicitly: 10-bit UNORM swapchains have no sRGB image-view format.
-    rgb += SRGBToLinear(tex2D(BackBuffer, bb_uv + float2(-1.5, -1.5) * px).rgb);
-    rgb += SRGBToLinear(tex2D(BackBuffer, bb_uv + float2( 1.5, -1.5) * px).rgb);
-    rgb += SRGBToLinear(tex2D(BackBuffer, bb_uv + float2(-1.5,  1.5) * px).rgb);
-    rgb += SRGBToLinear(tex2D(BackBuffer, bb_uv + float2( 1.5,  1.5) * px).rgb);
-    rgb *= 0.25;
+    [unroll] for (int j = 0; j < 4; j++)
+    [unroll] for (int i = 0; i < 4; i++)
+        rgb += SRGBToLinear(tex2D(BackBuffer, bb_uv + float2(2 * i - 3, 2 * j - 3) * px).rgb);
+    rgb *= 1.0 / 16.0;
     return float4(rgb, Luma(rgb));
 }
 
