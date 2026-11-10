@@ -5,6 +5,13 @@ tradeoffs; their profile values describe their own evidence epochs. Current
 profiles and scores are in [HANDOFF.md](HANDOFF.md). The former detailed ledger
 is preserved in [research](research/2026-11-06_root_document_history.md).
 
+## 2026-11-10 — Retinex strength .4
+
+The user chose `RETINEX_STRENGTH` .4 in both profiles after a settled review of 0–1.0. At 1.0 settled
+Retinex pulled daylight mids/highlights down by up to 7–8 codes; .4 keeps about 40% of that, close
+to what earlier unsettled reviews showed as production
+([recheck](research/2026-11-10_settled_capture_recheck.md)).
+
 ## 2026-11-10 — Bug analysis fixes; settled captures
 
 From a code review, with the user's approval:

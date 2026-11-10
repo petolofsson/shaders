@@ -23,7 +23,7 @@
 // TONAL
 #define CONTRAST              1.0
 #define SHADOWS               1.0
-#define RETINEX_STRENGTH      1.0
+#define RETINEX_STRENGTH      0.4
 #define ZONE_CONTRAST_STRENGTH 1.0
 #define SHADOW_LIFT_STRENGTH   0.50
 #define SHADOW_SURROUND_TINT   1.0   // shadows take a slight tint of surrounding surface colour (0 = off)

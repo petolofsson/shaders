@@ -38,7 +38,7 @@ match identities before reusing evidence.
 | GZW | .001 / .995 | .60 / .60 | .70 (inert) | −.15 / −.030 × 2.0 | .0875 / .10 | .50 | .075 | .5 |
 | Arc | .0025 / .995 | .5 / .5 | .6 (inert) | −.225 / 0 × 2.5 | .0875 / .0875 | .75 | .075 | .5 |
 
-`SHADOW_SURROUND_TINT` and `WARM_RESTRAINT` are 1.0 in both. FilmCurve is inert because print's shoulder
+`SHADOW_SURROUND_TINT` and `WARM_RESTRAINT` are 1.0 in both; `RETINEX_STRENGTH` .4 in both (user, 2026-11-10, from settled captures). FilmCurve is inert because print's shoulder
 compensates ([effect visibility](research/2026-11-09_effect_visibility.md)).
 
 ## Open
