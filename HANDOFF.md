@@ -7,10 +7,12 @@ for [2026-11-08](research/2026-11-08_root_document_history.md) and
 
 ## Production
 
-Both configs run one combined `ShaderPipeline`. Grade has 23 passes: base 8, shadow
+Both configs run one combined `ShaderPipeline`. Grade has 24 passes: base 9, shadow
 surround tint 4, light map 11. Stage contracts are in [docs/pipeline.md](docs/pipeline.md).
 
 Recently adopted (newest first):
+- **2026-11-10, bug fixes:** scene-cut trigger, slow-key reset at cuts, per-frame scene
+  context; capture tool now settles stills ([CHANGELOG](CHANGELOG.md)).
 - **2026-11-10, warm restraint:** `WARM_RESTRAINT` 1.0 in both profiles (red..yellow get no
   chroma-stage boost; [report](research/2026-11-09_warm_hue_research.md)), and `SAT_*` are listed at 0.
 - **2026-11-10, [light map review](research/2026-11-10_light_map_review.md):**
@@ -25,14 +27,15 @@ Recently adopted (newest first):
   output unchanged.
 - **2026-11-08:** [shadow surround tint](research/2026-11-08_shadow_tint_candidate.md).
 
-Identity (SHA-256 prefixes, 2026-11-10): `grade.fx` a2edc5dc00dd2498, `light_map.fxh`
-9e0591d1a7c98079, `pipeline.fx` e2d083a04467706e, `analysis_frame.fx` 76daa9911306e299.
+Identity (SHA-256 prefixes, 2026-11-10): `grade.fx` 16f5141a5965d3b6, `light_map.fxh`
+9e0591d1a7c98079, `pipeline.fx` f451938b77a635d7, `analysis_frame.fx` 7969ecaa5e94d34a,
+`corrective.fx` 932ce5274f20b0a9.
 Configs are unchanged. Old grade hashes and older evidence epochs no longer apply;
 match identities before reusing evidence.
 
 | Profile | BLACKS / WHITES | Inverse chroma / luma | FilmCurve | Shadow temp / tint × strength | Mid / highlight temp | Shadow lift | Saturation | Print |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| GZW | .001 / .995 | .60 / .60 | .70 (inert) | −.15 / −.030 × 2.5 | .0875 / .175 | .50 | .075 | .5 |
+| GZW | .001 / .995 | .60 / .60 | .70 (inert) | −.15 / −.030 × 2.0 | .0875 / .10 | .50 | .075 | .5 |
 | Arc | .0025 / .995 | .5 / .5 | .6 (inert) | −.225 / 0 × 2.5 | .0875 / .0875 | .75 | .075 | .5 |
 
 `SHADOW_SURROUND_TINT` and `WARM_RESTRAINT` are 1.0 in both. FilmCurve is inert because print's shoulder

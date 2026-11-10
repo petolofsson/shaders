@@ -387,17 +387,28 @@ float4 CDFWalkPS(float4 pos : SV_Position,
 
 float4 SceneCutPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    float p50_now      = tex2Dlod(PercSamp,     float4(0.5, 0.5, 0, 0)).g;
+    // Current-frame p50 from the raw histogram: the smoothed histogram and the
+    // Kalman percentile lag a cut by many frames, so their delta rarely fired.
     float entropy_now  = 0.0;
+    float cumul = 0.0, p50_now = 0.5, lk50 = 0.0;
     [loop] for (int b = 0; b < HIST_BINS; b++)
     {
         float h = tex2Dlod(LumHistRaw, float4((b + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
         h = DecodeLumHistFraction(h);
         entropy_now -= h * log2(max(h, 1e-6));
+        float prev = cumul;
+        cumul += h;
+        float inv  = (h > 0.0) ? 1.0 / h : 0.0;
+        float at50 = step(0.5, cumul) * (1.0 - lk50);
+        p50_now = lerp(p50_now, (float(b) + saturate((0.5 - prev) * inv)) / float(HIST_BINS), at50);
+        lk50 = saturate(lk50 + at50);
     }
     entropy_now /= log2(float(HIST_BINS));
     float4 prev_cut    = tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0));
-    float p50_cut      = smoothstep(0.10, 0.25, abs(p50_now - prev_cut.g));
+    // Brightness jump in stops, so dark and bright scenes cut alike; the floor keeps
+    // near-black frames from cutting on tiny absolute changes.
+    float p50_stops    = abs(log2(max(p50_now, 0.004) / max(prev_cut.g, 0.004)));
+    float p50_cut      = smoothstep(0.7, 1.5, p50_stops);
     float entropy_cut  = smoothstep(0.08, 0.22, abs(entropy_now - prev_cut.b));
     float scene_cut    = max(p50_cut, entropy_cut);
     return float4(scene_cut, p50_now, entropy_now, 1.0);

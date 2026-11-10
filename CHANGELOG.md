@@ -5,6 +5,25 @@ tradeoffs; their profile values describe their own evidence epochs. Current
 profiles and scores are in [HANDOFF.md](HANDOFF.md). The former detailed ledger
 is preserved in [research](research/2026-11-06_root_document_history.md).
 
+## 2026-11-10 — Bug analysis fixes; settled captures
+
+From a code review, with the user's approval:
+- **Scene cuts:** the brightness trigger uses the current raw-histogram p50 and its jump in stops
+  (0.7–1.5). It formerly compared a doubly smoothed p50 and almost never fired.
+- **Slow key:** a cut resets it in proportion to cut confidence. The former 67 ms rate met a
+  one-frame pulse and moved it ~16%, so the key lagged ~20 s and over-lifted dark scenes after a
+  bright interlude.
+- **Scene context once per frame:** new `SceneContext` pass (grade 24 passes); ColorTransform
+  reads 6 texels instead of rebuilding the context per pixel. AdaptiveHistory copies those
+  texels, so no pass reads another texel of its own target (rule added to CODE_RULES).
+- Reversed `smoothstep` edges rewritten; unused parameters and dead values removed.
+- **Captures:** `compare_frame.py` single-PNG mode plays a looping lossless clip; a still PNG
+  never settled frame-time histories (gate ~.4, entropy ~.1 at capture; run-to-run noise).
+
+Static stills equal the previous build (≤ 1 code, ≤ .013% px); repeats bit-identical. Cut
+probes: dark↔bright resets fully; a 1.15-stop brightness-only cut resets ~68%. GZW profile:
+`SHADOW_CC_STRENGTH` 2.0, `HIGHLIGHT_TEMP` .10 (user).
+
 ## 2026-11-10 — Warm restraint
 
 At the user's request ("a natural look"): new knob `WARM_RESTRAINT`. Red through yellow (full

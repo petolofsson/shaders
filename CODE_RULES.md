@@ -40,3 +40,7 @@ changing rates.
   The 10-bit UNORM validation swapchain has no corresponding sRGB view; common
   8-bit game output is a distinct quantization context.
 - Effects that render only to explicit targets must end with BackBuffer passthrough.
+- A pass may sample its own render target (history and highway pass-through) only at
+  its own texel. Vulkan leaves render-target feedback undefined; same-texel reads are
+  the pattern this pipeline relies on. Cross-texel reads of the target being written
+  are forbidden.

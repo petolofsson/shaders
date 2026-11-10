@@ -41,6 +41,13 @@ mask the activity marker and any diagnostic footprint consistently. Also mask th
 last row: headless captures can carry a corrupt bottom row (2026-11-09: 2048 px, row 1439).
 Single captures occasionally land a whole-frame offset of a few codes (2026-11-09/10:
 2.4 codes on all bright pixels of Arc 211202); repeat before attributing it to code.
+**Single-PNG mode does not settle temporal state** (found 2026-11-10). mpv shows a still
+image without a steady frame stream, so frame-time EMAs stall: after 20 s, smoothed entropy
+read .04–.16 instead of .75 and the adaptation gate .38–.44 instead of 1.0, varying per run
+(0.1–0.9 code tonal noise; Retinex, zone and film strengths below their in-game values).
+Single-PNG mode now plays the still as a lossless looping 30-fps clip (`_make_loop_clip`,
+as `--all-effects` and `--transition` do); repeats are bit-identical. Single-PNG comparisons
+before 2026-11-10 compared two equally unsettled states.
 
 **Pan check (no motion source needed):** feed the same still shifted 0–7 px (all phases
 of the 1/8 lane), shift each capture back and compare with shift 0; changes are what a

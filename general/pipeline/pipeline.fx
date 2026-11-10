@@ -186,6 +186,12 @@ technique ShaderPipeline
     pass GradeLLUp1 { VertexShader = PostProcessVS; PixelShader = LLUp1PS; RenderTarget = LLB1Tex; }
     pass GradeLLUp0 { VertexShader = PostProcessVS; PixelShader = LLUp0PS; RenderTarget = LLB0Tex; }
     pass GradeLLAnchor { VertexShader = PostProcessVS; PixelShader = LLAnchorPS; RenderTarget = LLAnchorTex; }
+    pass GradeSceneContext
+    {
+        VertexShader = PostProcessVS;
+        PixelShader = SceneCtxPS;
+        RenderTarget = SceneCtxTex;
+    }
     pass GradeColorTransform
     {
         VertexShader = PostProcessVS;

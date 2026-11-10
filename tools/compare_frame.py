@@ -1211,10 +1211,18 @@ def main() -> None:
         print()
 
         print("After: launching mpv + vkBasalt...")
-        proc = _launch_mpv([png], config, args.delay,
+        # A still PNG gives no steady frame stream, so frame-time histories never
+        # settle (TOOLS.md). Play it as a byte-exact looping clip instead.
+        clip = tmp / f"{stem}_loop.mkv"
+        _make_loop_clip(png, clip)
+        proc = _launch_mpv([clip], config, args.delay,
                            env_overrides={"ENABLE_VKBASALT": "0"} if args.baseline else None,
                            require_vkbasalt=not args.baseline)
+        if not _mpv_cmd(["get_property", "fullscreen"]):
+            _mpv_cmd(["set_property", "fullscreen", True])
+        _require_playback_advancing()
         _goto_frame(0)
+        _require_playback_advancing()
 
         print("Capturing screen...")
         _capture_frame(after_png)

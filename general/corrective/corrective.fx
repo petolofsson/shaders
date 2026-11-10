@@ -212,12 +212,13 @@ float4 ComputeSlowKey()
     float zone_log_key = ComputeZoneStats().r;
     float prev_slow    = tex2Dlod(ChromaHistory, float4(7.5 / 8.0, 0.5 / 4.0, 0, 0)).r;
     prev_slow = lerp(zone_log_key, prev_slow, step(0.001, prev_slow));
-    // R200: dual-rate EMA — slow cortical T_half=20s (K=0.0000346), fast scene-cut T_half=67ms (K=0.01034).
-    // Rinner & Gegenfurtner 2000; Ji et al. 2023. Framerate-independent via FRAME_TIME.
+    // R200: slow cortical adaptation T_half=20s (Rinner & Gegenfurtner 2000; Ji et al. 2023),
+    // framerate-independent via FRAME_TIME. A scene cut is a new scene, not a light change: it
+    // resets the key in proportion to cut confidence. The former 67 ms fast rate met a one-frame
+    // cut pulse and moved the key only ~16%, leaving a 20 s lag after every cut.
     float scene_cut   = ReadHWY(HWY_SCENE_CUT);
     float alpha_slow  = 1.0 - exp2(-max(FRAME_TIME, 0.0) / 20000.0);
-    float alpha_fast  = 1.0 - exp2(-max(FRAME_TIME, 0.0) / 67.0);
-    return float4(lerp(prev_slow, zone_log_key, lerp(alpha_slow, alpha_fast, scene_cut)), 0, 0, 0);
+    return float4(lerp(prev_slow, zone_log_key, lerp(alpha_slow, 1.0, saturate(scene_cut))), 0, 0, 0);
 }
 
 float4 UpdateHistoryPS(float4 pos : SV_Position,

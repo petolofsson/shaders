@@ -13,14 +13,18 @@ Configured in `gamespecific/arc_raiders/arc_raiders.conf` and
 pipeline (one ShaderPipeline effect containing analysis_frame -> inverse_grade -> corrective -> grade)
 ```
 
-`grade.fx` is a 23-pass technique (the light-map passes follow TintRegion):
+`grade.fx` is a 24-pass technique (the light-map passes follow TintRegion):
 
 ```text
 LFDownscale1 -> LFDownscale2 -> NeutralIllum -> GuidedCoeff -> GuidedBase
 -> TintGather -> TintEnvH -> TintEnvV -> TintRegion
 -> LLDirections -> LLDivergence -> LLDown1..4 -> LLUp3..0 -> LLAnchor
--> ColorTransform -> AdaptiveHistory -> TexHwyWrite
+-> SceneContext -> ColorTransform -> AdaptiveHistory -> TexHwyWrite
 ```
+
+SceneContext builds the frame-constant scene context once (`SceneCtxTex`, 6 RGBA32F
+texels); ColorTransform reads it instead of rebuilding it per pixel. Texels 0–1 are the
+next AdaptiveHistory records, which AdaptiveHistory copies without reading its own target.
 
 Diffusion has been removed from `grade.fx`.
 
@@ -77,7 +81,7 @@ Encode/decode out-of-range quantities at the slot boundary.
   Smoothed global fractions remain continuous and normalized for percentile/
   entropy reads, including startup mass below one. Exact white lands in the last bin.
 - Zone statistics use 64 squared-edge bins decoded to linear light, integer-count
-  CDF walks and weighted Welford population variance. Scene cuts use p50 delta
+  CDF walks and weighted Welford population variance. Scene cuts use the raw-histogram p50 jump in stops (0.7–1.5)
   plus raw-histogram entropy delta.
 - Median chroma includes all 576 samples; hue-centroid filtering uses colored
   samples. Percentile covariance initializes only from nonpositive state.
@@ -85,8 +89,8 @@ Encode/decode out-of-range quantities at the slot boundary.
   zone, adaptive, `ChromaHistoryTex` and `MeanChromaTex` accumulators use 32-bit
   storage. Publications/raw observations remain half-float; bounded one-frame
   scene-cut storage remains RGBA16F. Preserve formulas, rates and initialization.
-- Slow key reads authoritative chroma history directly; its 20-second/67-ms
-  half-lives remain. Mean chroma uses direct feedback. ChromaHistory columns 0–5
+- Slow key reads authoritative chroma history directly; 20-second half-life,
+  reset in proportion to scene-cut confidence. Mean chroma uses direct feedback. ChromaHistory columns 0–5
   (former per-hue Kalman) stay allocated and are written as zero; zone/slow-key
   records remain live. Spatial-lane reads use `ReadSpatialLane`/`SpatialLaneUV`
   (common.fxh), which clamp to lane texel centers.

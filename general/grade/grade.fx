@@ -182,6 +182,17 @@ sampler2D AdaptiveHistorySamp
     MagFilter = POINT;
 };
 
+// Frame-constant scene context, built once per frame (SceneCtxPS) instead of per pixel.
+// Texels 0-1 are also the next AdaptiveHistory records; 2-5 hold the remaining fields.
+#define SCENE_CTX_W 6
+texture2D SceneCtxTex { Width = SCENE_CTX_W; Height = 1; Format = RGBA32F; MipLevels = 1; };
+sampler2D SceneCtxSamp
+{
+    Texture   = SceneCtxTex;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
 // R190 guided filter base layer — replaces R189 bilateral H/V passes.
 // Self-guided, log2-luma space. Local variance chooses ε: stronger smoothing in flat fields,
 // lower damping around structured edges.
@@ -402,12 +413,11 @@ struct SceneCtx {
     float  chroma_scene_scale;
     float  chroma_str_base;
     float  scene_mode;
-    float  illum_warm;   // CAT16 L/M − S/M + 0.5; D65≈0.39, warm>0.39, cool<0.39
     float  median_C;     // scene median Oklab C (highway HWY_MEDIAN_C) [0, 0.30]
     float  key_L;        // cbrt(slow_key), clamped [0.30,0.80] — Oklab L pivot for zone gates
 };
 
-struct TonalOut { float3 lin; float new_luma; float local_var; };
+struct TonalOut { float3 lin; float local_var; };
 
 float SourceLiftStrengthTarget(float p25, float mode, float floor_luma, float zone_std)
 {
@@ -422,8 +432,6 @@ SceneCtx BuildSceneCtx()
     SceneCtx ctx;
     // Illuminant normalization — CAT16 pixel correction removed (R127): game content is
     // display-referred (sRGB→D65); warm lighting is art direction, not a calibration error.
-    float3 illum_rgb  = tex2Dlod(NeutralIllumSamp, float4(0.5, 0.5, 0, 0)).rgb;
-    ctx.illum_warm    = IllumWarm(illum_rgb);
     ctx.median_C           = clamp(ReadHWY(HWY_MEDIAN_C), 0.0, 0.30);
     ctx.perc               = ReadTexHwyPerc();
     // Restrain inverse reconstruction over an already-wide source span.
@@ -542,7 +550,57 @@ SceneCtx BuildSceneCtx()
     return ctx;
 }
 
-float3 ApplyCorrective(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, SceneCtx ctx, float2 ll)
+float4 PackSceneCtx(SceneCtx ctx, int texel)
+{
+    if (texel == 0) return float4(ctx.film_curve_strength, 0.0, ctx.print_stock_strength, ctx.gamut_strength);
+    if (texel == 1) return float4(ctx.adaptation_gate, ctx.ambient_gate, 1.0 + ctx.lift_current_valid, ctx.shadow_lift_product);
+    if (texel == 2) return ctx.perc;
+    if (texel == 3) return float4(ctx.zone_log_key, ctx.zone_str, ctx.ss_04_25, ctx.inverse_luma_budget);
+    if (texel == 4) return float4(ctx.fc_knee, ctx.fc_knee_toe, ctx.chroma_scene_scale, ctx.chroma_str_base);
+    return float4(ctx.key_L, 0.0, 0.0, 0.0);
+}
+
+float4 ReadSceneCtxTexel(int texel)
+{
+    return tex2Dlod(SceneCtxSamp, float4((float(texel) + 0.5) / float(SCENE_CTX_W), 0.5, 0, 0));
+}
+
+// Fields ColorTransform consumes; the others are builder intermediates and stay zero.
+SceneCtx ReadSceneCtx()
+{
+    SceneCtx ctx;
+    float4 t0 = ReadSceneCtxTexel(0);
+    float4 t1 = ReadSceneCtxTexel(1);
+    float4 t3 = ReadSceneCtxTexel(3);
+    float4 t4 = ReadSceneCtxTexel(4);
+    ctx.film_curve_strength  = t0.r;
+    ctx.print_stock_strength = t0.b;
+    ctx.gamut_strength       = t0.a;
+    ctx.adaptation_gate      = t1.r;
+    ctx.ambient_gate         = t1.g;
+    ctx.lift_current_valid   = t1.b - 1.0;
+    ctx.shadow_lift_product  = t1.a;
+    ctx.perc                 = ReadSceneCtxTexel(2);
+    ctx.zone_log_key         = t3.r;
+    ctx.zone_str             = t3.g;
+    ctx.ss_04_25             = t3.b;
+    ctx.inverse_luma_budget  = t3.a;
+    ctx.fc_knee              = t4.r;
+    ctx.fc_knee_toe          = t4.g;
+    ctx.chroma_scene_scale   = t4.b;
+    ctx.chroma_str_base      = t4.a;
+    ctx.key_L                = ReadSceneCtxTexel(5).r;
+    ctx.zone_std = 0.0; ctx.ss_08_25 = 0.0; ctx.scene_cut = 0.0;
+    ctx.slow_key = 0.0; ctx.scene_mode = 0.0; ctx.median_C = 0.0;
+    return ctx;
+}
+
+float4 SceneCtxPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    return PackSceneCtx(BuildSceneCtx(), int(pos.x));
+}
+
+float3 ApplyCorrective(float3 lin, float col_luma, SceneCtx ctx, float2 ll)
 {
     float  E     = exp2(EXPOSURE);
     float3 lin_e = max(lin, 0.0);
@@ -645,7 +703,7 @@ float TonalIlluminationLog(float2 uv, float native_log)
     return native_log + base_residual;
 }
 
-TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
+TonalOut ApplyTonal(float3 lin, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
 {
     float luma        = Luma(lin);
     float luma_orig   = luma;   // remapped to the shared tonal base below
@@ -674,7 +732,6 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
         lin             *= bil_ratio;
         luma             = Luma(lin);
     }
-    float reconstruction_luma = luma;
     // Shape the common brightness base, then carry the original pixel detail
     // through the combined tonal gain instead of repeatedly classifying it.
     float native_log = tex2D(NativeGuideLogSamp, uv).r;
@@ -749,7 +806,7 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     // Without a valid source observation no lift is applied.
     float shadow_lift    = ctx.shadow_lift_product * detail_protect * ctx.lift_current_valid;
     float shadow_base_luma = luma;
-    float lift_w         = shadow_base_luma * smoothstep(0.35, 0.0, shadow_base_luma);
+    float lift_w         = shadow_base_luma * (1.0 - smoothstep(0.0, 0.35, shadow_base_luma));
     new_luma = max(new_luma + shadow_lift * 0.25 * lift_w * SHADOWS
                         * saturate(float(SHADOW_LIFT_STRENGTH)), 0.0);
     // R62 Finding 3: chroma-stable tonal — apply luma ratio in Oklab L to prevent zone S-curve from shifting chroma
@@ -761,7 +818,7 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
     lab_t.x = max(lab_t.x * cbrt_r, 0.0);
     // R65: CAM16 Hunt exponent 0.25 — colorfulness ∝ L^0.25 (Hunt 2004, CIECAM02 eq.14-16)
     float r65_scale = exp2(log_r * 0.25);
-    float r65_sw    = smoothstep(0.25, 0.0, lab_t.x);
+    float r65_sw    = 1.0 - smoothstep(0.0, 0.25, lab_t.x);
     lab_t.y = lab_t.y * lerp(1.0, r65_scale, r65_sw);
     lab_t.z = lab_t.z * lerp(1.0, r65_scale, r65_sw);
     // R66: ambient shadow tint — inject scene-ambient hue into achromatic lifted shadows.
@@ -769,13 +826,11 @@ TonalOut ApplyTonal(float3 lin, float col_luma, float2 uv, float4 lf_mip2_tex, S
 
     TonalOut result;
     result.lin       = OklabToRGB(lab_t);
-    result.new_luma  = reconstruction_luma * r_tonal;
     result.local_var = local_var;
     return result;
 }
 
-float3 ApplyChroma(float3 lin, float new_luma, float local_var,
-                   float4 lf_mip2_tex, SceneCtx ctx)
+float3 ApplyChroma(float3 lin, float local_var, SceneCtx ctx)
 {
     float3 lab    = RGBtoOklabLinear(lin);
     float  C      = length(lab.yz);
@@ -1016,19 +1071,18 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 {
     float4 col      = tex2D(BackBuffer, uv);
     col.rgb = SRGBToLinear(col.rgb);
-    SceneCtx ctx       = BuildSceneCtx();
+    SceneCtx ctx       = ReadSceneCtx();
     float4 lf_mip2_tex = tex2D(LowFreqMip2Samp, uv);
 
     float3 lin      = col.rgb * (float(WHITES) - float(BLACKS)) + float(BLACKS);
     lin = ApplyShadowTint(lin, uv);
     float  col_luma = Luma(lin);
     float  ll_light = LLLightLog(uv);
-    lin = lerp(lin, ApplyCorrective(lin, col_luma, uv, lf_mip2_tex, ctx, float2(LLBelowLit(ll_light), ll_light)), CORRECTIVE_STRENGTH * 0.01);
+    lin = lerp(lin, ApplyCorrective(lin, col_luma, ctx, float2(LLBelowLit(ll_light), ll_light)), CORRECTIVE_STRENGTH * 0.01);
 
-    TonalOut tonal      = ApplyTonal(lin, col_luma, uv, lf_mip2_tex, ctx);
+    TonalOut tonal      = ApplyTonal(lin, uv, lf_mip2_tex, ctx);
     float    tonal_gate = TONAL_STRENGTH * 0.01;
     tonal.lin       = lerp(lin,       tonal.lin,       tonal_gate);
-    tonal.new_luma  = lerp(Luma(lin), tonal.new_luma,  tonal_gate);
     tonal.local_var = tonal.local_var * tonal_gate;
 
     // Apply the film shoulder after spatial tonal work so cloud texture is not
@@ -1036,10 +1090,9 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
     float film_input_y = max(Luma(tonal.lin), 1e-10);
     float3 fc_out = FilmCurveApply(tonal.lin, ctx.fc_knee);
     tonal.lin = lerp(tonal.lin, fc_out, ctx.film_curve_strength);
-    tonal.new_luma = lerp(tonal.new_luma, Luma(tonal.lin), ctx.film_curve_strength);
 
     float film_loss_fraction = saturate(1.0 - Luma(tonal.lin) / film_input_y);
-    float3 result  = lerp(tonal.lin, ApplyChroma(tonal.lin, tonal.new_luma, tonal.local_var, lf_mip2_tex, ctx), CHROMA_STRENGTH * 0.01);
+    float3 result  = lerp(tonal.lin, ApplyChroma(tonal.lin, tonal.local_var, ctx), CHROMA_STRENGTH * 0.01);
     // Bound the blended signal even when the chroma stage is bypassed.
     result = OklabToSDR(RGBtoOklabLinear(result));
     result = lerp(result, ApplyLook(result, ctx, film_loss_fraction), LOOK_STRENGTH * 0.01);
@@ -1248,13 +1301,10 @@ float4 TexHwyWritePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
     return tex2Dlod(TexHwySamp, float4(uv, 0, 0));
 }
 
+// Copies this frame's records (SceneCtx texels 0-1) into history; reads no render target of its own.
 float4 AdaptiveHistoryPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    SceneCtx ctx = BuildSceneCtx();
-    if (pos.x >= 1.0)
-        return float4(ctx.adaptation_gate, ctx.ambient_gate, 1.0+ctx.lift_current_valid, ctx.shadow_lift_product);
-    return float4(ctx.film_curve_strength, 0.0,
-                  ctx.print_stock_strength, ctx.gamut_strength);
+    return ReadSceneCtxTexel(int(pos.x));
 }
 
 // ─── Technique ─────────────────────────────────────────────────────────────
@@ -1296,6 +1346,12 @@ technique OlofssonianColorGrade
     pass TintEnvH    { VertexShader = PostProcessVS; PixelShader = TintEnvHPS;   RenderTarget0 = TintEnvAHTex;   RenderTarget1 = TintEnvBHTex; }
     pass TintEnvV    { VertexShader = PostProcessVS; PixelShader = TintEnvVPS;   RenderTarget0 = TintEnvATex;    RenderTarget1 = TintEnvBTex; }
     pass TintRegion  { VertexShader = PostProcessVS; PixelShader = TintRegionPS;  RenderTarget = TintRegionTex; }
+    pass SceneContext
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = SceneCtxPS;
+        RenderTarget = SceneCtxTex;
+    }
     pass ColorTransform
     {
         VertexShader = PostProcessVS;
