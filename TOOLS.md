@@ -17,11 +17,11 @@ testing is retired. Do not run GPU throughput/profiling probes.
 ## Matched captures
 
 ```bash
-python3 -B tools/compare_frame.py gamespecific/gzw/analysis/reference/autof_20260515_133058.png --all-effects --game gzw --config gamespecific/gzw/gzw_stronger_trial.conf --only FILM_CURVE RETINEX BLACKS_WHITES --delay 5 --settle 20 --keep
+python3 -B tools/compare_frame.py gamespecific/gzw/analysis/reference/autof_20260515_133058.png --all-effects --game gzw --config gamespecific/gzw/gzw.conf --only FILM_CURVE RETINEX BLACKS_WHITES --delay 5 --settle 20 --keep
 ```
 
 For Arc, use `--game arc_raiders`, an Arc reference and
-`--config gamespecific/arc_raiders/arc_raiders_pipeline_trial.conf`.
+`--config gamespecific/arc_raiders/arc_raiders.conf`.
 Check config identity before reuse. `--only CORRECTIVE_GATE TONAL_GATE CHROMA_GATE
 LOOK_GATE` isolates stages; omit `--all-effects` for a simple pair. `--baseline`
 disables vkBasalt for a source transfer check. Use `--help` for current options.
@@ -47,7 +47,10 @@ read .04–.16 instead of .75 and the adaptation gate .38–.44 instead of 1.0, 
 (0.1–0.9 code tonal noise; Retinex, zone and film strengths below their in-game values).
 Single-PNG mode now plays the still as a lossless looping 30-fps clip (`_make_loop_clip`,
 as `--all-effects` and `--transition` do); repeats are bit-identical. Single-PNG comparisons
-before 2026-11-10 compared two equally unsettled states.
+before 2026-11-10 compared two equally unsettled states
+([recheck](research/2026-11-10_settled_capture_recheck.md)). Use `--save-after <png>` in
+scripts instead of `--keep`: kept temp folders (EXRs and clip, ~150 MB each) fill the
+RAM-backed `/tmp`.
 
 **Pan check (no motion source needed):** feed the same still shifted 0–7 px (all phases
 of the 1/8 lane), shift each capture back and compare with shift 0; changes are what a
@@ -62,7 +65,7 @@ importing/running; never overwrite frozen evidence.
 ## Motion and cuts
 
 ```bash
-python3 -B tools/compare_frame.py gamespecific/gzw/analysis/reference/autof_20260515_133058.png --transition gamespecific/gzw/analysis/reference/autof_20260515_133932.png --game gzw --config gamespecific/gzw/gzw_stronger_trial.conf --delay 5
+python3 -B tools/compare_frame.py gamespecific/gzw/analysis/reference/autof_20260515_133058.png --transition gamespecific/gzw/analysis/reference/autof_20260515_133932.png --game gzw --config gamespecific/gzw/gzw.conf --delay 5
 ```
 
 `--transition` plays first/second/first for 20/8/20 seconds at 30 fps with fresh

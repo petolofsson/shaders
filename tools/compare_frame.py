@@ -233,7 +233,8 @@ def _make_loop_clip(png: Path, clip: Path, fps: int = 30, frames: int = 60) -> N
         "-frames:v", str(frames), "-c:v", "ffv1", "-pix_fmt", "bgr0",
         "-y", str(clip),
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    # ffmpeg reads stdin by default; detach it so callers' input is not consumed.
+    result = subprocess.run(cmd, capture_output=True, text=True, stdin=subprocess.DEVNULL)
     if result.returncode != 0:
         raise RuntimeError(f"Lossless playback clip failed: {result.stderr.strip()}")
 
@@ -1108,6 +1109,8 @@ def main() -> None:
                     help="Single-reference capture with vkBasalt disabled, for transfer validation")
     ap.add_argument("--delay", type=int, default=3,
                     help="Seconds to wait for SPIR-V compile (default: 3)")
+    ap.add_argument("--save-after", type=Path, default=None,
+                    help="copy the captured output PNG here (single-PNG mode); temp files are still removed")
     ap.add_argument("--keep",  action="store_true",
                     help="Retain captures for inspection (or EXRs in batch mode)")
     ap.add_argument("--settle", type=float, default=5.0,
@@ -1229,6 +1232,8 @@ def main() -> None:
         if not after_png.exists() or after_png.stat().st_size == 0:
             proc.terminate()
             sys.exit("Screen capture failed.")
+        if args.save_after:
+            shutil.copyfile(after_png, args.save_after)
 
         print("After: linearizing captured frame...")
         after = _load_png_linear(after_png)

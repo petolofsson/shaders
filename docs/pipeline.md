@@ -81,7 +81,7 @@ Encode/decode out-of-range quantities at the slot boundary.
   Smoothed global fractions remain continuous and normalized for percentile/
   entropy reads, including startup mass below one. Exact white lands in the last bin.
 - Zone statistics use 64 squared-edge bins decoded to linear light, integer-count
-  CDF walks and weighted Welford population variance. Scene cuts use the raw-histogram p50 jump in stops (0.7–1.5)
+  CDF walks and weighted Welford population variance. Scene cuts use the current mean log2 luma jump (0.6–1.1 stops; flicks stay below ~0.4)
   plus raw-histogram entropy delta.
 - Median chroma includes all 576 samples; hue-centroid filtering uses colored
   samples. Percentile covariance initializes only from nonpositive state.

@@ -1,4 +1,4 @@
-// creative_color_grade.fx — Mega-pass: all downstream color work in one full-res pass
+// grade.fx — Mega-pass: all downstream color work in one full-res pass
 #include "../highway.fxh"
 #include "../hue_bands.fxh"
 #include "../common.fxh"

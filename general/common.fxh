@@ -11,7 +11,7 @@
 //   Data row +0 pixel 0        : p25/p50/p75/Kalman_P               written by analysis_frame
 //   Data row +0 pixel 1        : p90/p10/p75_C/kappa                written by analysis_frame
 //   Data row +0 pixel 2        : median_C/mean_a/mean_b/achrom_frac written by analysis_frame
-//   Data row +0 pixel 3        : scene_cut/p50_prev/mode/entropy    written by analysis_frame
+//   Data row +0 pixel 3        : scene_cut/mean_log_prev/mode/entropy    written by analysis_frame
 //   Data row +0 pixel 4        : NeutralIllum RGB (one-frame delay) written by grade
 //   Data rows +1..+4 cols 0..7 : ChromaHistoryTex 8×4               written by corrective
 //
@@ -70,7 +70,7 @@ float4 ReadTexHwyData(int dr, int col)
 float4 ReadTexHwyPerc()       { return ReadTexHwyData(0, 0); }  // p25/p50/p75/P
 float4 ReadTexHwyPercHigh()   { return ReadTexHwyData(0, 1); }  // p90/p10/p75_C/kappa
 float4 ReadTexHwyMeanChroma() { return ReadTexHwyData(0, 2); }  // median_C/mean_a/mean_b/achrom_frac
-float4 ReadTexHwySceneCut()   { return ReadTexHwyData(0, 3); }  // scene_cut/p50_prev/mode/entropy
+float4 ReadTexHwySceneCut()   { return ReadTexHwyData(0, 3); }  // scene_cut/mean_log_prev/mode/entropy
 float4 ReadTexHwyIlluminant() { return ReadTexHwyData(0, 4); }  // NeutralIllum RGB (grade, prev frame)
 // ChromaHistory row r (0..3), col c (0..7) → data rows 1..4
 float4 ReadTexHwyChroma(int r, int c) { return ReadTexHwyData(1 + r, c); }

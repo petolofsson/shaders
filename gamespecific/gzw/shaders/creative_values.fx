@@ -1,4 +1,4 @@
-// Arc Raiders creative values.
+// GZW creative values.
 // Keep user-facing tuning here; shader constants and analysis parameters stay in general/.
 
 // INPUT

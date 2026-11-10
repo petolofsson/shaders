@@ -3,7 +3,7 @@
 #include "../common.fxh"
 //
 // Builds per-frame luminance histogram and scene statistics.
-// All samples are in linear light — vkBasalt linearizes the sRGB swapchain on read.
+// All samples are in linear light: the sRGB swapchain is decoded explicitly (SRGBTexture = false).
 // TexHwyTex spatial lane (1/8-res) replaces DownsampleTex (fixed 32×18).
 // Histogram still gathers 32×18 = 576 samples from the spatial lane via bilinear reads.
 
@@ -64,7 +64,7 @@ sampler2D PercSamp
     MagFilter = POINT;
 };
 
-// R53: scene-cut signal — r=scene_cut [0,1], g=p50 history, b=entropy history
+// R53: scene-cut signal — r=scene_cut [0,1], g=mean log2 luma history, b=entropy history
 // Written here, published to TexHwyTex (HWY_SCENE_CUT slot)
 texture2D SceneCutTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
 sampler2D SceneCutSamp
@@ -219,10 +219,10 @@ float4 TexHwyWriteDataPS(float4 pos : SV_Position,
         if (col == 2) return tex2Dlod(MeanChromaSamp,   float4(0.5, 0.5, 0, 0));
         if (col == 3) {
             float sc   = tex2Dlod(SceneCutSamp,  float4(0.5, 0.5, 0, 0)).r;
-            float p50p = tex2Dlod(SceneCutSamp,  float4(0.5, 0.5, 0, 0)).g;
+            float mlp  = tex2Dlod(SceneCutSamp,  float4(0.5, 0.5, 0, 0)).g;
             float mode = tex2Dlod(ModeSamp,      float4(0.5, 0.5, 0, 0)).r;
             float ent  = tex2Dlod(EntropySamp,   float4(0.5, 0.5, 0, 0)).r;
-            return float4(sc, p50p, mode, ent);
+            return float4(sc, mlp, mode, ent);
         }
     }
     return tex2Dlod(TexHwySamp, float4(uv, 0, 0));  // all other pixels: pass-through
@@ -387,31 +387,30 @@ float4 CDFWalkPS(float4 pos : SV_Position,
 
 float4 SceneCutPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    // Current-frame p50 from the raw histogram: the smoothed histogram and the
-    // Kalman percentile lag a cut by many frames, so their delta rarely fired.
     float entropy_now  = 0.0;
-    float cumul = 0.0, p50_now = 0.5, lk50 = 0.0;
     [loop] for (int b = 0; b < HIST_BINS; b++)
     {
         float h = tex2Dlod(LumHistRaw, float4((b + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
         h = DecodeLumHistFraction(h);
         entropy_now -= h * log2(max(h, 1e-6));
-        float prev = cumul;
-        cumul += h;
-        float inv  = (h > 0.0) ? 1.0 / h : 0.0;
-        float at50 = step(0.5, cumul) * (1.0 - lk50);
-        p50_now = lerp(p50_now, (float(b) + saturate((0.5 - prev) * inv)) / float(HIST_BINS), at50);
-        lk50 = saturate(lk50 + at50);
     }
     entropy_now /= log2(float(HIST_BINS));
+    // Current-frame mean log2 luma of the 576 lane samples. It moves in proportion to the
+    // replaced frame area, so camera flicks stay below ~0.4 stop per frame, while p50 jumped
+    // >1 stop when a sky/ground median crossed. The floor keeps near-black frames quiet.
+    float mean_log = 0.0;
+    [loop] for (int y = 0; y < DS_H; y++)
+    [loop] for (int x = 0; x < DS_W; x++)
+    {
+        float2 s_uv = float2((x + 0.5) / float(DS_W), (y + 0.5) / float(DS_H));
+        mean_log += log2(max(ReadSpatialLane(s_uv).a, 0.004));
+    }
+    mean_log /= float(DS_W * DS_H);
     float4 prev_cut    = tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0));
-    // Brightness jump in stops, so dark and bright scenes cut alike; the floor keeps
-    // near-black frames from cutting on tiny absolute changes.
-    float p50_stops    = abs(log2(max(p50_now, 0.004) / max(prev_cut.g, 0.004)));
-    float p50_cut      = smoothstep(0.7, 1.5, p50_stops);
+    float level_cut    = smoothstep(0.6, 1.1, abs(mean_log - prev_cut.g));
     float entropy_cut  = smoothstep(0.08, 0.22, abs(entropy_now - prev_cut.b));
-    float scene_cut    = max(p50_cut, entropy_cut);
-    return float4(scene_cut, p50_now, entropy_now, 1.0);
+    float scene_cut    = max(level_cut, entropy_cut);
+    return float4(scene_cut, mean_log, entropy_now, 1.0);
 }
 
 float4 NearClipPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target

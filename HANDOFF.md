@@ -43,6 +43,11 @@ compensates ([effect visibility](research/2026-11-09_effect_visibility.md)).
 
 ## Open
 
+- **Settled look:** stills before 2026-11-10 were unsettled. In game Retinex is about twice as
+  strong and shade lift about a third weaker in foliage than those reviews showed
+  ([recheck](research/2026-11-10_settled_capture_recheck.md)). Re-judge absolute strengths on
+  settled captures before tuning.
+
 - **User live-play check** of the 2026-11-09/10 adoptions. Validation so far is stills plus
   an 8-phase static pan ([TOOLS](TOOLS.md#matched-captures)). Look for:
   - shadow-edge crawl in slow pans;
