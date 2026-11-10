@@ -51,7 +51,8 @@ Diffusion has been removed from `grade.fx`.
    contrast, shadow lift, Hunt coupling, ambient tint, highlights, then the
    luminance-preserving FilmCurve shoulder.
 5. `grade` chroma: sat-by-luma, Munsell rolloff, hue rotation, vibrance,
-   saturation, compression, and gamut projection.
+   saturation, warm restraint (`WARM_RESTRAINT`: red..yellow keep only part of the chroma this
+   stage adds, never below its input), compression, and gamut projection.
 6. `grade` look: Kodak 2383 print stock, masking/dye couplers, printer lights;
    gated by `LOOK_STRENGTH`.
 7. Output: dither and 2x2 red activity marker.

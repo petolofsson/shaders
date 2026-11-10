@@ -8,10 +8,7 @@ The previous full text is in the [2026-11-10 ledger](research/2026-11-10_root_do
 
 1. **User live-play check** of the light-map CC placement and the full-area lane, plus
    per-game `SHADOW_CC_STRENGTH`. Act only on a concrete reported failure.
-2. **Shade lift side branch:** rebase the test copy onto production's light map, then
-   recapture A vs C for the user's look. Before any adoption request, check menu/UI frames
-   and pans. Keep production's lift until the user adopts a replacement.
-3. Optional: hue-weighted warm saturation trim, if the user wants it.
+   The same check covers `WARM_RESTRAINT` (1.0 = warm hues at about source chroma).
 
 ## Closed — do not reopen without new evidence
 
@@ -31,6 +28,9 @@ The previous full text is in the [2026-11-10 ledger](research/2026-11-10_root_do
 - **Light-map routes:** camera-motion separation, flat-fielding, keep-only-light colour
   edges and a frame-level UI gate
   ([light lift report](research/2026-11-09_light_lift_candidate.md)).
+- **Shade lift from the light map** (shapes A/C): the user prefers production's lift, which
+  keeps more texture. A flattens texture in shade by 9%, and both shapes shimmer in pans
+  ([report](research/2026-11-09_light_lift_broad_stills.md)).
 - **Shadow color helper** (darker-range 110%): superseded by the surround tint.
 
 ## Tonal-progression assessment (open, not mandatory)

@@ -123,3 +123,31 @@ Findings:
 Revised options: lower `SATURATION`, or make the chroma stage hue-weighted (B,
 extended to orange/amber), which trims warm bands while keeping cool and green
 boosts.
+
+## Warm restraint, adopted (2026-11-10)
+
+The user asked for "a natural look" and chose the recommendation. `WARM_RESTRAINT` (chroma stage,
+after the vivid guard): warm weight ss(0, .055, h) × (1 − ss(.29, .355, h)) in normalised Oklab hue
+(full ~20–105°, zero by ~128°). `final_C` and `C_floor` keep only (1 − R·w) of the boost above the
+stage's input chroma, so this is a restraint on what the stage adds, not a cut to scene colour. The
+existing `SAT_*` bands were not used: they scale source chroma too, and orange/amber fall between
+their 30° and 110° centres.
+
+Test copy: `captures/warm_trim_20261110/` (`run.sh`, 27/27 captures, 0 errors, identities stable;
+`make_review.py`; review `review/index.html`). Masks as in the attribution above (source C > .03,
+L > .2). Chroma relative to source, production → R .5 → R 1.0:
+
+| Still | Red | Orange | Amber | Yellow | Green / blue |
+| --- | --- | --- | --- | --- | --- |
+| GZW splash (user) | 1.25 → 1.18 → 1.11 | 1.07 → 1.01 → .95 | 1.09 → 1.03 → .97 | 1.02 → .99 → .95 | unchanged |
+| GZW menu (user) | 1.13 → 1.07 → 1.01 | 1.02 → 1.01 → .99 | 1.12 → 1.06 → 1.00 | 1.11 → 1.07 → 1.03 | unchanged |
+| GZW 133058 | – | 1.22 → 1.14 → 1.07 | 1.17 → 1.10 → 1.03 | 1.20 → 1.12 → 1.05 | unchanged |
+| GZW 101035 | – | – | 1.11 → 1.06 → 1.00 | 1.06 → 1.02 → .98 | unchanged |
+| Arc 210448 | 1.05 → 1.02 → .98 | 1.15 → 1.08 → 1.02 | 1.11 → 1.05 → .98 | 1.19 → 1.14 → 1.09 | unchanged |
+| Arc 205938 | 1.17 → 1.10 → 1.04 | 1.13 → 1.06 → .99 | 1.09 → 1.05 → 1.00 | 1.09 → 1.06 → 1.03 | unchanged |
+| Arc 211202 | .98 → .94 → .90 | 1.05 → 1.00 → .95 | 1.13 → 1.09 → 1.05 | 1.12 → 1.06 → 1.01 | unchanged |
+
+Mean ΔL vs production ≤ .0004. Values below 1.0 occur where earlier stages (print, corrective
+gate) had already taken warm chroma below source; restraint 1.0 removes the chroma stage's
+compensation for that. The user deferred the value; 1.0 was set for the stated "natural" aim and is
+tunable per game. Production check (3 stills, own configs) matches the R 1.0 test: max 2 codes.

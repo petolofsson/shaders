@@ -158,3 +158,52 @@ still loosely. No white clipping.
   (to .84–1.71) because most dark pixels there are classed partial shade, while
   range inside the shadows widens most (+.2 to +.5 stop). The low band there stays
   ~−.2 stop with both shapes (old lift removed).
+
+## Rebased on the production light map (2026-11-10)
+
+The test copy `captures/shadelift_20261110/general_test` is production as of 0317436 plus
+`LLLiftStops` / `ApplyLightLift`, ported unchanged and applied just before corrective as
+before. It has a debug view (3: R CC shadow weight, G lift band, B stops below lit / 8).
+A and C = production profile with `SHADOW_LIFT_STRENGTH` 0 and `SHADE_LIFT` 1.0 (C adds
+`SHADE_LIFT_SHAPE 1`). `run.sh`: 88/88 captures, 0 errors, identities stable. Review:
+`captures/shadelift_20261110/review/index.html` (native).
+
+| Still | Depth P / A / C | Range in shadow P / A / C | Stops vs P, dark A / C |
+| --- | --- | --- | --- |
+| GZW 133444 | 1.67 / 1.48 / 1.11 | 2.56 / 2.32 / 2.93 | −.03 / +.04 |
+| GZW 133424 | 2.84 / 2.34 / 2.31 | 2.62 / 2.73 / 3.00 | +.14 / +.12 |
+| GZW 133302 | 2.23 / 1.82 / 1.68 | 3.23 / 3.32 / 3.70 | +.14 / +.15 |
+| GZW 133525 | 3.74 / 3.29 / 3.68 | 2.49 / 2.62 / 2.56 | +.35 / +.08 |
+| GZW 133831 | 3.98 / 3.55 / 3.99 | 2.70 / 3.13 / 2.78 | +.36 / .00 |
+| GZW 133058 | 1.37 / 1.20 / .80 | 3.68 / 3.59 / 4.21 | +.03 / +.06 |
+| GZW 133750 | 3.69 / 3.18 / 3.39 | 2.79 / 3.07 / 3.07 | +.22 / +.12 |
+| GZW 133932 menu | 4.30 / 3.73 / 4.15 | 3.23 / 3.81 / 3.41 | +.52 / +.23 |
+| GZW 101035 | 3.75 / 3.16 / 3.61 | 1.06 / 1.05 / 1.07 | +.58 / +.16 |
+| Arc 205938 menu | 4.14 / 3.60 / 4.05 | 1.92 / 2.34 / 2.03 | +.30 / +.06 |
+| Arc 210448 | 3.44 / 2.86 / 3.21 | 1.47 / 1.76 / 1.66 | +.18 / +.03 |
+| Arc 210417 menu | 1.62 / 1.22 / 1.04 | 1.26 / 1.15 / 1.42 | −.05 / +.05 |
+| Arc 210723 | 3.23 / 2.63 / 2.99 | 1.52 / 1.79 / 1.68 | +.33 / +.12 |
+| Arc 210111 | 5.66 / 5.07 / 5.44 | 1.95 / 2.55 / 2.12 | +.42 / +.18 |
+| Arc 211202 | 5.14 / 4.54 / 4.94 | 1.93 / 2.56 / 2.11 | +.53 / +.18 |
+| Arc 210519 | 5.88 / 5.65 / 5.85 | 1.62 / 1.82 / 1.68 | +.32 / +.11 |
+
+Depth is lit (p90) to the shadow median, in stops; range is the spread inside shadows; "low"
+is production luma .05–.18. Same reading as 2026-11-09: in daylight C keeps depth within ≤ .2
+stop of production while A loses .2–.6. In dim interiors (133444, 133302, 133058, 210417) C
+flattens depth more (by .3–.6) but widens the range inside shadows. Both remove production's
+old lift, which made the low band about .2 stop darker on most frames.
+
+**Pan (shifts 2/4/6, px > .02 ΔE vs shift 0):** production 133444 0 / 211202 ≤ .08%; A .005–.008% /
+.15–.69%; C .02–.04% / .28–.89%. The shimmer is local and low-frequency. It is the map's
+coarse 1/8 correction at strong edges (the ground beside the rifle; the sky next to the dark
+pillar at the right edge), scaled by the lift into luminance: 97% of the changed pixels move
+by more than .05 stop. CC colour hid the same residual (.03%). **Neither shape is motion-ready**
+until the correction's edge behaviour is fixed. The look choice can still be made first.
+
+**User verdict (2026-11-10):** "Production looks best (keeps most texture detail), then C, then
+A." Fine-texture check: std of log2 luma minus its 9-px mean, over pixels the map calls at
+least partial shade (d > .75), 16 stills. Median vs production: A −9% (−1 to −17%), C +3% (−7 to +9%).
+A's loss has a structural cause: per-pixel light includes native luma, and A's band rises with d,
+so darker texture pixels get more lift. The measure does not show C losing fine texture; the
+user still prefers production. **Side branch closed:** production's lift stays. No edge fix
+was built for the lift's pan shimmer.

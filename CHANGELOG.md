@@ -5,6 +5,15 @@ tradeoffs; their profile values describe their own evidence epochs. Current
 profiles and scores are in [HANDOFF.md](HANDOFF.md). The former detailed ledger
 is preserved in [research](research/2026-11-06_root_document_history.md).
 
+## 2026-11-10 — Warm restraint
+
+At the user's request ("a natural look"): new knob `WARM_RESTRAINT`. Red through yellow (full
+weight ~20–105°, fading to zero by ~128°) keep only (1 − value) of the chroma the chroma stage adds,
+and are never cut below that stage's input. Greens, blues and luminance are unchanged. Set to 1.0 in
+both profiles: warm bands go from 1.02–1.25× source to about .95–1.07×
+([report](research/2026-11-09_warm_hue_research.md)). Both profiles now also list the
+existing per-band `SAT_*` controls at 0.
+
 ## 2026-11-10 — Full-area spatial lane; light map cleanup
 
 From the [light map review](research/2026-11-10_light_map_review.md), with the user's approval:

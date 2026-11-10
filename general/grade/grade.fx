@@ -77,6 +77,9 @@
 #ifndef SATURATION
 #define SATURATION 0.0
 #endif
+#ifndef WARM_RESTRAINT
+#define WARM_RESTRAINT 0.0
+#endif
 
 #ifndef RETINEX_STRENGTH
 #define RETINEX_STRENGTH 1.0
@@ -849,6 +852,12 @@ float3 ApplyChroma(float3 lin, float new_luma, float local_var,
     float vivid_pixel = smoothstep(0.08, 0.20, C);
     float chroma_guard = (1.0 - ctx.chroma_scene_scale) * vivid_pixel;
     final_C -= max(final_C - C, 0.0) * chroma_guard;
+    // Warm restraint: warm hues (red..amber/yellow, full ~20-105 deg, 0 by ~128 deg) keep only
+    // (1 - WARM_RESTRAINT) of the chroma this stage adds, never less than the input chroma. Viewers see
+    // warm chroma pushes more strongly than cool ones (research/2026-11-09_warm_hue_research.md).
+    float warm_w = smoothstep(0.0, 0.055, h_perc) * (1.0 - smoothstep(0.29, 0.355, h_perc)) * saturate(float(WARM_RESTRAINT));
+    final_C = min(final_C, C_input + max(final_C - C_input, 0.0) * (1.0 - warm_w));
+    C_floor = min(C_floor, C_input + max(C_floor - C_input, 0.0) * (1.0 - warm_w));
     // R196-E: cusp-relative chroma compression — ACES2 principle, Oklab/HueCeil basis.
     // d_norm = C / HueCeil(hue). Reinhard on excess above 0.85 maps [0.85,∞) → [0.85,1.0).
     // Equal proportional headroom per hue — deep reds and cyans no longer compressed earlier

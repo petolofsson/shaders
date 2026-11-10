@@ -30,6 +30,13 @@
 
 // CHROMA
 #define SATURATION           0.075
+#define WARM_RESTRAINT       1.0    // red..yellow keep none of the chroma stage boost (0 = full boost); never cuts below its input
+#define SAT_RED              0.0    // per-band saturation, -1..1 = -80..+80% chroma (bands ~±50 deg)
+#define SAT_YELLOW           0.0
+#define SAT_GREEN            0.0
+#define SAT_CYAN             0.0
+#define SAT_BLUE             0.0
+#define SAT_MAG              0.0
 
 // LOOK
 #define PRINT_STOCK           0.5

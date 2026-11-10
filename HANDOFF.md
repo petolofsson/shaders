@@ -11,6 +11,8 @@ Both configs run one combined `ShaderPipeline`. Grade has 23 passes: base 8, sha
 surround tint 4, light map 11. Stage contracts are in [docs/pipeline.md](docs/pipeline.md).
 
 Recently adopted (newest first):
+- **2026-11-10, warm restraint:** `WARM_RESTRAINT` 1.0 in both profiles (red..yellow get no
+  chroma-stage boost; [report](research/2026-11-09_warm_hue_research.md)), and `SAT_*` are listed at 0.
 - **2026-11-10, [light map review](research/2026-11-10_light_map_review.md):**
   - the shared spatial lane is a full 8×8 mean (GZW pan shimmer .042% → .000%), so the map's
     own lane pass is gone;
@@ -23,7 +25,7 @@ Recently adopted (newest first):
   output unchanged.
 - **2026-11-08:** [shadow surround tint](research/2026-11-08_shadow_tint_candidate.md).
 
-Identity (SHA-256 prefixes, 2026-11-10): `grade.fx` f572fff73cfd4b37, `light_map.fxh`
+Identity (SHA-256 prefixes, 2026-11-10): `grade.fx` a2edc5dc00dd2498, `light_map.fxh`
 9e0591d1a7c98079, `pipeline.fx` e2d083a04467706e, `analysis_frame.fx` 76daa9911306e299.
 Configs are unchanged. Old grade hashes and older evidence epochs no longer apply;
 match identities before reusing evidence.
@@ -33,7 +35,7 @@ match identities before reusing evidence.
 | GZW | .001 / .995 | .60 / .60 | .70 (inert) | −.15 / −.030 × 2.5 | .0875 / .175 | .50 | .075 | .5 |
 | Arc | .0025 / .995 | .5 / .5 | .6 (inert) | −.225 / 0 × 2.5 | .0875 / .0875 | .75 | .075 | .5 |
 
-`SHADOW_SURROUND_TINT` is 1.0 in both. FilmCurve is inert because print's shoulder
+`SHADOW_SURROUND_TINT` and `WARM_RESTRAINT` are 1.0 in both. FilmCurve is inert because print's shoulder
 compensates ([effect visibility](research/2026-11-09_effect_visibility.md)).
 
 ## Open
@@ -42,26 +44,22 @@ compensates ([effect visibility](research/2026-11-09_effect_visibility.md)).
   an 8-phase static pan ([TOOLS](TOOLS.md#matched-captures)). Look for:
   - shadow-edge crawl in slow pans;
   - UI-panel patches on Arc menus (the lane change touches ≤ 1.4% of menu pixels);
-  - `SHADOW_CC_STRENGTH` per game.
+  - `SHADOW_CC_STRENGTH` and `WARM_RESTRAINT` per game.
 
   Known residual: a soft low-frequency patch beside the rifle on Arc 211202 (.03% of px),
   which comes from the map's coarse correction.
-- **Side branch: shade lift** (`SHADE_LIFT`, shapes A vs C;
-  [report](research/2026-11-09_light_lift_broad_stills.md)). It is awaiting the user's look.
-  Its test copy (`captures/light_lift_20261109/general/`) predates the production map. Rebase
-  it first, or at least set `LL_LANE 1`, `LL_UP_MODE 1`, and use the shared full-area lane.
 - **Light map limit:** in daylight it separates neutral or low-contrast dark materials from
   shade only slightly better than darkness does (oracle hard-case AUC .14 vs .08). Stronger veto
   rules were already screened. Using it for the surround tint was tested offline and is not
   supported ([review](research/2026-11-10_light_map_review.md)).
-- **Warm hues:** hue-weighted saturation trimming of orange/amber/yellow is an option
-  ([warm-hue research](research/2026-11-09_warm_hue_research.md)). Nothing has been built.
 
 ## Parked
 
 - Motion/temporal work has no GPU producer and no visible benefit; the isolated motion
   build is unwired ([checkpoint](research/2026-11-07_motion_brightness_prototype.md)).
 - Brightness recovery and the shadow-detection failures: see PLAN "Closed".
+- Shade lift (light-map lift, shapes A/C) closed 2026-11-10: the user ranked production first
+  ([report](research/2026-11-09_light_lift_broad_stills.md)).
 - Do not retry camera-motion separation, flat-fielding, keep-only-light colour edges or
   a frame-level UI gate ([light lift report](research/2026-11-09_light_lift_candidate.md)).
 
