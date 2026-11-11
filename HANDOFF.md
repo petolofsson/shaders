@@ -21,7 +21,7 @@ Adopted 2026-11-11 ([CHANGELOG](CHANGELOG.md)):
   branch, CODE_RULES). Other cuts are bit-identical or ≤ 1 code
   ([cost report](research/2026-11-11_cost_reduction.md)).
 
-Identity (SHA-256 prefixes, 2026-11-11): `grade.fx` de053c26b866609c, `light_map.fxh`
+Identity (SHA-256 prefixes, 2026-11-11): `grade.fx` 373c64b5a3ca09f0, `light_map.fxh`
 30a9f807c7d31cd1, `pipeline.fx` ddbe26f2ecf2e839, `analysis_frame.fx` ffd93491d824d6af,
 `corrective.fx` 932ce5274f20b0a9, `inverse_grade.fx` 8abe46d485d8f037, `common.fxh`
 aa18c3fbf5e25ad9. Configs unchanged. Match identities before reusing evidence.

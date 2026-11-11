@@ -1211,14 +1211,15 @@ void TintGatherPS(float4 pos : SV_Position, float2 uv : TEXCOORD0,
 // B: R surface luma σ 3.46 (r 6); G emitter luma σ 4.90 (r 9).
 // Vertical pass (up_w ≥ 0): taps above the pixel (d < 0) use a wider, weaker triangle
 // (up_w·(1 − |d|/(R+1)), r R) instead of the Gaussian. The full Gaussian tinted a band of shade
-// under skylines (sky in the surround) that ended abruptly ~60 px down; the triangle keeps the
-// crown darkening and tapers it over ~100 px (2026-11-11, research/2026-11-11_treeline.md).
+// under skylines (sky in the surround) that ended abruptly ~60 px down; the long, weak triangle
+// keeps the crown darkening and tapers it over ~225 px (2026-11-11, user choice D,
+// research/2026-11-11_treeline.md).
 // Horizontal pass: up_w < 0 = plain Gaussian.
 #ifndef TINT_UP_W
-#define TINT_UP_W 0.40
+#define TINT_UP_W 0.30
 #endif
 #ifndef TINT_UP_R
-#define TINT_UP_R 14
+#define TINT_UP_R 28
 #endif
 void TintEnvBlur(sampler2D sa, sampler2D sb, float2 uv, float2 axis, float up_w, out float4 out_a, out float2 out_b)
 {
