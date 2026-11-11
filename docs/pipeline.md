@@ -223,8 +223,9 @@ Adopted 2026-11-09 ([report](../research/2026-11-09_cc_light_map_placement.md)).
   Reconstruct chroma against input C; FilmCurve is not inverted.
 - Print preserves its helper luminance curve and blends toward incoming RGB
   ratios over linear Y=.01–.10. Lower-tone weak-color protection uses input
-  C/L=.03–.12 and fades out over Y=.10–.25. FilmCurve loss relieves secondary
-  print-shoulder overlap; secondary shoulder is .75 and the original toe remains.
+  C/L=.03–.12 and fades out over Y=.10–.25. Print has a toe but no shoulder
+  (2026-11-11): the FilmCurve is the only highlight shoulder; it runs before the SDR
+  projection, so near-white highlights keep their colour.
 - Print stock, gamut compression and chroma protection adapt to scene statistics;
   cut confidence temporarily damps adaptation.
 - Internal Oklab conversions preserve signed/overrange RGB. Final SDR projection

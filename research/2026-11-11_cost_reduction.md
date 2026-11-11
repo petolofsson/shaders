@@ -56,13 +56,35 @@ Instruction count per pixel, transcendentals weighted 4×, ~12 T ops/s single-is
 | InverseGrade (incl. `OklabToSDR` ~1,000) | ~1,550 | 0.45 |
 | Total | | ≈ 2.0–2.2 (measured 2.17) |
 
+## Follow-up (same day, user: "minimal changes")
+
+6. **Rounding-only bundle (done):** the chroma stage returns Oklab and, at `CHROMA_STRENGTH` 100
+   (compile-time switch `GRADE_CHROMA_FULL`), goes straight to `OklabToSDR` without the RGB → Oklab
+   round trip; the output dither stays sRGB-encoded (`DitherSDREncoded`) and is written directly
+   instead of decode + re-encode. Static estimate ~0.04–0.05 ms. Validation (settled headless,
+   marker/last row/right 24 px masked): 6 GZW scenes (133729, 133932, 172413, 210201, 224513,
+   224557) ≤ 1 code on .01% px; Arc 210958 and a synthetic black/white/ramp frame ≤ 1 code on
+   .01% px against the previous code (temporary stash). CC → tonal merge skipped (the RGB value is
+   reused between, not minimal).
+7. **`FILM_CURVE` 0 (rejected):** not inert. Same 6 scenes: five at noise (≤ .46% px); 133932
+   (low sun) 1.2% px up to 38 codes: near-white highlights lose their colour (changed px
+   max − min channel 40 → 33; sun disc 252 247 214 → 252 252 252). The film curve's luma-only
+   shoulder keeps highlight hue; print's per-channel shoulder converges to white. Kept.
+
 ## Remaining options (not done)
 
 - 25-tap tonal neighbourhood from a 1/8 copy: ~0.1–0.15 ms; changes the image, needs a pan check
   (a similar shortcut shimmered before).
-- Rounding-only bundle, ≤ 1 code: surround-tint skip on lit pixels (~0.05–0.08 ms; not strictly
-  output-identical, so outside the branch exception as written), Oklab round-trip merges
-  (Chroma → SDR, CC → tonal; ~0.05 ms), dither re-encode (~0.015 ms).
+- Surround-tint skip on lit pixels (~0.05–0.08 ms; not strictly output-identical, so outside the
+  branch exception as written). CC → tonal Oklab merge (~0.02 ms, needs value threading).
+
+
+8. **One highlight shoulder (done):** print stock's per-channel shoulder came after the SDR
+   projection and, with the film curve on, contributed almost nothing (it relaxed by the film
+   curve's share). Removed with its relief plumbing; the film curve (adaptive knee, luma-only,
+   before the projection) is the only shoulder and `FILM_CURVE` now acts directly. Change vs the
+   previous build: GZW 6 scenes ≤ 3 codes (133932 4.0% px, others ≤ .9%; bright L +0…+.17);
+   Arc 210958 ≤ 5 codes, 10.5% px, .24% > 1 code. Merged build = test hook (0 codes).
 - More pass/loop merges: < 0.03 ms total.
 - Not possible: removing the full-res native-guide pass (ReShade FX cannot target the back
   buffer and a texture in one pass).

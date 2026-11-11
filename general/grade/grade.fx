@@ -99,6 +99,12 @@
 #ifndef SHADOW_FILL_FOLLOW
 #define SHADOW_FILL_FOLLOW 0.0
 #endif
+// Highlight shoulder strength: the only highlight roll-off (luma-only, before the SDR projection),
+// so near-white highlights keep their colour. Fixed here, not a profile knob (user, 2026-11-11);
+// a profile may still override it.
+#ifndef FILM_CURVE
+#define FILM_CURVE 0.70
+#endif
 #ifndef SHADOW_NEUTRALIZE
 #define SHADOW_NEUTRALIZE 0.0
 #endif
@@ -120,6 +126,8 @@ static const bool GRADE_HUE_ON = (HUE_RED != 0.0) || (HUE_YELLOW != 0.0) || (HUE
     || (HUE_CYAN != 0.0) || (HUE_BLUE != 0.0) || (HUE_MAG != 0.0);
 static const bool GRADE_RETINEX_ON = (RETINEX_STRENGTH > 0.0);
 static const bool GRADE_GUIDED_ON = GRADE_LC_ON || GRADE_RETINEX_ON;   // BilateralLog consumers
+// Chroma stage at full strength: its Oklab result goes straight to the SDR projection.
+static const bool GRADE_CHROMA_FULL = (CHROMA_STRENGTH == 100);
 
 
 // ─── Textures ──────────────────────────────────────────────────────────────
@@ -312,19 +320,14 @@ float3 ApplyMaskingCoupler(float3 lin, float print_stock)
     return lerp(lin, warmed, saturate(print_stock));
 }
 
-float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print_stock, float film_loss_fraction)
+float3 ApplyPrintStock(float3 lin, float fc_knee_toe, float fc_knee, float print_stock)
 {
     float3 ps = lin;
-    // 2383 S-curve — two-piece, no gates:
-    // Power toe: compresses the full range, strongest in darks (each dye layer has its own
-    // H&D curve — power 1.15 darkens 0.10→0.071, 0.30→0.250 at full strength).
-    // Reinhard shoulder: rolls off highlights above 0.60.
+    // 2383 toe: power 1.15 compresses the full range, strongest in darks (each dye layer has its
+    // own H&D curve — 0.10→0.071, 0.30→0.250 at full strength). No shoulder here: the film curve
+    // is the only highlight shoulder. It runs before the SDR projection, so near-white highlights
+    // keep their colour; a print shoulder after it changed ≤ 3 codes (2026-11-11).
     ps = pow(max(ps, 0.0), 1.15);
-    float3 d = max(0.0, ps - 0.60);
-    float3 shoulder_ps = ps - d + d / (1.0 + d * 0.75);
-    float print_loss_fraction = max(Luma(ps - shoulder_ps), 0.0) / max(Luma(ps), 1e-10);
-    float shared_relief = film_loss_fraction / max(film_loss_fraction + print_loss_fraction, 1e-10);
-    ps = lerp(shoulder_ps, ps, shared_relief);
     // Midtone desaturation: ~15% chroma loss (2383 dye-layer bleach).
     float luma_ps = Luma(ps);
     float desat_w = 0.15 * smoothstep(0.0, fc_knee_toe, luma_ps)
@@ -876,7 +879,7 @@ TonalOut ApplyTonal(float3 lin, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
     return result;
 }
 
-float3 ApplyChroma(float3 lin, float local_var, SceneCtx ctx)
+float3 ApplyChromaLab(float3 lin, float local_var, SceneCtx ctx)
 {
     float3 lab    = RGBtoOklabLinear(lin);
     float  C      = length(lab.yz);
@@ -1000,18 +1003,18 @@ float3 ApplyChroma(float3 lin, float local_var, SceneCtx ctx)
     float ck_scale = ck_C / max(final_C, 1e-6);
     f_oka *= ck_scale;
     f_okb *= ck_scale;
-    // The blended chroma result is projected once at the SDR boundary below.
-    return OklabToRGB(float3(final_L, f_oka, f_okb));
+    // Returned in Oklab; projected once at the SDR boundary in ColorTransformPS.
+    return float3(final_L, f_oka, f_okb);
 }
 
 // ─── Look Modification Transform — post-grade print emulation ──────────────
 
-float3 ApplyLook(float3 lin, SceneCtx ctx, float film_loss_fraction)
+float3 ApplyLook(float3 lin, SceneCtx ctx)
 {
     float3 out_lin = lin;
     // ── R51: print stock + R110: masking coupler + R130: dye matrix ──
     // Fires after all tonal and chroma work — LMT position per ACES convention.
-    out_lin = ApplyPrintStock(out_lin, ctx.fc_knee_toe, ctx.fc_knee, ctx.print_stock_strength, film_loss_fraction);
+    out_lin = ApplyPrintStock(out_lin, ctx.fc_knee_toe, ctx.fc_knee, ctx.print_stock_strength);
     out_lin = ApplyMaskingCoupler(out_lin, ctx.print_stock_strength);
     out_lin = ApplyDyeMatrix(out_lin, ctx.print_stock_strength);
     // R192: printer lights — per-channel contact-printer exposure after all emulsion work.
@@ -1105,6 +1108,16 @@ float3 ApplyShadowTint(float3 lin, float2 uv)
                     * smoothstep(0.0003, 0.002, Luma(lin))
                     * (1.0 - smoothstep(1.0, 2.0, log2(max(Luma(lin), 1e-5) / region)));   // lit spots are not shade
     float  near_light = smoothstep(0.01, 0.10, env_b.y / region);
+    // Bounce needs lit surroundings: fade out where the surroundings' mean surface luma is near
+    // black (night), where a 1-2 stop ratio to a dark sky otherwise drew a dark sky-tinted band
+    // under skylines (2026-11-11).
+#ifndef TINT_ENV_LO
+#define TINT_ENV_LO 0.002
+#endif
+#ifndef TINT_ENV_HI
+#define TINT_ENV_HI 0.008
+#endif
+    shade_w *= smoothstep(float(TINT_ENV_LO), float(TINT_ENV_HI), env_b.x / wsum);
 
     float2 new_reg_ab = TintPlusStep(reg_lab.yz, (SHADOW_SURROUND_TINT * 0.0442 * shade_w * conf) * dir);
     float  gain       = lerp(TintHKGain(reg_lab, new_reg_ab), 1.0, near_light);
@@ -1138,25 +1151,30 @@ float4 ColorTransformPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Ta
 
     // Apply the film shoulder after spatial tonal work so cloud texture is not
     // compressed before Retinex and zone shaping have processed the signal.
-    float film_input_y = max(Luma(tonal.lin), 1e-10);
     float3 fc_out = FilmCurveApply(tonal.lin, ctx.fc_knee);
     tonal.lin = lerp(tonal.lin, fc_out, ctx.film_curve_strength);
 
-    float film_loss_fraction = saturate(1.0 - Luma(tonal.lin) / film_input_y);
-    float3 result  = lerp(tonal.lin, ApplyChroma(tonal.lin, tonal.local_var, ctx), CHROMA_STRENGTH * 0.01);
-    // Bound the blended signal even when the chroma stage is bypassed.
-    result = OklabToSDR(RGBtoOklabLinear(result));
-    result = lerp(result, ApplyLook(result, ctx, film_loss_fraction), LOOK_STRENGTH * 0.01);
+    float3 chroma_lab = ApplyChromaLab(tonal.lin, tonal.local_var, ctx);
+    float3 result;
+    // Bound the blended signal even when the chroma stage is bypassed. At full strength the
+    // Oklab result is projected directly (same value without the RGB round trip).
+    [branch] if (GRADE_CHROMA_FULL)
+        result = OklabToSDR(chroma_lab);
+    else
+        result = OklabToSDR(RGBtoOklabLinear(lerp(tonal.lin, OklabToRGB(chroma_lab), CHROMA_STRENGTH * 0.01)));
+    result = lerp(result, ApplyLook(result, ctx), LOOK_STRENGTH * 0.01);
 
     // dither: break 8-bit BackBuffer quantization — converts banding to imperceptible noise
     // R89: IGN blue-noise dither (Jimenez 2016) — pushes quantization error to high freq
     float dither = frac(52.9829189 * frac(dot(pos.xy, float2(0.06711056, 0.00583715)))) - 0.5;
-    result = DitherSDR(result, dither);
+    // Dithered in sRGB encoding and written as is (no decode/re-encode round trip).
+    float3 encoded = DitherSDREncoded(result, dither);
 
-    // 2x2 red activity indicator: visual filter-on confirmation in top-left corner.
-    result = lerp(result, float3(1.0, 0.0, 0.0), step(pos.x, 1.5) * step(pos.y, 1.5));
+    // 2x2 red activity indicator: visual filter-on confirmation in top-left corner
+    // (pure red encodes to itself).
+    encoded = lerp(encoded, float3(1.0, 0.0, 0.0), step(pos.x, 1.5) * step(pos.y, 1.5));
 
-    return float4(LinearToSRGB(result), col.a);
+    return float4(encoded, col.a);
 }
 
 // ─── LF downscale passes — build mip1 and mip2 within this technique ──────────────

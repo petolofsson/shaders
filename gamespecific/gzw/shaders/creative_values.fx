@@ -8,8 +8,7 @@
 // CORRECTIVE
 #define BLACKS            0.001
 #define WHITES            0.995
-#define EXPOSURE          0.00
-#define FILM_CURVE        0.70   // broken for now: no visible effect, print shoulder compensates (research/2026-11-09_effect_visibility.md)
+#define EXPOSURE          0.10
 
 // PRIMARY COLOR CORRECTION
 #define SHADOW_TEMP       -0.15
@@ -25,7 +24,7 @@
 
 // TONAL
 #define CONTRAST              1.0
-#define SHADOWS               1.0
+#define SHADOWS               0.80
 #define RETINEX_STRENGTH      0.0
 #define ZONE_CONTRAST_STRENGTH 1.0
 #define SHADOW_LIFT_STRENGTH   0.50

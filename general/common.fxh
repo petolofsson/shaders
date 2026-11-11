@@ -114,11 +114,13 @@ float3 SRGBToLinear(float3 rgb)
 // Dither in the 8-bit sRGB code domain before the explicit output encode.
 // Symmetric endpoint attenuation preserves exact black/white without a bias
 // from clipping the noise. noise is in [-0.5, 0.5].
-float3 DitherSDR(float3 rgb, float noise)
+// Spatial dither at the 8-bit output, returned sRGB-encoded (written directly; exact endpoints:
+// the amplitude is 0 at 0 and 1).
+float3 DitherSDREncoded(float3 rgb, float noise)
 {
     float3 encoded = LinearToSRGB(rgb);
     float3 amplitude = min(1.0 / 255.0, 2.0 * min(encoded, 1.0 - encoded));
-    return saturate(SRGBToLinear(encoded + noise * amplitude));
+    return saturate(encoded + noise * amplitude);
 }
 
 float3 RGBtoOklab(float3 rgb)
