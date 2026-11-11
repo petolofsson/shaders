@@ -13,14 +13,28 @@ Configured in `gamespecific/arc_raiders/arc_raiders.conf` and
 pipeline (one ShaderPipeline effect containing analysis_frame -> inverse_grade -> corrective -> grade)
 ```
 
-`grade.fx` is a 24-pass technique (the light-map passes follow TintRegion):
+`grade.fx` has 25 passes standalone; the combined pipeline drops its final highway copy (24):
 
 ```text
 LFDownscale1 -> LFDownscale2 -> NeutralIllum -> GuidedCoeff -> GuidedBase
 -> TintGather -> TintEnvH -> TintEnvV -> TintRegion
--> LLDirections -> LLDivergence -> LLDown1..4 -> LLUp3..0 -> LLAnchor
--> SceneContext -> ColorTransform -> AdaptiveHistory -> TexHwyWrite
+-> LLPoints -> LLDirections -> LLDivergence -> LLDown1..4 -> LLUp3..0 -> LLAnchor
+-> SceneContext -> ColorTransform -> AdaptiveHistory [-> TexHwyWrite, standalone only]
 ```
+
+Combined-pipeline cost structure (2026-11-11, [cost report](../research/2026-11-11_cost_reduction.md)):
+- `AnalysisStatsPS` (one 1×1 pass after SceneCut, five targets) replaces NearClip, MeanChroma,
+  HistEntropy, CDFWalk and CDFWalkMode; the separate passes remain for standalone `FrameAnalysis`.
+- `AnalysisLaneSamples` (32×18) and `LLPoints` (16×16: centre, right, down) cache lane samples
+  for the single-texel loops.
+- One highway write after corrective (`CombinedTexHwyWritePS`: analysis row 0, corrective rows
+  1–4). The combined inverse grade reads last frame's `NeutralIllumTex` (in `common.fxh`) directly.
+- `OklabToSDR` returns in-gamut colours directly; the projection (`OklabToSDRMap`) runs only
+  outside SDR (output-preserving branch, CODE_RULES exception).
+- The inverse-grade chroma limit is analytic (`GamutMaxChroma`); ~.016% of colours near the blue
+  cusp get a limit up to .047 C too high, which `OklabToSDR` then projects.
+- Compile-time switches skip exact no-op stages (all `LUMA_CONTRAST_*` 0, all `HUE_*` 0,
+  `RETINEX_STRENGTH` 0); with luma contrast and Retinex off, GuidedCoeff/GuidedBase write zero.
 
 SceneContext builds the frame-constant scene context once (`SceneCtxTex`, 6 RGBA32F
 texels); ColorTransform reads it instead of rebuilding it per pixel. Texels 0–1 are the
@@ -104,7 +118,7 @@ Encode/decode out-of-range quantities at the slot boundary.
   corrected-pixel detail through their combined gain. Source-range rejection
   protects narrow bright features; continuous overlapping windows estimate the base.
 - Downscale/guided taps use allocated integer dimensions, including non-divisible
-  sizes. Guided epsilon adapts to local variance. Native guide is R32F and observed
+  sizes. Guided epsilon adapts to local variance. Native guide is R16F and observed
   before inverse corrections; required observations stay inside the combined effect.
 - Inverse luma applies its weighted linear gain in RGB. Its guarded shadow
   reference is in the affine input domain, clamped to .06–.12 linear Y;
@@ -128,7 +142,7 @@ Encode/decode out-of-range quantities at the slot boundary.
   explicit flags handle source loss/recovery. The R60 context factor bounds
   log2(slow key/zone key) to ±log2 3 (×0.64–1.55 at weight .4). Without a valid
   source observation lift is zero; the original fallback lift was removed and
-  adaptive record one's G channel is written as zero.
+  adaptive record one's G channel holds the smoothed warm-key evidence (`sun_key`, below).
 - FilmCurve adapts to tail separation, highlight presence and entropy; the manual
   value remains its ceiling. Local max-channel protection supplements near-clip
   history. Film/shadow/print/gamut hysteresis uses elapsed time and does not force
@@ -144,13 +158,25 @@ Adopted 2026-11-09 ([report](../research/2026-11-09_cc_light_map_placement.md)).
 - **Estimate at 1/8.** Light = log luminance plus a local correction that removes
   confident paint steps (log-chroma change not explained by the frame's shade
   directions; smooth ramp .30–.40 on both), integrated by a 4-level convolution pyramid (`LLB0Tex`). `LLAnchorTex`:
-  r = offset to the frame's mean log luminance, g = frame lit level (p90 of light).
+  r = offset to the frame's mean log luminance, g = frame lit level (p90 of light),
+  b = raw warm-key evidence (below).
 - **Per pixel.** `LLLightLog` = native log luma (`NativeGuideLogTex`, floor log2 .002)
   + bilinear correction + offset. Detail below the 1/8 grid follows the pixel, so it is
   stable under camera motion; the material veto acts at map scale.
 - **Zones (`CCZoneW`).** d = stops below lit. Shadow = ss(1.25, 2.75, d) soft-OR
   (1 − ss(−9, −5, log2 light)); highlight = brightness/key highlight × (1 − shadow);
   mid = rest. Gate, shift scale and per-zone temp/tint are unchanged.
+- **Warm-key evidence (2026-11-11).** `LLAnchorPS` also counts, at its 16×16 lane
+  points, right/down lane pairs that step > 1 stop with the darker side > .1 bluer along `LL_SKY`
+  (`LLSunEdge`: sun beside skylit shade, or a warm lamp beside cool fill). The share is ramped
+  1.5–3.0% into `.b`. `BuildSceneCtx` smooths it (symmetric 1.5 s half-life, reset at cuts) into
+  `sun_key`, stored in adaptive record 0 G. `KEY_WARMTH` (profile, default 0 = production
+  unchanged) adds `KEY_WARMTH·sun_key` to highlight temperature and half of that to mid
+  temperature. Overcast, interior and menu frames read 0
+  ([look target](../research/2026-11-11_look_target.md)).
+- **Fill-following shadow colour (2026-11-11).** `SHADOW_FILL_FOLLOW` (profile,
+  default 0 = production unchanged) scales the shadow CC by lerp(1, `sun_key`, follow): at 1 the
+  shadow temp/tint applies only where shade measurably reads cooler than adjacent lit surfaces.
 - **Knob.** `SHADOW_CC_STRENGTH` (profile, default 1.0) multiplies `SHADOW_TEMP`/`TINT`
   inside 3-way CC only.
 

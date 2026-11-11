@@ -14,7 +14,8 @@ holds stage/resource contracts; consult the relevant sections before changing th
 - Output remains SDR in `[0,1]`, with `saturate()` as the ceiling. Decode/encode
   sRGB explicitly at processing boundaries; work internally in linear light.
   In-game HDR must be off. No HDR output or auto-exposure; `EXPOSURE` is manual.
-- Use smooth arithmetic instead of dynamic branches on pixel properties.
+- Use smooth arithmetic instead of dynamic branches on pixel properties (sole exception:
+  output-preserving skips, see CODE_RULES).
 - Runtime testing must be private and headless, with no desktop fallback,
   focus changes or physical-display changes. GPU/localhost work requires sandbox
   escalation. A failed private display stops the run.

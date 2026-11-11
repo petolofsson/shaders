@@ -38,7 +38,15 @@ texture2D LLDirATex { Width = 1; Height = 1; Format = RGBA32F; MipLevels = 1; };
 sampler2D LLDirASamp { Texture = LLDirATex; AddressU = CLAMP; AddressV = CLAMP; MinFilter = POINT; MagFilter = POINT; };
 texture2D LLDirBTex { Width = 1; Height = 1; Format = RGBA32F; MipLevels = 1; };
 sampler2D LLDirBSamp { Texture = LLDirBTex; AddressU = CLAMP; AddressV = CLAMP; MinFilter = POINT; MagFilter = POINT; };
-texture2D LLAnchorTex { Width = 1; Height = 1; Format = RG32F; MipLevels = 1; };
+texture2D LLAnchorTex { Width = 1; Height = 1; Format = RGBA32F; MipLevels = 1; };
+// 16×16 lane samples shared by LLDirections and LLAnchor (centre, right and down 1/8 neighbours),
+// gathered in one parallel pass so the single-texel reductions read a tiny texture.
+texture2D LLPtCTex { Width = 16; Height = 16; Format = RGBA32F; MipLevels = 1; };
+sampler2D LLPtCSamp { Texture = LLPtCTex; AddressU = CLAMP; AddressV = CLAMP; MinFilter = POINT; MagFilter = POINT; };
+texture2D LLPtRTex { Width = 16; Height = 16; Format = RGBA32F; MipLevels = 1; };
+sampler2D LLPtRSamp { Texture = LLPtRTex; AddressU = CLAMP; AddressV = CLAMP; MinFilter = POINT; MagFilter = POINT; };
+texture2D LLPtDTex { Width = 16; Height = 16; Format = RGBA32F; MipLevels = 1; };
+sampler2D LLPtDSamp { Texture = LLPtDTex; AddressU = CLAMP; AddressV = CLAMP; MinFilter = POINT; MagFilter = POINT; };
 sampler2D LLAnchorSamp { Texture = LLAnchorTex; AddressU = CLAMP; AddressV = CLAMP; MinFilter = POINT; MagFilter = POINT; };
 
 texture2D LLA0Tex { Width = LL_W0; Height = LL_H0; Format = R32F; MipLevels = 1; };
@@ -110,6 +118,22 @@ float LLTap(sampler2D s, int2 q, int2 size)
     return tex2Dlod(s, float4(quv, 0, 0)).r * inside;
 }
 
+// ─── 0. Shared 16×16 lane samples ───────────────────────────────────────────
+void LLPointsPS(float4 pos : SV_Position, float2 uv : TEXCOORD0,
+                out float4 c : SV_Target0, out float4 r : SV_Target1, out float4 d : SV_Target2)
+{
+    float2 suv = (floor(pos.xy) + 0.5) / 16.0;
+    float2 px = 1.0 / float2(LL_W0, LL_H0);
+    c = float4(ReadSpatialLane(suv).rgb, 0.0);
+    r = float4(ReadSpatialLane(suv + float2(px.x, 0.0)).rgb, 0.0);
+    d = float4(ReadSpatialLane(suv + float2(0.0, px.y)).rgb, 0.0);
+}
+
+float3 LLPoint(sampler2D s, float2 suv)
+{
+    return tex2Dlod(s, float4(suv, 0, 0)).rgb;
+}
+
 // ─── 1. Shade directions ────────────────────────────────────────────────────
 void LLDirectionsPS(float4 pos : SV_Position, float2 uv : TEXCOORD0,
                     out float4 dir_a : SV_Target0, out float4 dir_b : SV_Target1)
@@ -118,7 +142,7 @@ void LLDirectionsPS(float4 pos : SV_Position, float2 uv : TEXCOORD0,
     [loop] for (int j = 0; j < 16; j++)
     [loop] for (int i = 0; i < 16; i++)
     {
-        float3 rgb = ReadSpatialLane((float2(i, j) + 0.5) / 16.0).rgb;
+        float3 rgb = LLPoint(LLPtCSamp, (float2(i, j) + 0.5) / 16.0);
         float v = float(Luma(rgb) > 0.004);
         float ly = LLLog(rgb);
         s1 += v * ly; s2 += v * ly * ly; n += v;
@@ -132,7 +156,7 @@ void LLDirectionsPS(float4 pos : SV_Position, float2 uv : TEXCOORD0,
     [loop] for (int j2 = 0; j2 < 16; j2++)
     [loop] for (int i2 = 0; i2 < 16; i2++)
     {
-        float3 rgb = ReadSpatialLane((float2(i2, j2) + 0.5) / 16.0).rgb;
+        float3 rgb = LLPoint(LLPtCSamp, (float2(i2, j2) + 0.5) / 16.0);
         float ly = LLLog(rgb);
         float w_dark = (1.0 - smoothstep(lo - 0.25, lo + 0.25, ly)) * float(Luma(rgb) > 0.004);
         float w_lit = smoothstep(hi - 0.25, hi + 0.25, ly);
@@ -146,7 +170,7 @@ void LLDirectionsPS(float4 pos : SV_Position, float2 uv : TEXCOORD0,
     [loop] for (int j3 = 0; j3 < 16; j3++)
     [loop] for (int i3 = 0; i3 < 16; i3++)
     {
-        float3 rgb = ReadSpatialLane((float2(i3, j3) + 0.5) / 16.0).rgb;
+        float3 rgb = LLPoint(LLPtCSamp, (float2(i3, j3) + 0.5) / 16.0);
         float w_dark = (1.0 - smoothstep(lo - 0.25, lo + 0.25, LLLog(rgb))) * float(Luma(rgb) > 0.004);
         float upper = step(side_mid, dot(LLChroma(rgb), across));
         dark_a += w_dark * upper * rgb; wa += w_dark * upper;
@@ -246,25 +270,49 @@ float LLUp2PS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target { ret
 float LLUp1PS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target { return LLUp(LLB2Samp, int2(LL_W2, LL_H2), LLA1Samp, int2(LL_W1, LL_H1), pos.xy); }
 float LLUp0PS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target { return LLUp(LLB1Samp, int2(LL_W1, LL_H1), LLA0Samp, int2(LL_W0, LL_H0), pos.xy); }
 
+// Warm-key / cool-fill evidence for one lane pair: a step over 1 stop whose darker side is
+// over .1 bluer along LL_SKY (sun beside skylit shade, or a warm lamp beside cool fill).
+// Pairs touching near-black (luma <= .004) count as no evidence.
+float LLSunEdge(float3 c, float3 nb)
+{
+    float dl = LLLog(nb) - LLLog(c);
+    float s = dot(LLChroma(nb) - LLChroma(c), LL_SKY) * sign(-dl);
+    return step(1.0, abs(dl)) * step(0.1, s) * float(min(Luma(c), Luma(nb)) > 0.004);
+}
+
 // ─── 4. Anchor: offset that gives the correction zero mean; frame lit level ───
 // .r offset; .g frame lit level (log2) = mean + 1.28 sd of the anchored light (~p90).
-float2 LLAnchorPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+// .b warm-key evidence (raw, per frame): share of right/down lane pairs at the 16x16 points that
+// are sun edges (LLSunEdge), ramped 1.5–3.0%. Offline screen: sun frames 1.4–7.0% (median 3.7),
+// overcast 0.2–2.0% (median 0.8); research/2026-11-11_look_target.md.
+float4 LLAnchorPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float sum_b = 0.0;
     [loop] for (int j = 0; j < 16; j++)
     [loop] for (int i = 0; i < 16; i++)
         sum_b += tex2Dlod(LLB0Samp, float4((float2(i, j) + 0.5) / 16.0, 0, 0)).r;
     float offset = -LL_SCALE * sum_b / 256.0;          // correction has zero mean
-    float s1 = 0.0, s2 = 0.0;
+    float s1 = 0.0, s2 = 0.0, sun = 0.0;
+    float2 px = 1.0 / float2(LL_W0, LL_H0);
     [loop] for (int j2 = 0; j2 < 16; j2++)
     [loop] for (int i2 = 0; i2 < 16; i2++)
     {
         float2 suv2 = (float2(i2, j2) + 0.5) / 16.0;
-        float l = LLLog(ReadSpatialLane(suv2).rgb) + LL_SCALE * tex2Dlod(LLB0Samp, float4(suv2, 0, 0)).r + offset;
+        float3 c = LLPoint(LLPtCSamp, suv2);
+        float l = LLLog(c) + LL_SCALE * tex2Dlod(LLB0Samp, float4(suv2, 0, 0)).r + offset;
         s1 += l; s2 += l * l;
+        sun += LLSunEdge(c, LLPoint(LLPtRSamp, suv2))
+             + LLSunEdge(c, LLPoint(LLPtDSamp, suv2));
     }
     float m = s1 / 256.0;
-    return float2(offset, m + 1.2816 * sqrt(max(s2 / 256.0 - m * m, 0.0)));
+    float sun_w = smoothstep(1.5, 3.0, sun / 512.0 * 100.0);
+    return float4(offset, m + 1.2816 * sqrt(max(s2 / 256.0 - m * m, 0.0)), sun_w, 0.0);
+}
+
+// Raw per-frame warm-key evidence [0,1]; grade.fx smooths it in the adaptive history.
+float LLSunRaw()
+{
+    return tex2Dlod(LLAnchorSamp, float4(0.5, 0.5, 0, 0)).b;
 }
 
 // Stops below the frame's lit level.

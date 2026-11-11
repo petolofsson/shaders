@@ -19,6 +19,17 @@
 
 #include "../grade/grade.fx"
 
+// One highway write after corrective: analysis data row 0 (pixels 0-3) and corrective
+// ChromaHistory rows 1-4; the spatial lane passes through. Nothing reads row 0 between
+// the analysis stats and this pass. Pixel 4 (NeutralIllum) is unused here: the combined
+// inverse grade reads NeutralIllumTex directly.
+float4 CombinedTexHwyWritePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    if (int(pos.y) == TEX_HWY_SPATIAL_H && int(pos.x) < 4)
+        return TexHwyWriteDataPS(pos, uv);
+    return CorrectiveTexHwyWritePS(pos, uv);
+}
+
 technique ShaderPipeline
 {
     pass NativeGuideSource
@@ -33,6 +44,12 @@ technique ShaderPipeline
         PixelShader = TexHwyWriteSpatialPS;
         RenderTarget = TexHwyTex;
     }
+    pass AnalysisLaneSamples
+    {
+        VertexShader = PostProcessVS;
+        PixelShader = LaneSamplesPS;
+        RenderTarget = LaneSampTex;
+    }
     pass AnalysisHistogram
     {
         VertexShader = PostProcessVS;
@@ -45,53 +62,27 @@ technique ShaderPipeline
         PixelShader = LumHistSmoothPS;
         RenderTarget = LumHistTex;
     }
-    pass AnalysisEntropy
-    {
-        VertexShader = PostProcessVS;
-        PixelShader = HistEntropyPS;
-        RenderTarget = EntropyTex;
-    }
-    pass AnalysisPercentiles
-    {
-        VertexShader = PostProcessVS;
-        PixelShader = CDFWalkPS;
-        RenderTarget = PercTex;
-    }
     pass AnalysisSceneCut
     {
         VertexShader = PostProcessVS;
         PixelShader = SceneCutPS;
         RenderTarget = SceneCutTex;
     }
-    pass AnalysisNearClip
+    pass AnalysisStats
     {
         VertexShader = PostProcessVS;
-        PixelShader = NearClipPS;
-        RenderTarget = NearClipTex;
+        PixelShader = AnalysisStatsPS;
+        RenderTarget0 = NearClipTex;
+        RenderTarget1 = MeanChromaTex;
+        RenderTarget2 = EntropyTex;
+        RenderTarget3 = PercTex;
+        RenderTarget4 = ModeTex;
     }
     pass AnalysisHighPercentiles
     {
         VertexShader = PostProcessVS;
         PixelShader = CDFWalkHighPS;
         RenderTarget = PercHighTex;
-    }
-    pass AnalysisMeanChroma
-    {
-        VertexShader = PostProcessVS;
-        PixelShader = MeanChromaPS;
-        RenderTarget = MeanChromaTex;
-    }
-    pass AnalysisMode
-    {
-        VertexShader = PostProcessVS;
-        PixelShader = CDFWalkModePS;
-        RenderTarget = ModeTex;
-    }
-    pass AnalysisTextureHighway
-    {
-        VertexShader = PostProcessVS;
-        PixelShader = TexHwyWriteDataPS;
-        RenderTarget = TexHwyTex;
     }
     pass AnalysisScalarHighway
     {
@@ -132,7 +123,7 @@ technique ShaderPipeline
     pass CorrectiveTextureHighway
     {
         VertexShader = PostProcessVS;
-        PixelShader = CorrectiveTexHwyWritePS;
+        PixelShader = CombinedTexHwyWritePS;
         RenderTarget = TexHwyTex;
     }
     pass CorrectiveScalarHighway
@@ -175,6 +166,7 @@ technique ShaderPipeline
     pass GradeTintEnvH    { VertexShader = PostProcessVS; PixelShader = TintEnvHPS;   RenderTarget0 = TintEnvAHTex;   RenderTarget1 = TintEnvBHTex; }
     pass GradeTintEnvV    { VertexShader = PostProcessVS; PixelShader = TintEnvVPS;   RenderTarget0 = TintEnvATex;    RenderTarget1 = TintEnvBTex; }
     pass GradeTintRegion  { VertexShader = PostProcessVS; PixelShader = TintRegionPS;  RenderTarget = TintRegionTex; }
+    pass GradeLLPoints { VertexShader = PostProcessVS; PixelShader = LLPointsPS; RenderTarget0 = LLPtCTex; RenderTarget1 = LLPtRTex; RenderTarget2 = LLPtDTex; }
     pass GradeLLDirections { VertexShader = PostProcessVS; PixelShader = LLDirectionsPS; RenderTarget0 = LLDirATex; RenderTarget1 = LLDirBTex; }
     pass GradeLLDivergence { VertexShader = PostProcessVS; PixelShader = LLDivergencePS; RenderTarget = LLA0Tex; }
     pass GradeLLDown1 { VertexShader = PostProcessVS; PixelShader = LLDown1PS; RenderTarget = LLA1Tex; }
@@ -203,11 +195,5 @@ technique ShaderPipeline
         VertexShader = PostProcessVS;
         PixelShader = AdaptiveHistoryPS;
         RenderTarget = AdaptiveHistoryTex;
-    }
-    pass GradeTextureHighway
-    {
-        VertexShader = PostProcessVS;
-        PixelShader = TexHwyWritePS;
-        RenderTarget = TexHwyTex;
     }
 }

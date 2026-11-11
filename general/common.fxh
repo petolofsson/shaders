@@ -38,6 +38,17 @@ sampler2D TexHwySamp
     MagFilter = LINEAR;
 };
 
+// Neutral-pixel-weighted illuminant estimate — 1×1, written by grade's NeutralIllumPS each
+// frame. Declared here so the combined pipeline's inverse grade reads last frame's value
+// directly; standalone effects use the TexHwyTex copy (data row 0 pixel 4).
+texture2D NeutralIllumTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
+sampler2D NeutralIllumSamp
+{
+    Texture   = NeutralIllumTex;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
 // Clamp already-mapped highway UVs to spatial texel centers so filtering never
 // blends metadata into the bottom of the image.
 float2 ClampSpatialUV(float2 uv)
@@ -193,15 +204,11 @@ float3 BlueCuspSDR(float3 lab)
 }
 
 // Keep radial fixed-hue projection except around the disconnected blue cusp.
-float3 OklabToSDR(float3 lab)
+// Called only for colours outside SDR (see OklabToSDR).
+float3 OklabToSDRMap(float3 lab)
 {
-    lab.x = saturate(lab.x);
     float lower = 0.0;
     float upper = 1.0;
-    float3 original = OklabToRGB(lab);
-    // Matrix roundoff at an SDR face must not trigger a large chroma contraction.
-    float valid = step(-1e-6, min(original.r, min(original.g, original.b)))
-                * step(max(original.r, max(original.g, original.b)), 1.0 + 1e-6);
     [unroll] for (int i = 0; i < 10; i++)
     {
         float mid = (lower + upper) * 0.5;
@@ -224,7 +231,22 @@ float3 OklabToSDR(float3 lab)
     float3 mixed = max(OklabToRGB(float3(lab.x, mixed_ab)), 0.0);
     float3 restored = SDRRestoreLightness(mixed, lab.x);
     float3 mapped = lerp(radial, restored, sign(cusp));
-    return saturate(lerp(mapped, original, valid));
+    return saturate(mapped);
+}
+
+// Output-preserving performance branch (user exception to the no-pixel-branch rule,
+// 2026-11-11): colours already inside SDR were always returned unchanged (the former
+// lerp(mapped, original, valid)), so the costly projection now runs only outside SDR.
+float3 OklabToSDR(float3 lab)
+{
+    lab.x = saturate(lab.x);
+    float3 original = OklabToRGB(lab);
+    // Matrix roundoff at an SDR face must not trigger a large chroma contraction.
+    float valid = step(-1e-6, min(original.r, min(original.g, original.b)))
+                * step(max(original.r, max(original.g, original.b)), 1.0 + 1e-6);
+    [branch] if (valid > 0.5)
+        return saturate(original);
+    return OklabToSDRMap(lab);
 }
 
 float OklabHueNorm(float a, float b)

@@ -7,18 +7,24 @@ Read:
 4. docs/pipeline.md for the relevant stage/resource contracts.
 
 The goal is a fuller progression from light through midtones into deep, readable
-shadows, with subtly richer material color under the available lighting.
+shadows, with subtly richer material color under the available lighting. The user's
+reference look (2026-11-11) is naturalistic film daylight: cream-warm sun, neutral shade,
+natural foliage, deeper readable darks (mock `mix_tsb`).
 
-Current state (2026-11-10): 3-way CC shadow/mid/highlight colour is placed by the light
-map (`general/grade/light_map.fxh`). The shared 1/8 spatial lane is a full 8×8 mean.
-`SHADOW_CC_STRENGTH` is 2.5 and `WARM_RESTRAINT` 1.0 in both profiles. Next: the user's live-play check. The shade-lift
-side branch was closed on 2026-11-10 (the user prefers production's lift).
-See PLAN for closed routes; do not re-propose them without new evidence.
+Current state (2026-11-11): 3-way CC is light-aware. The light-map sun-edge cue `sun_key`
+drives `KEY_WARMTH` (warmth only under a warm key with cool fill) and `SHADOW_FILL_FOLLOW`
+(shadow colour only where shade reads cooler than sunlit surfaces); both default to 0 and
+the GZW profile uses them. Shader cost on GZW fell from ~2.2 to ~1.15 ms. Next: shade colour
+on sunny GZW frames (needs a shader-off screenshot of the same view), live-play check of the
+cue, and the Arc profile. See PLAN for closed routes; do not re-propose them without new
+evidence.
 
 Reviews of shadow/light work show per-frame "0–100" light maps (p1 black, p99 white,
 even in stops) plus shadow/mid/light zone overlays. Give the user review images at native
-resolution on the local drive.
+resolution on the local drive. When reading user screenshots, measure at native resolution:
+downscaled previews show false banding.
 
-Preserve production. Runtime remains private and headless. Keep each root file within
-its documented purpose. Put detailed experiments and history in research/, and update
-current state instead of stacking resume addenda.
+Preserve production. Runtime remains private and headless; cost work uses static models
+and user-read FPS, not GPU profiling. Keep each root file within its documented purpose.
+Put detailed experiments and history in research/, and update current state instead of
+stacking resume addenda.

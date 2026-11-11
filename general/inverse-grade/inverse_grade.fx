@@ -29,6 +29,67 @@ sampler2D BackBuffer
 
 // NeutralIllum RGB: read from TexHwyTex data row 0 pixel 4 (grade writes each frame, one-frame delay).
 
+// Largest Oklab chroma inside sRGB at lightness L along unit ab direction d (Ottosson 2021,
+// "sRGB gamut clipping": cusp from a fitted max-saturation polynomial with one Halley step,
+// black-cusp line below the cusp, one Halley step per channel above it). Branch-free:
+// coefficient sets and halves are selected arithmetically.
+float GamutMaxSaturation(float2 d)
+{
+    float red   = step(1.0, -1.88170328 * d.x - 0.80936493 * d.y);
+    float green = step(1.0,  1.81444104 * d.x - 1.19445276 * d.y) * (1.0 - red);
+    float blue  = 1.0 - red - green;
+    float k0 = red * 1.19086277 + green * 0.73956515 + blue * 1.35733652;
+    float k1 = red * 1.76576728 - green * 0.45954404 - blue * 0.00915799;
+    float k2 = red * 0.59662641 + green * 0.08285427 - blue * 1.15130210;
+    float k3 = red * 0.75515197 + green * 0.12541070 - blue * 0.50559606;
+    float k4 = red * 0.56771245 + green * 0.14503204 + blue * 0.00692167;
+    float3 w = red   * float3( 4.0767416621, -3.3077115913,  0.2309699292)
+             + green * float3(-1.2684380046,  2.6097574011, -0.3413193965)
+             + blue  * float3(-0.0041960863, -0.7034186147,  1.7076147010);
+    float S = k0 + k1 * d.x + k2 * d.y + k3 * d.x * d.x + k4 * d.x * d.y;
+    float3 k  = float3( 0.3963377774 * d.x + 0.2158037573 * d.y,
+                       -0.1055613458 * d.x - 0.0638541728 * d.y,
+                       -0.0894841775 * d.x - 1.2914855480 * d.y);
+    [unroll] for (int i = 0; i < 2; i++)   // two Halley steps: cusp error < 1e-5
+    {
+        float3 q  = 1.0 + S * k;
+        float f  = dot(w, q * q * q);
+        float f1 = dot(w, 3.0 * k * q * q);
+        float f2 = dot(w, 6.0 * k * k * q);
+        S -= f * f1 / (f1 * f1 - 0.5 * f * f2);
+    }
+    return S;
+}
+
+float GamutMaxChroma(float L, float2 d)
+{
+    float  S_cusp  = GamutMaxSaturation(d);
+    float3 rgb_max = OklabToRGB(float3(1.0, S_cusp * d));
+    float  L_cusp  = exp2(log2(1.0 / max(max(rgb_max.r, max(rgb_max.g, rgb_max.b)), 1e-6)) * (1.0 / 3.0));
+    float  C_cusp  = L_cusp * S_cusp;
+    float  lower   = step(L, L_cusp);
+    float  t_low   = C_cusp * L / max(L_cusp, 1e-6);
+    float  t_up    = C_cusp * (1.0 - L) / max(1.0 - L_cusp, 1e-6);
+    // One Halley step on each channel's distance to 1 along constant L (dL = 0, dC = 1).
+    float3 k   = float3( 0.3963377774 * d.x + 0.2158037573 * d.y,
+                        -0.1055613458 * d.x - 0.0638541728 * d.y,
+                        -0.0894841775 * d.x - 1.2914855480 * d.y);
+    float3 q   = L + t_up * k;
+    float3 c0  = q * q * q;
+    float3 c1  = 3.0 * k * q * q;
+    float3 c2  = 6.0 * k * k * q;
+    float3 mr = float3( 4.0767416621, -3.3077115913,  0.2309699292);
+    float3 mg = float3(-1.2684380046,  2.6097574011, -0.3413193965);
+    float3 mb = float3(-0.0041960863, -0.7034186147,  1.7076147010);
+    float3 f0 = float3(dot(mr, c0), dot(mg, c0), dot(mb, c0)) - 1.0;
+    float3 f1 = float3(dot(mr, c1), dot(mg, c1), dot(mb, c1));
+    float3 f2 = float3(dot(mr, c2), dot(mg, c2), dot(mb, c2));
+    float3 u  = f1 / (f1 * f1 - 0.5 * f0 * f2);
+    float3 tc = lerp(1e6, -f0 * u, step(0.0, u));
+    t_up += min(tc.x, min(tc.y, tc.z));
+    return max(lerp(t_up, t_low, lower), 0.0);
+}
+
 float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
     float4 col    = tex2D(BackBuffer, uv);
@@ -49,7 +110,12 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     // cool hues (teal, cyan) less. Scale slope per hue before applying expansion.
     // R165: in warm-lit scenes, warm-hue saturation is the illuminant — not a tonemapper
     // artifact. Back off positive bias proportionally. One-frame delay acceptable.
+#ifdef SHADER_PIPELINE_COMBINED
+    // Last frame's NeutralIllum, read directly (same value the highway copy carried).
+    float3 ni_rgb     = tex2Dlod(NeutralIllumSamp, float4(0.5, 0.5, 0, 0)).rgb;
+#else
     float3 ni_rgb     = ReadTexHwyIlluminant().rgb;
+#endif
     float  illum_warm = IllumWarm(ni_rgb);
     float  warm_scene  = saturate((illum_warm - 0.45) / 0.35);
     // R196-J: per-pixel illumination gate — high-luma pixels are illumination-dominated.
@@ -89,17 +155,9 @@ float4 InverseGradePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targ
     float  ceil_C  = max(0.85 * HueCeil(hue), C);
     // Budget added chroma against this pixel's SDR headroom at fixed lightness.
     // Start at the valid source color, avoiding a search through the blue cusp.
-    float gamut_lo = C;
-    float gamut_hi = ceil_C;
-    [unroll] for (int i = 0; i < 14; i++)
-    {
-        float trial_C = (gamut_lo + gamut_hi) * 0.5;
-        float3 trial_rgb = OklabToRGB(float3(lab.x, dir * trial_C));
-        float inside = step(0.0, min(trial_rgb.r, min(trial_rgb.g, trial_rgb.b)))
-                     * step(max(trial_rgb.r, max(trial_rgb.g, trial_rgb.b)), 1.0);
-        gamut_lo = lerp(gamut_lo, trial_C, inside);
-        gamut_hi = lerp(trial_C, gamut_hi, inside);
-    }
+    // Direct sRGB boundary at this lightness (was a 10-step bisection on [C, ceil_C]).
+    float2 gamut_dir = C > 1e-6 ? lab.yz / C : float2(1.0, 0.0);
+    float gamut_lo = clamp(GamutMaxChroma(lab.x, gamut_dir), C, ceil_C);
     float3 ceiling_rgb = OklabToRGB(float3(lab.x, dir * ceil_C));
     float ceiling_valid = step(0.0, min(ceiling_rgb.r, min(ceiling_rgb.g, ceiling_rgb.b)))
                         * step(max(ceiling_rgb.r, max(ceiling_rgb.g, ceiling_rgb.b)), 1.0);

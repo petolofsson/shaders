@@ -6,7 +6,9 @@ Read [AGENTS.md](AGENTS.md) for repository constraints and the relevant
 ## HLSL structure
 
 - No dynamic branches on pixel properties or recursion. Use `lerp`, `smoothstep`,
-  `step`, `saturate` and arithmetic masks.
+  `step`, `saturate` and arithmetic masks. Exception (user, 2026-11-11): a branch that
+  only skips work whose result is discarded, with unchanged output, e.g. `OklabToSDR`'s
+  in-gamut early return. Branches on compile-time constants are not pixel branches.
 - Loops need compile-time bounds and explicit `[loop]` or `[unroll]`.
 - Declare textures, samplers and targets statically; no hidden allocation.
 - Keep helpers and pixel shaders short; `ColorTransformPS` is the orchestration

@@ -2,13 +2,20 @@
 
 Work toward [GOAL.md](GOAL.md) while preserving profiles and production. State and
 identities are in [HANDOFF.md](HANDOFF.md); adopted history is in [CHANGELOG.md](CHANGELOG.md).
-The previous full text is in the [2026-11-10 ledger](research/2026-11-10_root_document_history.md).
+The previous full text is in the [2026-11-11 ledger](research/2026-11-11_root_document_history.md).
 
 ## Next
 
-1. **User live-play check** of the light-map CC placement and the full-area lane, plus
-   per-game `SHADOW_CC_STRENGTH`. Act only on a concrete reported failure.
-   The same check covers `WARM_RESTRAINT` (1.0 = warm hues at about source chroma).
+1. **Look target (user, 2026-11-11):** mock `mix_tsb` ([look target](research/2026-11-11_look_target.md)).
+   - Shade colour: get a shader-off screenshot of the sunny GZW house view, then set
+     `SHADOW_CC_STRENGTH` from the measured paint/fill vs tint split.
+   - Live play of `KEY_WARMTH` / `SHADOW_FILL_FOLLOW`: pans, sun↔shade walks, interiors. Act
+     only on a concrete failure (pan breathing → denser cue sampling).
+   - Arc: try the knobs on the Arc profile; check the cue miss on 211131.
+   - Remaining gaps need evidence first: dark-foliage lift, sky vs shade hue. Haze needs depth.
+2. **Cost (optional):** ~1.15 ms remains. Options and estimates in the
+   [cost report](research/2026-11-11_cost_reduction.md); stop unless the user wants more FPS.
+3. **Earlier live-play items:** shadow-edge crawl, Arc menu patches, `WARM_RESTRAINT` per game.
 
 ## Closed — do not reopen without new evidence
 
@@ -49,4 +56,5 @@ build segmentation to port weak references.
 ## Optional confidence work
 
 Broader game and lighting coverage, dense gameplay, physical high refresh, whole-chain
-hitches, and other resolutions and aspects. GPU profiling stays deferred.
+hitches, and other resolutions and aspects. GPU profiling stays deferred; cost work uses
+static models plus user-read FPS.

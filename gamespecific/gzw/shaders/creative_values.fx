@@ -14,7 +14,9 @@
 // PRIMARY COLOR CORRECTION
 #define SHADOW_TEMP       -0.15
 #define SHADOW_TINT       -0.030
-#define SHADOW_CC_STRENGTH 2.0   // multiplies SHADOW_TEMP/TINT; shadow colour placed by the light map
+#define SHADOW_CC_STRENGTH 1.25  // multiplies SHADOW_TEMP/TINT; shadow colour placed by the light map
+#define SHADOW_FILL_FOLLOW 1.0    // 1 = shadow colour only where shade reads cooler than adjacent sunlit surfaces (0 = everywhere)
+#define KEY_WARMTH         0.5    // extra mid/highlight warmth only when the frame shows a warm key against cool fill
 #define MID_TEMP          0.0875
 #define MID_TINT          0.00
 #define HIGHLIGHT_TEMP    0.10
@@ -23,7 +25,7 @@
 // TONAL
 #define CONTRAST              1.0
 #define SHADOWS               1.0
-#define RETINEX_STRENGTH      0.4
+#define RETINEX_STRENGTH      0.0
 #define ZONE_CONTRAST_STRENGTH 1.0
 #define SHADOW_LIFT_STRENGTH   0.50
 #define SHADOW_SURROUND_TINT   1.0   // shadows take a slight tint of surrounding surface colour (0 = off)

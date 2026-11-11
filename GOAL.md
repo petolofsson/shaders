@@ -24,6 +24,10 @@ depth and richness. Preserve palette, lighting and deliberately restrained scene
   tint, neon saturation and artificially bright shadows.
 - **Light:** convincing relationships between shadows, midtones and highlights;
   bright areas retain shape and feel luminous.
+- **Reference look** (user, 2026-11-11): naturalistic film daylight. That means cream-warm
+  sun, neutral shade without an imposed cast, distance that recedes, natural foliage,
+  and darks deeper than the source yet readable
+  ([look target](research/2026-11-11_look_target.md)).
 - **Restraint:** avoid halos, exaggerated texture, conspicuous casts, pumping
   and flicker. Richness is not a saturation, darkness or hue-coverage target.
 

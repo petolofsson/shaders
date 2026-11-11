@@ -93,6 +93,12 @@
 #ifndef SHADOW_CC_STRENGTH
 #define SHADOW_CC_STRENGTH 1.0
 #endif
+#ifndef KEY_WARMTH
+#define KEY_WARMTH 0.0
+#endif
+#ifndef SHADOW_FILL_FOLLOW
+#define SHADOW_FILL_FOLLOW 0.0
+#endif
 
 #ifndef SHADER_PIPELINE_COMBINED
 uniform float FRAME_TIMER < source = "timer"; >;        // ms since app start
@@ -101,6 +107,16 @@ uniform float GRADE_FRAME_TIME < source = "frametime"; >; // ms per frame
 
 // ─── Chroma lift constants ─────────────────────────────────────────────────
 #define GREEN_HUE_COOL  (4.0 / 360.0)
+
+// Compile-time stage switches. With their knobs at 0 these stages are exact no-ops; the
+// constant condition lets the compiler drop their work (not a branch on pixel data).
+static const bool GRADE_LC_ON = (LUMA_CONTRAST_RED != 0.0) || (LUMA_CONTRAST_YELLOW != 0.0)
+    || (LUMA_CONTRAST_GREEN != 0.0) || (LUMA_CONTRAST_CYAN != 0.0)
+    || (LUMA_CONTRAST_BLUE != 0.0) || (LUMA_CONTRAST_MAG != 0.0);
+static const bool GRADE_HUE_ON = (HUE_RED != 0.0) || (HUE_YELLOW != 0.0) || (HUE_GREEN != 0.0)
+    || (HUE_CYAN != 0.0) || (HUE_BLUE != 0.0) || (HUE_MAG != 0.0);
+static const bool GRADE_RETINEX_ON = (RETINEX_STRENGTH > 0.0);
+static const bool GRADE_GUIDED_ON = GRADE_LC_ON || GRADE_RETINEX_ON;   // BilateralLog consumers
 
 
 // ─── Textures ──────────────────────────────────────────────────────────────
@@ -162,14 +178,7 @@ sampler2D LowFreqMip2Samp
     MagFilter = LINEAR;
 };
 
-// Neutral-pixel-weighted illuminant estimate — 1×1, written by NeutralIllumPS each frame
-texture2D NeutralIllumTex { Width = 1; Height = 1; Format = RGBA16F; MipLevels = 1; };
-sampler2D NeutralIllumSamp
-{
-    Texture   = NeutralIllumTex;
-    MinFilter = POINT;
-    MagFilter = POINT;
-};
+// Neutral-pixel-weighted illuminant estimate (NeutralIllumTex): declared in common.fxh.
 
 // Scene-adaptive controls are persisted separately so gradual lighting changes
 // do not pump the grade. ColorTransform reads the previous frame; the final
@@ -413,6 +422,7 @@ struct SceneCtx {
     float  chroma_scene_scale;
     float  chroma_str_base;
     float  scene_mode;
+    float  sun_key;      // smoothed warm-key / cool-fill evidence [0,1] (light map, LLSunRaw)
     float  median_C;     // scene median Oklab C (highway HWY_MEDIAN_C) [0, 0.30]
     float  key_L;        // cbrt(slow_key), clamped [0.30,0.80] — Oklab L pivot for zone gates
 };
@@ -530,7 +540,7 @@ SceneCtx BuildSceneCtx()
 
     float4 adaptive_prev = tex2Dlod(AdaptiveHistorySamp, float4(0.25, 0.5, 0, 0));
     float4 adaptive_raw  = float4(ctx.film_curve_strength,
-                                  0.0,   // channel formerly held the unreachable fallback lift
+                                  LLSunRaw(),   // warm-key evidence (formerly the unused fallback lift)
                                   ctx.print_stock_strength,
                                   ctx.gamut_strength);
     float  seeded        = step(0.001, adaptive_prev.r + adaptive_prev.g
@@ -544,6 +554,9 @@ SceneCtx BuildSceneCtx()
              AdaptiveStep(adaptive_prev.b, adaptive_raw.b, ctx.scene_cut)),
         lerp(adaptive_prev.a, adaptive_raw.a,
              AdaptiveStep(adaptive_prev.a, adaptive_raw.a, ctx.scene_cut)));
+    // Warm-key evidence: slow symmetric 1.5 s half-life (no pumping in pans), reset at cuts.
+    float sun_alpha = lerp(1.0 - exp2(-max(GRADE_FRAME_TIME, 0.0) / 1500.0), 1.0, saturate(ctx.scene_cut));
+    ctx.sun_key = lerp(adaptive_raw.g, lerp(adaptive_prev.g, adaptive_raw.g, sun_alpha), seeded);
     ctx.film_curve_strength = lerp(adaptive_raw.r, adaptive_next.r, seeded);
     ctx.print_stock_strength = lerp(adaptive_raw.b, adaptive_next.b, seeded);
     ctx.gamut_strength       = lerp(adaptive_raw.a, adaptive_next.a, seeded);
@@ -552,7 +565,7 @@ SceneCtx BuildSceneCtx()
 
 float4 PackSceneCtx(SceneCtx ctx, int texel)
 {
-    if (texel == 0) return float4(ctx.film_curve_strength, 0.0, ctx.print_stock_strength, ctx.gamut_strength);
+    if (texel == 0) return float4(ctx.film_curve_strength, ctx.sun_key, ctx.print_stock_strength, ctx.gamut_strength);
     if (texel == 1) return float4(ctx.adaptation_gate, ctx.ambient_gate, 1.0 + ctx.lift_current_valid, ctx.shadow_lift_product);
     if (texel == 2) return ctx.perc;
     if (texel == 3) return float4(ctx.zone_log_key, ctx.zone_str, ctx.ss_04_25, ctx.inverse_luma_budget);
@@ -574,6 +587,7 @@ SceneCtx ReadSceneCtx()
     float4 t3 = ReadSceneCtxTexel(3);
     float4 t4 = ReadSceneCtxTexel(4);
     ctx.film_curve_strength  = t0.r;
+    ctx.sun_key              = t0.g;
     ctx.print_stock_strength = t0.b;
     ctx.gamut_strength       = t0.a;
     ctx.adaptation_gate      = t1.r;
@@ -644,10 +658,13 @@ float3 ApplyCorrective(float3 lin, float col_luma, SceneCtx ctx, float2 ll)
         lin_e *= lerp(1.0, exp2(-cpl * 0.3), 0.30);
     }
     // ── R19: 3-way CC — primary grade before print emulation ──────────────────
+    // Shadow colour follows measured cool fill (sun_key): SHADOW_FILL_FOLLOW 1 keeps it only where
+    // shade reads bluer than adjacent lit surfaces; 0 = fixed shadow colour everywhere.
+    float shadow_cc = float(SHADOW_CC_STRENGTH) * lerp(1.0, ctx.sun_key, saturate(float(SHADOW_FILL_FOLLOW)));
     lin_e = Apply3WayCC(lin_e,
-                          SHADOW_TEMP * float(SHADOW_CC_STRENGTH), SHADOW_TINT * float(SHADOW_CC_STRENGTH),
-                          MID_TEMP, MID_TINT,
-                          HIGHLIGHT_TEMP, HIGHLIGHT_TINT,
+                          SHADOW_TEMP * shadow_cc, SHADOW_TINT * shadow_cc,
+                          MID_TEMP + 0.5 * float(KEY_WARMTH) * ctx.sun_key, MID_TINT,
+                          HIGHLIGHT_TEMP + float(KEY_WARMTH) * ctx.sun_key, HIGHLIGHT_TINT,
                           ctx.key_L, ll);
     return lin_e;
 }
@@ -708,6 +725,7 @@ TonalOut ApplyTonal(float3 lin, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
     float luma        = Luma(lin);
     float luma_orig   = luma;   // remapped to the shared tonal base below
     // R190 guided-filter detail signal, used only by hue-selective luma contrast.
+    [branch] if (GRADE_LC_ON)
     {
         float log_base   = tex2D(BilateralLogSamp, uv).r;  // log2-luma base layer (1/8-res)
         float log_lf1    = log2(max(Luma(tex2D(LowFreqMip1Samp, uv).rgb), 1e-3));  // 1/16-res
@@ -747,6 +765,8 @@ TonalOut ApplyTonal(float3 lin, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
     float nl_safe   = max(luma, 0.001);
     float log_R     = log2(nl_safe / illum_s0);
     float zk_safe   = max(ctx.zone_log_key, 0.001);
+    [branch] if (GRADE_RETINEX_ON)
+    {
     // Evaluate the guided fit in its original source domain, before inverse/CC.
     // Retain only its unresolved residual: a self-model stays exact, while
     // coarse coefficient errors cannot paint rims into native flat materials.
@@ -774,6 +794,7 @@ TonalOut ApplyTonal(float3 lin, float2 uv, float4 lf_mip2_tex, SceneCtx ctx)
                             * lerp(0.75, 1.0, ctx.ss_04_25) * ctx.adaptation_gate
                             * saturate(float(RETINEX_STRENGTH));
     luma = lerp(luma, max(luma * illum_gain, 0.0), retinex_strength);
+    }
 
     // A scene-wide pivot avoids painting coarse-zone gradients into flat materials.
     // Both signals retain their existing live analysis and temporal histories.
@@ -852,13 +873,18 @@ float3 ApplyChroma(float3 lin, float local_var, SceneCtx ctx)
     // R21: per-band hue rotation — wider band (0.14 vs HB_BAND_WIDTH 0.08) covers full wheel
     // with 6 knobs. Calibrated bands use 0.08; creative rotation needs ±50° to avoid dead zones
     // in azure (CYAN↔BLUE gap) and orange/violet (RED↔YELLOW, BLUE↔MAG gaps).
-    float r21_delta = HUE_RED    * HueBandWeightW(h_perc, HB_BAND_RED)
-                    + HUE_YELLOW * HueBandWeightW(h_perc, HB_BAND_YELLOW)
-                    + HUE_GREEN  * HueBandWeightW(h_perc, HB_BAND_GREEN)
-                    + HUE_CYAN   * HueBandWeightW(h_perc, HB_BAND_CYAN)
-                    + HUE_BLUE   * HueBandWeightW(h_perc, HB_BAND_BLUE)
-                    + HUE_MAG    * HueBandWeightW(h_perc, HB_BAND_MAGENTA);
-    float h_out  = frac(h_perc + r21_delta * 0.10);
+    float r21_delta = 0.0;
+    float h_out     = h_perc;   // exact when every HUE_* is 0 (h_perc is already in [0,1))
+    [branch] if (GRADE_HUE_ON)
+    {
+        r21_delta = HUE_RED    * HueBandWeightW(h_perc, HB_BAND_RED)
+                  + HUE_YELLOW * HueBandWeightW(h_perc, HB_BAND_YELLOW)
+                  + HUE_GREEN  * HueBandWeightW(h_perc, HB_BAND_GREEN)
+                  + HUE_CYAN   * HueBandWeightW(h_perc, HB_BAND_CYAN)
+                  + HUE_BLUE   * HueBandWeightW(h_perc, HB_BAND_BLUE)
+                  + HUE_MAG    * HueBandWeightW(h_perc, HB_BAND_MAGENTA);
+        h_out     = frac(h_perc + r21_delta * 0.10);
+    }
     float hw_o0  = HueBandWeightW(h_out, HB_BAND_RED);
     float hw_o1  = HueBandWeightW(h_out, HB_BAND_YELLOW);
     float hw_o2  = HueBandWeightW(h_out, HB_BAND_GREEN);
@@ -1216,6 +1242,7 @@ float4 TintRegionPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 // Reads TexHwySamp spatial lane (1/8-res RGBA16F). Writes GuidedCoeffTex (RG16F).
 float2 GuidedCoeffPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
+    [branch] if (!GRADE_GUIDED_ON) return 0.0;   // no consumer (luma contrast and Retinex off)
     // GuidedCoeffTex is BUFFER_WIDTH/8 × BUFFER_HEIGHT/8; uv∈[0,1] maps full spatial lane.
     float px  = 1.0 / float(BUFFER_WIDTH / 8);
     float py  = 1.0 / float(TEX_HWY_TOTAL_H);   // one spatial-lane texel in TexHwyTex V
@@ -1242,6 +1269,7 @@ float2 GuidedCoeffPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
 // Writes base log-luma in .r and mean guide coefficients in .gb (RGBA16F).
 float4 GuidedBasePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
+    [branch] if (!GRADE_GUIDED_ON) return 0.0;   // no consumer (luma contrast and Retinex off)
     float px = 1.0 / float(BUFFER_WIDTH / 8);
     float py = 1.0 / float(BUFFER_HEIGHT / 8);
     float sum_a = 0.0, sum_b = 0.0;

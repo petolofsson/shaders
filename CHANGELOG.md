@@ -5,6 +5,25 @@ tradeoffs; their profile values describe their own evidence epochs. Current
 profiles and scores are in [HANDOFF.md](HANDOFF.md). The former detailed ledger
 is preserved in [research](research/2026-11-06_root_document_history.md).
 
+## 2026-11-11 — Light-aware CC; cost reduction
+
+Look target (user): mock `mix_tsb`, naturalistic film daylight ([look target](research/2026-11-11_look_target.md)).
+- **`KEY_WARMTH`:** `LLAnchorPS` counts sun edges (lane steps > 1 stop whose darker side is
+  > .1 bluer along `LL_SKY`) at its 16×16 points; the share ramps 1.5–3.0% into `sun_key`
+  (1.5 s symmetric half-life, reset at cuts, adaptive record 0 G). Adds `KEY_WARMTH·sun_key`
+  to highlight temperature and half to mid. Default 0.
+- **`SHADOW_FILL_FOLLOW`:** scales shadow CC by lerp(1, `sun_key`, follow), so overcast,
+  interior and menu shade keeps source colour (menu dark-20% chroma 1.58 → .47, source .19).
+  Default 0.
+- Defaults are bit-identical to the previous production on 7 scenes. GZW profile (user, live
+  play): `KEY_WARMTH` .5, `SHADOW_FILL_FOLLOW` 1, `SHADOW_CC_STRENGTH` 1.25, `RETINEX_STRENGTH` 0.
+
+Cost ([report](research/2026-11-11_cost_reduction.md)): GZW shader cost ~2.2 → ~1.15 ms.
+`OklabToSDR` returns in-gamut colours directly (user-authorized output-preserving branch;
+CODE_RULES exception); compile-time skips of zero-knob stages; five 1×1 analysis passes merged;
+lane-sample caches; one highway copy; analytic inverse-grade gamut limit; native guide R16F.
+44 → 40 passes. Bit-identical except the trims and analytic limit (≤ 1 code, ≤ .9% px).
+
 ## 2026-11-10 — Retinex strength .4
 
 The user chose `RETINEX_STRENGTH` .4 in both profiles after a settled review of 0–1.0. At 1.0 settled

@@ -134,6 +134,28 @@ sampler2D EntropySamp
 
 #include "../native_guide.fxh"
 
+// The DS_W×DS_H lane samples shared by the histogram, scene-cut and statistics loops,
+// gathered once in parallel (bilinear lane reads, stored exactly as fp32).
+texture2D LaneSampTex { Width = DS_W; Height = DS_H; Format = RGBA32F; MipLevels = 1; };
+sampler2D LaneSampSamp
+{
+    Texture   = LaneSampTex;
+    AddressU  = CLAMP;
+    AddressV  = CLAMP;
+    MinFilter = POINT;
+    MagFilter = POINT;
+};
+
+float4 LaneSamplesPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+{
+    return ReadSpatialLane((floor(pos.xy) + 0.5) / float2(DS_W, DS_H));
+}
+
+float4 LaneSample(int x, int y)
+{
+    return tex2Dlod(LaneSampSamp, float4((float(x) + 0.5) / float(DS_W), (float(y) + 0.5) / float(DS_H), 0, 0));
+}
+
 // ─── Pass 1 — TexHwyWrite (spatial lane) ───────────────────────────────────
 // Writes pre-correction scene RGB+Luma into TexHwyTex spatial lane (rows 0..BUFFER_HEIGHT/8-1).
 // Full 8×8 area mean: 16 bilinear taps at ±1, ±3 px (each averages a pixel pair). The former
@@ -180,8 +202,7 @@ float4 LumHistGatherPS(float4 pos : SV_Position,
         [loop]
         for (int x = 0; x < DS_W; x++)
         {
-            float2 s_uv = float2((x + 0.5) / float(DS_W), (y + 0.5) / float(DS_H));
-            float  luma = min(ReadSpatialLane(s_uv).a, 1.0 - 1e-6);
+            float  luma = min(LaneSample(x, y).a, 1.0 - 1e-6);
             count += (luma >= bucket_lo && luma < bucket_hi) ? 1.0 : 0.0;
         }
     }
@@ -402,8 +423,7 @@ float4 SceneCutPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
     [loop] for (int y = 0; y < DS_H; y++)
     [loop] for (int x = 0; x < DS_W; x++)
     {
-        float2 s_uv = float2((x + 0.5) / float(DS_W), (y + 0.5) / float(DS_H));
-        mean_log += log2(max(ReadSpatialLane(s_uv).a, 0.004));
+        mean_log += log2(max(LaneSample(x, y).a, 0.004));
     }
     mean_log /= float(DS_W * DS_H);
     float4 prev_cut    = tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0));
@@ -567,6 +587,130 @@ float4 CDFWalkModePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
     return float4(lerp(prev, mode, alpha), 0.0, 0.0, 1.0);
 }
 
+// ─── Pass 6b — merged single-pixel statistics (combined pipeline) ─────────
+// NearClip, MeanChroma, HistEntropy, CDFWalk and CDFWalkMode in one 1×1 pass with five
+// targets: one walk of the 576 lane samples and one of the 64 histogram bins instead of
+// two and four. Runs after SceneCut, reads it like the separate passes did; each statistic
+// keeps its own expressions and accumulation order, so results are unchanged.
+void AnalysisStatsPS(float4 pos : SV_Position, float2 uv : TEXCOORD0,
+                     out float4 near_out    : SV_Target0,
+                     out float4 chroma_out  : SV_Target1,
+                     out float4 entropy_out : SV_Target2,
+                     out float4 perc_out    : SV_Target3,
+                     out float4 mode_out    : SV_Target4)
+{
+    float scene_cut = tex2Dlod(SceneCutSamp, float4(0.5, 0.5, 0, 0)).r;
+
+    // Lane samples: near-clip count and chroma statistics.
+    float near_count = 0.0;
+    float hist[CHROMA_BINS];
+    [unroll] for (int i = 0; i < CHROMA_BINS; i++) hist[i] = 0.0;
+    float sum_a = 0.0, sum_b = 0.0;
+    float count = 0.0, achrom_count = 0.0;
+    [loop] for (int y = 0; y < DS_H; y++)
+    [loop] for (int x = 0; x < DS_W; x++)
+    {
+        float4 lane = LaneSample(x, y);
+        near_count += step(NEAR_CLIP_LUMA, lane.a);
+        float3 lab  = RGBtoOklab(lane.rgb);
+        float  C    = length(lab.yz);
+        float  in_b = step(0.05, C);
+        int    bin  = clamp(int(C / CHROMA_C_MAX * CHROMA_BINS), 0, CHROMA_BINS - 1);
+        hist[bin]  += 1.0;
+        sum_a      += lab.y * in_b;
+        sum_b      += lab.z * in_b;
+        count      += in_b;
+        achrom_count += 1.0 - in_b;
+    }
+
+    // NearClip
+    {
+        float raw   = near_count / float(DS_W * DS_H);
+        float prev  = tex2Dlod(NearClipSamp, float4(0.5, 0.5, 0, 0)).r;
+        float alpha = lerp(1.0 - exp2(-max(frametime, 0.0) / 167.5), 1.0, scene_cut);
+        near_out = float4(lerp(prev, raw, alpha), 0, 0, 1);
+    }
+    // MeanChroma
+    {
+        float median_C    = ComputeMedianC(hist, float(DS_W * DS_H));
+        float valid       = step(0.5, count);
+        float inv_count   = 1.0 / max(count, 1.0);
+        float mean_a      = lerp(0.0,  sum_a * inv_count, valid);
+        float mean_b      = lerp(0.0,  sum_b * inv_count, valid);
+        float achrom_frac = achrom_count / float(DS_W * DS_H);
+        float4 prev       = tex2Dlod(MeanChromaSamp, float4(0.5, 0.5, 0, 0));
+        float  alpha      = lerp(saturate(frametime * 0.001), 1.0, scene_cut);
+        chroma_out = float4(lerp(prev.r, median_C, alpha), lerp(prev.g, mean_a, alpha),
+                            lerp(prev.b, mean_b, alpha),   lerp(prev.a, achrom_frac, alpha));
+    }
+
+    // Histogram bins: entropy, trimmed percentiles, mode.
+    float inv_mass = 1.0 / max(LumHistMass(), 1e-5);
+    float H = 0.0;
+    float cumul = 0.0;
+    float p25 = 0.25, p50 = 0.50, p75 = 0.75;
+    float lk25 = 0.0, lk50 = 0.0, lk75 = 0.0;
+    float best_val = 0.0;
+    float mode = 0.5 / float(HIST_BINS);
+    [loop] for (int b = 0; b < HIST_BINS; b++)
+    {
+        float raw_h = tex2Dlod(LumHist, float4((float(b) + 0.5) / float(HIST_BINS), 0.5, 0, 0)).r;
+        float h     = raw_h * inv_mass;
+        H          -= h * log2(max(h, 1e-6));
+
+        float frc  = raw_h * inv_mass;
+        float prev = cumul;
+        cumul += frc;
+        float inv  = (frc > 0.0) ? 1.0 / frc : 0.0;
+        float t25  = saturate((0.275 - prev) * inv);
+        float t50  = saturate((0.500 - prev) * inv);
+        float t75  = saturate((0.725 - prev) * inv);
+        float bv25 = (float(b) + t25) / float(HIST_BINS);
+        float bv50 = (float(b) + t50) / float(HIST_BINS);
+        float bv75 = (float(b) + t75) / float(HIST_BINS);
+        float at25 = step(0.275, cumul) * (1.0 - lk25);
+        float at50 = step(0.500, cumul) * (1.0 - lk50);
+        float at75 = step(0.725, cumul) * (1.0 - lk75);
+        p25  = lerp(p25, bv25, at25);
+        p50  = lerp(p50, bv50, at50);
+        p75  = lerp(p75, bv75, at75);
+        lk25 = saturate(lk25 + at25);
+        lk50 = saturate(lk50 + at50);
+        lk75 = saturate(lk75 + at75);
+
+        float better = step(best_val + 1e-6, raw_h);
+        best_val     = lerp(best_val, raw_h, better);
+        mode         = lerp(mode, (float(b) + 0.5) / float(HIST_BINS), better);
+    }
+    // HistEntropy
+    {
+        float h_norm = saturate(H / 6.0);
+        float prev   = tex2Dlod(EntropySamp, float4(0.5, 0.5, 0, 0)).r;
+        float alpha  = saturate(frametime * 0.002);
+        entropy_out = float4(lerp(prev, h_norm, alpha), 0, 0, 1);
+    }
+    // CDFWalk: VFF Kalman on percentile outputs
+    {
+        float4 prev    = tex2D(PercSamp, float2(0.5, 0.5));
+        float  P       = (prev.a <= 0.0) ? 1.0 : prev.a;
+        float  e_p50   = p50 - prev.g;
+        float  Q_vff_p = lerp(KALMAN_Q_PERC_MIN, KALMAN_Q_PERC_MAX, smoothstep(0.0, VFF_E_SIGMA_PERC, abs(e_p50)));
+        float  P_pred  = P + Q_vff_p;
+        float  K       = P_pred / (P_pred + KALMAN_R_PERC);
+        float  P_new   = (1.0 - K) * P_pred;
+        float  h_p     = 1.0 - 0.5 * smoothstep(0.0, VFF_E_SIGMA_PERC * 8.0, abs(e_p50));
+        perc_out = float4(prev.r + K * (p25 - prev.r) * h_p, prev.g + K * e_p50 * h_p,
+                          prev.b + K * (p75 - prev.b) * h_p, P_new);
+    }
+    // CDFWalkMode
+    {
+        float prev  = tex2Dlod(ModeSamp, float4(0.5, 0.5, 0, 0)).r;
+        float alpha = saturate(frametime * 0.005);
+        alpha       = lerp(alpha, 1.0, scene_cut);
+        mode_out = float4(lerp(prev, mode, alpha), 0.0, 0.0, 1.0);
+    }
+}
+
 // ─── Technique ─────────────────────────────────────────────────────────────
 
 #ifndef SHADER_PIPELINE_COMBINED
@@ -583,6 +727,12 @@ technique FrameAnalysis
         VertexShader = PostProcessVS;
         PixelShader  = TexHwyWriteSpatialPS;
         RenderTarget = TexHwyTex;
+    }
+    pass LaneSamples
+    {
+        VertexShader = PostProcessVS;
+        PixelShader  = LaneSamplesPS;
+        RenderTarget = LaneSampTex;
     }
     pass LumHistGather
     {

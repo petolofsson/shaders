@@ -3,7 +3,7 @@
 
 // Original source log-luma, observed before inverse/creative corrections.
 // Native reconstruction must use the same signal domain as the guided fit.
-texture2D NativeGuideLogTex { Width=BUFFER_WIDTH; Height=BUFFER_HEIGHT; Format=R32F; };
+texture2D NativeGuideLogTex { Width=BUFFER_WIDTH; Height=BUFFER_HEIGHT; Format=R16F; };
 sampler2D NativeGuideLogSamp
 {
     Texture=NativeGuideLogTex; MinFilter=POINT; MagFilter=POINT;
