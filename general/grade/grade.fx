@@ -1209,18 +1209,30 @@ void TintGatherPS(float4 pos : SV_Position, float2 uv : TEXCOORD0,
 // Environment fields, separable (exact: square Gaussian kernels factor per axis):
 // A: normalized Gaussian σ 3.46 texels (r 6) at 1/16, surroundings' colour/weight.
 // B: R surface luma σ 3.46 (r 6); G emitter luma σ 4.90 (r 9).
-void TintEnvBlur(sampler2D sa, sampler2D sb, float2 uv, float2 axis, out float4 out_a, out float2 out_b)
+// Vertical pass (up_w ≥ 0): taps above the pixel (d < 0) use a wider, weaker triangle
+// (up_w·(1 − |d|/(R+1)), r R) instead of the Gaussian. The full Gaussian tinted a band of shade
+// under skylines (sky in the surround) that ended abruptly ~60 px down; the triangle keeps the
+// crown darkening and tapers it over ~100 px (2026-11-11, research/2026-11-11_treeline.md).
+// Horizontal pass: up_w < 0 = plain Gaussian.
+#ifndef TINT_UP_W
+#define TINT_UP_W 0.40
+#endif
+#ifndef TINT_UP_R
+#define TINT_UP_R 14
+#endif
+void TintEnvBlur(sampler2D sa, sampler2D sb, float2 uv, float2 axis, float up_w, out float4 out_a, out float2 out_b)
 {
     float2 px  = axis / float2(TINT_W16, TINT_H16);
     float4 acc_a = 0.0;
     float2 acc_b = 0.0;
     float  wt_a  = 0.0;
     float2 wt_b  = 0.0;
-    [unroll] for (int d = -9; d <= 9; d++)
+    [unroll] for (int d = -max(9, TINT_UP_R); d <= 9; d++)
     {
         float  r2   = float(d * d);
         float  ga   = exp(-0.0417657 * r2) * step(abs(float(d)), 6.0);    // 1/(2·3.46²), r 6
-        float  gg   = exp(-0.0208247 * r2);                                // 1/(2·4.9²),  r 9
+        ga = lerp(ga, up_w * (1.0 - abs(float(d)) / float(TINT_UP_R + 1)), step(0.0, up_w) * step(float(d), -0.5));
+        float  gg   = exp(-0.0208247 * r2) * step(abs(float(d)), 9.0);                                // 1/(2·4.9²),  r 9
         float4 off  = float4(uv + float(d) * px, 0, 0);
         acc_a += ga * tex2Dlod(sa, off);
         acc_b += float2(ga, gg) * tex2Dlod(sb, off).rg;
@@ -1234,13 +1246,13 @@ void TintEnvBlur(sampler2D sa, sampler2D sb, float2 uv, float2 axis, out float4 
 void TintEnvHPS(float4 pos : SV_Position, float2 uv : TEXCOORD0,
                 out float4 env_a : SV_Target0, out float2 env_b : SV_Target1)
 {
-    TintEnvBlur(TintGatherASamp, TintGatherBSamp, uv, float2(1, 0), env_a, env_b);
+    TintEnvBlur(TintGatherASamp, TintGatherBSamp, uv, float2(1, 0), -1.0, env_a, env_b);
 }
 
 void TintEnvVPS(float4 pos : SV_Position, float2 uv : TEXCOORD0,
                 out float4 env_a : SV_Target0, out float2 env_b : SV_Target1)
 {
-    TintEnvBlur(TintEnvAHSamp, TintEnvBHSamp, uv, float2(0, 1), env_a, env_b);
+    TintEnvBlur(TintEnvAHSamp, TintEnvBHSamp, uv, float2(0, 1), float(TINT_UP_W), env_a, env_b);
 }
 
 // Regional luma and Oklab colour (luma, a, b, L): spatial lane, Gaussian σ 1 texel (r 2) at 1/8.

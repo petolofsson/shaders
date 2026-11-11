@@ -195,8 +195,11 @@ Adopted 2026-11-09 ([report](../research/2026-11-09_cc_light_map_placement.md)).
   - 1/16 gather: 2×2 lane texels, (a·ws, b·ws, L·ws, ws) and (luma·ws, luma·emitter),
     written by one pass to two render targets.
   - Normalized Gaussian blur: σ 3.46 texels (r 6); the emitter field uses σ 4.90 (r 9).
-    It is separable: horizontal then vertical, with 32F intermediates, exact for these
-    square kernels with clamped borders.
+    It is separable: horizontal then vertical, with 32F intermediates and clamped borders.
+    In the vertical pass, taps above the pixel use a weaker, wider triangle
+    (.40·(1 − |d|/15), r 14) instead of the Gaussian (2026-11-11): the full kernel tinted a band
+    of shade under skylines toward the sky with an abrupt lower edge; the triangle keeps the
+    crown darkening and tapers it over ~100 px ([tree line](../research/2026-11-11_treeline.md)).
   - 1/8 region: lane (luma, a, b, L), σ 1. All are bilinear-read per pixel.
 - **Shadow weight.** log2(surface-only wide luma ÷ regional luma), mapped over
   0–1.5 stops; then not-bright region (.10–.35), not-near-black pixel

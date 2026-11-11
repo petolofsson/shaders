@@ -22,6 +22,10 @@ Look target (user): mock `mix_tsb`, naturalistic film daylight ([look target](re
 - Defaults are bit-identical to the previous production on 7 scenes. GZW profile (user, live
   play): `KEY_WARMTH` .5, `SHADOW_FILL_FOLLOW` 1, `SHADOW_CC_STRENGTH` 1.25, `RETINEX_STRENGTH` 0.
 
+Surround tint: taps above the pixel in the vertical environment blur use a weaker, wider
+triangle, so the sky-tinted darkening of shade under skylines (tree crowns) tapers over ~100 px
+instead of ending abruptly at ~60 px (user report; [tree line](research/2026-11-11_treeline.md)).
+
 Cost ([report](research/2026-11-11_cost_reduction.md)): GZW shader cost ~2.2 → ~1.15 ms.
 `OklabToSDR` returns in-gamut colours directly (user-authorized output-preserving branch;
 CODE_RULES exception); compile-time skips of zero-knob stages; five 1×1 analysis passes merged;
