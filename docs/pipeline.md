@@ -36,9 +36,10 @@ Combined-pipeline cost structure (2026-11-11, [cost report](../research/2026-11-
 - Compile-time switches skip exact no-op stages (all `LUMA_CONTRAST_*` 0, all `HUE_*` 0,
   `RETINEX_STRENGTH` 0); with luma contrast and Retinex off, GuidedCoeff/GuidedBase write zero.
 
-SceneContext builds the frame-constant scene context once (`SceneCtxTex`, 6 RGBA32F
-texels); ColorTransform reads it instead of rebuilding it per pixel. Texels 0–1 are the
-next AdaptiveHistory records, which AdaptiveHistory copies without reading its own target.
+SceneContext builds the frame-constant scene context once (`SceneCtxTex`, 7 RGBA32F
+texels); ColorTransform reads it instead of rebuilding it per pixel. Texels 0–1 and 6 are the
+next AdaptiveHistory records (history texels 0–2), which AdaptiveHistory copies without reading
+its own target.
 
 Diffusion has been removed from `grade.fx`.
 
@@ -177,6 +178,13 @@ Adopted 2026-11-09 ([report](../research/2026-11-09_cc_light_map_placement.md)).
 - **Fill-following shadow colour (2026-11-11).** `SHADOW_FILL_FOLLOW` (profile,
   default 0 = production unchanged) scales the shadow CC by lerp(1, `sun_key`, follow): at 1 the
   shadow temp/tint applies only where shade measurably reads cooler than adjacent lit surfaces.
+- **Shade neutralize (2026-11-11).** `LLAnchorPS` also writes `LLFillTex` (MRT, 1×1): mean
+  shade-minus-lit log chroma (ln R/G, ln B/G) over the counted sun-edge pairs × the warm-key ramp,
+  i.e. fill colour relative to the key, material-independent; 0 without sun. `BuildSceneCtx`
+  smooths it like `sun_key` (history texel 2) and converts it to an Oklab cast per unit L
+  (`fill_cast`, SceneCtx texel 5 .gb). 3-way CC removes `SHADOW_NEUTRALIZE`·cast·L from the
+  shadow zone before the artistic temp/tint, clamped so a and b move toward 0 but never past it
+  (a warm golden key must not push warm shade warmer). Default 0 = production unchanged.
 - **Knob.** `SHADOW_CC_STRENGTH` (profile, default 1.0) multiplies `SHADOW_TEMP`/`TINT`
   inside 3-way CC only.
 

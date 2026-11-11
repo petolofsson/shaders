@@ -15,6 +15,10 @@ Look target (user): mock `mix_tsb`, naturalistic film daylight ([look target](re
 - **`SHADOW_FILL_FOLLOW`:** scales shadow CC by lerp(1, `sun_key`, follow), so overcast,
   interior and menu shade keeps source colour (menu dark-20% chroma 1.58 → .47, source .19).
   Default 0.
+- **`SHADOW_NEUTRALIZE`:** `LLAnchorPS` measures fill colour relative to the key at sun edges
+  (`LLFillTex`); 3-way CC removes that share from shade before the shadow CC, toward neutral
+  only. Default 0 (bit-identical on 172413). GZW profile 1 (user accepted the recommendation):
+  172413 shade wall Oklab b −2.7 → −1.8 (target −1.5); golden 133932 and overcast 133729 unchanged.
 - Defaults are bit-identical to the previous production on 7 scenes. GZW profile (user, live
   play): `KEY_WARMTH` .5, `SHADOW_FILL_FOLLOW` 1, `SHADOW_CC_STRENGTH` 1.25, `RETINEX_STRENGTH` 0.
 

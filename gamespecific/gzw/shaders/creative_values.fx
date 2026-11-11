@@ -16,6 +16,7 @@
 #define SHADOW_TINT       -0.030
 #define SHADOW_CC_STRENGTH 1.25  // multiplies SHADOW_TEMP/TINT; shadow colour placed by the light map
 #define SHADOW_FILL_FOLLOW 1.0    // 1 = shadow colour only where shade reads cooler than adjacent sunlit surfaces (0 = everywhere)
+#define SHADOW_NEUTRALIZE  1.0    // remove measured fill-vs-key tint from shade before the shadow CC (toward neutral only; 0 = off)
 #define KEY_WARMTH         0.5    // extra mid/highlight warmth only when the frame shows a warm key against cool fill
 #define MID_TEMP          0.0875
 #define MID_TINT          0.00

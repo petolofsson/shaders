@@ -177,7 +177,7 @@ technique ShaderPipeline
     pass GradeLLUp2 { VertexShader = PostProcessVS; PixelShader = LLUp2PS; RenderTarget = LLB2Tex; }
     pass GradeLLUp1 { VertexShader = PostProcessVS; PixelShader = LLUp1PS; RenderTarget = LLB1Tex; }
     pass GradeLLUp0 { VertexShader = PostProcessVS; PixelShader = LLUp0PS; RenderTarget = LLB0Tex; }
-    pass GradeLLAnchor { VertexShader = PostProcessVS; PixelShader = LLAnchorPS; RenderTarget = LLAnchorTex; }
+    pass GradeLLAnchor { VertexShader = PostProcessVS; PixelShader = LLAnchorPS; RenderTarget0 = LLAnchorTex; RenderTarget1 = LLFillTex; }
     pass GradeSceneContext
     {
         VertexShader = PostProcessVS;

@@ -39,6 +39,10 @@ sampler2D LLDirASamp { Texture = LLDirATex; AddressU = CLAMP; AddressV = CLAMP; 
 texture2D LLDirBTex { Width = 1; Height = 1; Format = RGBA32F; MipLevels = 1; };
 sampler2D LLDirBSamp { Texture = LLDirBTex; AddressU = CLAMP; AddressV = CLAMP; MinFilter = POINT; MagFilter = POINT; };
 texture2D LLAnchorTex { Width = 1; Height = 1; Format = RGBA32F; MipLevels = 1; };
+// Fill-vs-key colour: mean log-chroma (ln R/G, ln B/G) of shade minus lit across sun edges
+// (same surface both sides), × the warm-key ramp; raw per frame (grade smooths it). 0 without sun.
+texture2D LLFillTex { Width = 1; Height = 1; Format = RGBA32F; MipLevels = 1; };
+sampler2D LLFillSamp { Texture = LLFillTex; AddressU = CLAMP; AddressV = CLAMP; MinFilter = POINT; MagFilter = POINT; };
 // 16×16 lane samples shared by LLDirections and LLAnchor (centre, right and down 1/8 neighbours),
 // gathered in one parallel pass so the single-texel reductions read a tiny texture.
 texture2D LLPtCTex { Width = 16; Height = 16; Format = RGBA32F; MipLevels = 1; };
@@ -280,12 +284,19 @@ float LLSunEdge(float3 c, float3 nb)
     return step(1.0, abs(dl)) * step(0.1, s) * float(min(Luma(c), Luma(nb)) > 0.004);
 }
 
+// Shade-minus-lit log chroma of a lane pair (darker side minus brighter side).
+float2 LLEdgeFillDiff(float3 c, float3 nb)
+{
+    return (LLChroma(nb) - LLChroma(c)) * sign(LLLog(c) - LLLog(nb));
+}
+
 // ─── 4. Anchor: offset that gives the correction zero mean; frame lit level ───
 // .r offset; .g frame lit level (log2) = mean + 1.28 sd of the anchored light (~p90).
 // .b warm-key evidence (raw, per frame): share of right/down lane pairs at the 16x16 points that
 // are sun edges (LLSunEdge), ramped 1.5–3.0%. Offline screen: sun frames 1.4–7.0% (median 3.7),
 // overcast 0.2–2.0% (median 0.8); research/2026-11-11_look_target.md.
-float4 LLAnchorPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
+void LLAnchorPS(float4 pos : SV_Position, float2 uv : TEXCOORD0,
+                out float4 anchor : SV_Target0, out float4 fill : SV_Target1)
 {
     float sum_b = 0.0;
     [loop] for (int j = 0; j < 16; j++)
@@ -293,6 +304,7 @@ float4 LLAnchorPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
         sum_b += tex2Dlod(LLB0Samp, float4((float2(i, j) + 0.5) / 16.0, 0, 0)).r;
     float offset = -LL_SCALE * sum_b / 256.0;          // correction has zero mean
     float s1 = 0.0, s2 = 0.0, sun = 0.0;
+    float2 fill_sum = 0.0;
     float2 px = 1.0 / float2(LL_W0, LL_H0);
     [loop] for (int j2 = 0; j2 < 16; j2++)
     [loop] for (int i2 = 0; i2 < 16; i2++)
@@ -301,12 +313,17 @@ float4 LLAnchorPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
         float3 c = LLPoint(LLPtCSamp, suv2);
         float l = LLLog(c) + LL_SCALE * tex2Dlod(LLB0Samp, float4(suv2, 0, 0)).r + offset;
         s1 += l; s2 += l * l;
-        sun += LLSunEdge(c, LLPoint(LLPtRSamp, suv2))
-             + LLSunEdge(c, LLPoint(LLPtDSamp, suv2));
+        float3 cr = LLPoint(LLPtRSamp, suv2);
+        float3 cd = LLPoint(LLPtDSamp, suv2);
+        float er = LLSunEdge(c, cr);
+        float ed = LLSunEdge(c, cd);
+        sun += er + ed;
+        fill_sum += er * LLEdgeFillDiff(c, cr) + ed * LLEdgeFillDiff(c, cd);
     }
     float m = s1 / 256.0;
     float sun_w = smoothstep(1.5, 3.0, sun / 512.0 * 100.0);
-    return float4(offset, m + 1.2816 * sqrt(max(s2 / 256.0 - m * m, 0.0)), sun_w, 0.0);
+    anchor = float4(offset, m + 1.2816 * sqrt(max(s2 / 256.0 - m * m, 0.0)), sun_w, 0.0);
+    fill = float4(fill_sum / max(sun, 1.0) * sun_w, 0.0, 1.0);
 }
 
 // Raw per-frame warm-key evidence [0,1]; grade.fx smooths it in the adaptive history.

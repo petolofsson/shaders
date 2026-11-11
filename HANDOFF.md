@@ -21,17 +21,17 @@ Adopted 2026-11-11 ([CHANGELOG](CHANGELOG.md)):
   branch, CODE_RULES). Other cuts are bit-identical or ≤ 1 code
   ([cost report](research/2026-11-11_cost_reduction.md)).
 
-Identity (SHA-256 prefixes, 2026-11-11): `grade.fx` a02b5865e145d052, `light_map.fxh`
-d880e0bfa2e07539, `pipeline.fx` bff2ecac020d30fc, `analysis_frame.fx` ffd93491d824d6af,
+Identity (SHA-256 prefixes, 2026-11-11): `grade.fx` fee62dea3e51e58f, `light_map.fxh`
+30a9f807c7d31cd1, `pipeline.fx` ddbe26f2ecf2e839, `analysis_frame.fx` ffd93491d824d6af,
 `corrective.fx` 932ce5274f20b0a9, `inverse_grade.fx` 8abe46d485d8f037, `common.fxh`
 aa18c3fbf5e25ad9. Configs unchanged. Match identities before reusing evidence.
 
 ## Open
 
 - **Look target** (user, 2026-11-11): mock `mix_tsb`. Live GZW sun: sunlit wall cream (on
-  target); shade still reads cyan-grey at the current shadow CC strength (house 193054: front
-  wall 73 89 89, shaded hill foliage 32 48 48). A shader-off screenshot of the same view is
-  needed to separate paint/sky fill from our tint. Unreached by knobs: far-hill haze (needs
+  target). Shade cyan came from the game fill plus our shadow CC; `SHADOW_NEUTRALIZE` 1 (GZW
+  profile) removes the measured fill tint before the CC (172413 shade wall b −2.7 → −1.8, target
+  −1.5). Not yet live-played or pan-checked. Dark chroma still above target. Unreached by knobs: far-hill haze (needs
   depth), sky vs shade hue, dark-foliage lift ([look target](research/2026-11-11_look_target.md)).
 - **Live play of the new cue:** pan breathing of warmth/shade colour (offline mid-ramp wobble
   ~25% of the effect); warm-lamp interiors read as sun. Fix if seen: denser cue sampling.

@@ -99,6 +99,9 @@
 #ifndef SHADOW_FILL_FOLLOW
 #define SHADOW_FILL_FOLLOW 0.0
 #endif
+#ifndef SHADOW_NEUTRALIZE
+#define SHADOW_NEUTRALIZE 0.0
+#endif
 
 #ifndef SHADER_PIPELINE_COMBINED
 uniform float FRAME_TIMER < source = "timer"; >;        // ms since app start
@@ -183,7 +186,7 @@ sampler2D LowFreqMip2Samp
 // Scene-adaptive controls are persisted separately so gradual lighting changes
 // do not pump the grade. ColorTransform reads the previous frame; the final
 // history pass writes the current smoothed values.
-texture2D AdaptiveHistoryTex { Width = 2; Height = 1; Format = RGBA32F; MipLevels = 1; };
+texture2D AdaptiveHistoryTex { Width = 3; Height = 1; Format = RGBA32F; MipLevels = 1; };
 sampler2D AdaptiveHistorySamp
 {
     Texture   = AdaptiveHistoryTex;
@@ -192,8 +195,9 @@ sampler2D AdaptiveHistorySamp
 };
 
 // Frame-constant scene context, built once per frame (SceneCtxPS) instead of per pixel.
-// Texels 0-1 are also the next AdaptiveHistory records; 2-5 hold the remaining fields.
-#define SCENE_CTX_W 6
+// Texels 0-1 and 6 are also the next AdaptiveHistory records (history texels 0-2);
+// 2-5 hold the remaining fields.
+#define SCENE_CTX_W 7
 texture2D SceneCtxTex { Width = SCENE_CTX_W; Height = 1; Format = RGBA32F; MipLevels = 1; };
 sampler2D SceneCtxSamp
 {
@@ -357,7 +361,7 @@ float3 Apply3WayCC(float3 lin,
                    float shadow_temp, float shadow_tint,
                    float mid_temp,    float mid_tint,
                    float hl_temp,     float hl_tint,
-                   float key_L, float2 ll)
+                   float key_L, float2 ll, float2 shade_cast)
 {
     // Oklab a/b shift: temp → b-axis (warm=positive, cool=negative),
     // tint → a-axis (magenta=positive, green=negative). Orthogonal by construction.
@@ -372,6 +376,11 @@ float3 Apply3WayCC(float3 lin,
     float common_rgb = max(min(lin.r, min(lin.g, lin.b)), 0.0);
     float neutral_share = saturate(common_rgb / max(Luma(lin), 1e-10));
     black_gate *= neutral_share;
+    // Balance shade toward the key before the artistic lean: remove a share of the measured fill
+    // tint (scaled by L), moving each of a, b toward 0 but never past it (a warm key must not
+    // turn already-warm shade warmer).
+    float2 nz = -shade_cast * (sh_w * black_gate * lab.x);
+    lab.yz += clamp(nz, min(-lab.yz, 0.0), max(-lab.yz, 0.0));
     lab.y += (shadow_tint * sh_w + mid_tint * mid_w + hl_tint * hl_w) * 0.06 * black_gate;
     lab.z += (shadow_temp * sh_w + mid_temp * mid_w + hl_temp * hl_w) * 0.06 * black_gate;
     return OklabToRGB(lab);
@@ -423,6 +432,8 @@ struct SceneCtx {
     float  chroma_str_base;
     float  scene_mode;
     float  sun_key;      // smoothed warm-key / cool-fill evidence [0,1] (light map, LLSunRaw)
+    float2 fill_lc;      // smoothed fill-minus-key log chroma (ln R/G, ln B/G), light map
+    float2 fill_cast;    // Oklab ab per unit L that the measured fill adds to a neutral (0 without sun)
     float  median_C;     // scene median Oklab C (highway HWY_MEDIAN_C) [0, 0.30]
     float  key_L;        // cbrt(slow_key), clamped [0.30,0.80] — Oklab L pivot for zone gates
 };
@@ -461,7 +472,7 @@ SceneCtx BuildSceneCtx()
     ctx.ambient_gate       = 1.0 - ctx.scene_cut;
     // The second history record restrains direct cut-gate recovery using the
     // existing elapsed-time coefficients; confident cuts still suppress at once.
-    float4 gate_prev = tex2Dlod(AdaptiveHistorySamp, float4(0.75, 0.5, 0, 0));
+    float4 gate_prev = tex2Dlod(AdaptiveHistorySamp, float4(1.5 / 3.0, 0.5, 0, 0));
     float gate_seeded = step(0.5, gate_prev.b);
     ctx.adaptation_gate = lerp(ctx.adaptation_gate,
         lerp(gate_prev.r, ctx.adaptation_gate,
@@ -538,7 +549,7 @@ SceneCtx BuildSceneCtx()
     float chroma_adapt     = lerp(1.25, 0.85, smoothstep(0.04, 0.18, ctx.median_C));
     ctx.chroma_str_base    = VIBRANCE * 0.40 * chroma_adapt;
 
-    float4 adaptive_prev = tex2Dlod(AdaptiveHistorySamp, float4(0.25, 0.5, 0, 0));
+    float4 adaptive_prev = tex2Dlod(AdaptiveHistorySamp, float4(0.5 / 3.0, 0.5, 0, 0));
     float4 adaptive_raw  = float4(ctx.film_curve_strength,
                                   LLSunRaw(),   // warm-key evidence (formerly the unused fallback lift)
                                   ctx.print_stock_strength,
@@ -557,6 +568,16 @@ SceneCtx BuildSceneCtx()
     // Warm-key evidence: slow symmetric 1.5 s half-life (no pumping in pans), reset at cuts.
     float sun_alpha = lerp(1.0 - exp2(-max(GRADE_FRAME_TIME, 0.0) / 1500.0), 1.0, saturate(ctx.scene_cut));
     ctx.sun_key = lerp(adaptive_raw.g, lerp(adaptive_prev.g, adaptive_raw.g, sun_alpha), seeded);
+    // Fill colour relative to the key, same 1.5 s smoothing as sun_key, as an Oklab offset per
+    // unit L on a neutral: grey given the fill's R/G, B/G tint at the same luminance.
+    {
+        float2 fill_prev = tex2Dlod(AdaptiveHistorySamp, float4(2.5 / 3.0, 0.5, 0, 0)).rg;
+        float2 fill_raw  = tex2Dlod(LLFillSamp, float4(0.5, 0.5, 0, 0)).rg;
+        ctx.fill_lc = lerp(fill_prev, fill_raw, sun_alpha);
+        float3 fill_rgb = exp(float3(ctx.fill_lc.x, 0.0, ctx.fill_lc.y));
+        float3 fill_lab = RGBtoOklabLinear(0.18 * fill_rgb / max(Luma(fill_rgb), 1e-6));
+        ctx.fill_cast = fill_lab.yz / max(fill_lab.x, 1e-6);
+    }
     ctx.film_curve_strength = lerp(adaptive_raw.r, adaptive_next.r, seeded);
     ctx.print_stock_strength = lerp(adaptive_raw.b, adaptive_next.b, seeded);
     ctx.gamut_strength       = lerp(adaptive_raw.a, adaptive_next.a, seeded);
@@ -570,7 +591,8 @@ float4 PackSceneCtx(SceneCtx ctx, int texel)
     if (texel == 2) return ctx.perc;
     if (texel == 3) return float4(ctx.zone_log_key, ctx.zone_str, ctx.ss_04_25, ctx.inverse_luma_budget);
     if (texel == 4) return float4(ctx.fc_knee, ctx.fc_knee_toe, ctx.chroma_scene_scale, ctx.chroma_str_base);
-    return float4(ctx.key_L, 0.0, 0.0, 0.0);
+    if (texel == 5) return float4(ctx.key_L, ctx.fill_cast, 0.0);
+    return float4(ctx.fill_lc, 0.0, 0.0);
 }
 
 float4 ReadSceneCtxTexel(int texel)
@@ -603,7 +625,10 @@ SceneCtx ReadSceneCtx()
     ctx.fc_knee_toe          = t4.g;
     ctx.chroma_scene_scale   = t4.b;
     ctx.chroma_str_base      = t4.a;
-    ctx.key_L                = ReadSceneCtxTexel(5).r;
+    float4 t5                = ReadSceneCtxTexel(5);
+    ctx.key_L                = t5.r;
+    ctx.fill_cast            = t5.gb;
+    ctx.fill_lc              = 0.0;
     ctx.zone_std = 0.0; ctx.ss_08_25 = 0.0; ctx.scene_cut = 0.0;
     ctx.slow_key = 0.0; ctx.scene_mode = 0.0; ctx.median_C = 0.0;
     return ctx;
@@ -665,7 +690,7 @@ float3 ApplyCorrective(float3 lin, float col_luma, SceneCtx ctx, float2 ll)
                           SHADOW_TEMP * shadow_cc, SHADOW_TINT * shadow_cc,
                           MID_TEMP + 0.5 * float(KEY_WARMTH) * ctx.sun_key, MID_TINT,
                           HIGHLIGHT_TEMP + float(KEY_WARMTH) * ctx.sun_key, HIGHLIGHT_TINT,
-                          ctx.key_L, ll);
+                          ctx.key_L, ll, float(SHADOW_NEUTRALIZE) * ctx.fill_cast);
     return lin_e;
 }
 
@@ -1332,7 +1357,8 @@ float4 TexHwyWritePS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Targe
 // Copies this frame's records (SceneCtx texels 0-1) into history; reads no render target of its own.
 float4 AdaptiveHistoryPS(float4 pos : SV_Position, float2 uv : TEXCOORD0) : SV_Target
 {
-    return ReadSceneCtxTexel(int(pos.x));
+    int t = int(pos.x);
+    return ReadSceneCtxTexel(t == 2 ? 6 : t);
 }
 
 // ─── Technique ─────────────────────────────────────────────────────────────

@@ -7,9 +7,9 @@ The previous full text is in the [2026-11-11 ledger](research/2026-11-11_root_do
 ## Next
 
 1. **Look target (user, 2026-11-11):** mock `mix_tsb` ([look target](research/2026-11-11_look_target.md)).
-   - Shade colour: get a shader-off screenshot of the sunny GZW house view, then set
-     `SHADOW_CC_STRENGTH` from the measured paint/fill vs tint split.
-   - Live play of `KEY_WARMTH` / `SHADOW_FILL_FOLLOW`: pans, sun↔shade walks, interiors. Act
+   - Shade colour: `SHADOW_NEUTRALIZE` 1 adopted on GZW (shade wall b −2.7 → −1.8, target −1.5).
+     Dark chroma still above target (fixes hue, not amount); judge in live play first.
+   - Live play of `KEY_WARMTH` / `SHADOW_FILL_FOLLOW` / `SHADOW_NEUTRALIZE`: pans, sun↔shade walks, interiors. Act
      only on a concrete failure (pan breathing → denser cue sampling).
    - Arc: try the knobs on the Arc profile; check the cue miss on 211131.
    - Remaining gaps need evidence first: dark-foliage lift, sky vs shade hue. Haze needs depth.

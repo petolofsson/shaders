@@ -340,3 +340,34 @@ SHADOW_CC 1.25; plus r4_H4 on the remaining scenes); `analyze_r5.py`; grid `fill
   shade only on sun frames (172413 darker-half b −0.06 → −0.41).
 - Not checked: pan breathing of shade colour (same cue and 1.5 s smoothing as KEY_WARMTH; at
   production 2.25 strength the mid-ramp cue wobble of ~25% maps to ≈ .005 Oklab b in shade), live play.
+
+## Round 7: `SHADOW_NEUTRALIZE` (fill-vs-key balance)
+
+Attribution (round 6, 172413): the game's shade is already cyan (wall Oklab b −2.1 ×100) and the
+target is less cyan (−1.5). The shadow CC adds the rest (live −2.7); inverse grade, surround tint,
+saturation and print stock contribute almost nothing.
+
+Code (default 0, bit-identical: 172413 0 codes): `LLAnchorPS` also averages shade-minus-lit log
+chroma over the counted sun-edge pairs (same surface on both sides, so material cancels) × the
+warm-key ramp, giving the fill colour relative to the key → `LLFillTex` (MRT). `BuildSceneCtx`
+smooths it like `sun_key` (1.5 s, reset at cuts; history in `AdaptiveHistoryTex` texel 2) and
+converts it to an Oklab cast per unit L (`SceneCtx` texels 5–6). `Apply3WayCC` removes
+`SHADOW_NEUTRALIZE` × cast from the shadow zone *before* the artistic CC, moving a and b toward 0
+but never past it.
+
+The clamp is needed. Unclamped on 133932 (warm golden key, warm shade), the shade is cool only
+relative to the key, so neutralizing pushed it yellow: 20–50% b +2.89 → +3.65, paving
+116 115 108 → 124 114 86. Clamped: +2.93.
+
+| Oklab ×100 b | source | target | live | N1 (clamped) | N1, CC 0 |
+|---|---|---|---|---|---|
+| 172413 shade wall | −2.1 | −1.5 | −2.7 | −1.8 | −1.2 |
+| 172413 far hill | −1.1 | −0.3 | −1.6 | −1.2 | −0.7 |
+| 172413 jungle (shade foliage) | +1.9 | +1.8 | +1.7 | +1.8 | +2.3 |
+| 172413 darker 20% | −0.79 | +0.02 | −1.23 | −0.97 | −0.38 |
+| 133932 20–50% | +2.86 | – | +2.89 | +2.93 | +3.32 |
+
+Overcast 133729: N1 vs live ≤ 1 code on .001% px (no sun cue, no cast). Dark chroma stays above
+target (172413 darker-20% C 2.04 vs 1.32): neutralize fixes hue, not chroma amount. Script
+`analyze_r7.py`; captures `captures/look_fit_20261111/neut/` (N05 run: one gamescope screenshot
+save failure, retry ok; `_c` suffix = clamped build).
