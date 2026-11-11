@@ -16,6 +16,10 @@ Adopted 2026-11-11 ([CHANGELOG](CHANGELOG.md)):
   against cool fill) and `SHADOW_FILL_FOLLOW` (shadow CC only where shade reads cooler than
   adjacent sunlit surfaces). Both use the light-map sun-edge cue `sun_key` and default to 0
   (production bit-identical). The GZW profile uses them (user live-play choice); Arc does not yet.
+- **Skyline crown fade:** the surround tint's vertical blur takes sky above shade at a weak,
+  long triangle (.30, reach 28 at 1/16), so tree crowns under skylines keep a deeper green that
+  fades over ~225 px (user choice D, live-played and accepted;
+  [tree line](research/2026-11-11_treeline.md)). Tilt-stable; independent of cloud vs blue sky.
 - **Cost:** shader cost on GZW ~2.2 → ~1.15 ms (user FPS 92/115 → ~100/113, shader on/off).
   Main win: `OklabToSDR` returns in-gamut colours directly (user-authorized output-preserving
   branch, CODE_RULES). Other cuts are bit-identical or ≤ 1 code
