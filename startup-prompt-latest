@@ -12,11 +12,11 @@ reference look (2026-11-11) is naturalistic film daylight: cream-warm sun, neutr
 natural foliage, deeper readable darks (mock `mix_tsb`).
 
 Current state (2026-11-11): 3-way CC is light-aware. The light-map sun-edge cue `sun_key`
-drives `KEY_WARMTH` (warmth only under a warm key with cool fill) and `SHADOW_FILL_FOLLOW`
-(shadow colour only where shade reads cooler than sunlit surfaces); both default to 0 and
-the GZW profile uses them. Shader cost on GZW fell from ~2.2 to ~1.15 ms. Next: shade colour
-on sunny GZW frames (needs a shader-off screenshot of the same view), live-play check of the
-cue, and the Arc profile. See PLAN for closed routes; do not re-propose them without new
+drives `KEY_WARMTH`, `SHADOW_FILL_FOLLOW` and `SHADOW_NEUTRALIZE` (measured fill tint removed
+from shade); all default to 0 and the GZW profile uses them. The surround tint keeps a soft
+crown fade under day skylines and fades out at night. The film curve is the only highlight
+shoulder. Shader cost on GZW fell from ~2.2 to ~1.1 ms. Next: live-play checks (pans,
+interiors, dark chroma) and the Arc profile. See PLAN for closed routes; do not re-propose them without new
 evidence.
 
 Reviews of shadow/light work show per-frame "0–100" light maps (p1 black, p99 white,

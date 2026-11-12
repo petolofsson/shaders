@@ -28,7 +28,8 @@ triangle (.30, reach 28 texels at 1/16), so the sky-tinted darkening of shade un
 
 Surround tint at night: the shade weight fades out when the surroundings are near black (mean
 surface luma .002–.008), removing a dark sky-tinted band under night skylines; day ≤ 3 codes
-(user choice; [tree line](research/2026-11-11_treeline.md)). GZW profile (user): `EXPOSURE` .10
+(user choice; [tree line](research/2026-11-11_treeline.md)). `compare_frame.py` overrides
+`FILM_CURVE` by appending it when a profile omits it. GZW profile (user): `EXPOSURE` .10
 with `SHADOWS` .80 (mids/brights slightly brighter, deep shadows kept).
 
 Cost follow-up: chroma result goes to the SDR projection without an RGB round trip; the output

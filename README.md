@@ -23,7 +23,10 @@ remain distinct; `creative_values.fx` is the only user-facing tuning surface.
 | [CHANGELOG.md](CHANGELOG.md) | Concise record of adopted changes |
 
 Dated research reports hold evidence, rejected experiments and limitations.
-Current work: [light-map CC placement](research/2026-11-09_cc_light_map_placement.md)
-and the [light map review](research/2026-11-10_light_map_review.md); older shadow work is
+Current work: the [look target](research/2026-11-11_look_target.md) (light-aware CC, shade
+neutralize), the [tree line](research/2026-11-11_treeline.md) (surround tint at skylines) and
+the [cost report](research/2026-11-11_cost_reduction.md); earlier:
+[light-map CC placement](research/2026-11-09_cc_light_map_placement.md) and the
+[light map review](research/2026-11-10_light_map_review.md); older shadow work is
 indexed in the [shadow investigation index](research/2026-11-06_shadow_session_index.md). Media and diagnostic scripts under `captures/`
 are local and ignored; their links require the original workspace.

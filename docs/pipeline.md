@@ -68,7 +68,8 @@ Diffusion has been removed from `grade.fx`.
    (zones from the light map; see below).
 4. `grade` tonal: guided-filter detail, Retinex/zone shaping, signed adaptive
    contrast, shadow lift, Hunt coupling, ambient tint, highlights, then the
-   luminance-preserving FilmCurve shoulder.
+   luminance-preserving FilmCurve shoulder (the only highlight shoulder; `FILM_CURVE` is a
+   grade.fx default, .70, that a profile may override).
 5. `grade` chroma: sat-by-luma, Munsell rolloff, hue rotation, vibrance,
    saturation, warm restraint (`WARM_RESTRAINT`: red..yellow keep only part of the chroma this
    stage adds, never below its input), compression, and gamut projection.
@@ -203,7 +204,9 @@ Adopted 2026-11-09 ([report](../research/2026-11-09_cc_light_map_placement.md)).
   - 1/8 region: lane (luma, a, b, L), σ 1. All are bilinear-read per pixel.
 - **Shadow weight.** log2(surface-only wide luma ÷ regional luma), mapped over
   0–1.5 stops; then not-bright region (.10–.35), not-near-black pixel
-  (.0003–.002), and a lit-spot fade 1–2 stops above the region.
+  (.0003–.002), a lit-spot fade 1–2 stops above the region, and lit surroundings
+  (surface-only wide luma .002–.008, 2026-11-11: bounce needs light; removes a sky-tinted
+  band under night skylines).
 - **Step.** One Oklch+ step (L^.73; C^.87/(C^.87+.34^.87); arXiv 2606.05255) of
   `SHADOW_SURROUND_TINT`·.0442·weight·hue confidence, toward the surroundings'
   hue. It is evaluated on the regional colour and added per pixel as an Oklab a,b

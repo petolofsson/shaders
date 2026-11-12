@@ -386,8 +386,15 @@ def _ae_write_knobs(cv: Path, knobs: dict) -> None:
         if replaced == 0:
             if _optional_default(text, name) == val:
                 continue
+            if name in SHADER_DEFAULT_KNOBS:   # guarded #ifndef default in grade.fx; profile may omit it
+                text += f"\n#define {name} {valstr}\n"
+                continue
             sys.exit(f"Knob '{name}' not found in {cv}")
     cv.write_text(text)
+
+
+# Knobs with a guarded default in grade.fx that a profile may omit (override by appending).
+SHADER_DEFAULT_KNOBS = {"FILM_CURVE"}
 
 
 def _optional_default(text: str, name: str) -> "float | None":
